@@ -10,10 +10,66 @@ Two interchangeable implementations are expected:
 
 ## What's in scope
 
-`detect`, `describe`, `match`, `estimateHomography`, `poseFromHomography` —
-pure CV primitives operating on neutral types (typed arrays, plain structs).
-No `matrix_t`, no jsfeatNext-specific types, no WASM-specific types: each
-backend converts internally at its own boundary.
+`detect`, `describe`, `match`, `estimateHomography`, `poseFromHomography`, plus
+the optional `filterMatches` — pure CV primitives operating on neutral types
+(typed arrays, plain structs). No `matrix_t`, no jsfeatNext-specific types, no
+WASM-specific types: each backend converts internally at its own boundary.
+
+## Capabilities and negotiation
+
+Backends are interchangeable because they share these signatures — but only as
+far as they share *capabilities*. The moment one backend has a descriptor
+another lacks, signatures stop being enough, so what a backend implements is
+part of the contract:
+
+```ts
+const cv = await createBackend();
+cv.capabilities;
+// { name: 'jsfeatnext', detectors: ['fast', 'yape'],
+//   descriptors: ['orb'], defaultDescriptor: 'orb', matchFilters: [] }
+```
+
+Three rules govern how a caller and a backend agree on what to run. They exist
+to turn silent failures into loud ones:
+
+- **Omitting an option is always valid** and selects the backend default, so
+  code written against the original contract keeps working unchanged.
+- **An unsupported explicit request throws** `UnsupportedCapabilityError`,
+  naming both the request and the supported set. A backend never substitutes a
+  descriptor it does happen to have — choosing a fallback is the caller's
+  decision, made against `capabilities`:
+
+  ```ts
+  const preferred: DescriptorKind[] = ["teblid", "freak", "orb"];
+  const kind =
+    preferred.find((k) => cv.capabilities.descriptors.includes(k)) ??
+    cv.capabilities.defaultDescriptor;
+  ```
+
+- **`match` rejects descriptor sets that cannot be compared**, throwing
+  `DescriptorMismatchError` when the `kind` or `norm` differ. This guards the
+  nastiest failure in the system: ORB and 256-bit TEBLID are both 32 bytes and
+  both Hamming-compared, so matching one against the other throws nothing and
+  returns confident, meaningless distances — RANSAC finds no consensus and the
+  tracker simply never locks on, with nothing anywhere pointing at the cause.
+
+## Match filtering
+
+`filterMatches` is an optional step between `match` and `estimateHomography`,
+the seam for geometric consistency filters such as GMS. Raising the inlier
+ratio before RANSAC runs matters more than it looks: iterations for a given
+confidence go as `log(1 - p) / log(1 - r⁴)`, so the 4-point minimal sample makes
+the cost fall steeply as `r` rises.
+
+A filter returns a **subset** with `queryIdx` / `trainIdx` / `distance`
+untouched — callers still hold the keypoint arrays those indices point into.
+Backends that do not implement it omit the method and declare
+`matchFilters: []`, so the caller skips it:
+
+```ts
+let matches = cv.match(queryDesc, trainDesc, { ratio: 0.75 });
+if (cv.filterMatches) matches = cv.filterMatches(matches, queryView, trainView);
+```
 
 ## What's explicitly out of scope
 

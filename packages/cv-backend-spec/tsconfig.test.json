@@ -1,0 +1,15 @@
+{
+  // Type-checks the test suite, which the build tsconfig deliberately excludes
+  // (tests must not land in dist/). Vitest transpiles without type-checking, so
+  // without this the conformance suite could drift out of agreement with the
+  // very types it exists to pin down, and still pass.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // The base sets rootDir to ./src so the build emits a flat dist/. Nothing
+    // is emitted here, so widen it to take test/ into the program too.
+    "rootDir": ".",
+    "types": ["vitest/globals"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}
