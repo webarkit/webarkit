@@ -1,0 +1,26 @@
+# Dependencies
+# Trailing slash + no leading slash: matches node_modules at ANY depth, which
+# matters here because npm workspaces symlinks each package into the root
+# node_modules (node_modules/@webarkit/cv-backend-spec -> packages/...).
+# Following that link while staging produces an unbounded recursion of
+# packages/<pkg>/node_modules/@webarkit/<pkg>/node_modules/... paths.
+node_modules/
+
+# Build output. Published packages declare their own `files` field, so npm
+# still ships dist/ even though git ignores it — it is rebuilt, never committed.
+dist/
+*.tsbuildinfo
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs / caches
+*.log
+npm-debug.log*
+.npm/
