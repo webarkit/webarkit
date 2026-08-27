@@ -1,0 +1,22 @@
+# Normalise line endings in the repository to LF, regardless of the platform a
+# contributor works on. Without this, checkouts on Windows commit CRLF and every
+# cross-platform diff shows whole files as changed.
+* text=auto eol=lf
+
+# Windows-only scripts must keep CRLF to stay executable.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets: never touch the bytes, never try to diff them as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.wasm binary
+*.woff binary
+*.woff2 binary
+
+# Generated; keep them out of diffs and out of language statistics.
+package-lock.json -diff linguist-generated

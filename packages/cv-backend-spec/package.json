@@ -1,0 +1,35 @@
+{
+  "name": "@webarkit/cv-backend-spec",
+  "version": "0.1.0",
+  "description": "Minimal stateless CV backend interface shared by jsfeatNext and PureCV — detect, describe, match, estimateHomography, poseFromHomography.",
+  "license": "LGPL-3.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "test": "echo \"no tests yet\" && exit 0"
+  },
+  "keywords": [
+    "webarkit",
+    "computer-vision",
+    "webar",
+    "augmented-reality",
+    "interface"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/webarkit/webarkit.git",
+    "directory": "packages/cv-backend-spec"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
