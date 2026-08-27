@@ -18,5 +18,9 @@
 *.woff binary
 *.woff2 binary
 
-# Generated; keep them out of diffs and out of language statistics.
-package-lock.json -diff linguist-generated
+# Generated: collapse it in review and keep it out of language statistics.
+# Deliberately NOT `-diff` -- that makes git treat the lockfile as binary, which
+# also hides dependency changes, and those are exactly what a reviewer needs to
+# see. linguist-generated collapses the diff on GitHub while leaving it
+# expandable and greppable.
+package-lock.json linguist-generated
