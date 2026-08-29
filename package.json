@@ -1,6 +1,7 @@
 {
   "name": "@webarkit/webarkit",
   "private": true,
+  "license": "LGPL-3.0-or-later",
   "description": "webarkit organization monorepo — shared contracts and packages for the WebAR toolchain (jsfeatNext, PureCV, high-level AR project).",
   "workspaces": [
     "packages/*"
