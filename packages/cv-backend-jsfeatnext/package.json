@@ -1,0 +1,43 @@
+{
+  "name": "@webarkit/cv-backend-jsfeatnext",
+  "version": "0.1.0",
+  "description": "jsfeatNext implementation of the @webarkit/cv-backend-spec CvBackend contract.",
+  "license": "LGPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "webarkit",
+    "computer-vision",
+    "webar",
+    "jsfeat",
+    "orb"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/webarkit/webarkit.git",
+    "directory": "packages/cv-backend-jsfeatnext"
+  },
+  "dependencies": {
+    "@webarkit/cv-backend-spec": "0.1.0",
+    "@webarkit/jsfeat-next": "^0.15.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
