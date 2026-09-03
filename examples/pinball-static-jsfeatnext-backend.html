@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  pinball-static.html
+  pinball-static-jsfeatnext-backend.html
   cv-backend-jsfeatnext
 
   This file is part of cv-backend-jsfeatnext - WebARKit.
@@ -349,10 +349,17 @@
         const ms = performance.now() - t0;
 
         // --- drawing ---
+        // lineWidth stays 1 for the lifetime of the page: drawOutline is the
+        // only other place that changes it, and it saves/restores around its
+        // own lineWidth=3, so setting this once here is enough for every
+        // drawMatches() stroke that follows, on this call and every redraw.
         ctx.lineWidth = 1;
-        ctx.fillStyle = "#60a5fa";
-        for (const k of kTarget) ctx.fillRect(k.x - 1, k.y - 1, 2, 2);
-        for (const k of kScene) ctx.fillRect(k.x + shift - 1, k.y - 1, 2, 2);
+
+        const drawKeypoints = () => {
+          ctx.fillStyle = "#60a5fa";
+          for (const k of kTarget) ctx.fillRect(k.x - 1, k.y - 1, 2, 2);
+          for (const k of kScene) ctx.fillRect(k.x + shift - 1, k.y - 1, 2, 2);
+        };
 
         const showOutliers = $("showOutliers");
         const drawMatches = () => {
@@ -390,9 +397,7 @@
         const redraw = () => {
           drawGray(target, 0, 0);
           drawGray(scene, shift, 0);
-          ctx.fillStyle = "#60a5fa";
-          for (const k of kTarget) ctx.fillRect(k.x - 1, k.y - 1, 2, 2);
-          for (const k of kScene) ctx.fillRect(k.x + shift - 1, k.y - 1, 2, 2);
+          drawKeypoints();
           drawMatches();
           drawOutline();
         };

@@ -25,9 +25,14 @@ part of the contract:
 ```ts
 const cv = await createBackend();
 cv.capabilities;
-// { name: 'jsfeatnext', detectors: ['fast', 'yape'],
+// { name: 'jsfeatnext', detectors: ['fast'],
 //   descriptors: ['orb'], defaultDescriptor: 'orb', matchFilters: [] }
 ```
+
+(`detectors` names only `fast` here even though the jsfeatNext adapter's underlying
+library also ships `yape`: `DetectOptions` has no detector selector yet, so `yape`
+isn't reachable through this contract today, and claiming it in `capabilities`
+would be exactly the dishonesty the rules below exist to prevent.)
 
 Three rules govern how a caller and a backend agree on what to run. They exist
 to turn silent failures into loud ones:

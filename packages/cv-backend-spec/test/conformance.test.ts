@@ -126,6 +126,13 @@ function makeBackend(overrides: Partial<CvBackend> = {}): CvBackend {
 
 const IMAGE: GrayImage = { data: new Uint8Array(16 * 16), width: 16, height: 16 };
 
+/** A keypoint set of `n` points together with the image size they came from. */
+const view = (n: number): FilterView => ({
+    keypoints: Array.from({ length: n }, (_, i) => ({ x: i, y: i, score: 1, angle: 0, level: 0 })),
+    width: 64,
+    height: 64,
+});
+
 describe("descriptor selection and capability declaration (#128)", () => {
     it("resolves a preference list against capabilities, without the backend choosing", () => {
         // The acceptance criterion: a backend advertising only ORB, asked via a
@@ -203,12 +210,6 @@ describe("descriptor selection and capability declaration (#128)", () => {
 });
 
 describe("the filterMatches seam (#129)", () => {
-    const view = (n: number): FilterView => ({
-        keypoints: Array.from({ length: n }, (_, i) => ({ x: i, y: i, score: 1, angle: 0, level: 0 })),
-        width: 64,
-        height: 64,
-    });
-
     it("is optional: a backend without it declares no filters and callers skip it", () => {
         const cv = makeBackend();
         expect(cv.capabilities.matchFilters).toEqual([]);
@@ -305,7 +306,7 @@ describe("the full pipeline composes through the interface", () => {
         const d = cv.describe(IMAGE, kps);
         let matches = cv.match(d, descriptors(8));
         if (cv.filterMatches) {
-            matches = cv.filterMatches(matches, { keypoints: kps, width: 16, height: 16 }, view8());
+            matches = cv.filterMatches(matches, { keypoints: kps, width: 16, height: 16 }, view(8));
         }
         const src = new Float64Array([0, 0, 1, 0, 1, 1, 0, 1]);
         const dst = new Float64Array([0, 0, 2, 0, 2, 2, 0, 2]);
@@ -314,12 +315,4 @@ describe("the full pipeline composes through the interface", () => {
         expect(cv.poseFromHomography(h.H, new Float64Array([1, 0, 8, 0, 1, 8, 0, 0, 1])).good).toBe(true);
         expect(matches.length).toBeGreaterThan(0);
     });
-
-    function view8(): FilterView {
-        return {
-            keypoints: Array.from({ length: 8 }, (_, i) => ({ x: i, y: i, score: 1, angle: 0, level: 0 })),
-            width: 64,
-            height: 64,
-        };
-    }
 });
