@@ -258,6 +258,7 @@
       const TARGET_LEVELS = 8;
 
       const $ = (id) => document.getElementById(id);
+      const stage = $("stage");
       const video = $("video");
       const overlay = $("overlay");
       const octx = overlay.getContext("2d");
@@ -321,16 +322,22 @@
         const kTarget = cv.detect(target, { levels: TARGET_LEVELS, maxKeypoints: TARGET_LEVELS * 260 });
         const dTarget = cv.describe(target, kTarget);
         const targetLevels = buildLevelIndex(kTarget, dTarget);
-        const K = intrinsics(PROC_WIDTH, PROC_HEIGHT);
 
         statusEl.textContent = "ready";
         startButton.disabled = false;
-        startButton.addEventListener("click", () => startCamera(cv, target, kTarget, targetLevels, K), {
-          once: true,
-        });
+        // Deliberately NOT { once: true }: startCamera() re-enables the button
+        // on failure (permission denied, no camera, playback error) so the
+        // user can retry, and a one-shot listener would have been consumed by
+        // the first click regardless of whether it succeeded -- a re-enabled
+        // button with no listener left. `disabled` alone is what prevents a
+        // second click firing a concurrent attempt while one is in flight;
+        // disabled buttons don't dispatch click in any browser. On success the
+        // whole placeholder (this button's parent) is removed from the DOM, so
+        // the listener stops mattering rather than needing explicit cleanup.
+        startButton.addEventListener("click", () => startCamera(cv, target, kTarget, targetLevels));
       }
 
-      async function startCamera(cv, target, kTarget, targetLevels, K) {
+      async function startCamera(cv, target, kTarget, targetLevels) {
         startButton.disabled = true;
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
@@ -350,8 +357,25 @@
         }
 
         placeholder.remove();
-        overlay.width = PROC_WIDTH;
-        overlay.height = PROC_HEIGHT;
+
+        // The camera rarely grants exactly PROC_WIDTH x PROC_HEIGHT -- it's an
+        // `ideal`, not a guarantee -- and browsers commonly deliver 16:9 even
+        // when asked for a 4:3 pair. toGray fits the request within that box
+        // PRESERVING the camera's own aspect ratio, so a 16:9 feed comes back
+        // e.g. 480x270, not stretched to 480x360. Everything downstream --
+        // the stage's shape, the overlay canvas, the pose intrinsics -- has to
+        // agree with THAT real size, not the requested one, or keypoints drawn
+        // in scene-space land in the wrong place relative to what the (CSS
+        // object-fit: cover-cropped) video actually shows.
+        //
+        // videoWidth/videoHeight don't change for the lifetime of a stream, so
+        // toGray's output size here is exactly what every tick's own toGray
+        // call will also produce -- computed once, not resized per frame.
+        const probe = toGray(video, video.videoWidth, video.videoHeight, PROC_WIDTH, PROC_HEIGHT);
+        stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+        overlay.width = probe.width;
+        overlay.height = probe.height;
+        const K = intrinsics(probe.width, probe.height);
 
         runLoop(cv, target, kTarget, targetLevels, K);
       }
