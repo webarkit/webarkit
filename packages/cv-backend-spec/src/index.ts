@@ -37,5 +37,5 @@
  *
  */
 
-export * from "./cv_backend";
-export * from "./errors";
+export * from "./cv_backend.js";
+export * from "./errors.js";

@@ -133,16 +133,38 @@ describe("detect", () => {
         }
     });
 
-    it("maxKeypoints keeps the STRONGEST, not the first found", () => {
-        const all = cv.detect(render());
-        const capped = cv.detect(render(), { maxKeypoints: 3 });
-        expect(capped).toHaveLength(3);
+    it("maxKeypoints is a genuine upper bound", () => {
+        // The per-level budget rounds up, so a naive implementation returns one
+        // keypoint per level and overshoots: 3 asked for, 6 levels, 6 returned.
+        for (const max of [1, 3, 7, 20]) {
+            expect(cv.detect(render(), { maxKeypoints: max }).length).toBeLessThanOrEqual(max);
+        }
+    });
 
-        const bestScores = all
+    it("a capped detect still draws on every scale it searched", () => {
+        // The point of the round-robin: a global "strongest N" sort would hand
+        // the whole budget to level 0, since fine-level corners score highest,
+        // and the coarse levels that make cross-scale matching work would never
+        // appear at all.
+        const levels = new Set(cv.detect(render(), { maxKeypoints: 12, levels: 4 }).map((k) => k.level));
+        expect(levels.size).toBeGreaterThan(1);
+    });
+
+    it("keeps the strongest within a level", () => {
+        const single = cv.detect(render(), { levels: 1 });
+        const capped = cv.detect(render(), { levels: 1, maxKeypoints: 3 });
+        expect(capped).toHaveLength(3);
+        const best = single
             .map((k) => k.score)
             .sort((a, b) => b - a)
             .slice(0, 3);
-        expect(capped.map((k) => k.score)).toEqual(bestScores);
+        expect(capped.map((k) => k.score).sort((a, b) => b - a)).toEqual(best);
+    });
+
+    it("levels: 1 reports only level 0, and more levels reach coarser ones", () => {
+        expect(new Set(cv.detect(render(), { levels: 1 }).map((k) => k.level))).toEqual(new Set([0]));
+        const many = new Set(cv.detect(render(), { levels: 5 }).map((k) => k.level));
+        expect(many.size).toBeGreaterThan(1);
     });
 
     it("a higher threshold yields no more keypoints than a lower one", () => {
@@ -326,6 +348,47 @@ describe("poseFromHomography", () => {
     });
 });
 
+/**
+ * Renders the same scene at a different resolution, so the CONTENT is scaled
+ * rather than the picture merely cropped or moved.
+ */
+function renderAt(size: number): GrayImage {
+    const data = new Uint8Array(size * size);
+    const k = W / size;
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) data[y * size + x] = scene(x * k, y * k) & 0xff;
+    }
+    return { data, width: size, height: size };
+}
+
+describe("multi-scale detection is what makes cross-scale matching possible", () => {
+    // The regression test for the gap the pinball demo exposed: `detect` used
+    // to ignore DetectOptions.levels entirely and run at a single scale, so a
+    // target photographed smaller than its reference simply did not match. ORB
+    // descriptors are not scale-invariant -- a descriptor encodes a patch at
+    // one resolution -- so the pyramid is not an optimisation here, it is the
+    // difference between working and not.
+    const base = renderAt(200);
+    const doubled = renderAt(400);
+
+    const matchesWith = (levels: number) => {
+        const kA = cv.detect(base, { levels, maxKeypoints: 300 });
+        const kB = cv.detect(doubled, { levels, maxKeypoints: 300 });
+        return cv.match(cv.describe(base, kA), cv.describe(doubled, kB), { ratio: 0.9 }).length;
+    };
+
+    it("a 2x scale change defeats single-level detection", () => {
+        expect(matchesWith(1)).toBeLessThan(matchesWith(6));
+    });
+
+    it("coarse levels carry the correspondences a 2x change needs", () => {
+        // Not just "more matches": the matches must actually come from the
+        // levels the pyramid added, or the improvement would be coincidence.
+        const kB = cv.detect(doubled, { levels: 6, maxKeypoints: 300 });
+        expect(new Set(kB.map((k) => k.level)).size).toBeGreaterThan(2);
+    });
+});
+
 describe("the full pipeline composes through the interface (issue #96)", () => {
     it("detect -> describe -> match -> estimateHomography -> poseFromHomography", () => {
         const dx = 8;
@@ -334,8 +397,14 @@ describe("the full pipeline composes through the interface (issue #96)", () => {
         const b = render(dx, dy);
 
         // 1-2. detect + describe, on both views
-        const ka = cv.detect(a, { maxKeypoints: 40 });
-        const kb = cv.detect(b, { maxKeypoints: 40 });
+        // levels: 1 on purpose. The two views differ by a pure translation at
+        // identical scale, so searching a pyramid buys nothing here and costs
+        // precision: a keypoint found on a coarse level is scaled back up, so
+        // sub-pixel error there becomes whole pixels at level 0 and the tight
+        // tolerance below stops meaning anything. Cross-scale matching gets its
+        // own test rather than being smuggled into this one.
+        const ka = cv.detect(a, { maxKeypoints: 40, levels: 1 });
+        const kb = cv.detect(b, { maxKeypoints: 40, levels: 1 });
         const da = cv.describe(a, ka);
         const db = cv.describe(b, kb);
         expect(da.count).toBeGreaterThan(4);
