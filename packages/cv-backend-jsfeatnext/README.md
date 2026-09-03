@@ -92,6 +92,22 @@ levels and filled round-robin. A single global "strongest N" sort would hand the
 whole budget to level 0, whose fine corners always score highest, starving
 exactly the coarse levels that make cross-scale matching work.
 
+**`estimateHomography` runs RANSAC three times and keeps the best.**
+jsfeatNext's `motion_estimator.ransac` adapts its remaining iteration budget
+downward the moment it finds an improving hypothesis, sized from that
+hypothesis's own inlier ratio. That is usually the right call — but if random
+sampling turns up a mediocre improving hypothesis before the true best one,
+the budget shrinks prematurely and the run locks onto the mediocre model, with
+no symptom: `ok` stays `true`, `numInliers` still looks like a plausible
+count, just a much smaller one.
+
+Measured on the pinball demo images (95 correspondences, ~64 true inliers): a
+single run found the true model in 38 of 40 trials, with the two misses
+dropping to single digits — not a near miss, a different model entirely.
+Restarting internally and keeping the best result closed that to 40/40 at
+~1.4ms per run — negligible next to a 30fps frame budget, and correctness
+insurance with no cost the caller has to opt into or even know about.
+
 **Returned arrays belong to the caller.** Every typed array is copied out.
 jsfeatNext reuses its scratch matrices between calls, so handing back views
 would hand back storage the next call overwrites.

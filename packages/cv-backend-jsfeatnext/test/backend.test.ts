@@ -276,6 +276,74 @@ describe("match", () => {
     });
 });
 
+/**
+ * A correspondence set with a known homography and a controlled outlier
+ * fraction, sized like the pinball demo's real case (~95 points, ~67% true
+ * inliers under threshold-4 noise, rest pure noise). A synthetic PRNG rather
+ * than Math.random so the SET is reproducible across runs -- RANSAC's own
+ * internal sampling is still random, which is exactly what the test below
+ * needs to exercise.
+ */
+function noisyCorrespondences(n: number, inlierFrac: number, seed: number) {
+    let state = seed;
+    const rand = () => ((state = (state * 1103515245 + 12345) & 0x7fffffff), state / 0x7fffffff);
+    const H = [1.15, 0.08, 12, -0.05, 1.08, 20, 0.00012, -0.00009, 1];
+    const apply = (x: number, y: number) => {
+        const w = H[6] * x + H[7] * y + H[8];
+        return [(H[0] * x + H[1] * y + H[2]) / w, (H[3] * x + H[4] * y + H[5]) / w];
+    };
+    const src = new Float64Array(n * 2);
+    const dst = new Float64Array(n * 2);
+    const nInliers = Math.round(n * inlierFrac);
+    for (let i = 0; i < n; i++) {
+        const x = rand() * 600;
+        const y = rand() * 600;
+        src[i * 2] = x;
+        src[i * 2 + 1] = y;
+        if (i < nInliers) {
+            const [px, py] = apply(x, y);
+            dst[i * 2] = px + (rand() - 0.5) * 1.5;
+            dst[i * 2 + 1] = py + (rand() - 0.5) * 1.5;
+        } else {
+            dst[i * 2] = rand() * 700;
+            dst[i * 2 + 1] = rand() * 700;
+        }
+    }
+    return { src, dst, nInliers };
+}
+
+describe("estimateHomography restarts against a bad RANSAC draw (issue #96 follow-up)", () => {
+    // What this pins down: jsfeatNext's motion_estimator.ransac shrinks its
+    // remaining iteration budget the moment it finds an IMPROVING hypothesis,
+    // from the inlier ratio that hypothesis achieved. That is usually right,
+    // but if random sampling turns up a mediocre improving hypothesis before
+    // the true best one, the budget shrinks prematurely and the run locks onto
+    // the mediocre model -- with no symptom: `ok` is still true and
+    // `numInliers` still looks like a plausible count, just a much smaller one.
+    //
+    // Confirmed directly before writing this test: on this exact
+    // correspondence set, a SINGLE ransac() call landed on a 4-inlier model
+    // once in 40 trials (true best is 64) -- reproducing, down to the same
+    // inlier count, the failure first seen on the real pinball demo images.
+    // Internally restarting and keeping the best result is the fix; this test
+    // is what would catch a regression back to a single attempt.
+    it("never returns a severely degenerate model across many independent runs", () => {
+        // 200 trials, not 25: a single bad draw happens about 1 run in 40 at
+        // RANSAC_RESTARTS = 1 (measured), so a short loop would only catch a
+        // regression back to that about half the time. At 200, the chance of
+        // missing every bad draw is under 1%.
+        const { src, dst, nInliers } = noisyCorrespondences(95, 0.67, 42);
+        for (let trial = 0; trial < 200; trial++) {
+            const h = cv.estimateHomography(src, dst, { threshold: 4 });
+            expect(h.ok).toBe(true);
+            // 70% of the true inlier count: comfortably above what a bad draw
+            // produces (measured: 4) and comfortably below normal runs
+            // (measured: 57-64), so this cannot pass by accident.
+            expect(h.numInliers).toBeGreaterThanOrEqual(Math.round(nInliers * 0.7));
+        }
+    });
+});
+
 describe("estimateHomography", () => {
     it("refuses fewer than the four points a homography needs", () => {
         const src = new Float64Array([0, 0, 1, 0, 1, 1]);
