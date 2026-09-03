@@ -1,0 +1,429 @@
+<!doctype html>
+<!--
+  pinball-static-jsfeatnext-backend.html
+  cv-backend-jsfeatnext
+
+  This file is part of cv-backend-jsfeatnext - WebARKit.
+
+  SPDX-License-Identifier: LGPL-3.0-or-later
+
+  Copyright 2026 WebARKit.
+
+  Author(s): Walter Perdan @kalwalt https://github.com/kalwalt
+             Thorsten Bux @ThorstenBux https://github.com/ThorstenBux
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CvBackend — static pinball demo</title>
+
+    <!--
+      No bundler. The packages ship ESM with explicit file extensions, so an
+      import map is enough to point the bare specifiers at the built output.
+      Run `npm run build` at the repo root first, then serve this directory
+      over HTTP (file:// will not load ES modules).
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@webarkit/jsfeat-next": "../node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs",
+          "@webarkit/cv-backend-spec": "../packages/cv-backend-spec/dist/index.js",
+          "@webarkit/cv-backend-jsfeatnext": "../packages/cv-backend-jsfeatnext/dist/index.js"
+        }
+      }
+    </script>
+
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #10131a;
+        --panel: #181c26;
+        --ink: #e8ecf4;
+        --muted: #9aa4b8;
+        --line: #2a3040;
+        --ok: #4ade80;
+        --bad: #f87171;
+        --accent: #60a5fa;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          14px/1.5 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 4px;
+      }
+      p.lede {
+        color: var(--muted);
+        margin: 0 0 20px;
+        max-width: 70ch;
+      }
+      .wrap {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: minmax(0, 1fr) 320px;
+        align-items: start;
+      }
+      @media (max-width: 900px) {
+        .wrap {
+          grid-template-columns: 1fr;
+        }
+      }
+      canvas {
+        width: 100%;
+        height: auto;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: block;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px 16px;
+      }
+      .panel h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 0 0 10px;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 4px 12px;
+        margin: 0;
+      }
+      dt {
+        color: var(--muted);
+      }
+      dd {
+        margin: 0;
+        font-variant-numeric: tabular-nums;
+      }
+      .legend {
+        margin-top: 14px;
+        display: grid;
+        gap: 6px;
+      }
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+      }
+      .swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        flex: none;
+      }
+      .err {
+        color: var(--bad);
+        white-space: pre-wrap;
+      }
+      code {
+        color: var(--accent);
+      }
+      label {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        color: var(--muted);
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>CvBackend — static pinball demo</h1>
+    <p class="lede">
+      The whole contract pipeline on two still images: <code>detect → describe → match → estimateHomography →
+      poseFromHomography</code>, with the backend chosen at construction. Static rather than webcam on purpose — the
+      input is fixed, so anything odd on screen is the vision code and not the lighting, the focus, or the frame rate.
+      The reprojected outline is the check that matters: if it lands on the target in the scene, every stage agreed.
+    </p>
+
+    <div class="wrap">
+      <canvas id="view"></canvas>
+
+      <div>
+        <div class="panel">
+          <h2>Result</h2>
+          <dl id="stats">
+            <dt>status</dt>
+            <dd id="status">loading…</dd>
+          </dl>
+          <div class="legend">
+            <span><i class="swatch" style="background: #60a5fa"></i> keypoints</span>
+            <span><i class="swatch" style="background: #4ade80"></i> inlier matches</span>
+            <span><i class="swatch" style="background: #f87171"></i> outliers (rejected by RANSAC)</span>
+            <span><i class="swatch" style="background: #fbbf24"></i> target outline, reprojected</span>
+          </div>
+          <label><input id="showOutliers" type="checkbox" checked /> draw outliers</label>
+        </div>
+        <div class="panel" style="margin-top: 16px">
+          <h2>Backend</h2>
+          <dl id="caps"></dl>
+        </div>
+      </div>
+    </div>
+
+    <p id="error" class="err"></p>
+
+    <script type="module">
+      import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
+
+      const TARGET = "./images/pinball.jpg";
+      const SCENE = "./images/pinball-demo.jpg";
+
+      const $ = (id) => document.getElementById(id);
+      const canvas = $("view");
+      const ctx = canvas.getContext("2d");
+
+      function loadImage(src) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error(`could not load ${src}`));
+          img.src = src;
+        });
+      }
+
+      /**
+       * An <img> to the contract's GrayImage.
+       *
+       * Grayscale conversion is a preprocessing step above the contract by
+       * design: the backend takes single-channel pixels and does not care where
+       * they came from, which is what lets the same interface serve a canvas, a
+       * video frame or a decoded file.
+       */
+      function toGray(img, maxWidth = 640) {
+        const scale = Math.min(1, maxWidth / img.naturalWidth);
+        const w = Math.round(img.naturalWidth * scale);
+        const h = Math.round(img.naturalHeight * scale);
+        const off = new OffscreenCanvas(w, h);
+        const octx = off.getContext("2d", { willReadFrequently: true });
+        octx.drawImage(img, 0, 0, w, h);
+        const rgba = octx.getImageData(0, 0, w, h).data;
+        const data = new Uint8Array(w * h);
+        for (let i = 0, p = 0; i < data.length; i++, p += 4) {
+          // Rec. 601 luma, the same weighting jsfeatNext's own grayscale uses.
+          data[i] = (rgba[p] * 0.299 + rgba[p + 1] * 0.587 + rgba[p + 2] * 0.114) | 0;
+        }
+        return { data, width: w, height: h };
+      }
+
+      function drawGray(gray, dx, dy) {
+        const rgba = ctx.createImageData(gray.width, gray.height);
+        for (let i = 0, p = 0; i < gray.data.length; i++, p += 4) {
+          rgba.data[p] = rgba.data[p + 1] = rgba.data[p + 2] = gray.data[i];
+          rgba.data[p + 3] = 255;
+        }
+        ctx.putImageData(rgba, dx, dy);
+      }
+
+      /** Applies a row-major 3x3 homography to a point. */
+      function project(H, x, y) {
+        const w = H[6] * x + H[7] * y + H[8];
+        return [(H[0] * x + H[1] * y + H[2]) / w, (H[3] * x + H[4] * y + H[5]) / w];
+      }
+
+      function stat(label, value) {
+        const dl = $("stats");
+        const dt = document.createElement("dt");
+        dt.textContent = label;
+        const dd = document.createElement("dd");
+        dd.textContent = value;
+        dl.append(dt, dd);
+      }
+
+      async function run() {
+        const cv = await createJsfeatNextBackend();
+
+        const capsDl = $("caps");
+        for (const [k, v] of Object.entries(cv.capabilities)) {
+          const dt = document.createElement("dt");
+          dt.textContent = k;
+          const dd = document.createElement("dd");
+          dd.textContent = Array.isArray(v) ? (v.length ? v.join(", ") : "—") : String(v);
+          capsDl.append(dt, dd);
+        }
+
+        const [targetImg, sceneImg] = await Promise.all([loadImage(TARGET), loadImage(SCENE)]);
+        const target = toGray(targetImg);
+        const scene = toGray(sceneImg);
+
+        // Side by side, target on the left.
+        canvas.width = target.width + scene.width;
+        canvas.height = Math.max(target.height, scene.height);
+        drawGray(target, 0, 0);
+        drawGray(scene, target.width, 0);
+        const shift = target.width;
+
+        // --- the pipeline, entirely through the interface ---
+        const t0 = performance.now();
+
+        // The scene is treated like a live frame: one level, whatever scale the
+        // camera happened to give us. The TARGET is the thing we search across
+        // scales, which is how a tracker works too - the reference is prepared
+        // once, offline, and the frame is cheap.
+        const LEVELS = 8;
+        const kScene = cv.detect(scene, { levels: 1, maxKeypoints: 900 });
+        const kTarget = cv.detect(target, { levels: LEVELS, maxKeypoints: LEVELS * 260 });
+        const dScene = cv.describe(scene, kScene);
+        const dTarget = cv.describe(target, kTarget);
+
+        /** The subset of a descriptor set belonging to one pyramid level. */
+        const atLevel = (descriptors, keypoints, level) => {
+            const idx = [];
+            keypoints.forEach((k, i) => k.level === level && idx.push(i));
+            const bytes = descriptors.bytesPerDescriptor;
+            const data = new Uint8Array(idx.length * bytes);
+            idx.forEach((src, i) => data.set(descriptors.data.subarray(src * bytes, (src + 1) * bytes), i * bytes));
+            return { indices: idx, set: { ...descriptors, data, count: idx.length } };
+        };
+
+        // Match each target level SEPARATELY and keep the best hit per scene
+        // keypoint, rather than pooling every level into one train set.
+        //
+        // This matters more than it looks. Lowe's ratio test assumes the
+        // second-nearest neighbour is a wrong match — but a pooled multi-scale
+        // set holds the same physical feature at several levels, so the two
+        // best candidates are often both right, the ratio approaches 1, and the
+        // test discards them. Measured on these images: 95 matches per-level
+        // against 38 pooled, at the same ratio. jsfeatNext's own ORB sample
+        // matches per level for exactly this reason.
+        //
+        // Partitioning is the caller's job, not the backend's: `Descriptors` is
+        // deliberately a flat buffer, and `Keypoint.level` is what makes this
+        // possible from outside.
+        const best = new Map();
+        for (let level = 0; level < LEVELS; level++) {
+            const { indices, set } = atLevel(dTarget, kTarget, level);
+            if (indices.length < 2) continue;
+            for (const m of cv.match(dScene, set, { ratio: 0.8 })) {
+                const prev = best.get(m.queryIdx);
+                if (!prev || m.distance < prev.distance) {
+                    best.set(m.queryIdx, { queryIdx: m.queryIdx, trainIdx: indices[m.trainIdx], distance: m.distance });
+                }
+            }
+        }
+        let matches = [...best.values()];
+
+        // Optional filter, skipped exactly as the contract documents when a
+        // backend does not implement one.
+        if (cv.filterMatches) {
+          matches = cv.filterMatches(
+            matches,
+            { keypoints: kScene, width: scene.width, height: scene.height },
+            { keypoints: kTarget, width: target.width, height: target.height }
+          );
+        }
+
+        // src = target points, dst = scene points, so H maps the target plane
+        // into the scene and its corners can be drawn straight onto the frame.
+        const src = new Float64Array(matches.length * 2);
+        const dst = new Float64Array(matches.length * 2);
+        matches.forEach((m, i) => {
+          src[i * 2] = kTarget[m.trainIdx].x;
+          src[i * 2 + 1] = kTarget[m.trainIdx].y;
+          dst[i * 2] = kScene[m.queryIdx].x;
+          dst[i * 2 + 1] = kScene[m.queryIdx].y;
+        });
+
+        const h = matches.length >= 4 ? cv.estimateHomography(src, dst, { threshold: 4 }) : null;
+        const pose = h?.ok ? cv.poseFromHomography(h.H, intrinsics(scene.width, scene.height)) : null;
+        const ms = performance.now() - t0;
+
+        // --- drawing ---
+        // lineWidth stays 1 for the lifetime of the page: drawOutline is the
+        // only other place that changes it, and it saves/restores around its
+        // own lineWidth=3, so setting this once here is enough for every
+        // drawMatches() stroke that follows, on this call and every redraw.
+        ctx.lineWidth = 1;
+
+        const drawKeypoints = () => {
+          ctx.fillStyle = "#60a5fa";
+          for (const k of kTarget) ctx.fillRect(k.x - 1, k.y - 1, 2, 2);
+          for (const k of kScene) ctx.fillRect(k.x + shift - 1, k.y - 1, 2, 2);
+        };
+
+        const showOutliers = $("showOutliers");
+        const drawMatches = () => {
+          ctx.save();
+          matches.forEach((m, i) => {
+            const inlier = h?.inliers?.[i] === 1;
+            if (!inlier && !showOutliers.checked) return;
+            ctx.strokeStyle = inlier ? "rgba(74,222,128,.55)" : "rgba(248,113,113,.35)";
+            ctx.beginPath();
+            ctx.moveTo(kTarget[m.trainIdx].x, kTarget[m.trainIdx].y);
+            ctx.lineTo(kScene[m.queryIdx].x + shift, kScene[m.queryIdx].y);
+            ctx.stroke();
+          });
+          ctx.restore();
+        };
+
+        const drawOutline = () => {
+          if (!h?.ok) return;
+          const corners = [
+            [0, 0],
+            [target.width - 1, 0],
+            [target.width - 1, target.height - 1],
+            [0, target.height - 1],
+          ].map(([x, y]) => project(h.H, x, y));
+          ctx.save();
+          ctx.strokeStyle = "#fbbf24";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          corners.forEach(([x, y], i) => (i ? ctx.lineTo(x + shift, y) : ctx.moveTo(x + shift, y)));
+          ctx.closePath();
+          ctx.stroke();
+          ctx.restore();
+        };
+
+        const redraw = () => {
+          drawGray(target, 0, 0);
+          drawGray(scene, shift, 0);
+          drawKeypoints();
+          drawMatches();
+          drawOutline();
+        };
+        showOutliers.addEventListener("change", redraw);
+        redraw();
+
+        $("status").textContent = h?.ok ? "locked on" : matches.length < 4 ? "too few matches" : "no consensus";
+        stat("keypoints (target)", kTarget.length);
+        stat("keypoints (scene)", kScene.length);
+        stat("matches after ratio", matches.length);
+        stat("inliers", h ? `${h.numInliers} / ${matches.length}` : "—");
+        stat("pose", pose ? (pose.good ? "recovered" : "degenerate") : "—");
+        if (pose?.good) {
+          stat("translation", Array.from(pose.t, (v) => v.toFixed(2)).join(", "));
+        }
+        stat("elapsed", `${ms.toFixed(1)} ms`);
+      }
+
+      run().catch((e) => {
+        $("status").textContent = "failed";
+        $("error").textContent =
+          `${e.message}\n\n` +
+          `If the images are missing, drop pinball-demo.jpg into examples/images/.\n` +
+          `If the modules are missing, run "npm run build" at the repo root and serve over HTTP.`;
+        console.error(e);
+      });
+    </script>
+  </body>
+</html>

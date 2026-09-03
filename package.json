@@ -1,0 +1,19 @@
+{
+  "name": "@webarkit/webarkit",
+  "private": true,
+  "license": "LGPL-3.0-or-later",
+  "description": "webarkit organization monorepo — shared contracts and packages for the WebAR toolchain (jsfeatNext, PureCV, high-level AR project).",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @webarkit/cv-backend-spec && npm run build -w @webarkit/cv-backend-jsfeatnext",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

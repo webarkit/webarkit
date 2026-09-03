@@ -1,0 +1,26 @@
+# Normalise line endings in the repository to LF, regardless of the platform a
+# contributor works on. Without this, checkouts on Windows commit CRLF and every
+# cross-platform diff shows whole files as changed.
+* text=auto eol=lf
+
+# Windows-only scripts must keep CRLF to stay executable.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets: never touch the bytes, never try to diff them as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.wasm binary
+*.woff binary
+*.woff2 binary
+
+# Generated: collapse it in review and keep it out of language statistics.
+# Deliberately NOT `-diff` -- that makes git treat the lockfile as binary, which
+# also hides dependency changes, and those are exactly what a reviewer needs to
+# see. linguist-generated collapses the diff on GitHub while leaving it
+# expandable and greppable.
+package-lock.json linguist-generated
