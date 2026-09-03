@@ -37,4 +37,4 @@
  *
  */
 
-export { JsfeatNextBackend, createJsfeatNextBackend, intrinsics } from "./jsfeatnext_backend";
+export { JsfeatNextBackend, createJsfeatNextBackend, intrinsics } from "./jsfeatnext_backend.js";
