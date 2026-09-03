@@ -265,7 +265,7 @@
         // Match each target level SEPARATELY and keep the best hit per scene
         // keypoint, rather than pooling every level into one train set — see
         // matchPerLevel's own doc comment for why. Measured on these images:
-        // 95 matches per-level against 38 pooled, at the same ratio.
+        // 98 matches per-level against 46 pooled, at the same ratio.
         const targetLevels = buildLevelIndex(kTarget, dTarget);
         let matches = matchPerLevel(cv, dScene, targetLevels, 0.8);
 

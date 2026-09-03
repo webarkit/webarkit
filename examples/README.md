@@ -52,7 +52,7 @@ once, offline, and the per-frame work stays cheap.
 **Matching runs one target level at a time.** Pooling every level into a single
 train set and applying Lowe's ratio test halves the match count, because the
 same physical feature appears at several levels and the two best candidates are
-then often both correct. Measured here: 95 matches per-level against 38 pooled.
+then often both correct. Measured here: 98 matches per-level against 46 pooled.
 Partitioning is the caller's job — `Descriptors` is deliberately a flat buffer,
 and `Keypoint.level` is what makes it possible from outside.
 

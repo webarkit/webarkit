@@ -59,7 +59,17 @@
  * @param maxHeight  Optional cap on the other side; omit to preserve aspect.
  */
 export function toGray(source, sourceW, sourceH, maxWidth, maxHeight) {
-    const scale = Math.min(1, maxWidth / sourceW, maxHeight ? maxHeight / sourceH : Infinity);
+    // Two different contracts share this parameter list, disambiguated by
+    // whether maxHeight is given. With it: fit within a maxWidth x maxHeight
+    // box, preserving aspect (both axes bounded) -- what the webcam demo
+    // needs, since it wants a frame no bigger than its processing budget on
+    // EITHER axis. Without it: cap only the longer side, as documented above
+    // -- get that wrong and a portrait source (its longer side is height)
+    // sails straight past maxWidth uncapped, since maxWidth alone only ever
+    // constrains sourceW.
+    const scale = maxHeight
+        ? Math.min(1, maxWidth / sourceW, maxHeight / sourceH)
+        : Math.min(1, maxWidth / Math.max(sourceW, sourceH));
     const w = Math.max(1, Math.round(sourceW * scale));
     const h = Math.max(1, Math.round(sourceH * scale));
     const off = new OffscreenCanvas(w, h);
