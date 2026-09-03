@@ -121,6 +121,32 @@ const SCALE_STEP = Math.cbrt(2);
  */
 const DEFAULT_LEVELS = 6;
 
+/**
+ * Independent RANSAC runs per `estimateHomography` call; the best (most
+ * inliers) is kept.
+ *
+ * jsfeatNext's `motion_estimator.ransac` adapts its remaining iteration
+ * budget downward the moment it finds an improving hypothesis, using the
+ * observed inlier ratio to estimate how many more draws are still needed for
+ * `confidence`. That is the right thing to do when the first improving
+ * hypothesis IS close to the true best — but random sampling occasionally
+ * finds a mediocre one first, which shrinks the budget before the real best
+ * model has had a fair chance to turn up, and the run ends locked onto the
+ * mediocre one.
+ *
+ * Measured on the pinball demo images (95 correspondences, ~64 true inliers):
+ * a single run found the true model in 38/40 trials, with the 2 misses
+ * dropping to single-digit inliers — not a near miss, a different model
+ * entirely. Two independent restarts, keeping the better, closed that to
+ * 40/40; three gave a comfortable margin (worst observed: 62 of 64). At
+ * ~1.4ms per run on that input, three restarts cost single-digit
+ * milliseconds — negligible next to a 30fps frame budget, and cheap insurance
+ * against a failure mode with no other symptom: `ok` stays `true` and
+ * `numInliers` stays plausible, so nothing signals that the fit is wrong
+ * short of comparing it against a second attempt.
+ */
+const RANSAC_RESTARTS = 3;
+
 const CAPABILITIES: BackendCapabilities = {
     name: "jsfeatnext",
     // Only FAST is listed, though jsfeatNext also ships yape and yape06:
@@ -440,27 +466,46 @@ export class JsfeatNextBackend implements CvBackend {
         }
 
         const params = new jsfeatNext.ransac_params_t(4, options?.threshold ?? 3, 0.5, options?.confidence ?? 0.99);
-        const mask = new jsfeatNext.matrix_t(count, 1, U8C1);
-        const ok = jsfeatNext.motion_estimator.ransac(
-            params,
-            jsfeatNext.homography2d,
-            from,
-            to,
-            count,
-            H,
-            mask,
-            options?.maxIterations ?? 1000
-        );
+        const maxIterations = options?.maxIterations ?? 1000;
 
-        const inliers = new Uint8Array(count);
-        let numInliers = 0;
-        for (let i = 0; i < count; i++) {
-            const bit = mask.data[i] ? 1 : 0;
-            inliers[i] = bit;
-            numInliers += bit;
+        let bestOk = false;
+        let bestInliers = -1;
+        let bestH: Float64Array | null = null;
+        let bestMask: Uint8Array | null = null;
+
+        // See RANSAC_RESTARTS: independent runs, keep the one with the most
+        // inliers. `H`/`mask` are reused as scratch across restarts; only the
+        // winner is copied out.
+        const mask = new jsfeatNext.matrix_t(count, 1, U8C1);
+        for (let attempt = 0; attempt < RANSAC_RESTARTS; attempt++) {
+            const ok = jsfeatNext.motion_estimator.ransac(
+                params,
+                jsfeatNext.homography2d,
+                from,
+                to,
+                count,
+                H,
+                mask,
+                maxIterations
+            );
+            if (!ok) continue;
+
+            let numInliers = 0;
+            for (let i = 0; i < count; i++) numInliers += mask.data[i] ? 1 : 0;
+
+            if (numInliers > bestInliers) {
+                bestOk = true;
+                bestInliers = numInliers;
+                bestH = new Float64Array(H.data.subarray(0, 9));
+                bestMask = new Uint8Array(count);
+                for (let i = 0; i < count; i++) bestMask[i] = mask.data[i] ? 1 : 0;
+            }
         }
 
-        return { H: new Float64Array(H.data.subarray(0, 9)), inliers, numInliers, ok: !!ok && numInliers >= 4 };
+        if (!bestOk || !bestH || !bestMask || bestInliers < 4) {
+            return { H: new Float64Array(9), inliers: new Uint8Array(count), numInliers: 0, ok: false };
+        }
+        return { H: bestH, inliers: bestMask, numInliers: bestInliers, ok: true };
     }
 
     poseFromHomography(H: Mat3, K: Mat3): Pose {
