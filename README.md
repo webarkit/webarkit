@@ -31,17 +31,19 @@ and any other org-wide shared contract — lives.
 | Package | Description |
 |---|---|
 | [`@webarkit/cv-backend-spec`](./packages/cv-backend-spec) | Minimal stateless CV backend interface (`detect`, `describe`, `match`, `estimateHomography`, `poseFromHomography`) implemented by jsfeatNext and (future) PureCV. |
+| [`@webarkit/cv-backend-jsfeatnext`](./packages/cv-backend-jsfeatnext) | The jsfeatNext implementation of that contract. Depends on the spec **and** on `@webarkit/jsfeat-next` (>= 0.15.0); neither of those depends on it. |
 
 ## Layout
 
 This is an npm-workspaces monorepo — no build-system layer (Turborepo/Nx)
-yet; adding one is premature with a single package. Revisit once there are
-several.
+yet; adding one is premature at two packages. Revisit once there are
+several, or once builds start depending on each other's outputs.
 
 ```
 webarkit/
   packages/
     cv-backend-spec/
+    cv-backend-jsfeatnext/
 ```
 
 ## Open questions for discussion
