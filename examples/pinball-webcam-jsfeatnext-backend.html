@@ -1,0 +1,451 @@
+<!doctype html>
+<!--
+  pinball-webcam-jsfeatnext-backend.html
+  cv-backend-jsfeatnext
+
+  This file is part of cv-backend-jsfeatnext - WebARKit.
+
+  SPDX-License-Identifier: LGPL-3.0-or-later
+
+  Copyright 2026 WebARKit.
+
+  Author(s): Walter Perdan @kalwalt https://github.com/kalwalt
+             Thorsten Bux @ThorstenBux https://github.com/ThorstenBux
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CvBackend — live pinball demo</title>
+
+    <!--
+      No bundler. The packages ship ESM with explicit file extensions, so an
+      import map is enough to point the bare specifiers at the built output.
+      Run `npm run build` at the repo root first, then serve this directory
+      over HTTP (file:// will not load ES modules, and getUserMedia requires a
+      secure context — http://localhost is fine, a plain http:// host is not).
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@webarkit/jsfeat-next": "../node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs",
+          "@webarkit/cv-backend-spec": "../packages/cv-backend-spec/dist/index.js",
+          "@webarkit/cv-backend-jsfeatnext": "../packages/cv-backend-jsfeatnext/dist/index.js"
+        }
+      }
+    </script>
+
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #10131a;
+        --panel: #181c26;
+        --ink: #e8ecf4;
+        --muted: #9aa4b8;
+        --line: #2a3040;
+        --ok: #4ade80;
+        --bad: #f87171;
+        --accent: #60a5fa;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          14px/1.5 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 4px;
+      }
+      p.lede {
+        color: var(--muted);
+        margin: 0 0 12px;
+        max-width: 70ch;
+      }
+      p.limitation {
+        color: var(--muted);
+        margin: 0 0 20px;
+        max-width: 70ch;
+        padding: 10px 12px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-left: 3px solid var(--accent);
+        border-radius: 4px;
+      }
+      p.limitation code {
+        color: var(--accent);
+      }
+      .wrap {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: minmax(0, 480px) 320px;
+        align-items: start;
+      }
+      @media (max-width: 900px) {
+        .wrap {
+          grid-template-columns: 1fr;
+        }
+      }
+      .stage {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 4 / 3;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .stage video,
+      .stage canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .stage video {
+        object-fit: cover;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px 16px;
+      }
+      .panel h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 0 0 10px;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 4px 12px;
+        margin: 0;
+      }
+      dt {
+        color: var(--muted);
+      }
+      dd {
+        margin: 0;
+        font-variant-numeric: tabular-nums;
+      }
+      .legend {
+        margin-top: 14px;
+        display: grid;
+        gap: 6px;
+      }
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+      }
+      .swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        flex: none;
+      }
+      .err {
+        color: var(--bad);
+        white-space: pre-wrap;
+      }
+      code {
+        color: var(--accent);
+      }
+      button {
+        background: var(--accent);
+        color: #0b1220;
+        border: none;
+        border-radius: 6px;
+        padding: 10px 16px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .placeholder {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        color: var(--muted);
+        padding: 16px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>CvBackend — live pinball demo</h1>
+    <p class="lede">
+      The same contract pipeline as the <a href="./pinball-static-jsfeatnext-backend.html">static demo</a>, run on a
+      live camera feed: <code>detect → describe → match → estimateHomography → poseFromHomography</code>, once per
+      tick, with no state carried between frames. Hold the printed pinball flyer — or a phone/screen showing
+      <code>images/pinball.jpg</code> — up to the camera.
+    </p>
+    <p class="limitation">
+      <strong>Known limitation.</strong> Only the target is searched across pyramid levels; the live frame is
+      detected at a single scale (<code>levels: 1</code>) to stay fast. That means the target has to appear at
+      roughly its trained scale in view — closer or farther and matching can drop out. Real trackers (ARToolKit
+      NFT/<code>WebARKitLib</code>) run an adaptive multi-octave pyramid on <em>both</em> sides; see
+      <a href="./README.md#known-limitation-single-scale-live-frame">examples/README.md</a> for the measurements
+      behind this and why it's next on the list rather than fixed here.
+    </p>
+
+    <div class="wrap">
+      <div>
+        <div class="stage" id="stage">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="overlay"></canvas>
+          <div class="placeholder" id="placeholder">
+            <div>
+              <p style="margin: 0 0 12px">Camera access is required to run this demo.</p>
+              <button id="start">Start camera</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <h2>Result</h2>
+          <dl id="stats">
+            <dt>status</dt>
+            <dd id="status">idle</dd>
+          </dl>
+          <div class="legend">
+            <span><i class="swatch" style="background: #60a5fa"></i> keypoints</span>
+            <span><i class="swatch" style="background: #fbbf24"></i> target outline, reprojected</span>
+          </div>
+        </div>
+        <div class="panel" style="margin-top: 16px">
+          <h2>Backend</h2>
+          <dl id="caps"></dl>
+        </div>
+      </div>
+    </div>
+
+    <p id="error" class="err"></p>
+
+    <script type="module">
+      import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
+      import { toGray, project, buildLevelIndex, matchPerLevel } from "./js/pinball-shared.mjs";
+
+      const TARGET = "./images/pinball.jpg";
+
+      // Processing resolution for the LIVE frame. Not the capture resolution --
+      // the camera is asked for something close to this, but browsers rarely
+      // grant an exact size, so every frame is downscaled to this regardless
+      // of what the camera actually delivers.
+      const PROC_WIDTH = 480;
+      const PROC_HEIGHT = 360;
+      const SCENE_MAX_KEYPOINTS = 300;
+      // The target stays multi-scale, matching the static demo's proven
+      // setting: 8 levels found the true match in every trial run against it.
+      const TARGET_LEVELS = 8;
+
+      const $ = (id) => document.getElementById(id);
+      const video = $("video");
+      const overlay = $("overlay");
+      const octx = overlay.getContext("2d");
+      const placeholder = $("placeholder");
+      const startButton = $("start");
+      const statusEl = $("status");
+      const errorEl = $("error");
+      const statsDl = $("stats");
+
+      function loadImage(src) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error(`could not load ${src}`));
+          img.src = src;
+        });
+      }
+
+      function showError(message) {
+        errorEl.textContent = message;
+        statusEl.textContent = "failed";
+      }
+
+      // Rebuilds the whole stats list each tick rather than updating individual
+      // <dd> nodes -- simpler, and the list is short enough that the DOM churn
+      // is not worth avoiding.
+      function renderStats(rows) {
+        statsDl.innerHTML = "";
+        for (const [label, value] of rows) {
+          const dt = document.createElement("dt");
+          dt.textContent = label;
+          const dd = document.createElement("dd");
+          dd.textContent = value;
+          statsDl.append(dt, dd);
+        }
+      }
+
+      function renderCaps(capabilities) {
+        const dl = $("caps");
+        for (const [k, v] of Object.entries(capabilities)) {
+          const dt = document.createElement("dt");
+          dt.textContent = k;
+          const dd = document.createElement("dd");
+          dd.textContent = Array.isArray(v) ? (v.length ? v.join(", ") : "—") : String(v);
+          dl.append(dt, dd);
+        }
+      }
+
+      async function main() {
+        const cv = await createJsfeatNextBackend();
+        renderCaps(cv.capabilities);
+
+        // --- precompute the target ONCE, before the camera even starts ---
+        // This is the amortized cost the whole design rests on: multi-scale
+        // detection is too slow to redo every frame (see the static demo,
+        // ~270ms for this exact step), so it happens a single time here
+        // instead of being folded into the per-frame budget.
+        statusEl.textContent = "preparing target…";
+        const targetImg = await loadImage(TARGET);
+        const target = toGray(targetImg, targetImg.naturalWidth, targetImg.naturalHeight, 640);
+        const kTarget = cv.detect(target, { levels: TARGET_LEVELS, maxKeypoints: TARGET_LEVELS * 260 });
+        const dTarget = cv.describe(target, kTarget);
+        const targetLevels = buildLevelIndex(kTarget, dTarget);
+        const K = intrinsics(PROC_WIDTH, PROC_HEIGHT);
+
+        statusEl.textContent = "ready";
+        startButton.disabled = false;
+        startButton.addEventListener("click", () => startCamera(cv, target, kTarget, targetLevels, K), {
+          once: true,
+        });
+      }
+
+      async function startCamera(cv, target, kTarget, targetLevels, K) {
+        startButton.disabled = true;
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: PROC_WIDTH }, height: { ideal: PROC_HEIGHT } },
+            audio: false,
+          });
+          video.srcObject = stream;
+          await new Promise((resolve) => video.addEventListener("loadedmetadata", resolve, { once: true }));
+          await video.play();
+        } catch (e) {
+          showError(
+            `Could not access the camera: ${e.message}\n\n` +
+              `This needs camera permission and a secure context (https://, or http://localhost).`
+          );
+          startButton.disabled = false;
+          return;
+        }
+
+        placeholder.remove();
+        overlay.width = PROC_WIDTH;
+        overlay.height = PROC_HEIGHT;
+
+        runLoop(cv, target, kTarget, targetLevels, K);
+      }
+
+      function runLoop(cv, target, kTarget, targetLevels, K) {
+        // No frame-skipping, no target frame rate: each tick starts as soon as
+        // the previous one's drawing is done, and the browser's own paint
+        // scheduling (via requestAnimationFrame) throttles that to whatever the
+        // pipeline can actually sustain. The achieved rate is reported below
+        // rather than assumed.
+        let lastTickAt = performance.now();
+        let fps = 0;
+
+        const tick = () => {
+          const t0 = performance.now();
+
+          // --- the pipeline, entirely through the interface, no state kept
+          // between calls: this tick does not know what the last one found. ---
+          const scene = toGray(video, video.videoWidth, video.videoHeight, PROC_WIDTH, PROC_HEIGHT);
+          const kScene = cv.detect(scene, { levels: 1, maxKeypoints: SCENE_MAX_KEYPOINTS });
+          const dScene = cv.describe(scene, kScene);
+          let matches = matchPerLevel(cv, dScene, targetLevels, 0.8);
+
+          if (cv.filterMatches) {
+            matches = cv.filterMatches(
+              matches,
+              { keypoints: kScene, width: scene.width, height: scene.height },
+              { keypoints: kTarget, width: target.width, height: target.height }
+            );
+          }
+
+          let h = null;
+          let pose = null;
+          if (matches.length >= 4) {
+            const src = new Float64Array(matches.length * 2);
+            const dst = new Float64Array(matches.length * 2);
+            matches.forEach((m, i) => {
+              src[i * 2] = kTarget[m.trainIdx].x;
+              src[i * 2 + 1] = kTarget[m.trainIdx].y;
+              dst[i * 2] = kScene[m.queryIdx].x;
+              dst[i * 2 + 1] = kScene[m.queryIdx].y;
+            });
+            h = cv.estimateHomography(src, dst, { threshold: 4 });
+            if (h.ok) pose = cv.poseFromHomography(h.H, K);
+          }
+
+          const elapsed = performance.now() - t0;
+          const now = performance.now();
+          const instantFps = 1000 / Math.max(1, now - lastTickAt);
+          fps = fps === 0 ? instantFps : fps * 0.8 + instantFps * 0.2; // smoothed for readability
+          lastTickAt = now;
+
+          // --- drawing: scene-resolution coordinates map directly onto the
+          // overlay canvas, which is sized to match (CSS stretches both the
+          // video and the canvas to the same on-screen box). ---
+          octx.clearRect(0, 0, overlay.width, overlay.height);
+          octx.fillStyle = "#60a5fa";
+          for (const k of kScene) octx.fillRect(k.x - 1, k.y - 1, 2, 2);
+
+          if (h?.ok) {
+            const corners = [
+              [0, 0],
+              [target.width - 1, 0],
+              [target.width - 1, target.height - 1],
+              [0, target.height - 1],
+            ].map(([x, y]) => project(h.H, x, y));
+            octx.strokeStyle = "#fbbf24";
+            octx.lineWidth = 3;
+            octx.beginPath();
+            corners.forEach(([x, y], i) => (i ? octx.lineTo(x, y) : octx.moveTo(x, y)));
+            octx.closePath();
+            octx.stroke();
+          }
+
+          statusEl.textContent = h?.ok ? "locked on" : matches.length < 4 ? "too few matches" : "no consensus";
+          renderStats([
+            ["fps", fps.toFixed(1)],
+            ["keypoints (scene)", kScene.length],
+            ["matches", matches.length],
+            ["inliers", h ? `${h.numInliers} / ${matches.length}` : "—"],
+            ["pose", pose ? (pose.good ? "recovered" : "degenerate") : "—"],
+            ["frame time", `${elapsed.toFixed(1)} ms`],
+          ]);
+
+          requestAnimationFrame(tick);
+        };
+
+        requestAnimationFrame(tick);
+      }
+
+      main().catch((e) => {
+        showError(e.message);
+        console.error(e);
+      });
+    </script>
+  </body>
+</html>
