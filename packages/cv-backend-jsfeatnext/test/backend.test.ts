@@ -40,6 +40,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { DescriptorMismatchError, UnsupportedCapabilityError, type CvBackend, type GrayImage } from "@webarkit/cv-backend-spec";
 import { createJsfeatNextBackend, intrinsics } from "../src/index";
+import jsfeatNext from "@webarkit/jsfeat-next";
 
 /**
  * The jsfeatNext backend against the contract it claims to implement.
@@ -108,6 +109,23 @@ describe("capabilities are honest about what this backend can do", () => {
 });
 
 describe("detect", () => {
+    it("restores fast_corners.threshold for any OTHER consumer of the shared singleton", () => {
+        // threshold lives on jsfeatNext.fast_corners, a singleton this adapter
+        // does not own exclusively -- a caller could also be using
+        // jsfeatNext.fast_corners directly, bypassing this adapter entirely.
+        //
+        // detect() itself can't reveal a leak by calling detect() again: every
+        // call sets the threshold unconditionally before using it (defaulting
+        // to 20), so a second detect() through the adapter always overwrites
+        // whatever the first one left behind -- that's true even with the bug
+        // this test exists to catch. The leak is only visible to something
+        // that reads the raw singleton BETWEEN two adapter calls, which is
+        // exactly what a direct jsfeatNext.fast_corners consumer would do.
+        jsfeatNext.fast_corners.set_threshold(77); // stand-in for another caller's state
+        cv.detect(render(), { threshold: 1 });
+        expect(jsfeatNext.fast_corners._threshold).toBe(77);
+    });
+
     it("finds keypoints and orients every one of them", () => {
         const kps = cv.detect(render());
         expect(kps.length).toBeGreaterThan(4);

@@ -262,7 +262,22 @@ export class JsfeatNextBackend implements CvBackend {
     }
 
     detect(image: GrayImage, options?: DetectOptions): Keypoint[] {
+        // `threshold` is state on the shared fast_corners singleton -- same
+        // reasoning as match()'s cross_check restore below: leaving it set
+        // would silently change what any OTHER consumer of the shared
+        // singleton sees, not just later calls through this adapter (which
+        // always overwrite it themselves before use, so a leak is invisible
+        // from that side alone -- see the regression test).
+        const previousThreshold = jsfeatNext.fast_corners._threshold;
         jsfeatNext.fast_corners.set_threshold(options?.threshold ?? 20);
+        try {
+            return this.detectImpl(image, options);
+        } finally {
+            jsfeatNext.fast_corners.set_threshold(previousThreshold);
+        }
+    }
+
+    private detectImpl(image: GrayImage, options?: DetectOptions): Keypoint[] {
         const levels = Math.max(1, options?.levels ?? DEFAULT_LEVELS);
         const pyr = this.pyramid(image, levels);
         // Budget per LEVEL, not overall. Level 0 has far more corners than the

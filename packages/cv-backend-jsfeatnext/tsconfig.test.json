@@ -1,23 +1,23 @@
 /*
  *  tsconfig.test.json
- *  cv-backend-spec
+ *  cv-backend-jsfeatnext
  *
- *  This file is part of cv-backend-spec - WebARKit.
+ *  This file is part of cv-backend-jsfeatnext - WebARKit.
  *
  *  SPDX-License-Identifier: LGPL-3.0-or-later
  *
- *  cv-backend-spec is free software: you can redistribute it and/or modify
+ *  cv-backend-jsfeatnext is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
  *  the Free Software Foundation, either version 3 of the License, or
  *  (at your option) any later version.
  *
- *  cv-backend-spec is distributed in the hope that it will be useful,
+ *  cv-backend-jsfeatnext is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU Lesser General Public License for more details.
  *
  *  You should have received a copy of the GNU Lesser General Public License
- *  along with cv-backend-spec.  If not, see <http://www.gnu.org/licenses/>.
+ *  along with cv-backend-jsfeatnext.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  As a special exception, the copyright holders of this library give you
  *  permission to link this library with independent modules to produce an

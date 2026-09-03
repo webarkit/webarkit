@@ -74,8 +74,11 @@ then reuse this adapter unchanged.
 
 - `images/pinball.jpg` — the target, recovered from this repo's history (it was
   part of the NFT demo removed in `d1543e8`).
-- `images/pinball-demo.jpg` — a photo of the target in a scene. **Not committed
-  here yet**; drop one in to run the demo.
+- `images/pinball-demo.jpg` — a phone photo of the printed target sitting on a
+  desk, at an angle and a different scale than the reference. This is what
+  drove the multi-scale detection and per-level matching in `109caaf`: at the
+  photo's real-world scale, ORB simply had nothing to match against a
+  single-scale reference.
 
 The target should be the flat, frontal reference; the scene image should show it
 from a different viewpoint, which is what makes the recovered homography
