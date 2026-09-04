@@ -185,6 +185,7 @@
 
     <script type="module">
       import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
+      import { toGray, project, buildLevelIndex, matchPerLevel } from "./js/pinball-shared.mjs";
 
       const TARGET = "./images/pinball.jpg";
       const SCENE = "./images/pinball-demo.jpg";
@@ -202,28 +203,9 @@
         });
       }
 
-      /**
-       * An <img> to the contract's GrayImage.
-       *
-       * Grayscale conversion is a preprocessing step above the contract by
-       * design: the backend takes single-channel pixels and does not care where
-       * they came from, which is what lets the same interface serve a canvas, a
-       * video frame or a decoded file.
-       */
-      function toGray(img, maxWidth = 640) {
-        const scale = Math.min(1, maxWidth / img.naturalWidth);
-        const w = Math.round(img.naturalWidth * scale);
-        const h = Math.round(img.naturalHeight * scale);
-        const off = new OffscreenCanvas(w, h);
-        const octx = off.getContext("2d", { willReadFrequently: true });
-        octx.drawImage(img, 0, 0, w, h);
-        const rgba = octx.getImageData(0, 0, w, h).data;
-        const data = new Uint8Array(w * h);
-        for (let i = 0, p = 0; i < data.length; i++, p += 4) {
-          // Rec. 601 luma, the same weighting jsfeatNext's own grayscale uses.
-          data[i] = (rgba[p] * 0.299 + rgba[p + 1] * 0.587 + rgba[p + 2] * 0.114) | 0;
-        }
-        return { data, width: w, height: h };
+      /** `toGray` for an `<img>`: reads its natural size and applies a 640px cap. */
+      function grayFromImage(img, maxWidth = 640) {
+        return toGray(img, img.naturalWidth, img.naturalHeight, maxWidth);
       }
 
       function drawGray(gray, dx, dy) {
@@ -233,12 +215,6 @@
           rgba.data[p + 3] = 255;
         }
         ctx.putImageData(rgba, dx, dy);
-      }
-
-      /** Applies a row-major 3x3 homography to a point. */
-      function project(H, x, y) {
-        const w = H[6] * x + H[7] * y + H[8];
-        return [(H[0] * x + H[1] * y + H[2]) / w, (H[3] * x + H[4] * y + H[5]) / w];
       }
 
       function stat(label, value) {
@@ -263,8 +239,8 @@
         }
 
         const [targetImg, sceneImg] = await Promise.all([loadImage(TARGET), loadImage(SCENE)]);
-        const target = toGray(targetImg);
-        const scene = toGray(sceneImg);
+        const target = grayFromImage(targetImg);
+        const scene = grayFromImage(sceneImg);
 
         // Side by side, target on the left.
         canvas.width = target.width + scene.width;
@@ -286,42 +262,12 @@
         const dScene = cv.describe(scene, kScene);
         const dTarget = cv.describe(target, kTarget);
 
-        /** The subset of a descriptor set belonging to one pyramid level. */
-        const atLevel = (descriptors, keypoints, level) => {
-            const idx = [];
-            keypoints.forEach((k, i) => k.level === level && idx.push(i));
-            const bytes = descriptors.bytesPerDescriptor;
-            const data = new Uint8Array(idx.length * bytes);
-            idx.forEach((src, i) => data.set(descriptors.data.subarray(src * bytes, (src + 1) * bytes), i * bytes));
-            return { indices: idx, set: { ...descriptors, data, count: idx.length } };
-        };
-
         // Match each target level SEPARATELY and keep the best hit per scene
-        // keypoint, rather than pooling every level into one train set.
-        //
-        // This matters more than it looks. Lowe's ratio test assumes the
-        // second-nearest neighbour is a wrong match — but a pooled multi-scale
-        // set holds the same physical feature at several levels, so the two
-        // best candidates are often both right, the ratio approaches 1, and the
-        // test discards them. Measured on these images: 95 matches per-level
-        // against 38 pooled, at the same ratio. jsfeatNext's own ORB sample
-        // matches per level for exactly this reason.
-        //
-        // Partitioning is the caller's job, not the backend's: `Descriptors` is
-        // deliberately a flat buffer, and `Keypoint.level` is what makes this
-        // possible from outside.
-        const best = new Map();
-        for (let level = 0; level < LEVELS; level++) {
-            const { indices, set } = atLevel(dTarget, kTarget, level);
-            if (indices.length < 2) continue;
-            for (const m of cv.match(dScene, set, { ratio: 0.8 })) {
-                const prev = best.get(m.queryIdx);
-                if (!prev || m.distance < prev.distance) {
-                    best.set(m.queryIdx, { queryIdx: m.queryIdx, trainIdx: indices[m.trainIdx], distance: m.distance });
-                }
-            }
-        }
-        let matches = [...best.values()];
+        // keypoint, rather than pooling every level into one train set — see
+        // matchPerLevel's own doc comment for why. Measured on these images:
+        // 98 matches per-level against 46 pooled, at the same ratio.
+        const targetLevels = buildLevelIndex(kTarget, dTarget);
+        let matches = matchPerLevel(cv, dScene, targetLevels, 0.8);
 
         // Optional filter, skipped exactly as the contract documents when a
         // backend does not implement one.
