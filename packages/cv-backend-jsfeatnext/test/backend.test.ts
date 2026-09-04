@@ -398,12 +398,31 @@ describe("estimateHomography", () => {
         expect(r.inliers.length).toBe(n);
 
         // Apply H to a point and check it lands where the translation says.
+        //
+        // Tolerance is 1px, not sub-pixel: jsfeatNext's motion_estimator.ransac
+        // returns the model computed from whichever 4-point minimal sample won
+        // (most inliers), never a final least-squares refit over all inliers --
+        // a standard finishing step RANSAC implementations often add, absent
+        // here. Every one of the 12 correspondences above is a perfect,
+        // noise-free inlier of the SAME pure translation, so any valid 4-point
+        // subset is mathematically exact -- but different subsets condition the
+        // underlying DLT solve differently, and floating-point error at a test
+        // point outside the sampled 4 varies accordingly between runs, even
+        // though every run still finds all 12/12 inliers. Measured directly
+        // (3000 repeated calls on this exact dataset): numInliers was 12 every
+        // time, but the projected point's error ranged up to ~0.36px, well
+        // past what toBeCloseTo(_, 3)'s 0.0005px tolerance survives -- that
+        // version failed about 1 run in 45. 1px leaves better than 2x margin
+        // on the worst error observed.
+        const TOLERANCE_PX = 1;
         const h = r.H;
         const px = 100;
         const py = 80;
         const w = h[6] * px + h[7] * py + h[8];
-        expect((h[0] * px + h[1] * py + h[2]) / w).toBeCloseTo(px + dx, 3);
-        expect((h[3] * px + h[4] * py + h[5]) / w).toBeCloseTo(py + dy, 3);
+        const projX = (h[0] * px + h[1] * py + h[2]) / w;
+        const projY = (h[3] * px + h[4] * py + h[5]) / w;
+        expect(Math.abs(projX - (px + dx))).toBeLessThan(TOLERANCE_PX);
+        expect(Math.abs(projY - (py + dy))).toBeLessThan(TOLERANCE_PX);
     });
 });
 
