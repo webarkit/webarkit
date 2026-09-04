@@ -1,0 +1,58 @@
+name: CI
+on:
+    - push
+    - pull_request
+
+jobs:
+    build-and-test:
+        runs-on: ubuntu-24.04
+
+        # One job for both workspaces, deliberately not a matrix: the root
+        # scripts already build @webarkit/cv-backend-spec before
+        # @webarkit/cv-backend-jsfeatnext (which depends on it), and a matrix
+        # running the two packages independently risks reintroducing that
+        # ordering as a race - npm's own default (alphabetical) workspace
+        # build order broke it once already, see 109caaf.
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v7
+
+            - name: Use Node.js from .nvmrc
+              uses: actions/setup-node@v7
+              with:
+                  node-version-file: ".nvmrc"
+
+            - name: Get npm cache directory
+              id: npm-cache-dir
+              shell: bash
+              run: echo "dir=$(npm config get cache)" >> ${GITHUB_OUTPUT}
+
+            - uses: actions/cache@v6
+              id: npm-cache
+              with:
+                  path: ${{ steps.npm-cache-dir.outputs.dir }}
+                  key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+                  restore-keys: |
+                      ${{ runner.os }}-node-
+
+            - name: Install
+              run: npm ci
+
+            # Builds cv-backend-spec then cv-backend-jsfeatnext, in that order
+            # (see the job comment above) - cv-backend-jsfeatnext's own build
+            # step type-checks against the spec's freshly-built dist/, so this
+            # also catches the two packages drifting out of sync with each
+            # other, not just internal errors in either one alone.
+            - name: Build
+              run: npm run build
+
+            # Separate from build: tsc -p tsconfig.json (the build step) only
+            # type-checks src/, since that's what's actually published: a real
+            # type error confined to test/ would pass a build-only check
+            # silently. tsconfig.test.json in each package widens the program
+            # to include test/ too.
+            - name: Type check (src + test)
+              run: npm run typecheck
+
+            - name: Test
+              run: npm run test
