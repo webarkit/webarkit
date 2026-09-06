@@ -33,7 +33,7 @@
 
 ## Git & contribution workflow
 
-- **Open PRs against `dev` — never `main`.** `dev` is the integration branch; `main` is for stable releases only. This matches the convention already in place in [webarkit/jsfeatNext](https://github.com/webarkit/jsfeatNext) and [webarkit/purecv](https://github.com/webarkit/purecv).
+- **Open PRs against `dev` — never `master`.** `dev` is the integration branch; `master` is for stable releases only. This matches the convention already in place in [webarkit/jsfeatNext](https://github.com/webarkit/jsfeatNext) and [webarkit/purecv](https://github.com/webarkit/purecv) (both of which call their release branch `main` — this repo's is named `master`, so don't copy the branch name verbatim from those, only the workflow).
 - **Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):** `type(scope): summary` — e.g. `feat(cv-backend-jsfeatnext): …`, `fix(cv-backend-spec): …`, `docs: …`, `chore: …`, `test: …`, `refactor: …`, `ci: …`. Keep the subject imperative and concise. Common scopes so far: `cv-backend-spec`, `cv-backend-jsfeatnext`, `examples`, `ci` — omit the scope for changes spanning the whole repo (root README, this file, CI config).
 - One branch per task/issue, branched from an up-to-date `dev`.
 
