@@ -343,23 +343,30 @@ describe("estimateHomography restarts against a bad RANSAC draw (issue #96 follo
     // correspondence set, a SINGLE ransac() call landed on a 4-inlier model
     // once in 40 trials (true best is 64) -- reproducing, down to the same
     // inlier count, the failure first seen on the real pinball demo images.
-    // Internally restarting and keeping the best result is the fix; this test
-    // is what would catch a regression back to a single attempt.
+    // Internally restarting and keeping the best result was the first fix;
+    // `estimateHomography` now restarts `find_homography()` instead of raw
+    // `ransac()` (webarkit/webarkit#11) -- find_homography refits the winning
+    // hypothesis over its full inlier set and reclassifies against that refit
+    // model, which recovers much of what a mediocre minimal sample misses.
+    // This test is what would catch a regression back to raw ransac(), or
+    // back to a single attempt.
     it("never returns a severely degenerate model across many independent runs", () => {
         // 200 trials, not 25: a short loop would only catch a regression back
-        // to a single-attempt ransac() call about half the time.
+        // to a single-attempt call about half the time.
         //
-        // Correction (see webarkit/webarkit#11): this comment used to claim
-        // "the chance of missing every bad draw is under 1%", extrapolated
-        // from a measurement taken at RANSAC_RESTARTS = 1 and never rechecked
-        // once RESTARTS was bumped to 3 (the value actually deployed below).
-        // A worktree A/B test across two jsfeatNext versions, real
-        // (unmocked) Math.random, 15 blocks of 200 trials each at the
-        // deployed RESTARTS = 3, measured 1/3000 trial-level failures and
-        // 1/15 blocks -- i.e. this test itself has an inherent ~6-7% flake
-        // chance on any given run, not under 1%. RESTARTS = 3 does not fully
-        // close the failure mode; #11 tracks jsfeatNext's find_homography()
-        // as a possible structural fix.
+        // History (see webarkit/webarkit#11 for the full methodology): this
+        // comment originally claimed "the chance of missing every bad draw is
+        // under 1%", a figure measured at RANSAC_RESTARTS = 1 and never
+        // rechecked after RESTARTS was bumped to 3. Corrected once already to
+        // "~6-7% flake chance per run", measured for raw ransac() restarted 3
+        // times (1/3000 trial-level failures, 1/15 blocks, worst observed 38
+        // of 64). Since then estimateHomography switched from restarting
+        // ransac() to restarting find_homography() (still RESTARTS = 3): the
+        // same worktree A/B harness measured 0/3000 trial-level failures --
+        // every one of 3000 trials landed on the true 64-inlier model. That is
+        // an empirical result over a large but finite sample, not a proof the
+        // failure mode is impossible, so this test stays at 200 trials as the
+        // regression guard rather than being deleted as unnecessary.
         const { src, dst, nInliers } = noisyCorrespondences(95, 0.67, 42);
         for (let trial = 0; trial < 200; trial++) {
             const h = cv.estimateHomography(src, dst, { threshold: 4 });
