@@ -346,10 +346,20 @@ describe("estimateHomography restarts against a bad RANSAC draw (issue #96 follo
     // Internally restarting and keeping the best result is the fix; this test
     // is what would catch a regression back to a single attempt.
     it("never returns a severely degenerate model across many independent runs", () => {
-        // 200 trials, not 25: a single bad draw happens about 1 run in 40 at
-        // RANSAC_RESTARTS = 1 (measured), so a short loop would only catch a
-        // regression back to that about half the time. At 200, the chance of
-        // missing every bad draw is under 1%.
+        // 200 trials, not 25: a short loop would only catch a regression back
+        // to a single-attempt ransac() call about half the time.
+        //
+        // Correction (see webarkit/webarkit#11): this comment used to claim
+        // "the chance of missing every bad draw is under 1%", extrapolated
+        // from a measurement taken at RANSAC_RESTARTS = 1 and never rechecked
+        // once RESTARTS was bumped to 3 (the value actually deployed below).
+        // A worktree A/B test across two jsfeatNext versions, real
+        // (unmocked) Math.random, 15 blocks of 200 trials each at the
+        // deployed RESTARTS = 3, measured 1/3000 trial-level failures and
+        // 1/15 blocks -- i.e. this test itself has an inherent ~6-7% flake
+        // chance on any given run, not under 1%. RESTARTS = 3 does not fully
+        // close the failure mode; #11 tracks jsfeatNext's find_homography()
+        // as a possible structural fix.
         const { src, dst, nInliers } = noisyCorrespondences(95, 0.67, 42);
         for (let trial = 0; trial < 200; trial++) {
             const h = cv.estimateHomography(src, dst, { threshold: 4 });
