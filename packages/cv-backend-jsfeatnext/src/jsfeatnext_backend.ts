@@ -122,8 +122,8 @@ const SCALE_STEP = Math.cbrt(2);
 const DEFAULT_LEVELS = 6;
 
 /**
- * Independent RANSAC runs per `estimateHomography` call; the best (most
- * inliers) is kept.
+ * Independent `find_homography` runs per `estimateHomography` call; the best
+ * (most inliers) is kept.
  *
  * jsfeatNext's `motion_estimator.ransac` adapts its remaining iteration
  * budget downward the moment it finds an improving hypothesis, using the
@@ -132,15 +132,23 @@ const DEFAULT_LEVELS = 6;
  * hypothesis IS close to the true best — but random sampling occasionally
  * finds a mediocre one first, which shrinks the budget before the real best
  * model has had a fair chance to turn up, and the run ends locked onto the
- * mediocre one.
+ * mediocre one. `find_homography` (jsfeatNext ≥0.16.0) refits over the
+ * winning hypothesis's full inlier set and reclassifies against that refit
+ * model before returning, which recovers much of what a mediocre minimal
+ * sample misses — but not always all of it, so restarts are still needed on
+ * top of it.
  *
- * Measured on the pinball demo images (95 correspondences, ~64 true inliers):
- * a single run found the true model in 38/40 trials, with the 2 misses
- * dropping to single-digit inliers — not a near miss, a different model
- * entirely. Two independent restarts, keeping the better, closed that to
- * 40/40; three gave a comfortable margin (worst observed: 62 of 64). At
- * ~1.4ms per run on that input, three restarts cost single-digit
- * milliseconds — negligible next to a 30fps frame budget, and cheap insurance
+ * Measured with a worktree A/B harness (webarkit/webarkit#11): on the same
+ * adversarial 95-correspondence set used by this file's test (~64 true
+ * inliers), 3000 independent trials at three restarts landed on the true
+ * 64-inlier model EVERY time — 0 failures, versus 1/3000 for plain
+ * `ransac()` restarted the same way (worst observed there: 38 of 64). One or
+ * two `find_homography` restarts are not enough on their own (2.57%/0.07%
+ * measured fail rates against a 70%-of-true-best threshold) — three is where
+ * the mediocre-hypothesis lock-in actually stops showing up, not just gets
+ * rarer. At sub-millisecond added cost per restart (one extra linear refit
+ * and one extra reclassification pass over the point set), three restarts
+ * remain negligible next to a 30fps frame budget, and cheap insurance
  * against a failure mode with no other symptom: `ok` stays `true` and
  * `numInliers` stays plausible, so nothing signals that the fit is wrong
  * short of comparing it against a second attempt.
@@ -488,12 +496,14 @@ export class JsfeatNextBackend implements CvBackend {
         let bestH: Float64Array | null = null;
         let bestMask: Uint8Array | null = null;
 
-        // See RANSAC_RESTARTS: independent runs, keep the one with the most
-        // inliers. `H`/`mask` are reused as scratch across restarts; only the
-        // winner is copied out.
+        // See RANSAC_RESTARTS: independent find_homography runs, keep the one
+        // with the most inliers. `H`/`mask` are reused as scratch across
+        // restarts; only the winner is copied out. refine_iters is 0 because
+        // homography2d does not implement MotionKernel.refine() yet, so the
+        // Levenberg-Marquardt polish step would be a no-op regardless.
         const mask = new jsfeatNext.matrix_t(count, 1, U8C1);
         for (let attempt = 0; attempt < RANSAC_RESTARTS; attempt++) {
-            const ok = jsfeatNext.motion_estimator.ransac(
+            const ok = jsfeatNext.motion_estimator.find_homography(
                 params,
                 jsfeatNext.homography2d,
                 from,
@@ -501,7 +511,9 @@ export class JsfeatNextBackend implements CvBackend {
                 count,
                 H,
                 mask,
-                maxIterations
+                "ransac",
+                maxIterations,
+                0
             );
             if (!ok) continue;
 
