@@ -1,12 +1,28 @@
 # @webarkit/cv-backend-spec
 
+[![CI](https://github.com/webarkit/webarkit/actions/workflows/CI.yml/badge.svg)](https://github.com/webarkit/webarkit/actions/workflows/CI.yml)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](../../LICENSE)
+
 Minimal stateless computer-vision backend interface. Defines the contract
-that a high-level AR project depends on — not an implementation.
+that a high-level AR project depends on — not an implementation. Part of the
+[webarkit](../../README.md) monorepo.
 
 Two interchangeable implementations are expected:
 
-- **jsfeatNext** (TypeScript) — reference implementation, numeric oracle.
-- **PureCV** (Rust → WASM, planned) — production-performance implementation.
+- **[jsfeatNext](https://github.com/webarkit/jsfeatNext)** (TypeScript) — reference implementation, numeric oracle. Implements this contract today, via [`@webarkit/cv-backend-jsfeatnext`](../cv-backend-jsfeatnext).
+- **[PureCV](https://github.com/webarkit/purecv)** (Rust → WASM) — production-performance implementation. Already published and under active development upstream, not yet wired into this contract.
+
+## 📦 Installation
+
+Not yet published to npm — this package is pre-1.0 and currently consumed from source, inside the `webarkit` npm-workspaces monorepo:
+
+```bash
+git clone https://github.com/webarkit/webarkit.git
+cd webarkit
+npm install
+npm run build -w @webarkit/cv-backend-spec
+```
 
 ## What's in scope
 

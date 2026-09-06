@@ -1,52 +1,99 @@
 # webarkit
 
-> **Status: draft / proposal.** This restructuring is not yet agreed with
-> [@ThorstenBux](https://github.com/ThorstenBux). Nothing here is final —
-> package name, monorepo layout, and scope are all open for discussion.
+[![CI](https://github.com/webarkit/webarkit/actions/workflows/CI.yml/badge.svg)](https://github.com/webarkit/webarkit/actions/workflows/CI.yml)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/webarkit/webarkit.svg?style=social)](https://github.com/webarkit/webarkit/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/webarkit/webarkit.svg?style=social)](https://github.com/webarkit/webarkit/network/members)
 
-Central repository for the [webarkit](https://github.com/webarkit)
-organization. Home for packages shared across the WebAR toolchain rather than
-owned by a single library:
+Central repository for the [webarkit](https://github.com/webarkit) organization — home for the **shared contract** that lets a high-level WebAR project swap computer-vision backends without rewriting itself, plus the reference backend that implements it.
 
-- **jsfeatNext** ([webarkit/jsfeatNext](https://github.com/webarkit/jsfeatNext)) —
-  TypeScript computer-vision primitives (rewrite of jsfeat).
-- **PureCV** (planned) — Rust → WASM computer-vision backend, interchangeable
-  with jsfeatNext behind the same contract.
-- **jsartoolkitNFT** ([webarkit/jsartoolkitNFT](https://github.com/webarkit/jsartoolkitNFT)) —
-  architectural reference: KPM (WASM) as the stateless CV layer, TypeScript
-  orchestration on top.
-- A future high-level AR project (target training, tracking loop, pose
-  refinement, renderer adapters) that consumes a CV backend without knowing
-  which implementation it's talking to.
+## 🤔 Why this project exists
 
-## Why a shared contract package
+Every WebAR pipeline needs the same core steps — detect features, describe them, match them across frames, estimate a homography, recover a pose — but the *right* implementation of those steps depends on the target: a pure-TypeScript backend is easiest to debug and ship with zero build step, while a Rust → WASM backend is what you want once performance matters. Without a shared interface, "switch backend later" means a rewrite.
 
-jsfeatNext and PureCV should be interchangeable CV backends for any
-high-level AR project. That only works if both implement the same interface,
-defined once, owned by neither backend. This repo is where that interface —
-and any other org-wide shared contract — lives.
+This repo is where that interface lives, defined once and owned by neither backend, so a high-level AR project can depend on the *contract* instead of on any one implementation.
 
-## Packages
+## 🧭 Status
+
+**Early / actively evolving.** This repository moved from proposal to working code — `@webarkit/cv-backend-spec` and `@webarkit/cv-backend-jsfeatnext` both build, are tested in CI, and back real example pages (see [Examples](#-examples) below) — but the packages are **pre-1.0 and not yet published to npm**. Expect API surface to still shift.
+
+> The original restructuring proposal below is kept for context, even though the layout it describes is what's actually in place. Treat package naming, scope, and layout as open for discussion, not frozen.
+
+## 🧩 The ecosystem: more than one way to build WebAR CV
+
+`webarkit` is one piece of a larger, deliberately pluralistic effort — the org is exploring more than one architecture at once rather than betting on a single stack too early:
+
+- **[jsfeatNext](https://github.com/webarkit/jsfeatNext)** — a TypeScript rewrite of [jsfeat](https://github.com/inspirit/jsfeat). Pure JS/TS, no WASM, no build step required to consume it. This repo's **reference implementation** of the `CvBackend` contract, and the numeric oracle other backends get checked against.
+- **[WebARKitLib-rs](https://github.com/webarkit/WebARKitLib-rs)** — a full Rust port of the original [WebARKitLib](https://github.com/webarkit/WebARKitLib) (C/C++, ARToolKit-derived): the whole NFT/KPM marker-tracking engine end to end, not just CV primitives. Published as `webarkitlib-rs` on crates.io and `@webarkit/webarkitlib-wasm` on npm. Its CV-primitives layer is planned to be **[PureCV](https://github.com/webarkit/purecv)** — a pure-Rust reimplementation of OpenCV's `core`/`imgproc`/`features2d`/`video`/`calib3d` modules (memory-safe, SIMD-accelerated, portable down to `no_std` microcontrollers), already published on its own (`purecv` on crates.io, `@webarkit/purecv-wasm` on npm) and under active development. Neither speaks this repo's `CvBackend` contract yet — wrapping PureCV as its own `CvBackend`, the way `cv-backend-jsfeatnext` wraps jsfeatNext, is a separate, not-yet-scheduled possibility.
+- **[jsartoolkitNFT](https://github.com/webarkit/jsartoolkitNFT)** — an architectural reference: KPM (WASM) as the stateless CV layer with TypeScript orchestration on top, which is the split this repo's contract formalizes. Whether it actually becomes a `CvBackend` here is still open **(?)** — it would need restructuring, or a new adapter layer, to speak this contract, and that isn't happening in the near term.
+
+If you're deciding where to plug in: **jsfeatNext** is the place to start today (it's the only backend that implements the contract end to end). **WebARKitLib-rs** (running on PureCV underneath) is not a drop-in `CvBackend` yet.
+
+## 📦 Packages
 
 | Package | Description |
 |---|---|
-| [`@webarkit/cv-backend-spec`](./packages/cv-backend-spec) | Minimal stateless CV backend interface (`detect`, `describe`, `match`, `estimateHomography`, `poseFromHomography`) implemented by jsfeatNext and (future) PureCV. |
-| [`@webarkit/cv-backend-jsfeatnext`](./packages/cv-backend-jsfeatnext) | The jsfeatNext implementation of that contract. Depends on the spec **and** on `@webarkit/jsfeat-next` (>= 0.15.0); neither of those depends on it. |
+| [`@webarkit/cv-backend-spec`](./packages/cv-backend-spec) | Minimal stateless CV backend interface (`detect`, `describe`, `match`, `estimateHomography`, `poseFromHomography`) implemented by jsfeatNext and (future) WebARKitLib-rs. |
+| [`@webarkit/cv-backend-jsfeatnext`](./packages/cv-backend-jsfeatnext) | The jsfeatNext implementation of that contract. Depends on the spec **and** on `@webarkit/jsfeat-next` (>= 0.16.0); neither of those depends on it. |
 
-## Layout
+Neither package is published to npm yet — see [Getting started](#-getting-started) for installing from source.
 
-This is an npm-workspaces monorepo — no build-system layer (Turborepo/Nx)
+## 🚀 Getting started
+
+### Prerequisites
+
+- Node.js — version pinned in [`.nvmrc`](./.nvmrc) (currently v24.18.0); `package.json` sets a floor of `>=18`.
+- npm 9+ (for [workspaces](https://docs.npmjs.com/cli/v9/using-npm/workspaces) support).
+
+### Install
+
+```bash
+git clone https://github.com/webarkit/webarkit.git
+cd webarkit
+npm install
+```
+
+`npm install` resolves and symlinks both workspace packages, so `cv-backend-jsfeatnext` picks up `cv-backend-spec` straight from the sibling folder — no publish step needed to develop against both together.
+
+### Build, typecheck, test
+
+```bash
+npm run build       # builds cv-backend-spec, then cv-backend-jsfeatnext (in that order — see .github/workflows/CI.yml)
+npm run typecheck   # tsc across src/ + test/ in every workspace
+npm test            # vitest across every workspace
+```
+
+These three are exactly what CI runs on every push and pull request.
+
+## 🖼️ Examples
+
+Two runnable demos exercise the full `CvBackend` pipeline — `detect → describe → match → estimateHomography → poseFromHomography` — end to end against real images and a live webcam:
+
+```bash
+npm run build
+npx http-server -p 8080 -s
+```
+
+Then open `http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html` (two still photos, easiest to debug) or `.../pinball-webcam-jsfeatnext-backend.html` (live camera, stateless per tick).
+
+See [`examples/README.md`](./examples/README.md) for what each demo shows, why the static one came first, and the multi-scale detection/matching details that came out of building them.
+
+## 🗂️ Layout
+
+This is an npm-workspaces monorepo — no build-system layer ([Turborepo](https://turbo.build/repo/docs)/[Nx](https://nx.dev))
 yet; adding one is premature at two packages. Revisit once there are
 several, or once builds start depending on each other's outputs.
 
 ```
 webarkit/
+  examples/
   packages/
     cv-backend-spec/
     cv-backend-jsfeatnext/
 ```
 
-## Open questions for discussion
+## ❓ Open questions for discussion
 
 - Package naming: `cv-backend-spec` vs `cv-contract` vs something else.
 - Should the high-level AR project eventually live here too as

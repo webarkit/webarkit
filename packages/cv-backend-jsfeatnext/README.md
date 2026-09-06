@@ -1,7 +1,24 @@
 # @webarkit/cv-backend-jsfeatnext
 
+[![CI](https://github.com/webarkit/webarkit/actions/workflows/CI.yml/badge.svg)](https://github.com/webarkit/webarkit/actions/workflows/CI.yml)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](../../LICENSE)
+
 The **jsfeatNext** implementation of [`@webarkit/cv-backend-spec`](../cv-backend-spec)'s
-`CvBackend` contract — pure TypeScript, no WASM.
+`CvBackend` contract — pure TypeScript, no WASM. Part of the [webarkit](../../README.md) monorepo; see its root README for how this fits into the wider WebAR toolchain (jsfeatNext vs. PureCV vs. WebARKitLib-rs).
+
+## 📦 Installation
+
+Not yet published to npm — this package is pre-1.0 and currently consumed from source, inside the `webarkit` npm-workspaces monorepo:
+
+```bash
+git clone https://github.com/webarkit/webarkit.git
+cd webarkit
+npm install
+npm run build -w @webarkit/cv-backend-jsfeatnext
+```
+
+## 🚀 Quick start
 
 ```ts
 import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
@@ -92,21 +109,28 @@ levels and filled round-robin. A single global "strongest N" sort would hand the
 whole budget to level 0, whose fine corners always score highest, starving
 exactly the coarse levels that make cross-scale matching work.
 
-**`estimateHomography` runs RANSAC three times and keeps the best.**
+**`estimateHomography` runs `find_homography` three times and keeps the best.**
 jsfeatNext's `motion_estimator.ransac` adapts its remaining iteration budget
 downward the moment it finds an improving hypothesis, sized from that
 hypothesis's own inlier ratio. That is usually the right call — but if random
 sampling turns up a mediocre improving hypothesis before the true best one,
 the budget shrinks prematurely and the run locks onto the mediocre model, with
 no symptom: `ok` stays `true`, `numInliers` still looks like a plausible
-count, just a much smaller one.
+count, just a much smaller one. `find_homography` (jsfeatNext ≥ 0.16.0) refits
+the winning hypothesis over its full inlier set and reclassifies against that
+refit model before returning, which recovers much of what a mediocre minimal
+sample misses.
 
-Measured on the pinball demo images (95 correspondences, ~64 true inliers): a
-single run found the true model in 38 of 40 trials, with the two misses
-dropping to single digits — not a near miss, a different model entirely.
-Restarting internally and keeping the best result closed that to 40/40 at
-~1.4ms per run — negligible next to a 30fps frame budget, and correctness
-insurance with no cost the caller has to opt into or even know about.
+Measured with a worktree A/B harness on the pinball demo images (95
+correspondences, ~64 true inliers), 3000 trials per approach with real
+`Math.random`: restarting `find_homography` three times landed on the true
+64-inlier model in every single trial (0 failures), versus 1 failure in 3000
+for the previous approach of restarting raw `ransac` three times. One or two
+restarts measured worse, so the restart count stays at three rather than
+being reduced — see [webarkit/webarkit#11](https://github.com/webarkit/webarkit/issues/11)
+for the full methodology. At sub-millisecond added cost per restart, three
+restarts stay negligible next to a 30fps frame budget — correctness insurance
+with no cost the caller has to opt into or even know about.
 
 **Returned arrays belong to the caller.** Every typed array is copied out.
 jsfeatNext reuses its scratch matrices between calls, so handing back views
@@ -126,5 +150,6 @@ regardless of which backend is plugged in:
 
 ## Requirements
 
-`@webarkit/jsfeat-next` **≥ 0.15.0** — earlier releases lack `bfmatcher`,
-`pose_estimator` and `orb.ic_angle`, all of which this adapter needs.
+`@webarkit/jsfeat-next` **≥ 0.16.0** — earlier releases lack `bfmatcher`,
+`pose_estimator` and `orb.ic_angle` (needed since 0.15.0), and lack
+`motion_estimator.find_homography` (needed since 0.16.0 — see above).
