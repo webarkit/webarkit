@@ -2,7 +2,7 @@
 
 Demos of the `CvBackend` contract. They live at the repo root rather than inside
 a package because they exercise the **contract**, not one implementation —
-swapping in PureCV later should mean changing one import, not rewriting a page.
+swapping in another `CvBackend` (WebARKitLib-rs, once it implements one) later should mean changing one import, not rewriting a page.
 See the [root README](../README.md) for how this fits into the wider webarkit ecosystem.
 
 ## 🚀 Running

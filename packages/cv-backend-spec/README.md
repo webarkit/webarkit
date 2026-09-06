@@ -11,7 +11,7 @@ that a high-level AR project depends on — not an implementation. Part of the
 Two interchangeable implementations are expected:
 
 - **[jsfeatNext](https://github.com/webarkit/jsfeatNext)** (TypeScript) — reference implementation, numeric oracle. Implements this contract today, via [`@webarkit/cv-backend-jsfeatnext`](../cv-backend-jsfeatnext).
-- **[PureCV](https://github.com/webarkit/purecv)** (Rust → WASM) — production-performance implementation. Already published and under active development upstream, not yet wired into this contract.
+- **[WebARKitLib-rs](https://github.com/webarkit/WebARKitLib-rs)** (Rust → WASM) — production-performance implementation, planned. Runs on [PureCV](https://github.com/webarkit/purecv) as its CV-primitives layer underneath; neither is wired into this contract yet.
 
 ## 📦 Installation
 
