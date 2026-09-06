@@ -5,7 +5,7 @@
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](../../LICENSE)
 
 The **jsfeatNext** implementation of [`@webarkit/cv-backend-spec`](../cv-backend-spec)'s
-`CvBackend` contract — pure TypeScript, no WASM. Part of the [webarkit](../../README.md) monorepo; see its root README for how this fits into the wider WebAR toolchain (jsfeatNext vs. PureCV vs. WebARKitLib-rs).
+`CvBackend` contract — pure TypeScript, no WASM. Part of the [webarkit](../../README.md) monorepo; see its root README for how this fits into the wider WebAR toolchain (jsfeatNext vs. WebARKitLib-rs).
 
 ## 📦 Installation
 
