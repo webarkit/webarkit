@@ -2,7 +2,7 @@
 
 **Status:** Accepted (format 0.1). The format version is `0.1`: while the major is `0`, every minor may break compatibility (§7).
 **Decided by:** [ADR-0001](../adr/0001-nft-tracker-ts-reference-above-cvbackend.md), point 6.
-**Implementations (both planned, neither exists yet):** `packages/nft-tracker/src/target/format` (TypeScript, which will also host the fixture generator) and, **only if** the Rust port of [ADR-0001](../adr/0001-nft-tracker-ts-reference-above-cvbackend.md) point 5 is triggered, `crates/wnft-format` (Rust). The TypeScript codec is the one required implementation. Where both exist they are peers: this specification is the source of truth, and a second independent implementation is what exposes its ambiguities.
+**Implementations (both planned, neither exists yet):** `packages/nft-tracker/src/target/format` (TypeScript, which will also host the fixture generator) and `crates/wnft-format` (Rust, see [ADR-0001](../adr/0001-nft-tracker-ts-reference-above-cvbackend.md) point 6). The TypeScript codec is required by the tracker; the Rust codec exists to validate this specification and is not part of the tracker port of ADR-0001 point 5. The two are peers: this specification is the source of truth, and a second independent implementation is what exposes its ambiguities.
 
 The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 
@@ -35,7 +35,7 @@ The format has two layers, following the GLB container of glTF 2.0:
 
 Two properties follow from this split:
 
-- **Adding something never shifts existing bytes.** A new field is a new manifest key; a new array is a new accessor. Old readers ignore both (§7).
+- **Adding something never shifts existing bytes.** A new field is a new manifest key; a new array is a new accessor. Old readers ignore both (§7) — but only from format `1.0` on. While the major is `0`, a reader accepts nothing but its own exact minor and rejects every other one (§7.1), so additive changes are not yet forward-compatible in practice.
 - **Versioning happens at two layers, and each version governs only its own layer** (§7). This is not duplication: a reader must be able to reject a container it cannot frame *before* it looks for the manifest, and it can only read the format version *after* framing.
 
 ## 3. Conventions
@@ -165,6 +165,8 @@ Every array lives in the `BIN` chunk and is described by an accessor. Manifest f
 | `type` | `"u8"`, `"u16"`, `"u32"` or `"f32"` |
 
 Accessor rules:
+- `offset` and `count` MUST each be a JSON number with no fractional part, in `[0, 2^32 − 1]`. `NaN`, `Infinity`, negative and fractional values are `BAD_MANIFEST`, rejected **before** any arithmetic uses them, so that the checked arithmetic of §6.1 always operates on `u32` operands.
+- Every manifest field that references an accessor MUST be an integer in `[0, accessors.length)`. Anything else — a fractional index, a negative one, one past the end, or a non-number — is `BAD_MANIFEST`.
 - `offset + count × size(type)` MUST be `≤` the `BIN` chunk length, computed with checked arithmetic (§6.1).
 - Accessors MUST NOT overlap. Each array owns its bytes.
 - Every field that references an accessor fixes the expected `type` and `count`. A mismatch is `BAD_LAYOUT`.
@@ -187,6 +189,8 @@ Accessor rules:
 - `scaleStep` is the size ratio between consecutive levels, e.g. `2^(1/3)`.
 - The number of levels `L` is `levelSizes.length`, at least 1.
 - `levelSizes` are authoritative. Implementations round differently — `cv-backend-jsfeatnext` uses `(w * s) | 0` — so sizes are recorded as produced, not recomputed.
+- Every width and height in `levelSizes` MUST be a JSON number with no fractional part, in `[1, 2^16 − 1]`, and `scaleStep` MUST be finite and `> 1`. A violation of either is `BAD_MANIFEST`: a zero or negative size, or a `scaleStep` of `1` or less, makes the level mapping of §3 meaningless or a division by zero.
+- `levelSizes` MUST be non-increasing: for every `l`, `levelSizes[l+1][0] ≤ levelSizes[l][0]` and `levelSizes[l+1][1] ≤ levelSizes[l][1]`. A violation is `INCONSISTENT_DATA`.
 
 `scaleStep` is what gives meaning to a keypoint's `level`. The contract carries the level but not the step (ADR-0001, contract gaps).
 
@@ -251,6 +255,8 @@ Each entry is one descriptor set:
 
 **Unknown families don't break the file.** A set whose `kind`, `norm` or `elementType` the reader does not know becomes unusable, with the warning `UNSUPPORTED_DESCRIPTOR_SET`. The rest of the file stays readable. Only a *structurally* broken set (an accessor out of bounds, `levelStart` inconsistent) makes the whole file invalid.
 
+**Level ranges MUST be closed and agree with the keypoints.** For every set: `levelStart[0] = 0`, `levelStart[L] = M`, `levelStart` is non-decreasing, and every `kpIndex[i]` with `i ∈ [levelStart[l], levelStart[l+1])` MUST reference a keypoint whose `level` is `l`. Without the last rule a row could be matched at one level and then mapped onto a keypoint from another, silently corrupting the per-level correspondences that the view below produces. Any violation is `INCONSISTENT_DATA`.
+
 **Rows are grouped by level**, in the same order as the keypoints. Per-level matching can therefore view one level without copying:
 
 ```ts
@@ -280,6 +286,8 @@ A reader that ignored `kpIndex` would therefore silently produce a worse ratio t
 
 Patch `q` contains exactly `level_image[level[q]][top[q] + i][left[q] + j]` for `i, j ∈ [0, P)`. Integer placement makes the stored pixels unambiguous. These are the only positions in the file that are **not** in level-0 coordinates (§3); readers converting a patch to the model plane MUST map through `level[q]` first.
 
+Every patch MUST be in bounds: `level[q] < L`, `left[q] + P ≤ levelSizes[level[q]][0]` and `top[q] + P ≤ levelSizes[level[q]][1]`. A violation is `INCONSISTENT_DATA`, checked before any pixel is read.
+
 Pixels are stored **without extra smoothing**: any blur is a tracker runtime parameter, not baked into the file. A file without `patches` is valid; the tracker then runs in detection-only mode (milestone M1).
 
 ### 5.8 `referenceImage` (optional)
@@ -288,7 +296,7 @@ Pixels are stored **without extra smoothing**: any blur is a tracker runtime par
 { "level": 0, "width": 1024, "height": 768, "pixels": 10 }
 ```
 
-`pixels` is a `u8` accessor of `width × height` grayscale values, row-major. `width` and `height` MUST equal `pyramid.levelSizes[level]`. The image is optional because of its size (a full-resolution 1024 × 768 target adds 768 KiB). It enables re-compilation, debugging and dense refinement, and possibly re-description on the runtime backend (open question Q4).
+`pixels` is a `u8` accessor of `width × height` grayscale values, row-major. `level` MUST be `< L`, checked **before** `levelSizes[level]` is indexed, and `width` and `height` MUST then equal `pyramid.levelSizes[level]`. A violation of either is `INCONSISTENT_DATA`. The image is optional because of its size (a full-resolution 1024 × 768 target adds 768 KiB). It enables re-compilation, debugging and dense refinement, and possibly re-description on the runtime backend (open question Q4).
 
 ### 5.9 `info` (optional)
 
@@ -314,8 +322,12 @@ Free-form. Readers MUST NOT require any field. Suggested content:
 3. **Manifest size.** `chunk_length` of `JSON` ≤ the manifest limit (§6.4) *before* decoding.
 4. **Manifest decoding.** Strict UTF-8 (`new TextDecoder("utf-8", { fatal: true })`), then `JSON.parse` inside `try`/`catch`. Any failure — including a `RangeError` from pathological nesting — is `BAD_MANIFEST`. The top level MUST be an object.
 5. **Format version and required extensions** (§7).
-6. **Schema.** Required keys present with the right types; every accessor valid (§5.2) with the expected type and count; every count within the resource limits (§6.4).
-7. **Data consistency.** `levelStart` monotonic and closed; `level` agreeing with `levelStart`; `kpIndex[i] < N`; `meta` equal to `levelSizes[0]`; `bytesPerDescriptor` consistent with `elementType` and `dimensions`; the multi-view rule (§5.6).
+6. **Schema.** Required keys present with the right types; every accessor valid (§5.2), including the `[0, 2^32 − 1]` integer domains of `offset` and `count` and every accessor reference being an integer index in `[0, accessors.length)`, with the expected type and count; the pyramid domains of §5.4 (every `levelSizes` entry an integer in `[1, 2^16 − 1]`, `scaleStep` finite and `> 1`); every count within the resource limits (§6.4). Type and domain violations at this step are `BAD_MANIFEST`, and they are checked before any value reaches the arithmetic below.
+7. **Data consistency.** `levelStart` monotonic and closed; `level` agreeing with `levelStart`; `kpIndex[i] < N`; `meta` equal to `levelSizes[0]`; `bytesPerDescriptor` consistent with `elementType` and `dimensions`; the multi-view rule (§5.6). Also:
+   - `levelSizes` non-increasing from level to level (§5.4).
+   - For every descriptor set, `levelStart[0] = 0`, `levelStart[L] = M`, and every `kpIndex` inside the range of level `l` referencing a keypoint whose `level` is `l` (§5.6).
+   - For every patch, `level[q] < L`, `left[q] + P ≤ levelSizes[level[q]][0]` and `top[q] + P ≤ levelSizes[level[q]][1]` (§5.7).
+   - `referenceImage.level < L`, checked before its `width` and `height` are compared with `levelSizes[level]` (§5.8).
 
 **Checked arithmetic.** Every product such as `count × size` is computed without overflow before it is compared with a length. In JS, products of two `u32` values are exact in `Number` (below `2^53`). In Rust, use `checked_mul` / `checked_add`, since a wrapped `u32` would pass the bounds check.
 
@@ -341,21 +353,49 @@ Readers return a result, never an exception, as ADR-0001 point 7 requires. Codes
 | Warning | Condition |
 |---|---|
 | `UNKNOWN_CHUNK_SKIPPED` | A chunk with an unknown type |
-| `UNSUPPORTED_DESCRIPTOR_SET` | A set with an unknown `kind`, `norm` or `elementType`, skipped |
+| `UNSUPPORTED_DESCRIPTOR_SET` | A set with an unknown `kind`, `norm` or `elementType`, or one the runtime backend cannot consume (§6.3), skipped |
 | `PRODUCER_MISMATCH` | The chosen set's `producer` ≠ the runtime backend's `capabilities.name` |
 
 Warnings MUST be part of the returned result, not only logged to the console, so an application can act on them. `PRODUCER_MISMATCH` stays a warning until cross-backend descriptor conformance is established (ADR-0001, contract gaps).
 
 ### 6.3 Choosing a descriptor set
 
-The application's preference order is intersected with the backend's capabilities, following the pattern documented in the contract. No silent substitution:
+The application's preference order is intersected with the backend's capabilities, following the pattern documented in the contract. No silent substitution.
+
+A matching `kind` is **not** sufficient. This file format can store `elementType` `"u8"` and `"f32"` sets and any `norm`, while the contract represents descriptors as a `Uint8Array` and every `DescriptorKind` it defines today is binary. A set is therefore usable only if all three hold:
+
+- `elementType` is `"bits"`,
+- `norm` is `"hamming"`, and
+- `kind` is listed in `capabilities.descriptors`.
 
 ```ts
 const preferred: DescriptorKind[] = ["teblid", "freak", "orb"];
-const usable = file.descriptorSets.filter((s) => cv.capabilities.descriptors.includes(s.kind));
+
+const usable = file.descriptorSets.filter(
+    (s) =>
+        s.elementType === "bits" &&           // Descriptors.data is a Uint8Array
+        s.norm === "hamming" &&               // every current DescriptorKind is binary
+        cv.capabilities.descriptors.includes(s.kind),
+);
 const chosen = preferred.map((k) => usable.find((s) => s.kind === k)).find(Boolean);
 if (!chosen) return { ok: false, error: "NO_USABLE_DESCRIPTORS" };
 ```
+
+**The width must match too.** Two backends can both declare the same `kind` and still produce descriptors of a different size, and `match` cannot compare rows of different widths. Before using a set, the tracker MUST describe a probe on the runtime backend and compare. The probe MUST request the set's own size through `DescribeOptions.bits` — for a `"bits"` set that is `dimensions` — so that a 512-bit set is not rejected merely because the backend's default for that family is 256:
+
+```ts
+const probe = cv.describe(probeImage, probeKeypoints, {
+    kind: chosen.kind,
+    bits: chosen.dimensions,        // ignored by fixed-size families
+});
+if (probe.bytesPerDescriptor !== chosen.bytesPerDescriptor || probe.norm !== chosen.norm) {
+    // unusable: warn UNSUPPORTED_DESCRIPTOR_SET and fall through to the next candidate
+}
+```
+
+The probe checks descriptor **shape**, not bit compatibility: two backends producing the same `kind` at the same size can still compute different bits, and only `PRODUCER_MISMATCH` covers that.
+
+A set failing any of these checks is unusable: the reader reports the warning `UNSUPPORTED_DESCRIPTOR_SET` and moves on to the next candidate. When no set survives, the result is the error `NO_USABLE_DESCRIPTORS`. This does not cover *bit* compatibility between two backends declaring the same `kind` — that gap is `PRODUCER_MISMATCH` and ADR-0001's contract gaps.
 
 **Keypoints and foreign backends.** Readers and trackers MUST NOT pass stored keypoints to a backend's `describe` unless that backend's pyramid scale step is known to equal `pyramid.scaleStep`. Otherwise `describe` silently computes descriptors at the wrong scale. The contract does not expose the step yet, so today this means: never re-describe stored keypoints on a different backend.
 
@@ -397,6 +437,8 @@ The "exact minor" rule for `0.x` exists because, during the draft, each minor ma
 | Changed meaning of an existing field | Forbidden within a major: use a new key or an extension | Major |
 | Change to the container | New container minor (additive) or major | Container |
 
+**While the major is `0`, every "Minor" row above means old readers reject the file**, not that they ignore the addition: §7.1 requires an exact minor match during `0.x`. The additive forward compatibility that §2 describes begins at `1.0`.
+
 ### 7.3 Canonical writer
 
 The same content always produces the same bytes from the same implementation:
@@ -415,7 +457,7 @@ Fixtures live in a directory shared by `vitest` and `cargo test` (e.g. `fixtures
 
 - `valid/minimal.wnft` — a tiny synthetic target (e.g. 64×48, 2 levels, ~20 keypoints, one `orb` set, `patches`), with `valid/minimal.json` holding its decoded values (manifest plus arrays as JSON lists).
 - `valid/` — further valid files: several descriptor sets, `L = 1`, zero keypoints, no `patches`, unaligned-base variant (§3).
-- `invalid/` — at least one file per error code in §6.2, each paired with its expected code.
+- `invalid/` — at least one file per error code in §6.2, each paired with its expected code, **plus one file per validation rule of §§5.2, 5.4, 5.6, 5.7 and 5.8**: a fractional `offset`; a negative `count`; a `count` above `2^32 − 1`; an accessor reference that is not an integer index below `accessors.length`; a level size of `0`; a level size above `2^16 − 1`; a `scaleStep` of `1`; `levelSizes` growing between two levels; a set with `levelStart[0] ≠ 0`; a set with `levelStart[L] ≠ M`; a `kpIndex` referencing a keypoint of another level; a patch whose `level[q] ≥ L`; a patch rectangle crossing the right or bottom edge of its level; a `referenceImage.level ≥ L`.
 - `warnings/` — files that decode successfully with an exact list of expected warnings: unknown chunk, unknown descriptor `kind` next to a valid set, unknown `norm`, unknown optional extension.
 
 ### 8.2 Required tests (every implementation)
