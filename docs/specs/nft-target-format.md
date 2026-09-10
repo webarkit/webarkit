@@ -2,7 +2,7 @@
 
 **Status:** Accepted (format 0.1). The format version is `0.1`: while the major is `0`, every minor may break compatibility (§7).
 **Decided by:** [ADR-0001](../adr/0001-nft-tracker-ts-reference-above-cvbackend.md), point 6.
-**Implementations:** `packages/nft-tracker/src/target/format` (TypeScript, which also hosts the fixture generator) and `crates/wnft-format` (Rust). The two are peers: this specification is the source of truth, and two independent implementations exist to expose its ambiguities.
+**Implementations (both planned, neither exists yet):** `packages/nft-tracker/src/target/format` (TypeScript, which will also host the fixture generator) and, **only if** the Rust port of [ADR-0001](../adr/0001-nft-tracker-ts-reference-above-cvbackend.md) point 5 is triggered, `crates/wnft-format` (Rust). The TypeScript codec is the one required implementation. Where both exist they are peers: this specification is the source of truth, and a second independent implementation is what exposes its ambiguities.
 
 The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 
@@ -50,7 +50,9 @@ const LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 
 When a file is not at an 8-aligned address — for example, a `.wnft` stored inside a larger `ArrayBuffer`, or embedded with Rust `include_bytes!`, which only guarantees 1-byte alignment — views may be impossible. JS typed arrays require the byte offset to be a multiple of the element size. Readers MUST detect this and fall back to copying the affected arrays. They MUST NOT read misaligned data through a view.
 
-**Pixel coordinates.** Integer coordinates are pixel centres, so a FAST corner at column 10 has `x = 10`. All keypoint and patch positions are stored in **level-0 coordinates**, i.e. pixels of the full-resolution reference image.
+**Pixel coordinates.** Integer coordinates are pixel centres, so a FAST corner at column 10 has `x = 10`. All **keypoint** positions are stored in **level-0 coordinates**, i.e. pixels of the full-resolution reference image; the level a keypoint came from is recorded separately in `keypoints.level`.
+
+**Patch positions are the one exception.** `patches.left` and `patches.top` are integer coordinates of the patch's own level, not level-0 (§5.7), because the stored pixels are read from that level's image at exactly those indices; storing them in level-0 coordinates would reintroduce a rounding step and make the stored pixels ambiguous. Convert to level-0 with the mapping below, using `patches.level` as `l`.
 
 **Level-to-level-0 mapping.** A point found at `x_l` on level `l` is stored as
 
@@ -276,7 +278,7 @@ A reader that ignored `kpIndex` would therefore silently produce a worse ratio t
 | `level` | `u8`, `Q` | |
 | `pixels` | `u8`, `Q × P × P` | Row-major, `P × P` per patch |
 
-Patch `q` contains exactly `level_image[level[q]][top[q] + i][left[q] + j]` for `i, j ∈ [0, P)`. Integer placement makes the stored pixels unambiguous.
+Patch `q` contains exactly `level_image[level[q]][top[q] + i][left[q] + j]` for `i, j ∈ [0, P)`. Integer placement makes the stored pixels unambiguous. These are the only positions in the file that are **not** in level-0 coordinates (§3); readers converting a patch to the model plane MUST map through `level[q]` first.
 
 Pixels are stored **without extra smoothing**: any blur is a tracker runtime parameter, not baked into the file. A file without `patches` is valid; the tracker then runs in detection-only mode (milestone M1).
 

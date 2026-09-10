@@ -31,7 +31,7 @@ Forces at play:
 2. **Dependencies.** The only runtime dependency is `@webarkit/cv-backend-spec`. Backend packages (`cv-backend-jsfeatnext` today, the WebARKitLib-rs adapter later) are **devDependencies**, used by tests and examples. The backend is injected by the caller:
 
    ```ts
-   const cv = await createJsfeatBackend();      // later: the WebARKitLib-rs adapter
+   const cv = await createJsfeatNextBackend();  // later: the WebARKitLib-rs adapter
    const tracker = new NftTracker(cv, target, K);
    ```
 
