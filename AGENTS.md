@@ -26,10 +26,16 @@
 
 ## Conventions
 
+- **Language:** every repository artifact — code, comments, commit messages, PR titles and bodies, issues, docs — is written in English, whatever language the conversation with the agent uses.
 - TypeScript. License: **LGPL-3.0-or-later**. Existing `src/` files in both packages carry an LGPL header — match that template for new files in the same package. This repo does not yet have jsfeatNext's automated header-check script (`scripts/check-license-headers.mjs`); for now this is enforced by review, not CI.
 - Preserve the public `CvBackend` contract surface (`detect`, `describe`, `match`, `estimateHomography`, `poseFromHomography`, optional `filterMatches`) unless a change to `cv-backend-spec` is explicitly intended and reflected in both packages together.
 - Keep the two packages' capability negotiation honest: `capabilities` must never claim something the API can't actually reach (see `cv-backend-jsfeatnext/README.md`'s own notes on `detectors`/`matchFilters` for why this matters).
 - Never commit `.idea/` (already in `.gitignore`).
+
+## Design records
+
+- Architecture decisions live in [`docs/adr/`](./docs/adr/); the formats and protocols they decide are specified in [`docs/specs/`](./docs/specs/). Read the relevant record before changing anything it covers.
+- **An accepted ADR is not edited — it is superseded by a new one.** To change an accepted decision, write the next ADR, state what it supersedes, and mark the old one `Superseded by ADR-XXXX`. Only ADRs still in `Proposed` are edited in place.
 
 ## Git & contribution workflow
 
