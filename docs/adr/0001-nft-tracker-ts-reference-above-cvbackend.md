@@ -50,6 +50,8 @@ Forces at play:
 
 6. **The target format is shared from day one.** Trained targets use a binary, versioned, language-neutral format, specified in [`docs/specs/nft-target-format.md`](../specs/nft-target-format.md) before any code reads or writes it. The format — not the TS source — is the contract between the TS and Rust implementations.
 
+   The format has two codecs. The TypeScript codec in `packages/nft-tracker` is the one the tracker requires. A Rust codec, `crates/wnft-format` in this monorepo, is written from this specification — not ported from the TypeScript source — so that two independent implementations expose ambiguities in the specification, and so that WebARKitLib-rs and Rust tooling can read targets. It is a stateless, fully specified component, so it is neither the tracker port of point 5 nor Option C: points 4 and 5 govern the tracker only. Both codecs consume the same fixtures, which only the TypeScript generator produces.
+
 7. **Portability rules for the TS code**, so that a port stays cheap:
 
    - **Pure core.** Input: a `GrayImage` and a timestamp. Output: a pose result. No DOM, timers, `requestAnimationFrame`, workers or camera access inside the package; the application owns the loop.
@@ -114,6 +116,7 @@ The expected cost of Option A on a WASM backend is small but unmeasured: trackin
 
 - If the port is triggered, two implementations must be kept aligned.
 - The target format has to be designed carefully up front.
+- The monorepo gains a Cargo workspace and a Rust job in CI, which raises the prerequisites for contributors touching the format.
 
 **Contract gaps surfaced by this ADR** (to be filed as separate `cv-backend-spec` issues):
 
