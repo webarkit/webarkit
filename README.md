@@ -36,8 +36,9 @@ If you're deciding where to plug in: **jsfeatNext** is the place to start today 
 |---|---|
 | [`@webarkit/cv-backend-spec`](./packages/cv-backend-spec) | Minimal stateless CV backend interface (`detect`, `describe`, `match`, `estimateHomography`, `poseFromHomography`) implemented by jsfeatNext and (future) WebARKitLib-rs. |
 | [`@webarkit/cv-backend-jsfeatnext`](./packages/cv-backend-jsfeatnext) | The jsfeatNext implementation of that contract. Depends on the spec **and** on `@webarkit/jsfeat-next` (>= 0.16.0); neither of those depends on it. |
+| [`@webarkit/nft-tracker`](./packages/nft-tracker) | Natural-feature tracking for planar image targets, written **above** the contract. Depends on the spec alone — the backend is injected by the caller, so it runs on any implementation. Currently the in-memory target types only; see [ADR-0001](./docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) and the [target format spec](./docs/specs/nft-target-format.md). |
 
-Neither package is published to npm yet — see [Getting started](#-getting-started) for installing from source.
+None of the three is published to npm yet — see [Getting started](#-getting-started) for installing from source. `nft-tracker` is `private` and pre-0.1.
 
 ## 🚀 Getting started
 
@@ -54,12 +55,12 @@ cd webarkit
 npm install
 ```
 
-`npm install` resolves and symlinks both workspace packages, so `cv-backend-jsfeatnext` picks up `cv-backend-spec` straight from the sibling folder — no publish step needed to develop against both together.
+`npm install` resolves and symlinks every workspace package, so `cv-backend-jsfeatnext` and `nft-tracker` pick up `cv-backend-spec` straight from the sibling folder — no publish step needed to develop against them together.
 
 ### Build, typecheck, test
 
 ```bash
-npm run build       # builds cv-backend-spec, then cv-backend-jsfeatnext (in that order — see .github/workflows/CI.yml)
+npm run build       # cv-backend-spec, then cv-backend-jsfeatnext, then nft-tracker (in that order — see .github/workflows/CI.yml)
 npm run typecheck   # tsc across src/ + test/ in every workspace
 npm test            # vitest across every workspace
 ```
@@ -82,8 +83,10 @@ See [`examples/README.md`](./examples/README.md) for what each demo shows, why t
 ## 🗂️ Layout
 
 This is an npm-workspaces monorepo — no build-system layer ([Turborepo](https://turbo.build/repo/docs)/[Nx](https://nx.dev))
-yet; adding one is premature at two packages. Revisit once there are
-several, or once builds start depending on each other's outputs.
+yet; at three packages, ordering the build steps by hand is still simpler
+than standing up a task graph. Revisit once there are several more, or once
+builds start depending on each other's outputs in a way plain scripts
+cannot express.
 
 ```
 webarkit/
@@ -91,6 +94,7 @@ webarkit/
   packages/
     cv-backend-spec/
     cv-backend-jsfeatnext/
+    nft-tracker/
 ```
 
 ## ❓ Open questions for discussion
