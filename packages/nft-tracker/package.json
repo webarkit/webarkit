@@ -12,7 +12,8 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "fixtures": "npm run build && node scripts/generate-fixtures.mjs"
   },
   "keywords": [
     "webarkit",
