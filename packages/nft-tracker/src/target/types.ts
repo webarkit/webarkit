@@ -259,6 +259,20 @@ export interface F32DescriptorSet extends DescriptorSetBase {
  * `elementType` yields the right typed array, and §6.3's usability rule —
  * only `"bits"` + `"hamming"` is consumable today — is a type guard rather
  * than a comment.
+ *
+ * **Why this union is closed while `kind` and `norm` are open.** §5.6 treats
+ * the three unknowns differently, because `elementType` is what says how to
+ * read the bytes:
+ *
+ * - An unknown `kind` or `norm` with a known `elementType` leaves the set
+ *   structurally understood — element width, row count and `kpIndex` all
+ *   readable — so it is preserved and re-emitted unchanged. It is unusable
+ *   and warned about, and the open unions above are what let it exist here.
+ * - An unknown `elementType` leaves nothing interpretable: neither the
+ *   element width nor the accessor type to expect. Such a set is **dropped on
+ *   decode** with the same warning, so it never reaches these types — which
+ *   is why a fourth, "unknown" variant would be unreachable rather than
+ *   useful.
  */
 export type DescriptorSet =
     | BitsDescriptorSet
@@ -335,9 +349,13 @@ export interface TargetDb {
     /** Free text identifying what wrote the file. */
     readonly generator?: string;
     /**
-     * Names of extensions present in the file. Empty when the file declares
-     * none: the key is omitted by the canonical writer when empty (§7.3), and
-     * an absent one decodes to `[]`.
+     * Names of the extensions **this implementation understands** that the
+     * file declares — not necessarily what the file's own `extensionsUsed`
+     * listed. An unknown non-required extension is ignored on decode and its
+     * name is pruned from this array, so re-encoding does not advertise a
+     * payload that is no longer there (§7.3). Empty when nothing is left: the
+     * key is omitted by the canonical writer when empty, and an absent one
+     * decodes to `[]`.
      *
      * There is deliberately **no generic payload bag** beside these names. A
      * required extension a reader does not implement is rejected outright
