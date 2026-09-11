@@ -79,8 +79,32 @@ import type {
  */
 type Known<T extends string> = T | (string & {});
 
-/** Free-form, implementation-defined parameters (§5.5, §5.6, §5.9). */
-export type Params = Readonly<Record<string, unknown>>;
+/**
+ * Any value a JSON manifest can hold.
+ *
+ * `params` and `info` are the two places the specification hands the file
+ * arbitrary content (§5.5, §5.6, §5.9). They are *data*, not unrecognised
+ * keys: §7.3 discards what a decoder does not understand, but these two are
+ * specified to carry anything, so carrying them through unchanged is what
+ * understanding them means. Typing them as JSON rather than `unknown` says
+ * that much, and keeps them serialisable by construction.
+ */
+export type JsonValue =
+    | string
+    | number
+    | boolean
+    | null
+    | readonly JsonValue[]
+    | { readonly [key: string]: JsonValue };
+
+/**
+ * Free-form, implementation-defined parameters (§5.5, §5.6).
+ *
+ * Always present in memory. The key is optional in the file and the canonical
+ * writer omits it when empty (§7.3), so a decoder substitutes `{}` and an
+ * encoder drops it again — the absence and `{}` are the same target.
+ */
+export type Params = Readonly<Record<string, JsonValue>>;
 
 /**
  * Physical and pixel size of the target (§5.3).
@@ -294,7 +318,7 @@ export interface TargetInfo {
     readonly createdAt?: string;
     readonly compiler?: Params;
     readonly trackability?: number;
-    readonly [key: string]: unknown;
+    readonly [key: string]: JsonValue | undefined;
 }
 
 /**
@@ -310,7 +334,20 @@ export interface TargetDb {
     readonly formatVersion: string;
     /** Free text identifying what wrote the file. */
     readonly generator?: string;
-    /** Names of extensions present in the file. */
+    /**
+     * Names of extensions present in the file. Empty when the file declares
+     * none: the key is omitted by the canonical writer when empty (§7.3), and
+     * an absent one decodes to `[]`.
+     *
+     * There is deliberately **no generic payload bag** beside these names. A
+     * required extension a reader does not implement is rejected outright
+     * (§6.1 step 5), and an unknown non-required one is ignored on decode and
+     * not re-emitted (§7.3) — so every payload that survives decoding belongs
+     * to an extension this package implements, and gets an explicit, typed
+     * field when it does. `WKNF_multiview` is the first such case (milestone
+     * M4). A `Record<string, unknown>` here would promise to preserve exactly
+     * the content §7.3 says is dropped.
+     */
     readonly extensionsUsed: readonly string[];
     /**
      * Subset of {@link extensionsUsed} a reader must understand to read the
@@ -318,8 +355,6 @@ export interface TargetDb {
      * descriptor set (§5.6).
      */
     readonly extensionsRequired: readonly string[];
-    /** Top-level extension payloads, keyed by extension name (§5.1). */
-    readonly extensions?: Readonly<Record<string, unknown>>;
     readonly meta: TargetMeta;
     readonly pyramid: PyramidInfo;
     readonly keypoints: KeypointTable;
