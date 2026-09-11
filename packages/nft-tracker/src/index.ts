@@ -42,6 +42,7 @@ export type {
     DescriptorSet,
     DetectorInfo,
     F32DescriptorSet,
+    JsonValue,
     KeypointTable,
     Params,
     PatchTable,
