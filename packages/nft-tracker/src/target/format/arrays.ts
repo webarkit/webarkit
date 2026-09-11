@@ -60,7 +60,11 @@ import { ELEMENT_SIZE, type Accessor, type AccessorType } from "./manifest.js";
 export type AccessorArray = Uint8Array | Uint16Array | Uint32Array | Float32Array;
 
 interface AccessorArrayConstructor {
-    new (buffer: ArrayBuffer, byteOffset: number, length: number): AccessorArray;
+    new (
+        buffer: ArrayBufferLike,
+        byteOffset: number,
+        length: number,
+    ): AccessorArray;
 }
 
 const CONSTRUCTOR: Readonly<Record<AccessorType, AccessorArrayConstructor>> = {
@@ -75,9 +79,13 @@ const CONSTRUCTOR: Readonly<Record<AccessorType, AccessorArrayConstructor>> = {
  *
  * `binStart` is the absolute offset of the `BIN` chunk's data within `buffer`,
  * not within the caller's view of it.
+ *
+ * `buffer` is `ArrayBufferLike` rather than `ArrayBuffer` because that is what
+ * a typed array's own `.buffer` is: narrowing it would only mean a cast at
+ * every call site.
  */
 export function materialise(
-    buffer: ArrayBuffer,
+    buffer: ArrayBufferLike,
     binStart: number,
     accessor: Accessor,
 ): AccessorArray {
@@ -94,6 +102,6 @@ export function materialise(
 }
 
 /** Whether `array` reads `buffer` directly rather than a copy of it. */
-export function isViewOf(array: AccessorArray, buffer: ArrayBuffer): boolean {
+export function isViewOf(array: AccessorArray, buffer: ArrayBufferLike): boolean {
     return array.buffer === buffer;
 }
