@@ -228,6 +228,36 @@ describe("parseContainer", () => {
     it("aligns to a multiple of 8", () => {
         expect([0, 1, 7, 8, 9, 16].map(align8)).toEqual([0, 8, 8, 8, 16, 16]);
     });
+
+    it("aligns across the whole u32 range without wrapping", () => {
+        // Regression. `(n + 7) & ~7` is a 32-bit *signed* operation, so a
+        // chunk_length at or above 2^31 came back negative: the bounds check
+        // below then passed, the cursor went negative, and the next DataView
+        // read threw instead of returning a failure. Found by the §8.4 fuzzer.
+        expect(align8(0x7ffffff8)).toBe(0x7ffffff8);
+        expect(align8(0x80000000)).toBe(0x80000000);
+        expect(align8(0x80000001)).toBe(0x80000008);
+        expect(align8(0xffffffff)).toBe(0x100000000);
+        for (const n of [0x80000000, 0xfffffff9, 0xffffffff]) {
+            expect(align8(n), `align8(${n})`).toBeGreaterThanOrEqual(n);
+        }
+    });
+
+    it("rejects a chunk_length at 2^31 without throwing", () => {
+        const raw = buildRaw({
+            chunks: [{ ...jsonChunk(MANIFEST), length: 0x80000000 }],
+        });
+        expect(() => parseContainer(raw)).not.toThrow();
+        expect(err(parseContainer(raw))).toBe("BAD_CONTAINER");
+    });
+
+    it("rejects a chunk_length at 2^32 − 1 without throwing", () => {
+        const raw = buildRaw({
+            chunks: [{ ...jsonChunk(MANIFEST), length: 0xffffffff }],
+        });
+        expect(() => parseContainer(raw)).not.toThrow();
+        expect(err(parseContainer(raw))).toBe("BAD_CONTAINER");
+    });
 });
 
 describe("buildContainer", () => {
