@@ -50,6 +50,8 @@ const LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 
 When a file is not at an 8-aligned address — for example, a `.wnft` stored inside a larger `ArrayBuffer`, or embedded with Rust `include_bytes!`, which only guarantees 1-byte alignment — views may be impossible. JS typed arrays require the byte offset to be a multiple of the element size. Readers MUST detect this and fall back to copying the affected arrays. They MUST NOT read misaligned data through a view.
 
+A reader therefore MUST accept a buffer that is not the whole allocation: in TypeScript an `ArrayBufferView`, whose `byteOffset` carries the base, alongside a bare `ArrayBuffer`. Without that the fallback is unreachable from JavaScript — an `ArrayBuffer` always starts at offset `0` — and so untestable.
+
 **Pixel coordinates.** Integer coordinates are pixel centres, so a FAST corner at column 10 has `x = 10`. All **keypoint** positions are stored in **level-0 coordinates**, i.e. pixels of the full-resolution reference image; the level a keypoint came from is recorded separately in `keypoints.level`.
 
 **Patch positions are the one exception.** `patches.left` and `patches.top` are integer coordinates of the patch's own level, not level-0 (§5.7), because the stored pixels are read from that level's image at exactly those indices; storing them in level-0 coordinates would reintroduce a rounding step and make the stored pixels ambiguous. Convert to level-0 with the mapping below, using `patches.level` as `l`.
@@ -103,8 +105,8 @@ After the data, the chunk is padded to a multiple of 8 bytes. The `JSON` chunk i
 
 **Chunk rules:**
 - The first chunk MUST be `JSON`. There is exactly one.
-- The second chunk, if present, MUST be `BIN\0`. There is at most one. It MUST be present if the manifest declares any accessor.
-- Any chunk after these is ignored by readers that do not know its type (warning `UNKNOWN_CHUNK_SKIPPED`). This leaves room for future container minors.
+- `BIN\0`, if present, MUST be the second chunk. There is at most one. It MUST be present if the manifest declares any accessor (§5.2).
+- A chunk of an unknown type is ignored by readers (warning `UNKNOWN_CHUNK_SKIPPED`). It may sit in second place only when the file has no `BIN\0` chunk. This leaves room for future container minors.
 
 **Checksum.** `crc32` is CRC-32/ISO-HDLC — polynomial `0x04C11DB7` (reflected `0xEDB88320`), initial value and final XOR `0xFFFFFFFF` — the same as zlib, PNG and Rust's `crc32fast`. Test vector: the ASCII bytes `123456789` give `0xCBF43926`.
 
@@ -185,6 +187,7 @@ Accessor rules:
 - Accessors MUST NOT overlap. Each array owns its bytes.
 - Every field that references an accessor fixes the expected `type` and `count`. A mismatch is `BAD_LAYOUT`.
 - Accessors that no known field references are allowed and ignored; they may belong to an extension.
+- A file whose manifest declares at least one accessor and which has no `BIN\0` chunk is `BAD_LAYOUT`. The bound above treats an absent `BIN\0` as a chunk of length `0`, which already rejects every accessor with `count > 0`; this rule also covers the manifest whose accessors all have `count = 0`. The check belongs here, not to §6.1 step 1: a reader cannot know whether accessors exist until the manifest is parsed.
 
 ### 5.3 `meta`
 
@@ -222,7 +225,7 @@ Accessor rules:
 |---|---|---|
 | `count` | — | `N` |
 | `detector` | — | `kind` (a `DetectorKind` string) and free-form `params`, which is optional — an absent `params` is equivalent to `{}` (§7.3). Informative, except where a descriptor's parameters depend on the detector (§5.6) |
-| `levelStart` | `u32`, `L + 1` | Keypoints of level `l` are the indices `[levelStart[l], levelStart[l+1])`; `levelStart[L] = N` |
+| `levelStart` | `u32`, `L + 1` | Keypoints of level `l` are the indices `[levelStart[l], levelStart[l+1])`; `levelStart[0] = 0`, `levelStart[L] = N`, and `levelStart` is non-decreasing |
 | `x`, `y` | `f32`, `N` | Level-0 coordinates (§3) |
 | `angle` | `f32`, `N` | Radians |
 | `score` | `f32`, `N` | Detector response |
@@ -275,6 +278,8 @@ Unusable does not mean handled identically, because `elementType` is what says h
 
 - **Unknown `kind` or `norm`, known `elementType`.** The set is structurally understood — the reader knows the element width, the row count and which keypoint each row describes — so it is **preserved** and re-emitted unchanged. It stays unusable and still warns.
 - **Unknown `elementType`.** Nothing says how wide an element is or which accessor type to expect, so the set cannot be interpreted at all. It is **dropped on decode**, with the same warning, and does not reappear on encode — §7.3's rule, applied to a descriptor set.
+
+**A file whose every set is dropped still decodes.** The decoded target then carries no descriptor set: §5.1's "at least one entry" is a rule about the file, which that file satisfies, not about the decoded target. Two consequences follow and are deliberate. Such a target is not re-encodable — the canonical writer returns `INVALID_TARGET` (§7.3), because the file it would have to emit is one §5.1 forbids. And choosing a set on it (§6.3) yields `NO_USABLE_DESCRIPTORS`, which is exactly what that error means.
 
 **Level ranges MUST be closed and agree with the keypoints.** For every set: `levelStart[0] = 0`, `levelStart[L] = M`, `levelStart` is non-decreasing, and every `kpIndex[i]` with `i ∈ [levelStart[l], levelStart[l+1])` MUST reference a keypoint whose `level` is `l`. Without the last rule a row could be matched at one level and then mapped onto a keypoint from another, silently corrupting the per-level correspondences that the view below produces. Any violation is `INCONSISTENT_DATA`.
 
@@ -338,6 +343,7 @@ Free-form. Readers MUST NOT require any field. Suggested content:
 
 `.wnft` files may come from URLs chosen by an application's users, so the reader is exposed to untrusted input. It validates **in this order** and never allocates in proportion to a size before that size has been checked:
 
+0. **File size.** The buffer is at most the file-size limit (§6.4), checked before a single byte is read: `LIMIT_EXCEEDED`. It is numbered `0` rather than folded into step 1 because it precedes even the magic — a buffer past the limit is rejected without being inspected, so a very large file that is not a `.wnft` at all reports `LIMIT_EXCEEDED`, not `BAD_MAGIC`. Any other order would have the reader checksum a file whose size it has not yet accepted, which is the cost the paragraph above exists to avoid.
 1. **Container.** Buffer ≥ 16 bytes; `magic`; `container_major` supported; `total_length` equals the buffer length; every chunk header and its padded data within bounds; `JSON` first and unique; `BIN\0` at most once and in second place.
 2. **Checksums** of the `JSON` and `BIN\0` chunks.
 3. **Manifest size.** `chunk_length` of `JSON` ≤ the manifest limit (§6.4) *before* decoding.
@@ -382,6 +388,7 @@ Readers return a result, never an exception, as ADR-0001 point 7 requires. Codes
 | Warning | Condition |
 |---|---|
 | `UNKNOWN_CHUNK_SKIPPED` | A chunk with an unknown type |
+| `UNKNOWN_EXTENSION_IGNORED` | A name in `extensionsUsed` but not in `extensionsRequired` that the reader does not implement. Its payloads are ignored and the name is pruned from the decoded `extensionsUsed` (§7.3) |
 | `UNSUPPORTED_DESCRIPTOR_SET` | A set with an unknown `kind`, `norm` or `elementType`, or one the runtime backend cannot consume (§6.3), skipped |
 | `PRODUCER_MISMATCH` | The chosen set's `producer` ≠ the runtime backend's `capabilities.name` |
 
@@ -508,8 +515,8 @@ JSON serializers in different languages may format the same number differently (
 Fixtures live in a directory shared by `vitest` and `cargo test` (e.g. `fixtures/nft-target/0.2/`). They are produced by a committed, deterministic generator script and never edited by hand:
 
 - `valid/minimal.wnft` — a tiny synthetic target (e.g. 64×48, 2 levels, ~20 keypoints, one `orb` set, `patches`), with `valid/minimal.json` holding its decoded values (manifest plus arrays as JSON lists).
-- `valid/` — further valid files: several descriptor sets, `L = 1`, zero keypoints, no `patches`, unaligned-base variant (§3), and a **boundary** file whose `params` carries the integer literal `9007199254740991` (`2^53 − 1`), which must decode: it catches an off-by-one in check (c) of §5.
-- `invalid/` — at least one file per error code in §6.2, each paired with its expected code, **plus one file per validation rule of §§5.2, 5.4, 5.6, 5.7 and 5.8**: a fractional `offset`; a negative `count`; a `count` above `2^32 − 1`; an accessor reference that is not an integer index below `accessors.length`; a level size of `0`; a level size above `2^16 − 1`; a `scaleStep` of `1`; `levelSizes` growing between two levels; a set with `levelStart[0] ≠ 0`; a set with `levelStart[L] ≠ M`; a `kpIndex` referencing a keypoint of another level; a patch whose `level[q] ≥ L`; a patch rectangle crossing the right or bottom edge of its level; a `referenceImage.level ≥ L`. **Plus one file per I-JSON check of §5**: a manifest with a duplicate member name; one with the same name written twice in different ways (`"a"` and `"\u0061"`), which catches an implementation that compared the raw text instead of the unescaped names; one with an unpaired surrogate escape in a string; one whose `params` carries the integer literal `9007199254740992` (`2^53`); one whose `params` carries `1e400`, which rounds to infinity; one with a **raw** U+FFFF in a `params` value, which strict UTF-8 decoding accepts and only check (e) catches; one with an escaped `"\uFDD0"` in a member name.
+- `valid/` — further valid files: several descriptor sets, `L = 1`, zero keypoints, no `patches`, and a **boundary** file whose `params` carries the integer literal `9007199254740991` (`2^53 − 1`), which must decode: it catches an off-by-one in check (c) of §5. The unaligned base of §3 is **not** a fixture: a file's bytes cannot be misaligned, only its address can. It is exercised by decoding an existing `valid/` fixture copied to a non-8-aligned `byteOffset` inside a larger buffer.
+- `invalid/` — at least one file per error code in §6.2, each paired with its expected code, **plus one file per validation rule of §§5.2, 5.4, 5.6, 5.7 and 5.8**: a fractional `offset`; a negative `count`; a `count` above `2^32 − 1`; an accessor reference that is not an integer index below `accessors.length`; a level size of `0`; a level size above `2^16 − 1`; a `scaleStep` of `1`; `levelSizes` growing between two levels; a set with `levelStart[0] ≠ 0`; a set with `levelStart[L] ≠ M`; a `kpIndex` referencing a keypoint of another level; a patch whose `level[q] ≥ L`; a patch rectangle crossing the right or bottom edge of its level; a `referenceImage.level ≥ L`. **Plus one file per I-JSON check of §5**: a manifest with a duplicate member name; one with the same name written twice in different ways (`"a"` and `"\u0061"`), which catches an implementation that compared the raw text instead of the unescaped names; one with an unpaired surrogate escape in a string; one whose `params` carries the integer literal `9007199254740992` (`2^53`); one whose `params` carries `1e400`, which rounds to infinity; one with a **raw** U+FFFF in a `params` value, which strict UTF-8 decoding accepts and only check (e) catches; one with an escaped `"\uFDD0"` in a member name. `NO_USABLE_DESCRIPTORS` is the one exception to "one file per error code": it is produced by the descriptor-set selection of \u00A76.3, against a runtime backend's capabilities, not by decoding, so no file yields it on its own.
 - `warnings/` — files that decode successfully with an exact list of expected warnings: unknown chunk, unknown descriptor `kind` next to a valid set, unknown `norm`, unknown optional extension.
 - `noncanonical/` — valid files that are **not** what the canonical writer (§7.3) would produce, each paired with the `valid/` file it is equivalent to: different manifest key order; insignificant whitespace; an explicit empty `params`; an unknown top-level key; an unknown non-required extension payload on a descriptor set; **`params` whose keys are unsorted and include `"9"` and `"10"`**, which catches an implementation that serialized them with `JSON.stringify`.
 
@@ -577,3 +584,4 @@ Decisions D1–D5 below are accepted as part of this specification.
 - **0.1 rev 1** — accepted text ([#20](https://github.com/webarkit/webarkit/pull/20)).
 - **0.1 rev 2** (2026-09-11) — editorial: round-trip scope, canonical omission of empty optionals, unknown content not preserved, `params`/`info` content preserved as data, `extensionsUsed` pruned to what the reader understands, key ordering inside `params`/`info`, and the split between a preserved unknown `kind`/`norm` and a dropped unknown `elementType`. No change to the bytes or the meaning of any valid `0.1` file.
 - **0.2** (2026-09-11) — normative: the manifest must be I-JSON (Q10). Files with duplicate keys, unpaired surrogates, integers beyond ±(2^53 − 1), number literals rounding to infinity, or Unicode noncharacters in strings become invalid. The canonical writer (§7.3) must validate a target before serializing it and return `INVALID_TARGET` rather than emit a file a reader would reject, and must never coerce a value to make it serializable. No 0.1 file or codec existed, so nothing is affected.
+- **0.2 rev 2** (2026-09-11) — editorial, from the first implementation: an unknown chunk may sit second when there is no `BIN\0` (§4.2); a missing `BIN\0` under a manifest that declares accessors is `BAD_LAYOUT` (§5.2); `keypoints.levelStart[0] = 0` stated (§5.5); a file whose every descriptor set is dropped still decodes (§5.6); the file-size limit is step 0 of the validation order (§6.1); the new warning `UNKNOWN_EXTENSION_IGNORED` (§6.2), which §8.1 already required a fixture for; readers accept a view so §3's copy fallback is reachable, and the unaligned base stops being listed as a fixture file (§3, §8.1). No change to the bytes or the meaning of any valid `0.2` file.
