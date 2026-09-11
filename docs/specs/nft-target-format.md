@@ -1,6 +1,6 @@
-# NFT target format — v0.1
+# NFT target format — v0.2
 
-**Status:** Accepted (format 0.1). The format version is `0.1`: while the major is `0`, every minor may break compatibility (§7).
+**Status:** Accepted (format 0.2). The format version is `0.2`: while the major is `0`, every minor may break compatibility (§7).
 **Decided by:** [ADR-0001](../adr/0001-nft-tracker-ts-reference-above-cvbackend.md), point 6.
 **Implementations (both planned, neither exists yet):** `packages/nft-tracker/src/target/format` (TypeScript, which will also host the fixture generator) and `crates/wnft-format` (Rust, see [ADR-0001](../adr/0001-nft-tracker-ts-reference-above-cvbackend.md) point 6). The TypeScript codec is required by the tracker; the Rust codec exists to validate this specification and is not part of the tracker port of ADR-0001 point 5. The two are peers: this specification is the source of truth, and a second independent implementation is what exposes its ambiguities.
 
@@ -114,11 +114,23 @@ CRC-32 detects **accidental** corruption: a truncated or damaged download, a bro
 
 The `JSON` chunk holds one JSON object: UTF-8, no BOM.
 
+**The manifest MUST be I-JSON** ([RFC 7493](https://www.rfc-editor.org/rfc/rfc7493)). Plain JSON leaves enough freedom that two conforming decoders can read the same untrusted file differently — `JSON.parse` keeps the last of a set of duplicate keys, other parsers keep the first or error — and a file format whose whole point is that it "MUST decode to the same values in any other implementation" (§1) cannot afford that. Readers MUST reject with `BAD_MANIFEST`:
+
+- **(a) Duplicate member names in any object**, compared after unescaping: `"a"` and `"\u0061"` are the same name and therefore duplicates. This applies at every level, `params` and `info` included.
+- **(b) Strings containing an unpaired surrogate**, written as an escape (`"\uD800"`). Such a string has no well-defined transcoding, so implementations in different languages would not agree on its value. A surrogate encoded raw in the UTF-8 bytes needs no check here: the strict UTF-8 decoding at the start of §6.1 step 4 has already rejected it, so (b) only concerns `\u` escapes.
+- **(c) Integer literals — no fraction, no exponent — outside ±(2^53 − 1)**, the range in which an IEEE 754 double represents every integer exactly. Outside it, `9007199254740993` and `9007199254740992` are the same double in one implementation and two distinct integers in another.
+- **(d) Number literals whose nearest IEEE 754 double is infinite** (e.g. `1e400`). `JSON.parse` turns them into `Infinity` while other parsers reject them. Literals that round to zero (e.g. `1e-400`) are fine: every implementation reads `0`.
+- **(e) Strings containing a Unicode noncharacter**, in member names as well as values, as [RFC 7493 §2.1](https://www.rfc-editor.org/rfc/rfc7493#section-2.1) requires. These are the 66 code points U+FDD0..U+FDEF and U+FFFE, U+FFFF at the end of every plane (U+1FFFE, U+1FFFF, … U+10FFFE, U+10FFFF). They are permanently reserved for internal use, so what a string library does with one is its own business, not something two implementations agree on. Unlike a surrogate, a noncharacter is **well-formed UTF-8** and passes the strict decoding of §6.1 step 4, so (e) applies to raw text just as much as to `\u` escapes.
+
+Non-integer numbers (anything written with a fraction or an exponent) are **read as the nearest finite IEEE 754 double**: they are approximations by nature, and every field of this specification that requires exactness already requires an integer (§5.2, §5.4). Their magnitude is otherwise unchecked — (d) is the only bound, and it exists because infinity is not a value this format can carry.
+
+Key uniqueness is the one check the canonical writer (§7.3) satisfies **by construction** — it emits each key once and sorts the keys of `params` and `info`, so a duplicate can only come from a hand-made or hostile file. That is only one of the writer's guarantees, and construction alone does not cover the other four: `params` and `info` carry values the writer did not choose. §7.3 therefore requires the writer to validate before it serializes.
+
 ### 5.1 Top level
 
 ```json
 {
-  "format": { "version": "0.1", "generator": "@webarkit/nft-tracker 0.1.0" },
+  "format": { "version": "0.2", "generator": "@webarkit/nft-tracker 0.1.0" },
   "extensionsUsed": [],
   "extensionsRequired": [],
   "meta": { },
@@ -329,7 +341,15 @@ Free-form. Readers MUST NOT require any field. Suggested content:
 1. **Container.** Buffer ≥ 16 bytes; `magic`; `container_major` supported; `total_length` equals the buffer length; every chunk header and its padded data within bounds; `JSON` first and unique; `BIN\0` at most once and in second place.
 2. **Checksums** of the `JSON` and `BIN\0` chunks.
 3. **Manifest size.** `chunk_length` of `JSON` ≤ the manifest limit (§6.4) *before* decoding.
-4. **Manifest decoding.** Strict UTF-8 (`new TextDecoder("utf-8", { fatal: true })`), then `JSON.parse` inside `try`/`catch`. Any failure — including a `RangeError` from pathological nesting — is `BAD_MANIFEST`. The top level MUST be an object.
+4. **Manifest decoding.** Strict UTF-8 (`new TextDecoder("utf-8", { fatal: true })`), then the five I-JSON checks of §5 — duplicate member names, unpaired surrogate escapes, integer literals outside ±(2^53 − 1), number literals rounding to infinity, noncharacters in strings — **on the manifest text, before `JSON.parse`**, then `JSON.parse` inside `try`/`catch`. Any failure — including a `RangeError` from pathological nesting — is `BAD_MANIFEST`. The top level MUST be an object.
+
+   For **(a)** and **(c)** the order is forced: neither can be done after parsing. A duplicate member name is gone — the parser kept one of the two and nothing records that there was another — and an out-of-range integer literal has already been rounded, so `9007199254740993` is `9007199254740992` by the time it is a value.
+
+   **(b)**, **(d)** and **(e)** could be done after parsing instead, by walking the decoded value (`String.prototype.isWellFormed()`, `Number.isFinite()`, a scan for noncharacters): a lone surrogate, an `Infinity` and a noncharacter all survive into the result unchanged. Doing all five in the one pass over the text is simply simpler than parsing and then walking the tree a second time.
+
+   > **TypeScript implementers.** A single tokenizing pass over the manifest text does all five: it is the only pass that sees member names before they are deduplicated, string escapes before they are combined, and number literals before they become `Number`s.
+   >
+   > **Rust implementers.** Enable `serde_json`'s `float_roundtrip` feature. Verify duplicate-key rejection **explicitly, with a test**, rather than relying on serde's defaults: what a derived `Deserialize` does with a repeated field is a property of the derive, not a guarantee of the format.
 5. **Format version and required extensions** (§7).
 6. **Schema.** Required keys present with the right types; every accessor valid (§5.2), including the `[0, 2^32 − 1]` integer domains of `offset` and `count` and every accessor reference being an integer index in `[0, accessors.length)`, with the expected type and count; the pyramid domains of §5.4 (every `levelSizes` entry an integer in `[1, 2^16 − 1]`, `scaleStep` finite and `> 1`); every count within the resource limits (§6.4). Type and domain violations at this step are `BAD_MANIFEST`, and they are checked before any value reaches the arithmetic below.
 7. **Data consistency.** `levelStart` monotonic and closed; `level` agreeing with `levelStart`; `kpIndex[i] < N`; `meta` equal to `levelSizes[0]`; `bytesPerDescriptor` consistent with `elementType` and `dimensions`; the multi-view rule (§5.6). Also:
@@ -342,7 +362,7 @@ Free-form. Readers MUST NOT require any field. Suggested content:
 
 ### 6.2 Error and warning codes
 
-Readers return a result, never an exception, as ADR-0001 point 7 requires. Codes are shared by all implementations:
+Readers return a result, never an exception, as ADR-0001 point 7 requires. Codes are shared by all implementations. (The writer has one error of its own, `INVALID_TARGET`, defined in §7.3.)
 
 | Error | Condition |
 |---|---|
@@ -351,7 +371,7 @@ Readers return a result, never an exception, as ADR-0001 point 7 requires. Codes
 | `BAD_CONTAINER` | `total_length` mismatch, chunk out of bounds, `JSON` chunk missing or duplicated, `BIN\0` duplicated or out of place, non-zero reserved field |
 | `CHECKSUM_MISMATCH` | A chunk's CRC-32 does not match |
 | `MANIFEST_TOO_LARGE` | `JSON` chunk above the manifest limit |
-| `BAD_MANIFEST` | Not strict UTF-8, not JSON, not an object, required key missing, wrong type |
+| `BAD_MANIFEST` | Not strict UTF-8, not JSON, not I-JSON (§5), not an object, required key missing, wrong type |
 | `UNSUPPORTED_FORMAT_VERSION` | `format.version` not supported (§7) |
 | `UNSUPPORTED_EXTENSION` | A name in `extensionsRequired` the reader does not implement |
 | `BAD_LAYOUT` | Accessor out of bounds, misaligned, overlapping, or with the wrong type or count |
@@ -459,6 +479,20 @@ The same content always produces the same bytes from the same implementation:
 
   > **TypeScript implementers.** `JSON.stringify` does not produce this order. JavaScript objects enumerate integer-like keys numerically and first, so `{"10":a,"9":b}` serializes as `"9"` before `"10"`, whereas code-point order puts `"10"` first. These two objects MUST therefore be serialized explicitly, not handed to `JSON.stringify`.
 
+**The writer MUST NOT emit a file that a conforming reader would reject.** Before serializing, it validates the whole target against this specification — every I-JSON check of §5 on the free-form content of `params` and `info`, and every domain and consistency rule of §5 and §6 on the rest — and on failure returns an error instead of emitting bytes.
+
+In particular the writer **MUST NOT coerce values** to make them serializable. `JSON.stringify` turns `NaN` and `Infinity` into `null`, so a target carrying either would encode to a file that decodes cleanly with the value silently changed — the one outcome worse than a rejected write.
+
+The writer's result mirrors the reader's:
+
+```ts
+type EncodeResult =
+    | { ok: true; bytes: Uint8Array }
+    | { ok: false; error: "INVALID_TARGET"; detail: string };
+```
+
+`detail` names the offending field path, e.g. `"descriptorSets[1].params.seed"`, so the caller can find the value without re-validating the target itself.
+
 **A decoder keeps only what it understands, and the canonical writer emits only that.** Unknown keys, and unknown non-required extensions with their payloads, are ignored on decode and not preserved on encode: an implementation cannot keep data it does not understand consistent, for example when accessors are renumbered.
 
 When an unknown non-required extension is ignored, **its name is also removed from `extensionsUsed`**. The decoded `extensionsUsed` therefore lists only extensions the implementation understands, and re-encoding does not advertise a payload that is no longer there. (`extensionsRequired` needs no such rule: an unknown name there is `UNSUPPORTED_EXTENSION` and the file never decodes at all, §6.1 step 5.)
@@ -471,11 +505,11 @@ JSON serializers in different languages may format the same number differently (
 
 ### 8.1 Fixtures
 
-Fixtures live in a directory shared by `vitest` and `cargo test` (e.g. `fixtures/nft-target/0.1/`). They are produced by a committed, deterministic generator script and never edited by hand:
+Fixtures live in a directory shared by `vitest` and `cargo test` (e.g. `fixtures/nft-target/0.2/`). They are produced by a committed, deterministic generator script and never edited by hand:
 
 - `valid/minimal.wnft` — a tiny synthetic target (e.g. 64×48, 2 levels, ~20 keypoints, one `orb` set, `patches`), with `valid/minimal.json` holding its decoded values (manifest plus arrays as JSON lists).
-- `valid/` — further valid files: several descriptor sets, `L = 1`, zero keypoints, no `patches`, unaligned-base variant (§3).
-- `invalid/` — at least one file per error code in §6.2, each paired with its expected code, **plus one file per validation rule of §§5.2, 5.4, 5.6, 5.7 and 5.8**: a fractional `offset`; a negative `count`; a `count` above `2^32 − 1`; an accessor reference that is not an integer index below `accessors.length`; a level size of `0`; a level size above `2^16 − 1`; a `scaleStep` of `1`; `levelSizes` growing between two levels; a set with `levelStart[0] ≠ 0`; a set with `levelStart[L] ≠ M`; a `kpIndex` referencing a keypoint of another level; a patch whose `level[q] ≥ L`; a patch rectangle crossing the right or bottom edge of its level; a `referenceImage.level ≥ L`.
+- `valid/` — further valid files: several descriptor sets, `L = 1`, zero keypoints, no `patches`, unaligned-base variant (§3), and a **boundary** file whose `params` carries the integer literal `9007199254740991` (`2^53 − 1`), which must decode: it catches an off-by-one in check (c) of §5.
+- `invalid/` — at least one file per error code in §6.2, each paired with its expected code, **plus one file per validation rule of §§5.2, 5.4, 5.6, 5.7 and 5.8**: a fractional `offset`; a negative `count`; a `count` above `2^32 − 1`; an accessor reference that is not an integer index below `accessors.length`; a level size of `0`; a level size above `2^16 − 1`; a `scaleStep` of `1`; `levelSizes` growing between two levels; a set with `levelStart[0] ≠ 0`; a set with `levelStart[L] ≠ M`; a `kpIndex` referencing a keypoint of another level; a patch whose `level[q] ≥ L`; a patch rectangle crossing the right or bottom edge of its level; a `referenceImage.level ≥ L`. **Plus one file per I-JSON check of §5**: a manifest with a duplicate member name; one with the same name written twice in different ways (`"a"` and `"\u0061"`), which catches an implementation that compared the raw text instead of the unescaped names; one with an unpaired surrogate escape in a string; one whose `params` carries the integer literal `9007199254740992` (`2^53`); one whose `params` carries `1e400`, which rounds to infinity; one with a **raw** U+FFFF in a `params` value, which strict UTF-8 decoding accepts and only check (e) catches; one with an escaped `"\uFDD0"` in a member name.
 - `warnings/` — files that decode successfully with an exact list of expected warnings: unknown chunk, unknown descriptor `kind` next to a valid set, unknown `norm`, unknown optional extension.
 - `noncanonical/` — valid files that are **not** what the canonical writer (§7.3) would produce, each paired with the `valid/` file it is equivalent to: different manifest key order; insignificant whitespace; an explicit empty `params`; an unknown top-level key; an unknown non-required extension payload on a descriptor set; **`params` whose keys are unsorted and include `"9"` and `"10"`**, which catches an implementation that serialized them with `JSON.stringify`.
 
@@ -487,10 +521,11 @@ Fixtures live in a directory shared by `vitest` and `cargo test` (e.g. `fixtures
 4. **Cross-implementation:** `BIN\0` chunks byte-identical; manifests equal after parsing.
 5. Every `invalid/` file yields exactly its expected error code; every `warnings/` file yields `ok` with exactly its expected warnings.
 6. CRC-32 test vector: `123456789` → `0xCBF43926`.
+7. **The writer rejects what the reader would.** For each of the other four I-JSON checks of §5, `encode()` of an otherwise valid target whose `params` carries the offending value — an unpaired surrogate, the integer `2^53`, a number that rounds to infinity, a noncharacter — returns `{ ok: false, error: "INVALID_TARGET" }` with a `detail` naming that path, and emits no bytes. Same for a `params` value of `NaN`, which `JSON.stringify` would otherwise coerce to `null` (§7.3). Check (a) has no such test: an in-memory `params` is an object in both languages and cannot hold a duplicate member name, which is why §5 scopes key uniqueness to construction.
 
 ### 8.3 Evolution tests
 
-- A file declaring format `0.2` is rejected by a `0.1` reader with `UNSUPPORTED_FORMAT_VERSION`.
+- A file declaring format `0.3` is rejected by a `0.2` reader with `UNSUPPORTED_FORMAT_VERSION`.
 - Unknown keys at the top level and inside a descriptor set are ignored and are not re-emitted.
 - Keys inside `params` and inside `info` are **data**: they are preserved and re-emitted unchanged, whatever they are (§5.1).
 - An unknown extension in `extensionsRequired` → `UNSUPPORTED_EXTENSION`; the same extension only in `extensionsUsed` → ignored.
@@ -532,13 +567,13 @@ Decisions D1–D5 below are accepted as part of this specification.
 ## 11. Open questions
 
 - **Q3 — Multi-view descriptors.** The format side is settled (`WKNF_multiview`, §5.6). Adoption is blocked on k-nearest matching in the contract.
-- **Q4 — Producer mismatch strategy.** Warn only (v0.1), or store a full-resolution `referenceImage` and re-describe on the runtime backend when its scale step matches. The second avoids bit incompatibility but costs about 1 byte per pixel.
-- **Q6 — Multiple targets.** v0.1 stores one target per file; a container of targets or a manifest of files could come later.
+- **Q4 — Producer mismatch strategy.** Warn only (v0.2), or store a full-resolution `referenceImage` and re-describe on the runtime backend when its scale step matches. The second avoids bit incompatibility but costs about 1 byte per pixel.
+- **Q6 — Multiple targets.** v0.2 stores one target per file; a container of targets or a manifest of files could come later.
 - **Q8 — Canonical JSON numbers across languages.** Defining a strict number grammar for the manifest would give byte identity of the whole file across implementations, not only of the `BIN\0` chunk. It is probably not worth the complexity; to be revisited if the cross-implementation tests turn out to need it.
 - **Q9 — Media type** for serving `.wnft` (e.g. a vendor type such as `application/vnd.webarkit.nft-target`).
-- **Q10 — I-JSON.** Require the manifest to be I-JSON ([RFC 7493](https://www.rfc-editor.org/rfc/rfc7493)): no duplicate keys, numbers representable as IEEE 754 doubles. Without it, two conforming decoders can read the same untrusted file differently (`JSON.parse` keeps the last duplicate). To decide before the TS codec is written.
 
 ## 12. Revision history
 
 - **0.1 rev 1** — accepted text ([#20](https://github.com/webarkit/webarkit/pull/20)).
 - **0.1 rev 2** (2026-09-11) — editorial: round-trip scope, canonical omission of empty optionals, unknown content not preserved, `params`/`info` content preserved as data, `extensionsUsed` pruned to what the reader understands, key ordering inside `params`/`info`, and the split between a preserved unknown `kind`/`norm` and a dropped unknown `elementType`. No change to the bytes or the meaning of any valid `0.1` file.
+- **0.2** (2026-09-11) — normative: the manifest must be I-JSON (Q10). Files with duplicate keys, unpaired surrogates, integers beyond ±(2^53 − 1), number literals rounding to infinity, or Unicode noncharacters in strings become invalid. The canonical writer (§7.3) must validate a target before serializing it and return `INVALID_TARGET` rather than emit a file a reader would reject, and must never coerce a value to make it serializable. No 0.1 file or codec existed, so nothing is affected.
