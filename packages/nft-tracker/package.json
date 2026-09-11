@@ -30,7 +30,9 @@
     "@webarkit/cv-backend-spec": "0.1.0"
   },
   "devDependencies": {
+    "@types/node": "^20.19.43",
     "@webarkit/cv-backend-jsfeatnext": "0.1.0",
+    "jpeg-js": "^0.4.4",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
   }
