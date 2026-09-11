@@ -146,7 +146,9 @@ The `JSON` chunk holds one JSON object: UTF-8, no BOM.
 | `info` | no | §5.9 |
 | `accessors` | yes | §5.2 |
 
-**Unknown keys.** Readers MUST ignore keys they do not know, at every level. Writers MUST NOT use a new key to change the meaning of existing data (§7).
+**Unknown keys.** Readers MUST ignore keys they do not know, at every level, and MUST NOT re-emit them (§7.3). Writers MUST NOT use a new key to change the meaning of existing data (§7).
+
+**The exception is `params` and `info`.** Those two objects are specified to carry arbitrary content (§5.5, §5.6, §5.9), so their keys are never "unknown": a reader preserves them as-is and round-trips them unchanged. The rule above applies to keys *beside* them, not to keys *inside* them.
 
 **Extensions.** An extension has a name with the `WKNF_` prefix (e.g. `WKNF_multiview`) and may attach data to any object under an `"extensions": { "WKNF_name": { … } }` key, as in glTF.
 
@@ -256,6 +258,11 @@ Each entry is one descriptor set:
 **Several sets, and what they are for.** A file MAY contain several sets. For example, `orb` and `teblid` let one file serve backends with different capabilities (§6.3). Two `orb` sets from different producers work around the "same kind, different bits" problem (ADR-0001, contract gaps). Uniqueness is on the key (`kind`, `norm`, `dimensions`, `producer`): two sets with the same key are `INCONSISTENT_DATA`.
 
 **Unknown families don't break the file.** A set whose `kind`, `norm` or `elementType` the reader does not know becomes unusable, with the warning `UNSUPPORTED_DESCRIPTOR_SET`. The rest of the file stays readable. Only a *structurally* broken set (an accessor out of bounds, `levelStart` inconsistent) makes the whole file invalid.
+
+Unusable does not mean handled identically, because `elementType` is what says how to read the bytes:
+
+- **Unknown `kind` or `norm`, known `elementType`.** The set is structurally understood — the reader knows the element width, the row count and which keypoint each row describes — so it is **preserved** and re-emitted unchanged. It stays unusable and still warns.
+- **Unknown `elementType`.** Nothing says how wide an element is or which accessor type to expect, so the set cannot be interpreted at all. It is **dropped on decode**, with the same warning, and does not reappear on encode — §7.3's rule, applied to a descriptor set.
 
 **Level ranges MUST be closed and agree with the keypoints.** For every set: `levelStart[0] = 0`, `levelStart[L] = M`, `levelStart` is non-decreasing, and every `kpIndex[i]` with `i ∈ [levelStart[l], levelStart[l+1])` MUST reference a keypoint whose `level` is `l`. Without the last rule a row could be matched at one level and then mapped onto a keypoint from another, silently corrupting the per-level correspondences that the view below produces. Any violation is `INCONSISTENT_DATA`.
 
@@ -448,8 +455,13 @@ The same content always produces the same bytes from the same implementation:
 - Manifest keys in the order this specification lists them; no insignificant whitespace; `descriptorSets` sorted by `kind`, `norm`, `dimensions`, `producer`.
 - Accessors in the order their fields first appear in the manifest, each starting at a multiple of 8, with zero padding in between.
 - `extensionsUsed` and `extensionsRequired` sorted, omitted when empty.
+- Inside `params` and `info`, object keys sorted by **Unicode code point**, recursively. Their content is arbitrary, so it has no specified key order of its own; sorting is what makes the round trip byte-identical.
+
+  > **TypeScript implementers.** `JSON.stringify` does not produce this order. JavaScript objects enumerate integer-like keys numerically and first, so `{"10":a,"9":b}` serializes as `"9"` before `"10"`, whereas code-point order puts `"10"` first. These two objects MUST therefore be serialized explicitly, not handed to `JSON.stringify`.
 
 **A decoder keeps only what it understands, and the canonical writer emits only that.** Unknown keys, and unknown non-required extensions with their payloads, are ignored on decode and not preserved on encode: an implementation cannot keep data it does not understand consistent, for example when accessors are renumbered.
+
+When an unknown non-required extension is ignored, **its name is also removed from `extensionsUsed`**. The decoded `extensionsUsed` therefore lists only extensions the implementation understands, and re-encoding does not advertise a payload that is no longer there. (`extensionsRequired` needs no such rule: an unknown name there is `UNSUPPORTED_EXTENSION` and the file never decodes at all, §6.1 step 5.)
 
 **Optional objects and arrays that are empty** (`params`, `extensionsUsed`, `extensionsRequired`) are omitted by the canonical writer; readers treat an absent one as empty.
 
@@ -465,7 +477,7 @@ Fixtures live in a directory shared by `vitest` and `cargo test` (e.g. `fixtures
 - `valid/` — further valid files: several descriptor sets, `L = 1`, zero keypoints, no `patches`, unaligned-base variant (§3).
 - `invalid/` — at least one file per error code in §6.2, each paired with its expected code, **plus one file per validation rule of §§5.2, 5.4, 5.6, 5.7 and 5.8**: a fractional `offset`; a negative `count`; a `count` above `2^32 − 1`; an accessor reference that is not an integer index below `accessors.length`; a level size of `0`; a level size above `2^16 − 1`; a `scaleStep` of `1`; `levelSizes` growing between two levels; a set with `levelStart[0] ≠ 0`; a set with `levelStart[L] ≠ M`; a `kpIndex` referencing a keypoint of another level; a patch whose `level[q] ≥ L`; a patch rectangle crossing the right or bottom edge of its level; a `referenceImage.level ≥ L`.
 - `warnings/` — files that decode successfully with an exact list of expected warnings: unknown chunk, unknown descriptor `kind` next to a valid set, unknown `norm`, unknown optional extension.
-- `noncanonical/` — valid files that are **not** what the canonical writer (§7.3) would produce, each paired with the `valid/` file it is equivalent to: different manifest key order; insignificant whitespace; an explicit empty `params`; an unknown top-level key; an unknown non-required extension payload on a descriptor set.
+- `noncanonical/` — valid files that are **not** what the canonical writer (§7.3) would produce, each paired with the `valid/` file it is equivalent to: different manifest key order; insignificant whitespace; an explicit empty `params`; an unknown top-level key; an unknown non-required extension payload on a descriptor set; **`params` whose keys are unsorted and include `"9"` and `"10"`**, which catches an implementation that serialized them with `JSON.stringify`.
 
 ### 8.2 Required tests (every implementation)
 
@@ -479,7 +491,8 @@ Fixtures live in a directory shared by `vitest` and `cargo test` (e.g. `fixtures
 ### 8.3 Evolution tests
 
 - A file declaring format `0.2` is rejected by a `0.1` reader with `UNSUPPORTED_FORMAT_VERSION`.
-- Unknown keys at the top level, inside a descriptor set and inside `params` are ignored.
+- Unknown keys at the top level and inside a descriptor set are ignored and are not re-emitted.
+- Keys inside `params` and inside `info` are **data**: they are preserved and re-emitted unchanged, whatever they are (§5.1).
 - An unknown extension in `extensionsRequired` → `UNSUPPORTED_EXTENSION`; the same extension only in `extensionsUsed` → ignored.
 - A file with two descriptor sets, one of an unknown family: the other remains usable.
 - `M ≠ N` without `WKNF_multiview` in `extensionsRequired` → `INCONSISTENT_DATA`.
@@ -523,8 +536,9 @@ Decisions D1–D5 below are accepted as part of this specification.
 - **Q6 — Multiple targets.** v0.1 stores one target per file; a container of targets or a manifest of files could come later.
 - **Q8 — Canonical JSON numbers across languages.** Defining a strict number grammar for the manifest would give byte identity of the whole file across implementations, not only of the `BIN\0` chunk. It is probably not worth the complexity; to be revisited if the cross-implementation tests turn out to need it.
 - **Q9 — Media type** for serving `.wnft` (e.g. a vendor type such as `application/vnd.webarkit.nft-target`).
+- **Q10 — I-JSON.** Require the manifest to be I-JSON ([RFC 7493](https://www.rfc-editor.org/rfc/rfc7493)): no duplicate keys, numbers representable as IEEE 754 doubles. Without it, two conforming decoders can read the same untrusted file differently (`JSON.parse` keeps the last duplicate). To decide before the TS codec is written.
 
 ## 12. Revision history
 
 - **0.1 rev 1** — accepted text ([#20](https://github.com/webarkit/webarkit/pull/20)).
-- **0.1 rev 2** (2026-09-11) — editorial: round-trip scope, canonical omission of empty optionals, unknown content not preserved. No change to the bytes or the meaning of any valid `0.1` file.
+- **0.1 rev 2** (2026-09-11) — editorial: round-trip scope, canonical omission of empty optionals, unknown content not preserved, `params`/`info` content preserved as data, `extensionsUsed` pruned to what the reader understands, key ordering inside `params`/`info`, and the split between a preserved unknown `kind`/`norm` and a dropped unknown `elementType`. No change to the bytes or the meaning of any valid `0.1` file.
