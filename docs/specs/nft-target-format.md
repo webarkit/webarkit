@@ -207,7 +207,7 @@ Accessor rules:
 | Field | Accessor type, count | Content |
 |---|---|---|
 | `count` | — | `N` |
-| `detector` | — | `kind` (a `DetectorKind` string) and free-form `params`. Informative, except where a descriptor's parameters depend on the detector (§5.6) |
+| `detector` | — | `kind` (a `DetectorKind` string) and free-form `params`, which is optional — an absent `params` is equivalent to `{}` (§7.3). Informative, except where a descriptor's parameters depend on the detector (§5.6) |
 | `levelStart` | `u32`, `L + 1` | Keypoints of level `l` are the indices `[levelStart[l], levelStart[l+1])`; `levelStart[L] = N` |
 | `x`, `y` | `f32`, `N` | Level-0 coordinates (§3) |
 | `angle` | `f32`, `N` | Radians |
@@ -245,11 +245,13 @@ Each entry is one descriptor set:
 | `dimensions` | Number of bits for `"bits"`, number of elements otherwise |
 | `bytesPerDescriptor` | MUST equal `dimensions / 8` for `"bits"` (`dimensions` a multiple of 8), `dimensions` for `"u8"`, `4 × dimensions` for `"f32"` |
 | `producer` | `capabilities.name` of the backend that computed the set, e.g. `"jsfeatnext"` |
-| `params` | Free-form, family-specific parameters, e.g. `{ "wtaK": 2 }` for ORB, `{ "scaleFactor": 1.0 }` for TEBLID. MAY be empty |
+| `params` | Free-form, family-specific parameters, e.g. `{ "wtaK": 2 }` for ORB, `{ "scaleFactor": 1.0 }` for TEBLID. Optional: an absent `params` is equivalent to `{}`, and the canonical writer omits it when empty (§7.3) |
 | `count` | Rows `M` |
 | `levelStart` | `u32` accessor, `L + 1` entries: row ranges per level |
 | `kpIndex` | `u32` accessor, `M` entries: the keypoint each row describes |
 | `data` | Accessor with `type` `"u8"` for `"bits"` and `"u8"`, `"f32"` for `"f32"`; `count` = `M × bytesPerDescriptor` for `"u8"`, `M × dimensions` for `"f32"` |
+
+**`params` is data, not unknown keys.** The same holds for `info` (§5.9). Their contents are free-form *by design*, so a reader preserves them as-is and round-trips them unchanged — which is exactly what §7.3 does not promise for unrecognised keys elsewhere. These two objects are specified to carry arbitrary content, so carrying it *is* understanding it.
 
 **Several sets, and what they are for.** A file MAY contain several sets. For example, `orb` and `teblid` let one file serve backends with different capabilities (§6.3). Two `orb` sets from different producers work around the "same kind, different bits" problem (ADR-0001, contract gaps). Uniqueness is on the key (`kind`, `norm`, `dimensions`, `producer`): two sets with the same key are `INCONSISTENT_DATA`.
 
@@ -447,6 +449,10 @@ The same content always produces the same bytes from the same implementation:
 - Accessors in the order their fields first appear in the manifest, each starting at a multiple of 8, with zero padding in between.
 - `extensionsUsed` and `extensionsRequired` sorted, omitted when empty.
 
+**A decoder keeps only what it understands, and the canonical writer emits only that.** Unknown keys, and unknown non-required extensions with their payloads, are ignored on decode and not preserved on encode: an implementation cannot keep data it does not understand consistent, for example when accessors are renumbered.
+
+**Optional objects and arrays that are empty** (`params`, `extensionsUsed`, `extensionsRequired`) are omitted by the canonical writer; readers treat an absent one as empty.
+
 JSON serializers in different languages may format the same number differently (for example `0.000001` versus `1e-6`). For that reason cross-implementation conformance compares manifests **after parsing**, and requires byte identity only for the `BIN\0` chunk (§8.2, open question Q8).
 
 ## 8. Conformance and testing
@@ -459,14 +465,16 @@ Fixtures live in a directory shared by `vitest` and `cargo test` (e.g. `fixtures
 - `valid/` — further valid files: several descriptor sets, `L = 1`, zero keypoints, no `patches`, unaligned-base variant (§3).
 - `invalid/` — at least one file per error code in §6.2, each paired with its expected code, **plus one file per validation rule of §§5.2, 5.4, 5.6, 5.7 and 5.8**: a fractional `offset`; a negative `count`; a `count` above `2^32 − 1`; an accessor reference that is not an integer index below `accessors.length`; a level size of `0`; a level size above `2^16 − 1`; a `scaleStep` of `1`; `levelSizes` growing between two levels; a set with `levelStart[0] ≠ 0`; a set with `levelStart[L] ≠ M`; a `kpIndex` referencing a keypoint of another level; a patch whose `level[q] ≥ L`; a patch rectangle crossing the right or bottom edge of its level; a `referenceImage.level ≥ L`.
 - `warnings/` — files that decode successfully with an exact list of expected warnings: unknown chunk, unknown descriptor `kind` next to a valid set, unknown `norm`, unknown optional extension.
+- `noncanonical/` — valid files that are **not** what the canonical writer (§7.3) would produce, each paired with the `valid/` file it is equivalent to: different manifest key order; insignificant whitespace; an explicit empty `params`; an unknown top-level key; an unknown non-required extension payload on a descriptor set.
 
 ### 8.2 Required tests (every implementation)
 
 1. `decode(valid/minimal.wnft)` equals `valid/minimal.json`.
-2. **Same-implementation round trip:** `encode(decode(f))` is byte-identical to `f` for every valid fixture.
-3. **Cross-implementation:** `BIN\0` chunks byte-identical; manifests equal after parsing.
-4. Every `invalid/` file yields exactly its expected error code; every `warnings/` file yields `ok` with exactly its expected warnings.
-5. CRC-32 test vector: `123456789` → `0xCBF43926`.
+2. **Same-implementation round trip:** `encode(decode(f))` is byte-identical to `f` for every `valid/` fixture. The guarantee is scoped to **canonical files whose content the implementation fully understands**, which every `valid/` fixture is by construction — §7.3 discards unknown content, so no implementation can promise byte identity for a file carrying some.
+3. **Non-canonical inputs:** every `noncanonical/` fixture decodes to the same values as its `valid/` counterpart, and `encode(decode(f))` equals **that counterpart** byte for byte — not the input. This is what makes §7.3's "keeps only what it understands" testable rather than a disclaimer.
+4. **Cross-implementation:** `BIN\0` chunks byte-identical; manifests equal after parsing.
+5. Every `invalid/` file yields exactly its expected error code; every `warnings/` file yields `ok` with exactly its expected warnings.
+6. CRC-32 test vector: `123456789` → `0xCBF43926`.
 
 ### 8.3 Evolution tests
 
@@ -515,3 +523,8 @@ Decisions D1–D5 below are accepted as part of this specification.
 - **Q6 — Multiple targets.** v0.1 stores one target per file; a container of targets or a manifest of files could come later.
 - **Q8 — Canonical JSON numbers across languages.** Defining a strict number grammar for the manifest would give byte identity of the whole file across implementations, not only of the `BIN\0` chunk. It is probably not worth the complexity; to be revisited if the cross-implementation tests turn out to need it.
 - **Q9 — Media type** for serving `.wnft` (e.g. a vendor type such as `application/vnd.webarkit.nft-target`).
+
+## 12. Revision history
+
+- **0.1 rev 1** — accepted text ([#20](https://github.com/webarkit/webarkit/pull/20)).
+- **0.1 rev 2** (2026-09-11) — editorial: round-trip scope, canonical omission of empty optionals, unknown content not preserved. No change to the bytes or the meaning of any valid `0.1` file.
