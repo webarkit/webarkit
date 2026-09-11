@@ -71,9 +71,21 @@ const JSON_TYPE = "JSON";
 const JSON_PAD = 0x20;
 const OTHER_PAD = 0x00;
 
-/** Round up to a multiple of 8 — the padding rule of §4.2. */
+/**
+ * Round up to a multiple of 8 — the padding rule of §4.2.
+ *
+ * Arithmetic, not `(n + 7) & ~7`. A bitwise operation in JavaScript is a
+ * 32-bit **signed** one, so a `chunk_length` at or above `2^31` came back
+ * negative: the bounds check below then passed, the chunk cursor went
+ * negative, and the next `DataView` read threw instead of returning a
+ * failure. The §8.4 fuzzer found exactly that, which is what §6.1's "checked
+ * arithmetic" rule exists to prevent.
+ *
+ * `Math.ceil(n / 8) * 8` is exact for every `u32`: the result is below `2^53`,
+ * where a double represents every integer exactly.
+ */
 export function align8(n: number): number {
-    return (n + 7) & ~7;
+    return Math.ceil(n / 8) * 8;
 }
 
 /**
@@ -173,8 +185,8 @@ export function parseContainer(bytes: Uint8Array): ParseResult {
             );
         }
         const dataStart = at + CHUNK_HEADER_SIZE;
-        // `length` is a u32 and `align8` of one stays exact in a Number, so
-        // this sum cannot wrap and the comparison cannot be fooled.
+        // `length` is a u32 and `align8` is arithmetic, so this sum is exact
+        // in a Number and the comparison below cannot be fooled by a wrap.
         const padded = align8(length);
         if (dataStart + padded > totalLength) {
             return no(
