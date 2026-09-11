@@ -1,5 +1,5 @@
 /*
- *  tsconfig.test.json
+ *  fixtures-dir.ts
  *  nft-tracker
  *
  *  This file is part of nft-tracker - WebARKit.
@@ -37,22 +37,20 @@
  *
  */
 
-{
-  // Type-checks the test suite, which the build tsconfig deliberately excludes
-  // (tests must not land in dist/). Vitest transpiles without type-checking, so
-  // without this the target types could drift out of agreement with the very
-  // fixtures that exist to pin them down, and still pass.
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": true,
-    // The base sets rootDir to ./src so the build emits a flat dist/. Nothing
-    // is emitted here, so widen it to take test/ into the program too.
-    "rootDir": ".",
-    // The conformance and robustness suites read the fixture corpus from
-    // disk, so the test program needs node's types. src/ deliberately has
-    // none: the codec touches no filesystem and must stay runnable in a
-    // browser.
-    "types": ["vitest/globals", "node"]
-  },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
-}
+/**
+ * Where the conformance corpus lives.
+ *
+ * The relative depth from the test tree to the repository root is written down
+ * once, here, and nowhere else — five levels: `format`, `target`, `test`,
+ * `nft-tracker`, `packages`.
+ */
+
+import { fileURLToPath } from "node:url";
+
+/** `fixtures/nft-target/`, holding one frozen directory per format version. */
+export const CORPUS_ROOT = fileURLToPath(
+    new URL("../../../../../fixtures/nft-target/", import.meta.url),
+);
+
+/** `fixtures/nft-target/0.2/`, this build's own version (§8.3). */
+export const FIXTURES_DIR = `${CORPUS_ROOT}0.2/`;
