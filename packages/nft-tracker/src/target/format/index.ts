@@ -37,30 +37,26 @@
  *
  */
 
-export { DEFAULT_LIMITS, decode, encode } from "./target/format/index.js";
+/**
+ * The `.wnft` codec's public surface.
+ *
+ * Two functions and the types they return. Everything else —
+ * `parseContainer`, `scanIJson`, `validateManifest`, `materialise`,
+ * `validateTarget` — stays internal: it is reachable by deep import for the
+ * fixture generator and the test suites, and is not part of what this package
+ * promises to keep working.
+ *
+ * @see {@link https://github.com/webarkit/webarkit/blob/dev/docs/specs/nft-target-format.md}
+ */
+
+export { decode } from "./decode.js";
+export { encode } from "./encode.js";
+export { DEFAULT_LIMITS } from "./limits.js";
+export type { DecodeLimits, DecodeOptions } from "./limits.js";
 export type {
-    DecodeLimits,
-    DecodeOptions,
     DecodeResult,
     EncodeResult,
     ErrorCode,
     Warning,
     WarningCode,
-} from "./target/format/index.js";
-
-export type {
-    BitsDescriptorSet,
-    DescriptorSet,
-    DetectorInfo,
-    F32DescriptorSet,
-    JsonValue,
-    KeypointTable,
-    Params,
-    PatchTable,
-    PyramidInfo,
-    ReferenceImage,
-    TargetDb,
-    TargetInfo,
-    TargetMeta,
-    U8DescriptorSet,
-} from "./target/types.js";
+} from "./errors.js";
