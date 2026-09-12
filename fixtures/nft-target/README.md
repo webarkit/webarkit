@@ -11,6 +11,20 @@ A test regenerates the whole corpus and fails if a single byte differs, and
 another fails if a file is present that the generator does not produce — so a
 hand edit is caught, not merely discouraged.
 
+**The corpus is shared; the generator's location is historical.** §8.1 makes
+these fixtures the format's, not one implementation's, which is why they sit at
+the repository root rather than inside `packages/nft-tracker`. The generator
+lives under that package only because the TypeScript codec was written first
+and is what produces the canonical `valid/` files — it is not the corpus's
+owner, and nothing about the layout implies it is.
+
+The consequence matters for [`crates/wnft-format`](../../docs/specs/nft-target-format.md),
+the Rust codec: it **consumes these bytes and must never regenerate them.** A
+second implementation that rebuilt the corpus from its own writer would be
+checking itself against itself, and §8.2 item 4 — `BIN` chunks byte-identical,
+manifests equal after parsing — would prove nothing. The whole value of a
+shared corpus is that one implementation produced it and the other did not.
+
 ```bash
 npm run fixtures -w @webarkit/nft-tracker   # builds, then regenerates
 git status --short fixtures/                # must be clean
