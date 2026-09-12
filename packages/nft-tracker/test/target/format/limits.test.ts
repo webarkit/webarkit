@@ -52,6 +52,7 @@ describe("resolveLimits", () => {
             maxKeypoints: 1_000_000,
             maxDescriptorSets: 16,
             maxPatchSize: 64,
+            maxPatches: 65_536,
         });
     });
 

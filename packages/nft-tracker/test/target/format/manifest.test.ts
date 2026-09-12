@@ -566,6 +566,12 @@ describe("validateManifest — resource limits (§6.4)", () => {
         ).toBe("LIMIT_EXCEEDED");
     });
 
+    it("rejects more patches than the limit (§6.4, rev 3)", () => {
+        expect(
+            vErr(validate(() => {}, BIN_LENGTH, { ...DEFAULT_LIMITS, maxPatches: 0 })),
+        ).toBe("LIMIT_EXCEEDED");
+    });
+
     it("rejects a patch size above the limit", () => {
         expect(
             vErr(validate(() => {}, BIN_LENGTH, { ...DEFAULT_LIMITS, maxPatchSize: 1 })),

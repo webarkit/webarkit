@@ -224,7 +224,7 @@ Accessor rules:
 | Field | Accessor type, count | Content |
 |---|---|---|
 | `count` | — | `N` |
-| `detector` | — | `kind` (a `DetectorKind` string) and free-form `params`, which is optional — an absent `params` is equivalent to `{}` (§7.3). Informative, except where a descriptor's parameters depend on the detector (§5.6) |
+| `detector` | — | `kind` (a `DetectorKind` string) and free-form `params`, which is optional — an absent `params` is equivalent to `{}` (§7.3). Informative, except where a descriptor's parameters depend on the detector (§5.6). Any string is a legal `kind`, including the empty one and one the reader does not know: it is informative, so a reader MUST NOT constrain it further, and a writer MUST NOT refuse a target because of it |
 | `levelStart` | `u32`, `L + 1` | Keypoints of level `l` are the indices `[levelStart[l], levelStart[l+1])`; `levelStart[0] = 0`, `levelStart[L] = N`, and `levelStart` is non-decreasing |
 | `x`, `y` | `f32`, `N` | Level-0 coordinates (§3) |
 | `angle` | `f32`, `N` | Radians |
@@ -259,7 +259,7 @@ Each entry is one descriptor set:
 | `kind` | A `DescriptorKind` string, e.g. `"orb"`, `"freak"`, `"teblid"` |
 | `norm` | Distance: `"hamming"`, `"hamming2"`, `"l2"`, … |
 | `elementType` | `"bits"` (packed binary), `"u8"` or `"f32"` |
-| `dimensions` | Number of bits for `"bits"`, number of elements otherwise |
+| `dimensions` | Number of bits for `"bits"`, number of elements otherwise. No minimum is imposed: `0` is legal, and describes a set whose descriptors carry nothing, which `bytesPerDescriptor: 0` must then match. Readers and writers MUST agree on this — a file one accepts and the other cannot re-emit breaks the round trip of §8.2 item 2 |
 | `bytesPerDescriptor` | MUST equal `dimensions / 8` for `"bits"` (`dimensions` a multiple of 8), `dimensions` for `"u8"`, `4 × dimensions` for `"f32"` |
 | `producer` | `capabilities.name` of the backend that computed the set, e.g. `"jsfeatnext"` |
 | `params` | Free-form, family-specific parameters, e.g. `{ "wtaK": 2 }` for ORB, `{ "scaleFactor": 1.0 }` for TEBLID. Optional: an absent `params` is equivalent to `{}`, and the canonical writer omits it when empty (§7.3) |
@@ -447,6 +447,7 @@ Readers MUST enforce configurable limits and report `LIMIT_EXCEEDED` (or `MANIFE
 | Keypoints per file | 1,000,000 |
 | Descriptor sets per file | 16 |
 | Patch size `P` | 64 |
+| Patches per file `Q` | 65,536 |
 
 ## 7. Versioning and evolution
 
@@ -489,6 +490,8 @@ The same content always produces the same bytes from the same implementation:
 **The writer MUST NOT emit a file that a conforming reader would reject.** Before serializing, it validates the whole target against this specification — every I-JSON check of §5 on the free-form content of `params` and `info`, and every domain and consistency rule of §5 and §6 on the rest — and on failure returns an error instead of emitting bytes.
 
 In particular the writer **MUST NOT coerce values** to make them serializable. `JSON.stringify` turns `NaN` and `Infinity` into `null`, so a target carrying either would encode to a file that decodes cleanly with the value silently changed — the one outcome worse than a rejected write.
+
+**On check (c), the writer is deliberately stricter than the reader.** Check (c) constrains integer *literals*, so a reader accepts `1e+21`: it carries an exponent and is therefore not an integer literal at all. A writer MUST nonetheless refuse any integer-valued number outside ±(2^53 − 1) in `params` or `info`, whatever its own serializer would emit for it. The reason is Q8: number formatting is not fixed across languages, so a second implementation may well write that same value as `1000000000000000000000` — which *is* an integer literal outside the range, and which every conforming reader rejects. A target that one implementation can write and another cannot is exactly what §1 exists to prevent, and the cost of the stricter rule is nil: no real target carries an integer that large.
 
 The writer's result mirrors the reader's:
 
@@ -584,4 +587,5 @@ Decisions D1–D5 below are accepted as part of this specification.
 - **0.1 rev 1** — accepted text ([#20](https://github.com/webarkit/webarkit/pull/20)).
 - **0.1 rev 2** (2026-09-11) — editorial: round-trip scope, canonical omission of empty optionals, unknown content not preserved, `params`/`info` content preserved as data, `extensionsUsed` pruned to what the reader understands, key ordering inside `params`/`info`, and the split between a preserved unknown `kind`/`norm` and a dropped unknown `elementType`. No change to the bytes or the meaning of any valid `0.1` file.
 - **0.2** (2026-09-11) — normative: the manifest must be I-JSON (Q10). Files with duplicate keys, unpaired surrogates, integers beyond ±(2^53 − 1), number literals rounding to infinity, or Unicode noncharacters in strings become invalid. The canonical writer (§7.3) must validate a target before serializing it and return `INVALID_TARGET` rather than emit a file a reader would reject, and must never coerce a value to make it serializable. No 0.1 file or codec existed, so nothing is affected.
+- **0.2 rev 3** (2026-09-12) — editorial, from the first implementation's review: `dimensions` has no minimum and `detector.kind` may be any string, both stated because a writer had invented constraints the text did not impose, so a legal file decoded but could not be re-emitted (§5.5, §5.6); the writer's deliberate extra strictness on I-JSON check (c) is stated and justified, since Q8 leaves number formatting free across languages (§7.3); a limit on patches per file, the one repeated structure that had none (§6.4). No change to the bytes or the meaning of any valid `0.2` file.
 - **0.2 rev 2** (2026-09-11) — editorial, from the first implementation: an unknown chunk may sit second when there is no `BIN\0` (§4.2); a missing `BIN\0` under a manifest that declares accessors is `BAD_LAYOUT` (§5.2); `keypoints.levelStart[0] = 0` stated (§5.5); a file whose every descriptor set is dropped still decodes (§5.6); the file-size limit is step 0 of the validation order (§6.1); the new warning `UNKNOWN_EXTENSION_IGNORED` (§6.2), which §8.1 already required a fixture for; readers accept a view so §3's copy fallback is reachable, and the unaligned base stops being listed as a fixture file (§3, §8.1). No change to the bytes or the meaning of any valid `0.2` file.

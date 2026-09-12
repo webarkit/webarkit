@@ -59,8 +59,16 @@ export interface DecodeLimits {
     readonly maxLevels: number;
     readonly maxKeypoints: number;
     readonly maxDescriptorSets: number;
-    /** The patch edge `P`, not the number of patches. */
+    /** The patch edge `P`. */
     readonly maxPatchSize: number;
+    /**
+     * The number of patches `Q`.
+     *
+     * Bounded transitively anyway — `Q x P x P` pixel bytes have to exist in
+     * the BIN chunk — but 6.4 exists so that a reader checks a count rather
+     * than reasoning about what some other check implies.
+     */
+    readonly maxPatches: number;
 }
 
 /** The defaults §6.4 suggests. */
@@ -71,6 +79,7 @@ export const DEFAULT_LIMITS: DecodeLimits = Object.freeze({
     maxKeypoints: 1_000_000,
     maxDescriptorSets: 16,
     maxPatchSize: 64,
+    maxPatches: 65_536,
 });
 
 export interface DecodeOptions {
