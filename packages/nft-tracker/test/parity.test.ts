@@ -214,7 +214,7 @@ function maxCornerDisplacement(a: Mat3, b: Mat3, width: number, height: number):
  * is what withSeededRandom buys and why it is worth its ugliness until
  * RansacOptions carries an rng.
  *
- * Measured on these fixtures: 7.52e-06 px, roughly four orders of magnitude
+ * Measured on these fixtures: 4.71e-06 px, roughly four orders of magnitude
  * inside this bound.
  */
 const MAX_CORNER_DISPLACEMENT_PX = 0.05;
@@ -222,115 +222,26 @@ const MAX_CORNER_DISPLACEMENT_PX = 0.05;
 const SEED = 20260911;
 
 let cv: CvBackend;
-let stableCv: CvBackend;
 let target: GrayImage;
 let scene: GrayImage;
 let K: Mat3;
 
 beforeAll(async () => {
     cv = await createJsfeatNextBackend();
-    stableCv = stabilise(cv);
     target = readPgm(TARGET_FIXTURE);
     scene = readPgm(SCENE_FIXTURE);
     K = intrinsics(scene.width, scene.height);
 });
 
-/**
- * A backend wrapper that makes detect and describe HISTORY-FREE, so the two
- * pipelines under comparison see identical detector and descriptor outputs.
- *
- * Why it exists: jsfeatNext's detect is history-dependent -- earlier calls
- * on the instance (describes, matches, RANSAC runs) can shift coarse-level
- * corners on a later detect of the same image (diagnosed on this branch; an
- * upstream defect to file). The parity argument compares two PIPELINES given
- * the same CV outputs; it was never meant to also measure the backend's
- * cache behaviour. This wrapper enforces the "identical by construction"
- * premise the tolerance comment below relies on:
- *
- * - detect: memoised per (image, full DetectOptions) -- the first call
- *   computes, every later call replays the same keypoint objects. Keying on
- *   the whole options object (rather than picking out `levels` and
- *   `maxKeypoints` by hand) means an option the key would otherwise ignore --
- *   `threshold` today, anything added tomorrow -- cannot silently replay the
- *   wrong keypoints for a call that only shares the fields we remembered to
- *   name. `JSON.stringify` is safe as a key here because every call site in
- *   this file builds its options object the same way, so property order is
- *   stable across calls.
- * - describe: a per-keypoint row cache keyed by keypoint OBJECT IDENTITY.
- *   Descriptor rows are computed once per keypoint (on the first describe
- *   that sees it) and later describes assemble their output from the cache,
- *   whatever the array order -- valid because ORB describes each keypoint
- *   independently. That independence is CHECKED at runtime, not just
- *   asserted here: whenever a describe call recomputes (because it includes
- *   at least one keypoint not yet cached), every already-cached keypoint's
- *   freshly computed row is compared byte-for-byte against the row on file,
- *   and a descriptor-family change (bytesPerDescriptor, kind or norm) is
- *   compared too. Either mismatch throws rather than silently serving stale
- *   or inconsistent rows.
- *
- * match, estimateHomography and poseFromHomography stay real.
+/*
+ * There used to be a stabilise() wrapper here, memoising detect and caching
+ * describe rows so the two pipelines under comparison saw identical CV
+ * outputs despite jsfeat-next 0.16's history-dependent detect (#27: FAST
+ * read one uninitialised scratch cell per image row). jsfeat-next 0.17
+ * fixed that upstream (webarkit/jsfeatNext#203, closing #202) and #28 requires it, so
+ * detect is a pure function of (image, options) again and both sides can
+ * run against the real backend with nothing between them.
  */
-function stabilise(cv: CvBackend): CvBackend {
-    const detectMemo = new Map<string, Keypoint[]>();
-    const images = new Map<GrayImage, number>();
-    const imageId = (img: GrayImage): number => {
-        if (!images.has(img)) images.set(img, images.size);
-        return images.get(img)!;
-    };
-    const rows = new Map<Keypoint, Uint8Array>();
-    let rowMeta: { bytesPerDescriptor: number; kind: Descriptors["kind"]; norm: Descriptors["norm"] } | null = null;
-    return {
-        capabilities: cv.capabilities,
-        detect: (img, o) => {
-            const key = `${imageId(img)}|${JSON.stringify(o ?? {})}`;
-            let kps = detectMemo.get(key);
-            if (!kps) {
-                kps = cv.detect(img, o);
-                detectMemo.set(key, kps);
-            }
-            return kps;
-        },
-        describe: (img, kps, o) => {
-            if (kps.some((k) => !rows.has(k))) {
-                const d = cv.describe(img, kps, o);
-                if (
-                    rowMeta &&
-                    (rowMeta.bytesPerDescriptor !== d.bytesPerDescriptor ||
-                        rowMeta.kind !== d.kind ||
-                        rowMeta.norm !== d.norm)
-                ) {
-                    throw new Error(
-                        "stabilise: describe returned a different descriptor family " +
-                            "(bytesPerDescriptor/kind/norm) than a previous call -- the row cache " +
-                            "assumes one family for the life of the wrapper and cannot be trusted " +
-                            "across a change."
-                    );
-                }
-                rowMeta = { bytesPerDescriptor: d.bytesPerDescriptor, kind: d.kind, norm: d.norm };
-                kps.forEach((k, i) => {
-                    const fresh = d.data.subarray(i * d.bytesPerDescriptor, (i + 1) * d.bytesPerDescriptor);
-                    const cached = rows.get(k);
-                    if (cached && !cached.every((v, j) => v === fresh[j])) {
-                        throw new Error(
-                            "stabilise: describe produced different bytes for a keypoint it had " +
-                                "already described -- the per-keypoint independence this cache relies " +
-                                "on does not hold, and the parity comparison cannot be trusted."
-                        );
-                    }
-                    rows.set(k, fresh);
-                });
-                return d;
-            }
-            const meta = rowMeta!;
-            const data = new Uint8Array(kps.length * meta.bytesPerDescriptor);
-            kps.forEach((k, i) => data.set(rows.get(k)!, i * meta.bytesPerDescriptor));
-            return { data, count: kps.length, bytesPerDescriptor: meta.bytesPerDescriptor, kind: meta.kind, norm: meta.norm };
-        },
-        match: (q, t, o) => cv.match(q, t, o),
-        estimateHomography: (s, d, o) => cv.estimateHomography(s, d, o),
-        poseFromHomography: (H2, K2) => cv.poseFromHomography(H2, K2),
-    };
-}
 
 describe("NftTracker reproduces the demo pipeline", () => {
     it("locks on where the demo locks on, with the same matches and inliers", () => {
@@ -338,11 +249,11 @@ describe("NftTracker reproduces the demo pipeline", () => {
         // consume the identical sequence from their first draw. Building the
         // target is left outside the seeded region: it draws nothing, and
         // keeping the region down to the pipelines makes the symmetry visible.
-        const targetDb = buildTargetFromImage(stableCv, target, { levels: 8 });
-        const { value: reference } = withSeededRandom(SEED, () => referencePipeline(stableCv, target, scene));
+        const targetDb = buildTargetFromImage(cv, target, { levels: 8 });
+        const { value: reference } = withSeededRandom(SEED, () => referencePipeline(cv, target, scene));
         const { value: tracked } = withSeededRandom(SEED, () =>
             // 900 is the STATIC demo's budget; the webcam demo's 300 is the default.
-            new NftTracker(stableCv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0)
+            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0)
         );
 
         // Guard the fixture itself: if the reference pipeline no longer finds
@@ -358,10 +269,10 @@ describe("NftTracker reproduces the demo pipeline", () => {
     });
 
     it("recovers the same homography, to within the f32 storage of the target's coordinates", () => {
-        const targetDb = buildTargetFromImage(stableCv, target, { levels: 8 });
-        const { value: reference } = withSeededRandom(SEED, () => referencePipeline(stableCv, target, scene));
+        const targetDb = buildTargetFromImage(cv, target, { levels: 8 });
+        const { value: reference } = withSeededRandom(SEED, () => referencePipeline(cv, target, scene));
         const { value: tracked } = withSeededRandom(SEED, () =>
-            new NftTracker(stableCv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0)
+            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0)
         );
 
         expect(reference.ok && tracked.ok).toBe(true);
@@ -374,21 +285,19 @@ describe("NftTracker reproduces the demo pipeline", () => {
     });
 
     it("finds the same scene keypoints the demo's own detect call finds", () => {
-        // Both `expected` and `tracked.sceneKeypoints` go through stableCv, so
-        // they hit the same detect memo key when the tracker's own call uses
-        // the demo's exact options -- (scene, { levels: 1, maxKeypoints: 900 }).
-        // What this pins is therefore that the tracker issues that exact call,
-        // NOT that two independent detects on the real backend agree. The
-        // strong form -- comparing two unmemoised detect() calls -- is what the
-        // three unmitigated runs of this file showed the backend cannot
-        // promise: jsfeatNext's detect is history-dependent, and the tracker's
-        // internal call history differs from a detect issued fresh in a test.
-        // Until that upstream defect is fixed, the honest claim is the weak
-        // one: same options in, same (memoised) keypoints out.
-        const expected = stableCv.detect(scene, { levels: 1, maxKeypoints: 900 });
-        const targetDb = buildTargetFromImage(stableCv, target, { levels: 8 });
+        // The STRONG form: two independent detect() calls on the real
+        // backend -- one issued fresh here, one made internally by the
+        // tracker after a full target build -- must agree bit for bit.
+        // Possible because detect became a pure function of (image, options)
+        // in jsfeat-next 0.17 (#27, fixed upstream by jsfeatNext#203, closing #202,
+        // required since #28); under 0.16 this exact assertion failed in
+        // every unmitigated run, which is also why it earns its place: it is
+        // the assertion that would have caught #27 early, and it guards
+        // against that class of impurity coming back.
+        const expected = cv.detect(scene, { levels: 1, maxKeypoints: 900 });
+        const targetDb = buildTargetFromImage(cv, target, { levels: 8 });
         const { value: tracked } = withSeededRandom(SEED, () =>
-            new NftTracker(stableCv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0)
+            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0)
         );
 
         expect(tracked.sceneKeypoints.length).toBe(expected.length);
@@ -409,12 +318,12 @@ describe("NftTracker reproduces the demo pipeline", () => {
             // Everything both pipelines do before RANSAC: the tracker's target
             // preparation, and the frame-side work, through this file's own
             // transcriptions rather than the package's helpers.
-            const db = buildTargetFromImage(stableCv, target, { levels: 8 });
-            const kScene = stableCv.detect(scene, { levels: 1, maxKeypoints: 900 });
-            const kTarget = stableCv.detect(target, { levels: 8, maxKeypoints: 8 * 260 });
-            const dScene = stableCv.describe(scene, kScene);
-            const dTarget = stableCv.describe(target, kTarget);
-            const matches = referenceMatchPerLevel(stableCv, dScene, referenceLevelIndex(kTarget, dTarget), 0.8);
+            const db = buildTargetFromImage(cv, target, { levels: 8 });
+            const kScene = cv.detect(scene, { levels: 1, maxKeypoints: 900 });
+            const kTarget = cv.detect(target, { levels: 8, maxKeypoints: 8 * 260 });
+            const dScene = cv.describe(scene, kScene);
+            const dTarget = cv.describe(target, kTarget);
+            const matches = referenceMatchPerLevel(cv, dScene, referenceLevelIndex(kTarget, dTarget), 0.8);
             return db.keypoints.count + matches.length;
         });
 
@@ -424,10 +333,10 @@ describe("NftTracker reproduces the demo pipeline", () => {
         // the target builder ever starts drawing, this fails and points here.
         expect(deterministic.draws).toBe(0);
 
-        const targetDb = buildTargetFromImage(stableCv, target, { levels: 8 });
-        const reference = withSeededRandom(SEED, () => referencePipeline(stableCv, target, scene));
+        const targetDb = buildTargetFromImage(cv, target, { levels: 8 });
+        const reference = withSeededRandom(SEED, () => referencePipeline(cv, target, scene));
         const tracked = withSeededRandom(SEED, () =>
-            new NftTracker(stableCv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0)
+            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0)
         );
 
         expect(reference.draws).toBeGreaterThan(0);
@@ -446,5 +355,28 @@ describe("NftTracker reproduces the demo pipeline", () => {
         // reaches further than the tolerance reasoning assumes, which is worth
         // understanding rather than silencing.
         expect(tracked.draws).toBe(reference.draws);
+    });
+
+    it("detects the pinned number of keypoints on the committed fixtures", () => {
+        // Absolute counts, pinnable because detect became a pure function of
+        // (image, options) in jsfeat-next 0.17 (#27, required since #28) --
+        // under 0.16 these numbers drifted with cache history and could not
+        // be constants. What this catches that the relative assertions above
+        // cannot: silent ecosystem drift. Tracker-vs-reference comparisons
+        // stay green when the BACKEND changes, because both sides change
+        // together -- a jsfeat-next upgrade that alters FAST or the pyramid,
+        // an adapter change to level budgeting, or a regression of #27-class
+        // impurity (which would show as these counts flapping across CI runs)
+        // all surface here and nowhere else in this file. Updating the two
+        // constants on a deliberate backend change is the intended friction:
+        // it forces the change to be noticed and written down.
+        const targetDb = buildTargetFromImage(cv, target, { levels: 8 });
+        expect(targetDb.keypoints.count).toBe(2062);
+
+        // 900 is the cap, not the raw count -- the scene fixture holds more
+        // corners than the budget -- so this also pins that maxKeypoints
+        // stays an exact bound.
+        const kScene = cv.detect(scene, { levels: 1, maxKeypoints: 900 });
+        expect(kScene.length).toBe(900);
     });
 });
