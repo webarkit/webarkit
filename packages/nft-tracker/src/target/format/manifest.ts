@@ -642,7 +642,10 @@ export function validateManifest(
             bad(`descriptorSets[${i}].params must be an object when present`);
             break;
         }
-        const key = `${kind} ${norm} ${dimensions} ${producer}`;
+        // The uniqueness key of 5.6. JSON.stringify rather than a
+        // separator string: a producer or kind containing the separator
+        // would otherwise let two different tuples collide.
+        const key = JSON.stringify([kind, norm, dimensions, producer]);
         if (seenKeys.has(key)) {
             inconsistent(
                 `descriptorSets[${i}] repeats the key (kind, norm, dimensions, producer) of an earlier set`,
