@@ -41,7 +41,7 @@
  * What this build recognises.
  *
  * The contract's `DescriptorKind`, `DescriptorNorm` and `DetectorKind` are
- * *types*, and Â§5.6 needs the same information at run time: whether a set's
+ * *types*, and §5.6 needs the same information at run time: whether a set's
  * family, metric or element type is one this reader knows decides whether the
  * set is usable, preserved or dropped. These lists are that information, and
  * the assertions at the bottom keep them from drifting from the unions.
@@ -53,11 +53,11 @@ import type {
     DetectorKind,
 } from "@webarkit/cv-backend-spec";
 
-/** The only `format.version` this build reads or writes (Â§7.1). */
+/** The only `format.version` this build reads or writes (§7.1). */
 export const SUPPORTED_FORMAT_VERSION = "0.2";
 
 /**
- * The only `container_major` this build frames (Â§7.1).
+ * The only `container_major` this build frames (§7.1).
  *
  * Any `container_minor` is accepted: a newer minor only adds chunks a reader
  * can skip.
@@ -68,7 +68,7 @@ export const SUPPORTED_CONTAINER_MAJOR = 1;
  * Descriptor families this build recognises.
  *
  * A set whose `kind` is not here stays **present but unusable**, with the
- * warning `UNSUPPORTED_DESCRIPTOR_SET` (Â§5.6): its element width is still
+ * warning `UNSUPPORTED_DESCRIPTOR_SET` (§5.6): its element width is still
  * known, so it round-trips unchanged and the rest of the file keeps working.
  */
 export const KNOWN_DESCRIPTOR_KINDS = [
@@ -82,9 +82,9 @@ export const KNOWN_DESCRIPTOR_KINDS = [
 /**
  * Distance metrics this build recognises.
  *
- * Â§5.6's prose lists `"hamming2"` among the possibilities, and it is
+ * §5.6's prose lists `"hamming2"` among the possibilities, and it is
  * deliberately **not** here: the contract's `DescriptorNorm` does not define
- * it, so a set using it is one this reader does not know â€” warned about and
+ * it, so a set using it is one this reader does not know — warned about and
  * preserved. That is the rule working, not a gap in this list.
  */
 export const KNOWN_DESCRIPTOR_NORMS = [
@@ -92,7 +92,7 @@ export const KNOWN_DESCRIPTOR_NORMS = [
     "l2",
 ] as const satisfies readonly DescriptorNorm[];
 
-/** Detector families the contract enumerates. Informative only (Â§5.5). */
+/** Detector families the contract enumerates. Informative only (§5.5). */
 export const KNOWN_DETECTOR_KINDS = [
     "fast",
     "yape",
@@ -102,23 +102,23 @@ export const KNOWN_DETECTOR_KINDS = [
 ] as const satisfies readonly DetectorKind[];
 
 /**
- * Element types the format defines (Â§5.6).
+ * Element types the format defines (§5.6).
  *
- * Unlike `kind` and `norm`, an unknown one makes a set uninterpretable â€”
- * nothing says how wide an element is or which accessor type to expect â€” so
+ * Unlike `kind` and `norm`, an unknown one makes a set uninterpretable —
+ * nothing says how wide an element is or which accessor type to expect — so
  * such a set is dropped on decode rather than preserved.
  */
 export const KNOWN_ELEMENT_TYPES = ["bits", "u8", "f32"] as const;
 
 /**
- * Extensions this build implements â€” none yet.
+ * Extensions this build implements — none yet.
  *
- * `WKNF_multiview` (Â§5.6) is specified, but its adoption is blocked on
- * k-nearest matching in the contract (Â§11, Q3), so listing it here would claim
+ * `WKNF_multiview` (§5.6) is specified, but its adoption is blocked on
+ * k-nearest matching in the contract (§11, Q3), so listing it here would claim
  * a ratio test this package cannot perform. The consequences are exactly the
  * specified ones: the name in `extensionsRequired` gives
  * `UNSUPPORTED_EXTENSION`, in `extensionsUsed` alone it is pruned with
- * `UNKNOWN_EXTENSION_IGNORED`, and `M â‰  N` is therefore always
+ * `UNKNOWN_EXTENSION_IGNORED`, and `M ≠ N` is therefore always
  * `INCONSISTENT_DATA`.
  */
 export const IMPLEMENTED_EXTENSIONS: readonly string[] = [];
