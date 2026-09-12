@@ -38,7 +38,7 @@
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
-import type { CvBackend, Descriptors, GrayImage, Keypoint, Mat3 } from "@webarkit/cv-backend-spec";
+import type { CvBackend, GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
 import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
 import { NftTracker } from "../src/tracker.js";
 import { buildTargetFromImage } from "../src/target/build_from_image.js";
@@ -102,58 +102,19 @@ describe("NftTracker.process", () => {
     });
 
     it("gives the same answer twice for the same frame under the same seed", () => {
-        // ADR-0001 point 7: fixtures have to reproduce. What this pins is
-        // that the TRACKER adds no nondeterminism of its own -- no hidden
-        // state between frames, no unseeded random choice. It deliberately
-        // does NOT pin end-to-end reproducibility of tracker+backend,
-        // because that is false today: jsfeatNext's detect is
-        // history-dependent (diagnosed in this package's target-builder
-        // work), and here the first process() call's describe/match/RANSAC
-        // history shifts the second call's coarse-level corners -- observed
-        // as a consistent one-inlier drift. That is an upstream defect to
-        // file, not a tracker property to absorb into a tolerance.
-        //
-        // So a record-replay tape hands both runs identical detect/describe
-        // outputs: run 1 records, run 2 replays. match, estimateHomography
-        // and poseFromHomography stay real, and each run gets its own
-        // seeded generator. Identical inputs plus identical seeds must give
-        // bit-identical results -- a failure here indicts either the
-        // tracker itself or a backend stage that received identical inputs,
-        // and both of those are findings, not noise.
-        // The taped double below omits filterMatches; if the real backend ever
-        // gains one, its capabilities would claim a path the tape cannot take.
-        expect(cv.filterMatches).toBeUndefined();
-
-        const detects: Keypoint[][] = [];
-        const describes: Descriptors[] = [];
-        let detectN = 0;
-        let describeN = 0;
-        const taped: CvBackend = {
-            capabilities: cv.capabilities,
-            detect: (img, o) => {
-                const i = detectN++;
-                if (i < detects.length) return detects[i];
-                const r = cv.detect(img, o);
-                detects.push(r);
-                return r;
-            },
-            describe: (img, kps, o) => {
-                const i = describeN++;
-                if (i < describes.length) return describes[i];
-                const r = cv.describe(img, kps, o);
-                describes.push(r);
-                return r;
-            },
-            match: (q, t, o) => cv.match(q, t, o),
-            estimateHomography: (s, d, o) => cv.estimateHomography(s, d, o),
-            poseFromHomography: (H2, K2) => cv.poseFromHomography(H2, K2),
-        };
-
-        const tracker = new NftTracker(taped, target, K, { maxSceneKeypoints: 900 });
+        // ADR-0001 point 7: fixtures have to reproduce. Two full process()
+        // runs on the REAL backend, each under its own freshly seeded
+        // generator, must agree bit for bit. This end-to-end form is
+        // possible because detect became a pure function of
+        // (image, options) in jsfeat-next 0.17 (#27, required since #28);
+        // under 0.16 the first run's describe/match/RANSAC history shifted
+        // the second run's coarse-level corners (a consistent one-inlier
+        // drift), and this test had to hide detect/describe behind a
+        // record-replay tape to say anything about the tracker at all. With
+        // the backend pure, a failure here means real hidden state -- in
+        // the tracker or in a backend stage -- and is a finding, not noise.
+        const tracker = new NftTracker(cv, target, K, { maxSceneKeypoints: 900 });
         const { value: a } = withSeededRandom(7, () => tracker.process(scene, 0));
-        // Rewind the tape: run 2 replays run 1's detect/describe outputs.
-        detectN = 0;
-        describeN = 0;
         const { value: b } = withSeededRandom(7, () => tracker.process(scene, 0));
 
         expect(a.ok && b.ok).toBe(true);
