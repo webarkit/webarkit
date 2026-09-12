@@ -247,14 +247,26 @@ beforeAll(async () => {
  * cache behaviour. This wrapper enforces the "identical by construction"
  * premise the tolerance comment below relies on:
  *
- * - detect: memoised per (image, levels, maxKeypoints) -- the first call
- *   computes, every later call replays the same keypoint objects.
+ * - detect: memoised per (image, full DetectOptions) -- the first call
+ *   computes, every later call replays the same keypoint objects. Keying on
+ *   the whole options object (rather than picking out `levels` and
+ *   `maxKeypoints` by hand) means an option the key would otherwise ignore --
+ *   `threshold` today, anything added tomorrow -- cannot silently replay the
+ *   wrong keypoints for a call that only shares the fields we remembered to
+ *   name. `JSON.stringify` is safe as a key here because every call site in
+ *   this file builds its options object the same way, so property order is
+ *   stable across calls.
  * - describe: a per-keypoint row cache keyed by keypoint OBJECT IDENTITY.
  *   Descriptor rows are computed once per keypoint (on the first describe
  *   that sees it) and later describes assemble their output from the cache,
  *   whatever the array order -- valid because ORB describes each keypoint
- *   independently (verified on this backend: describe(sorted) equals the
- *   row-permutation of describe(unsorted)).
+ *   independently. That independence is CHECKED at runtime, not just
+ *   asserted here: whenever a describe call recomputes (because it includes
+ *   at least one keypoint not yet cached), every already-cached keypoint's
+ *   freshly computed row is compared byte-for-byte against the row on file,
+ *   and a descriptor-family change (bytesPerDescriptor, kind or norm) is
+ *   compared too. Either mismatch throws rather than silently serving stale
+ *   or inconsistent rows.
  *
  * match, estimateHomography and poseFromHomography stay real.
  */
@@ -270,7 +282,7 @@ function stabilise(cv: CvBackend): CvBackend {
     return {
         capabilities: cv.capabilities,
         detect: (img, o) => {
-            const key = `${imageId(img)}|${o?.levels}|${o?.maxKeypoints}`;
+            const key = `${imageId(img)}|${JSON.stringify(o ?? {})}`;
             let kps = detectMemo.get(key);
             if (!kps) {
                 kps = cv.detect(img, o);
@@ -281,10 +293,32 @@ function stabilise(cv: CvBackend): CvBackend {
         describe: (img, kps, o) => {
             if (kps.some((k) => !rows.has(k))) {
                 const d = cv.describe(img, kps, o);
+                if (
+                    rowMeta &&
+                    (rowMeta.bytesPerDescriptor !== d.bytesPerDescriptor ||
+                        rowMeta.kind !== d.kind ||
+                        rowMeta.norm !== d.norm)
+                ) {
+                    throw new Error(
+                        "stabilise: describe returned a different descriptor family " +
+                            "(bytesPerDescriptor/kind/norm) than a previous call -- the row cache " +
+                            "assumes one family for the life of the wrapper and cannot be trusted " +
+                            "across a change."
+                    );
+                }
                 rowMeta = { bytesPerDescriptor: d.bytesPerDescriptor, kind: d.kind, norm: d.norm };
-                kps.forEach((k, i) =>
-                    rows.set(k, d.data.subarray(i * d.bytesPerDescriptor, (i + 1) * d.bytesPerDescriptor))
-                );
+                kps.forEach((k, i) => {
+                    const fresh = d.data.subarray(i * d.bytesPerDescriptor, (i + 1) * d.bytesPerDescriptor);
+                    const cached = rows.get(k);
+                    if (cached && !cached.every((v, j) => v === fresh[j])) {
+                        throw new Error(
+                            "stabilise: describe produced different bytes for a keypoint it had " +
+                                "already described -- the per-keypoint independence this cache relies " +
+                                "on does not hold, and the parity comparison cannot be trusted."
+                        );
+                    }
+                    rows.set(k, fresh);
+                });
                 return d;
             }
             const meta = rowMeta!;
@@ -340,9 +374,17 @@ describe("NftTracker reproduces the demo pipeline", () => {
     });
 
     it("finds the same scene keypoints the demo's own detect call finds", () => {
-        // The frame side of the pipeline should be bit-identical: nothing about
-        // it goes through the target format, so any difference here is a bug in
-        // how the tracker calls detect, not a rounding effect.
+        // Both `expected` and `tracked.sceneKeypoints` go through stableCv, so
+        // they hit the same detect memo key when the tracker's own call uses
+        // the demo's exact options -- (scene, { levels: 1, maxKeypoints: 900 }).
+        // What this pins is therefore that the tracker issues that exact call,
+        // NOT that two independent detects on the real backend agree. The
+        // strong form -- comparing two unmemoised detect() calls -- is what the
+        // three unmitigated runs of this file showed the backend cannot
+        // promise: jsfeatNext's detect is history-dependent, and the tracker's
+        // internal call history differs from a detect issued fresh in a test.
+        // Until that upstream defect is fixed, the honest claim is the weak
+        // one: same options in, same (memoised) keypoints out.
         const expected = stableCv.detect(scene, { levels: 1, maxKeypoints: 900 });
         const targetDb = buildTargetFromImage(stableCv, target, { levels: 8 });
         const { value: tracked } = withSeededRandom(SEED, () =>
