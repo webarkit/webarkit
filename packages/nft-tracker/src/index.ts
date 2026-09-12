@@ -37,6 +37,9 @@
  *
  */
 
+export { buildLevelIndex, chooseDescriptorSet, matchPerLevel } from "./detection.js";
+export type { TargetLevelView, UsableDescriptorSet } from "./detection.js";
+
 export type {
     BitsDescriptorSet,
     DescriptorSet,
