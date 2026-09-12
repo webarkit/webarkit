@@ -48,6 +48,15 @@ export {
 } from "./target/build_from_image.js";
 export type { BuildTargetOptions } from "./target/build_from_image.js";
 
+export {
+    DEFAULT_MAX_SCENE_KEYPOINTS,
+    DEFAULT_RANSAC_THRESHOLD,
+    DEFAULT_RATIO,
+    DEFAULT_SCENE_LEVELS,
+    NftTracker,
+} from "./tracker.js";
+export type { NftTrackerOptions, TrackFailure, TrackResult } from "./tracker.js";
+
 export type {
     BitsDescriptorSet,
     DescriptorSet,
