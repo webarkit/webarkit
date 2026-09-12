@@ -38,7 +38,7 @@
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
-import type { CvBackend, GrayImage } from "@webarkit/cv-backend-spec";
+import type { CvBackend, Descriptors, GrayImage, Keypoint } from "@webarkit/cv-backend-spec";
 import { createJsfeatNextBackend } from "@webarkit/cv-backend-jsfeatnext";
 import { buildTargetFromImage, DEFAULT_SCALE_STEP } from "../src/target/build_from_image.js";
 import { readPgm, TARGET_FIXTURE } from "./fixtures/pgm.js";
@@ -104,15 +104,62 @@ describe("buildTargetFromImage", () => {
         for (let i = 0; i < set.count; i++) expect(set.kpIndex[i]).toBe(i);
     });
 
-    it("stores the descriptors the backend computed for the UNROUNDED keypoints", () => {
-        // f32 storage is a storage decision (5.5); it must not reach describe(),
-        // whose sampling patch is positioned from the coordinates it is handed.
-        const target = buildTargetFromImage(cv, image, { levels: 4 });
-        const raw = cv.detect(image, { levels: 4, maxKeypoints: 4 * 260 });
-        const order = raw.map((_, i) => i).sort((a, b) => raw[a].level - raw[b].level || a - b);
-        const expected = cv.describe(image, order.map((i) => raw[i]));
+    it("describes the UNROUNDED detected keypoints, then stores their f32 narrowing", () => {
+        // What this pins: the builder's dataflow is detect -> stable level
+        // sort -> describe -> f32 storage, with describe seeing the float64
+        // coordinates detect produced.
+        //
+        // It is pinned by OBSERVING the builder's backend calls rather than
+        // by re-running detect+describe and comparing bytes: jsfeatNext's
+        // detect is history-dependent (internal cache reuse makes
+        // coarse-level corners depend on prior calls -- discovered while
+        // this test flaked, see the task report), so a second detect is not
+        // guaranteed to reproduce the first and a byte comparison against it
+        // cannot be trusted. Watching the actual calls is immune to that and
+        // pins the mechanism directly.
+        let detected: Keypoint[] | null = null;
+        const describeCalls: { received: Keypoint[]; returned: Descriptors }[] = [];
+        const spy: CvBackend = {
+            capabilities: cv.capabilities,
+            detect: (img, o) => (detected = cv.detect(img, o)),
+            describe: (img, kps, o) => {
+                const returned = cv.describe(img, kps, o);
+                describeCalls.push({ received: kps.slice(), returned });
+                return returned;
+            },
+            match: (q, t, o) => cv.match(q, t, o),
+            estimateHomography: (s, d, o) => cv.estimateHomography(s, d, o),
+            poseFromHomography: (H, K) => cv.poseFromHomography(H, K),
+        };
 
-        expect(Array.from(target.descriptorSets[0].data)).toEqual(Array.from(expected.data));
+        const target = buildTargetFromImage(spy, image, { levels: 4 });
+
+        expect(detected).not.toBeNull();
+        expect(describeCalls).toHaveLength(1);
+        const { received, returned } = describeCalls[0];
+        const raw = detected as unknown as Keypoint[];
+
+        // describe received the VERY OBJECTS detect returned (identity, not
+        // equality), in the stable level sort -- so no f32 round-trip, and no
+        // rebuilt keypoints, can have happened before describing.
+        const order = raw.map((_, i) => i).sort((a, b) => raw[a].level - raw[b].level || a - b);
+        expect(received.length).toBe(raw.length);
+        order.forEach((src, i) => expect(received[i]).toBe(raw[src]));
+
+        // The stored coordinates are the f32 narrowing of what describe saw...
+        expect(target.keypoints.count).toBe(received.length);
+        received.forEach((k, i) => {
+            expect(target.keypoints.x[i]).toBe(Math.fround(k.x));
+            expect(target.keypoints.y[i]).toBe(Math.fround(k.y));
+            expect(target.keypoints.level[i]).toBe(k.level);
+        });
+        // ...and the narrowing is not vacuous on this image: at least one
+        // coordinate must actually lose precision, or "unrounded" is untested.
+        expect(received.some((k) => k.x !== Math.fround(k.x) || k.y !== Math.fround(k.y))).toBe(true);
+
+        // The stored bytes are the buffer describe returned -- by reference,
+        // not a copy and not a recomputation.
+        expect(target.descriptorSets[0].data).toBe(returned.data);
     });
 
     it("defaults the scale step to the cube root of 2 and reflects it in levelSizes", () => {
