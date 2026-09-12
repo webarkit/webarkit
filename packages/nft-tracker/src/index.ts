@@ -40,6 +40,14 @@
 export { buildLevelIndex, chooseDescriptorSet, matchPerLevel } from "./detection.js";
 export type { TargetLevelView, UsableDescriptorSet } from "./detection.js";
 
+export {
+    buildTargetFromImage,
+    DEFAULT_KEYPOINTS_PER_LEVEL,
+    DEFAULT_SCALE_STEP,
+    DEFAULT_TARGET_LEVELS,
+} from "./target/build_from_image.js";
+export type { BuildTargetOptions } from "./target/build_from_image.js";
+
 export type {
     BitsDescriptorSet,
     DescriptorSet,
