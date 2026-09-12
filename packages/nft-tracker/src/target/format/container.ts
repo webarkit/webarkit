@@ -46,8 +46,9 @@
  * for the manifest, and the fixture generator needs the framing on its own to
  * build files the canonical writer refuses to emit.
  *
- * `DataView` appears here and, for misaligned arrays, in `arrays.ts`. Nowhere
- * else in the codec reads raw bytes.
+ * `DataView` is used **here and nowhere else**: for the file header and the
+ * chunk headers, which is all it is needed for. Accessor arrays are typed-array
+ * views or copies (`arrays.ts`), never `DataView` reads.
  */
 
 import { crc32 } from "./crc32.js";

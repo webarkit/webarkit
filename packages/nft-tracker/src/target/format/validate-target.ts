@@ -273,7 +273,14 @@ export function validateTarget(target: TargetDb): TargetViolation | null {
             }
         }
 
-        const key = `${set.kind} ${set.norm} ${set.dimensions} ${set.producer}`;
+        // The same key the reader builds, constructed the same way, so
+        // the two agree on 5.6's uniqueness rule by construction.
+        const key = JSON.stringify([
+            set.kind,
+            set.norm,
+            set.dimensions,
+            set.producer,
+        ]);
         if (seenKeys.has(key)) return at(what);
         seenKeys.add(key);
 
