@@ -273,9 +273,11 @@
         // Match each target level SEPARATELY and keep the best hit per scene
         // keypoint, rather than pooling every level into one train set — see
         // matchPerLevel's own doc comment for why. Measured on these images:
-        // 97-98 matches per-level against 46 pooled, at the same ratio (the
-        // exact count shifts by one with backend call order -- jsfeatNext's
-        // detect is history-dependent).
+        // 97-98 matches per-level against 46 pooled, at the same ratio. The
+        // count is only reproducible to within a match or two: jsfeatNext's
+        // FAST reads one uninitialised scratch cell per image row, so the
+        // exact corner set drifts with what earlier calls left in its
+        // buffers (webarkit/webarkit#27).
         const targetLevels = buildLevelIndex(chooseDescriptorSet(cv, targetDb));
         let matches = matchPerLevel(cv, dScene, targetLevels, 0.8);
 
