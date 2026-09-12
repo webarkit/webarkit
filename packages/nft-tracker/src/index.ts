@@ -37,6 +37,26 @@
  *
  */
 
+export { buildLevelIndex, chooseDescriptorSet, matchPerLevel } from "./detection.js";
+export type { TargetLevelView, UsableDescriptorSet } from "./detection.js";
+
+export {
+    buildTargetFromImage,
+    DEFAULT_KEYPOINTS_PER_LEVEL,
+    DEFAULT_SCALE_STEP,
+    DEFAULT_TARGET_LEVELS,
+} from "./target/build_from_image.js";
+export type { BuildTargetOptions } from "./target/build_from_image.js";
+
+export {
+    DEFAULT_MAX_SCENE_KEYPOINTS,
+    DEFAULT_RANSAC_THRESHOLD,
+    DEFAULT_RATIO,
+    DEFAULT_SCENE_LEVELS,
+    NftTracker,
+} from "./tracker.js";
+export type { NftTrackerOptions, TrackFailure, TrackResult } from "./tracker.js";
+
 export { DEFAULT_LIMITS, decode, encode } from "./target/format/index.js";
 export type {
     DecodeLimits,

@@ -55,9 +55,17 @@ once, offline, and the per-frame work stays cheap.
 **Matching runs one target level at a time.** Pooling every level into a single
 train set and applying Lowe's ratio test halves the match count, because the
 same physical feature appears at several levels and the two best candidates are
-then often both correct. Measured here: 98 matches per-level against 46 pooled.
+then often both correct. Measured here: 97–98 matches per-level against 46 pooled (the count is only
+reproducible to within a match or two: jsfeatNext's FAST reads one
+uninitialised scratch cell per image row, so the exact corner set drifts with
+what earlier calls left in its buffers — webarkit/webarkit#27).
 Partitioning is the caller's job — `Descriptors` is deliberately a flat buffer,
-and `Keypoint.level` is what makes it possible from outside.
+and `Keypoint.level` is what makes it possible from outside. Both pieces now
+come from `@webarkit/nft-tracker`: `buildTargetFromImage` prepares the
+multi-scale reference, and `buildLevelIndex` + `matchPerLevel` do the
+per-level matching over the target's stored level ranges. The page keeps its
+own explicit `detect → describe → match → estimateHomography →
+poseFromHomography` calls, because showing every stage is what it is for.
 
 ### Why this one came first
 
@@ -80,10 +88,14 @@ either example's. Neither demo attempts it.
 
 ## `pinball-webcam-jsfeatnext-backend.html`
 
-The same pipeline, live, once per tick, with **no state carried between
-ticks** — each frame is detected, matched, and pose-estimated from nothing,
-exactly like a fresh call to the static demo's pipeline would be. A tick that
-fails to lock on has no memory of the tick before it that did.
+The same pipeline, live, through `NftTracker` — the page calls
+`tracker.process(frame, timestampMs)` once per tick and draws what comes
+back. Milestone M1 of
+[ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) is
+parity, so the tracker still carries **no state between ticks**: each frame is
+detected, matched and pose-estimated from nothing, and a tick that fails to
+lock on has no memory of the tick before it that did. The page still owns the
+camera, the loop and the canvas; the package owns none of them (ADR point 7).
 
 Parameters, chosen from measurements taken directly against these images (see
 the commit `938aab0`'s follow-on and this README's own history for the sweep):
@@ -119,13 +131,13 @@ parameters got — tracked informally against this file for now, no issue yet.
 
 ## Shared code: `js/pinball-shared.mjs`
 
-Both demos need the same three pieces — `toGray` (any drawable source to the
-contract's `GrayImage`), `project` (apply a homography to a point), and the
-per-pyramid-level matching strategy (`buildLevelIndex` + `matchPerLevel`) that
-makes multi-scale target matching actually work (see the static demo's own
-notes on why pooling levels into one `match()` call halves the results). Kept
+Both demos need the same two pieces — `toGray` (any drawable source to the
+contract's `GrayImage`) and `project` (apply a homography to a point). Kept
 in one module so the two pages can't drift against each other the way the
-static demo's own inline copy did before this file existed.
+static demo's own inline copy did before this file existed. The
+per-pyramid-level matching strategy that used to live here moved into
+[`@webarkit/nft-tracker`](../packages/nft-tracker) — it is tracker logic, not
+page logic, and the tracker needs it too. What stayed is what touches the DOM.
 
 ## Images
 

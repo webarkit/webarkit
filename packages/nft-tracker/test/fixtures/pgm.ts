@@ -1,5 +1,5 @@
 /*
- *  tsconfig.test.json
+ *  pgm.ts
  *  nft-tracker
  *
  *  This file is part of nft-tracker - WebARKit.
@@ -37,27 +37,35 @@
  *
  */
 
-{
-  // Type-checks the test suite, which the build tsconfig deliberately excludes
-  // (tests must not land in dist/). Vitest transpiles without type-checking, so
-  // without this the target types could drift out of agreement with the very
-  // fixtures that exist to pin them down, and still pass.
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": true,
-    // The base sets rootDir to ./src so the build emits a flat dist/. Nothing
-    // is emitted here, so widen it to take test/ into the program too.
-    "rootDir": ".",
-    // The test program needs node's types: the codec's conformance and
-    // robustness suites read the fixture corpus from disk, and the tracker's
-    // fixtures are read the same way. src/ deliberately has none -- the
-    // codec touches no filesystem and the whole package must stay runnable
-    // in a browser -- and the base pins "types": [] so the BUILD program
-    // (src/ alone, what `npm run build` type-checks and what CI runs) is
-    // the actual guard: a stray `Buffer` or `process` in src/ fails the
-    // build with TS2591 no matter what this program allows (ADR-0001
-    // point 7).
-    "types": ["node", "vitest/globals"]
-  },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+import { readFileSync } from "node:fs";
+import type { GrayImage } from "@webarkit/cv-backend-spec";
+
+export const TARGET_FIXTURE = new URL("./pinball-target-640.pgm", import.meta.url);
+export const SCENE_FIXTURE = new URL("./pinball-scene-640.pgm", import.meta.url);
+
+/**
+ * Reads a binary PGM ("P5") into the contract's `GrayImage`.
+ *
+ * Deliberately strict: it accepts only the exact header shape
+ * `make-fixtures.mjs` writes — no comments, no whitespace variants, maxval
+ * 255. A fixture reader that guessed would turn a corrupt fixture into a
+ * plausible-looking image and a mystifying test failure three files away.
+ */
+export function readPgm(url: URL): GrayImage {
+    const bytes = readFileSync(url);
+    const match = /^P5\n(\d+) (\d+)\n255\n/.exec(bytes.subarray(0, 64).toString("ascii"));
+    if (!match) throw new Error(`${url.pathname}: not a P5 PGM written by make-fixtures.mjs`);
+
+    const width = Number(match[1]);
+    const height = Number(match[2]);
+    const pixels = bytes.subarray(match[0].length);
+    if (pixels.length !== width * height) {
+        throw new Error(
+            `${url.pathname}: header says ${width}x${height} (${width * height} bytes), ` +
+                `file holds ${pixels.length}`
+        );
+    }
+    // Copy rather than view: `GrayImage.data` is a Uint8Array the caller owns,
+    // and a view would keep the whole file buffer alive behind it.
+    return { data: new Uint8Array(pixels), width, height };
 }

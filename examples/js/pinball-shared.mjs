@@ -39,8 +39,10 @@
 
 /**
  * Shared between the static and webcam pinball demos, so the two don't drift:
- * pixel-to-GrayImage conversion, homography point projection, and the
- * per-pyramid-level matching strategy that made both demos work at all.
+ * pixel-to-GrayImage conversion and homography point projection. Both are
+ * page concerns — they touch the DOM or the canvas — which is exactly why
+ * they stayed here when the per-pyramid-level matching strategy moved into
+ * `@webarkit/nft-tracker`, where the tracker needs it too.
  */
 
 /**
@@ -88,73 +90,4 @@ export function toGray(source, sourceW, sourceH, maxWidth, maxHeight) {
 export function project(H, x, y) {
     const w = H[6] * x + H[7] * y + H[8];
     return [(H[0] * x + H[1] * y + H[2]) / w, (H[3] * x + H[4] * y + H[5]) / w];
-}
-
-/**
- * Slices a `Descriptors` set down to the rows at `indices`.
- * `match()` takes a whole set, so matching one pyramid level at a time means
- * carving that level's rows out first.
- */
-function sliceDescriptors(d, indices) {
-    const bytes = d.bytesPerDescriptor;
-    const data = new Uint8Array(indices.length * bytes);
-    indices.forEach((src, i) => data.set(d.data.subarray(src * bytes, (src + 1) * bytes), i * bytes));
-    return { ...d, data, count: indices.length };
-}
-
-/**
- * Groups a multi-scale target's keypoints/descriptors by pyramid level, once,
- * so repeated calls to {@link matchPerLevel} (once per query frame) don't
- * redo the grouping every time.
- *
- * @param kTarget Keypoints from `cv.detect(targetImage, { levels: N, ... })`.
- * @param dTarget `cv.describe(targetImage, kTarget)`.
- */
-export function buildLevelIndex(kTarget, dTarget) {
-    const byLevel = new Map();
-    kTarget.forEach((k, i) => {
-        const bucket = byLevel.get(k.level);
-        if (bucket) bucket.push(i);
-        else byLevel.set(k.level, [i]);
-    });
-    const levels = [];
-    for (const [level, indices] of byLevel) {
-        if (indices.length < 2) continue; // match() needs at least 2 rows to be meaningful
-        levels.push({ level, indices, descriptors: sliceDescriptors(dTarget, indices) });
-    }
-    return levels;
-}
-
-/**
- * Matches a query descriptor set against a multi-scale target ONE LEVEL AT A
- * TIME, keeping the best (lowest-distance) hit per query keypoint across all
- * levels.
- *
- * Why not one `match()` call against the pooled target: Lowe's ratio test
- * assumes the second-nearest neighbour is a WRONG match, but a pooled
- * multi-scale set holds the same physical feature at several levels, so the
- * two best candidates are often both correct, the ratio approaches 1, and the
- * test discards them. Measured on the demo images: matching per level found
- * roughly 2.5x the matches of pooling everything into one call, at the same
- * ratio threshold.
- *
- * @param cv         The `CvBackend`.
- * @param dQuery     Query descriptors (e.g. from the current video frame).
- * @param levelIndex Result of {@link buildLevelIndex}.
- * @param ratio      Lowe ratio passed to each per-level `match()` call.
- * @returns          Matches with `trainIdx` remapped back to `kTarget`'s
- *                    original indices, so callers never see the per-level
- *                    slicing.
- */
-export function matchPerLevel(cv, dQuery, levelIndex, ratio) {
-    const best = new Map();
-    for (const { indices, descriptors } of levelIndex) {
-        for (const m of cv.match(dQuery, descriptors, { ratio })) {
-            const prev = best.get(m.queryIdx);
-            if (!prev || m.distance < prev.distance) {
-                best.set(m.queryIdx, { queryIdx: m.queryIdx, trainIdx: indices[m.trainIdx], distance: m.distance });
-            }
-        }
-    }
-    return [...best.values()];
 }

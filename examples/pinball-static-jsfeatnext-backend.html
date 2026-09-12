@@ -29,7 +29,8 @@
         "imports": {
           "@webarkit/jsfeat-next": "../node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs",
           "@webarkit/cv-backend-spec": "../packages/cv-backend-spec/dist/index.js",
-          "@webarkit/cv-backend-jsfeatnext": "../packages/cv-backend-jsfeatnext/dist/index.js"
+          "@webarkit/cv-backend-jsfeatnext": "../packages/cv-backend-jsfeatnext/dist/index.js",
+          "@webarkit/nft-tracker": "../packages/nft-tracker/dist/index.js"
         }
       }
     </script>
@@ -185,7 +186,13 @@
 
     <script type="module">
       import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
-      import { toGray, project, buildLevelIndex, matchPerLevel } from "./js/pinball-shared.mjs";
+      import {
+        buildLevelIndex,
+        buildTargetFromImage,
+        chooseDescriptorSet,
+        matchPerLevel,
+      } from "@webarkit/nft-tracker";
+      import { toGray, project } from "./js/pinball-shared.mjs";
 
       const TARGET = "./images/pinball.jpg";
       const SCENE = "./images/pinball-demo.jpg";
@@ -255,27 +262,39 @@
         // The scene is treated like a live frame: one level, whatever scale the
         // camera happened to give us. The TARGET is the thing we search across
         // scales, which is how a tracker works too - the reference is prepared
-        // once, offline, and the frame is cheap.
+        // once, offline, and the frame is cheap. buildTargetFromImage is that
+        // offline step, and what it returns is the same in-memory target a
+        // compiled .wnft file decodes to.
         const LEVELS = 8;
         const kScene = cv.detect(scene, { levels: 1, maxKeypoints: 900 });
-        const kTarget = cv.detect(target, { levels: LEVELS, maxKeypoints: LEVELS * 260 });
         const dScene = cv.describe(scene, kScene);
-        const dTarget = cv.describe(target, kTarget);
+        const targetDb = buildTargetFromImage(cv, target, { levels: LEVELS, name: "pinball" });
 
         // Match each target level SEPARATELY and keep the best hit per scene
         // keypoint, rather than pooling every level into one train set — see
         // matchPerLevel's own doc comment for why. Measured on these images:
-        // 98 matches per-level against 46 pooled, at the same ratio.
-        const targetLevels = buildLevelIndex(kTarget, dTarget);
+        // 97-98 matches per-level against 46 pooled, at the same ratio. The
+        // count is only reproducible to within a match or two: jsfeatNext's
+        // FAST reads one uninitialised scratch cell per image row, so the
+        // exact corner set drifts with what earlier calls left in its
+        // buffers (webarkit/webarkit#27).
+        const targetLevels = buildLevelIndex(chooseDescriptorSet(cv, targetDb));
         let matches = matchPerLevel(cv, dScene, targetLevels, 0.8);
 
         // Optional filter, skipped exactly as the contract documents when a
         // backend does not implement one.
         if (cv.filterMatches) {
+          const kTarget = Array.from({ length: targetDb.keypoints.count }, (_, i) => ({
+            x: targetDb.keypoints.x[i],
+            y: targetDb.keypoints.y[i],
+            score: targetDb.keypoints.score[i],
+            angle: targetDb.keypoints.angle[i],
+            level: targetDb.keypoints.level[i],
+          }));
           matches = cv.filterMatches(
             matches,
             { keypoints: kScene, width: scene.width, height: scene.height },
-            { keypoints: kTarget, width: target.width, height: target.height }
+            { keypoints: kTarget, width: targetDb.meta.widthPx, height: targetDb.meta.heightPx }
           );
         }
 
@@ -284,8 +303,8 @@
         const src = new Float64Array(matches.length * 2);
         const dst = new Float64Array(matches.length * 2);
         matches.forEach((m, i) => {
-          src[i * 2] = kTarget[m.trainIdx].x;
-          src[i * 2 + 1] = kTarget[m.trainIdx].y;
+          src[i * 2] = targetDb.keypoints.x[m.trainIdx];
+          src[i * 2 + 1] = targetDb.keypoints.y[m.trainIdx];
           dst[i * 2] = kScene[m.queryIdx].x;
           dst[i * 2 + 1] = kScene[m.queryIdx].y;
         });
@@ -303,7 +322,7 @@
 
         const drawKeypoints = () => {
           ctx.fillStyle = "#60a5fa";
-          for (const k of kTarget) ctx.fillRect(k.x - 1, k.y - 1, 2, 2);
+          for (let i = 0; i < targetDb.keypoints.count; i++) ctx.fillRect(targetDb.keypoints.x[i] - 1, targetDb.keypoints.y[i] - 1, 2, 2);
           for (const k of kScene) ctx.fillRect(k.x + shift - 1, k.y - 1, 2, 2);
         };
 
@@ -315,7 +334,7 @@
             if (!inlier && !showOutliers.checked) return;
             ctx.strokeStyle = inlier ? "rgba(74,222,128,.55)" : "rgba(248,113,113,.35)";
             ctx.beginPath();
-            ctx.moveTo(kTarget[m.trainIdx].x, kTarget[m.trainIdx].y);
+            ctx.moveTo(targetDb.keypoints.x[m.trainIdx], targetDb.keypoints.y[m.trainIdx]);
             ctx.lineTo(kScene[m.queryIdx].x + shift, kScene[m.queryIdx].y);
             ctx.stroke();
           });
@@ -351,7 +370,7 @@
         redraw();
 
         $("status").textContent = h?.ok ? "locked on" : matches.length < 4 ? "too few matches" : "no consensus";
-        stat("keypoints (target)", kTarget.length);
+        stat("keypoints (target)", targetDb.keypoints.count);
         stat("keypoints (scene)", kScene.length);
         stat("matches after ratio", matches.length);
         stat("inliers", h ? `${h.numInliers} / ${matches.length}` : "—");

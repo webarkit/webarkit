@@ -1,5 +1,5 @@
 /*
- *  tsconfig.test.json
+ *  pgm.test.ts
  *  nft-tracker
  *
  *  This file is part of nft-tracker - WebARKit.
@@ -37,27 +37,32 @@
  *
  */
 
-{
-  // Type-checks the test suite, which the build tsconfig deliberately excludes
-  // (tests must not land in dist/). Vitest transpiles without type-checking, so
-  // without this the target types could drift out of agreement with the very
-  // fixtures that exist to pin them down, and still pass.
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": true,
-    // The base sets rootDir to ./src so the build emits a flat dist/. Nothing
-    // is emitted here, so widen it to take test/ into the program too.
-    "rootDir": ".",
-    // The test program needs node's types: the codec's conformance and
-    // robustness suites read the fixture corpus from disk, and the tracker's
-    // fixtures are read the same way. src/ deliberately has none -- the
-    // codec touches no filesystem and the whole package must stay runnable
-    // in a browser -- and the base pins "types": [] so the BUILD program
-    // (src/ alone, what `npm run build` type-checks and what CI runs) is
-    // the actual guard: a stray `Buffer` or `process` in src/ fails the
-    // build with TS2591 no matter what this program allows (ADR-0001
-    // point 7).
-    "types": ["node", "vitest/globals"]
-  },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
-}
+import { describe, it, expect } from "vitest";
+import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "./pgm.js";
+
+describe("the committed fixtures are the demo's own images at the demo's own size", () => {
+    it("reads the target at 512x640", () => {
+        const target = readPgm(TARGET_FIXTURE);
+        // pinball.jpg is 614x768; the static demo caps the longer side at 640.
+        expect([target.width, target.height]).toEqual([512, 640]);
+        expect(target.data.length).toBe(512 * 640);
+    });
+
+    it("reads the scene at 640x480", () => {
+        const scene = readPgm(SCENE_FIXTURE);
+        // pinball-demo.jpg is 2000x1500, same 640 cap.
+        expect([scene.width, scene.height]).toEqual([640, 480]);
+        expect(scene.data.length).toBe(640 * 480);
+    });
+
+    it("holds real image content, not a blank or constant buffer", () => {
+        const { data } = readPgm(TARGET_FIXTURE);
+        let min = 255;
+        let max = 0;
+        for (const v of data) {
+            if (v < min) min = v;
+            if (v > max) max = v;
+        }
+        expect(max - min).toBeGreaterThan(100);
+    });
+});

@@ -17,6 +17,7 @@
 *.wasm binary
 *.woff binary
 *.woff2 binary
+*.pgm binary
 
 # Conformance fixtures: compared byte for byte by the test suite, so line
 # endings must never be touched. The `* text=auto` rule above would otherwise
