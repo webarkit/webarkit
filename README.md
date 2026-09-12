@@ -36,7 +36,7 @@ If you're deciding where to plug in: **jsfeatNext** is the place to start today 
 |---|---|
 | [`@webarkit/cv-backend-spec`](./packages/cv-backend-spec) | Minimal stateless CV backend interface (`detect`, `describe`, `match`, `estimateHomography`, `poseFromHomography`) implemented by jsfeatNext and (future) WebARKitLib-rs. |
 | [`@webarkit/cv-backend-jsfeatnext`](./packages/cv-backend-jsfeatnext) | The jsfeatNext implementation of that contract. Depends on the spec **and** on `@webarkit/jsfeat-next` (>= 0.16.0); neither of those depends on it. |
-| [`@webarkit/nft-tracker`](./packages/nft-tracker) | Natural-feature tracking for planar image targets, written **above** the contract. Depends on the spec alone — the backend is injected by the caller, so it runs on any implementation. Currently the in-memory target types, an image-to-target builder, per-pyramid-level matching and a detection-only `NftTracker` (milestone M1); see [ADR-0001](./docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) and the [target format spec](./docs/specs/nft-target-format.md). |
+| [`@webarkit/nft-tracker`](./packages/nft-tracker) | Natural-feature tracking for planar image targets, written **above** the contract. Depends on the spec alone — the backend is injected by the caller, so it runs on any implementation. Currently the target layer — the in-memory target types, the `.wnft` codec (`decode`/`encode`) for the files that store one, an image-to-target builder — plus per-pyramid-level matching and a detection-only `NftTracker` (milestone M1). See [ADR-0001](./docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) and the [target format spec](./docs/specs/nft-target-format.md). |
 
 None of the three is published to npm yet — see [Getting started](#-getting-started) for installing from source. `nft-tracker` is `private` and pre-0.1.
 
@@ -91,11 +91,19 @@ cannot express.
 ```
 webarkit/
   examples/
+  fixtures/
+    nft-target/          # the .wnft conformance corpus, one directory per
+                         # released format version (generated, never edited)
   packages/
     cv-backend-spec/
     cv-backend-jsfeatnext/
     nft-tracker/
 ```
+
+`fixtures/` sits at the repository root, not inside `nft-tracker`, for the
+reason `examples/` does: the corpus pins down the **format**, which
+[`crates/wnft-format`](./docs/specs/nft-target-format.md) will be checked
+against too, not one implementation of it.
 
 ## ❓ Open questions for discussion
 

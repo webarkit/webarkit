@@ -12,7 +12,8 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "fixtures": "npm run build && node scripts/generate-fixtures.mjs"
   },
   "keywords": [
     "webarkit",
@@ -32,6 +33,7 @@
   "devDependencies": {
     "@types/node": "^24.13.4",
     "@webarkit/cv-backend-jsfeatnext": "0.1.0",
+    "fast-check": "^4.10.0",
     "jpeg-js": "^0.4.4",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"

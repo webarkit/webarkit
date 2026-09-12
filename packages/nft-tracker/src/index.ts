@@ -57,6 +57,17 @@ export {
 } from "./tracker.js";
 export type { NftTrackerOptions, TrackFailure, TrackResult } from "./tracker.js";
 
+export { DEFAULT_LIMITS, decode, encode } from "./target/format/index.js";
+export type {
+    DecodeLimits,
+    DecodeOptions,
+    DecodeResult,
+    EncodeResult,
+    ErrorCode,
+    Warning,
+    WarningCode,
+} from "./target/format/index.js";
+
 export type {
     BitsDescriptorSet,
     DescriptorSet,

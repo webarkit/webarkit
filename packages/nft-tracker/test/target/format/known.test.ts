@@ -1,5 +1,5 @@
 /*
- *  tsconfig.test.json
+ *  known.test.ts
  *  nft-tracker
  *
  *  This file is part of nft-tracker - WebARKit.
@@ -37,27 +37,53 @@
  *
  */
 
-{
-  // Type-checks the test suite, which the build tsconfig deliberately excludes
-  // (tests must not land in dist/). Vitest transpiles without type-checking, so
-  // without this the target types could drift out of agreement with the very
-  // fixtures that exist to pin them down, and still pass.
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": true,
-    // The base sets rootDir to ./src so the build emits a flat dist/. Nothing
-    // is emitted here, so widen it to take test/ into the program too.
-    "rootDir": ".",
-    // The test program needs node's types: the codec's conformance and
-    // robustness suites read the fixture corpus from disk, and the tracker's
-    // fixtures are read the same way. src/ deliberately has none -- the
-    // codec touches no filesystem and the whole package must stay runnable
-    // in a browser -- and the base pins "types": [] so the BUILD program
-    // (src/ alone, what `npm run build` type-checks and what CI runs) is
-    // the actual guard: a stray `Buffer` or `process` in src/ fails the
-    // build with TS2591 no matter what this program allows (ADR-0001
-    // point 7).
-    "types": ["node", "vitest/globals"]
-  },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
-}
+import { describe, it, expect } from "vitest";
+import {
+    IMPLEMENTED_EXTENSIONS,
+    KNOWN_DESCRIPTOR_KINDS,
+    KNOWN_DESCRIPTOR_NORMS,
+    KNOWN_DETECTOR_KINDS,
+    KNOWN_ELEMENT_TYPES,
+    SUPPORTED_CONTAINER_MAJOR,
+    SUPPORTED_FORMAT_VERSION,
+} from "../../../src/target/format/known.js";
+
+describe("known values", () => {
+    it("knows exactly the contract's descriptor kinds", () => {
+        expect([...KNOWN_DESCRIPTOR_KINDS].sort()).toEqual([
+            "akaze",
+            "beblid",
+            "freak",
+            "orb",
+            "teblid",
+        ]);
+    });
+
+    it("knows exactly the contract's norms, so hamming2 stays unknown (§5.6)", () => {
+        expect([...KNOWN_DESCRIPTOR_NORMS].sort()).toEqual(["hamming", "l2"]);
+        expect(KNOWN_DESCRIPTOR_NORMS as readonly string[]).not.toContain("hamming2");
+    });
+
+    it("knows exactly the contract's detector kinds", () => {
+        expect([...KNOWN_DETECTOR_KINDS].sort()).toEqual([
+            "akaze",
+            "fast",
+            "orb",
+            "yape",
+            "yape06",
+        ]);
+    });
+
+    it("knows the three element types the format defines (§5.6)", () => {
+        expect([...KNOWN_ELEMENT_TYPES].sort()).toEqual(["bits", "f32", "u8"]);
+    });
+
+    it("implements no extension yet, so WKNF_multiview is unknown", () => {
+        expect(IMPLEMENTED_EXTENSIONS).toEqual([]);
+    });
+
+    it("targets format 0.2 and container major 1", () => {
+        expect(SUPPORTED_FORMAT_VERSION).toBe("0.2");
+        expect(SUPPORTED_CONTAINER_MAJOR).toBe(1);
+    });
+});

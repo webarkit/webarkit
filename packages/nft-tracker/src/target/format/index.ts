@@ -1,5 +1,5 @@
 /*
- *  tsconfig.test.json
+ *  index.ts
  *  nft-tracker
  *
  *  This file is part of nft-tracker - WebARKit.
@@ -37,27 +37,26 @@
  *
  */
 
-{
-  // Type-checks the test suite, which the build tsconfig deliberately excludes
-  // (tests must not land in dist/). Vitest transpiles without type-checking, so
-  // without this the target types could drift out of agreement with the very
-  // fixtures that exist to pin them down, and still pass.
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": true,
-    // The base sets rootDir to ./src so the build emits a flat dist/. Nothing
-    // is emitted here, so widen it to take test/ into the program too.
-    "rootDir": ".",
-    // The test program needs node's types: the codec's conformance and
-    // robustness suites read the fixture corpus from disk, and the tracker's
-    // fixtures are read the same way. src/ deliberately has none -- the
-    // codec touches no filesystem and the whole package must stay runnable
-    // in a browser -- and the base pins "types": [] so the BUILD program
-    // (src/ alone, what `npm run build` type-checks and what CI runs) is
-    // the actual guard: a stray `Buffer` or `process` in src/ fails the
-    // build with TS2591 no matter what this program allows (ADR-0001
-    // point 7).
-    "types": ["node", "vitest/globals"]
-  },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
-}
+/**
+ * The `.wnft` codec's public surface.
+ *
+ * Two functions and the types they return. Everything else —
+ * `parseContainer`, `scanIJson`, `validateManifest`, `materialise`,
+ * `validateTarget` — stays internal: it is reachable by deep import for the
+ * fixture generator and the test suites, and is not part of what this package
+ * promises to keep working.
+ *
+ * @see {@link https://github.com/webarkit/webarkit/blob/dev/docs/specs/nft-target-format.md}
+ */
+
+export { decode } from "./decode.js";
+export { encode } from "./encode.js";
+export { DEFAULT_LIMITS } from "./limits.js";
+export type { DecodeLimits, DecodeOptions } from "./limits.js";
+export type {
+    DecodeResult,
+    EncodeResult,
+    ErrorCode,
+    Warning,
+    WarningCode,
+} from "./errors.js";

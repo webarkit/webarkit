@@ -41,7 +41,7 @@
  * The **in-memory** shape of a trained NFT target.
  *
  * This is the decoded form of a `.wnft` file, as specified in
- * `docs/specs/nft-target-format.md` (format 0.1). Section references below
+ * `docs/specs/nft-target-format.md` (format 0.2). Section references below
  * point into that document, which is the source of truth: where these types
  * and the specification disagree, the specification wins.
  *
@@ -162,7 +162,8 @@ export interface KeypointTable {
     readonly detector: DetectorInfo;
     /**
      * `L + 1` entries: the keypoints of level `l` are the indices
-     * `[levelStart[l], levelStart[l + 1])`, and `levelStart[L] = N`.
+     * `[levelStart[l], levelStart[l + 1])`, with `levelStart[0] = 0`,
+     * `levelStart[L] = N`, and no step backwards in between.
      */
     readonly levelStart: Uint32Array;
     /** Level-0 coordinates (§3), `N` entries. */

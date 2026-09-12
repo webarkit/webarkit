@@ -1,5 +1,5 @@
 /*
- *  tsconfig.test.json
+ *  crc32.ts
  *  nft-tracker
  *
  *  This file is part of nft-tracker - WebARKit.
@@ -37,27 +37,43 @@
  *
  */
 
-{
-  // Type-checks the test suite, which the build tsconfig deliberately excludes
-  // (tests must not land in dist/). Vitest transpiles without type-checking, so
-  // without this the target types could drift out of agreement with the very
-  // fixtures that exist to pin them down, and still pass.
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": true,
-    // The base sets rootDir to ./src so the build emits a flat dist/. Nothing
-    // is emitted here, so widen it to take test/ into the program too.
-    "rootDir": ".",
-    // The test program needs node's types: the codec's conformance and
-    // robustness suites read the fixture corpus from disk, and the tracker's
-    // fixtures are read the same way. src/ deliberately has none -- the
-    // codec touches no filesystem and the whole package must stay runnable
-    // in a browser -- and the base pins "types": [] so the BUILD program
-    // (src/ alone, what `npm run build` type-checks and what CI runs) is
-    // the actual guard: a stray `Buffer` or `process` in src/ fails the
-    // build with TS2591 no matter what this program allows (ADR-0001
-    // point 7).
-    "types": ["node", "vitest/globals"]
-  },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+/**
+ * CRC-32/ISO-HDLC (§4.2): reflected polynomial `0xEDB88320`, initial value
+ * and final XOR `0xFFFFFFFF` — the variant used by zlib, PNG and Rust's
+ * `crc32fast`, so that a chunk checksums the same in both implementations.
+ *
+ * Written here rather than taken from a dependency: it is fifteen lines, and
+ * the format layer carries no runtime dependency of its own.
+ *
+ * CRC-32 detects **accidental** corruption — a truncated download, a bad
+ * cache entry, a damaged copy. It detects no tampering at all, because
+ * whoever changes the data recomputes it; that is the transport's job
+ * (HTTPS, Subresource Integrity), not this format's.
+ */
+
+/** Byte-at-a-time table, built once. */
+const TABLE: Uint32Array = (() => {
+    const table = new Uint32Array(256);
+    for (let n = 0; n < 256; n += 1) {
+        let c = n;
+        for (let k = 0; k < 8; k += 1) {
+            c = (c & 1) !== 0 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        }
+        table[n] = c >>> 0;
+    }
+    return table;
+})();
+
+/**
+ * CRC-32 of `bytes`, as an unsigned 32-bit number.
+ *
+ * Respects the view's own bounds, so a chunk is checksummed through a
+ * `subarray` of the file without copying it.
+ */
+export function crc32(bytes: Uint8Array): number {
+    let c = 0xffffffff;
+    for (let i = 0; i < bytes.length; i += 1) {
+        c = TABLE[(c ^ bytes[i]!) & 0xff]! ^ (c >>> 8);
+    }
+    return (c ^ 0xffffffff) >>> 0;
 }

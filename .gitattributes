@@ -19,6 +19,11 @@
 *.woff2 binary
 *.pgm binary
 
+# Conformance fixtures: compared byte for byte by the test suite, so line
+# endings must never be touched. The `* text=auto` rule above would otherwise
+# leave that to git's content heuristic.
+*.wnft binary
+
 # Generated: collapse it in review and keep it out of language statistics.
 # Deliberately NOT `-diff` -- that makes git treat the lockfile as binary, which
 # also hides dependency changes, and those are exactly what a reviewer needs to

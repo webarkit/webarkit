@@ -1,5 +1,5 @@
 /*
- *  tsconfig.test.json
+ *  crc32.test.ts
  *  nft-tracker
  *
  *  This file is part of nft-tracker - WebARKit.
@@ -37,27 +37,26 @@
  *
  */
 
-{
-  // Type-checks the test suite, which the build tsconfig deliberately excludes
-  // (tests must not land in dist/). Vitest transpiles without type-checking, so
-  // without this the target types could drift out of agreement with the very
-  // fixtures that exist to pin them down, and still pass.
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": true,
-    // The base sets rootDir to ./src so the build emits a flat dist/. Nothing
-    // is emitted here, so widen it to take test/ into the program too.
-    "rootDir": ".",
-    // The test program needs node's types: the codec's conformance and
-    // robustness suites read the fixture corpus from disk, and the tracker's
-    // fixtures are read the same way. src/ deliberately has none -- the
-    // codec touches no filesystem and the whole package must stay runnable
-    // in a browser -- and the base pins "types": [] so the BUILD program
-    // (src/ alone, what `npm run build` type-checks and what CI runs) is
-    // the actual guard: a stray `Buffer` or `process` in src/ fails the
-    // build with TS2591 no matter what this program allows (ADR-0001
-    // point 7).
-    "types": ["node", "vitest/globals"]
-  },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
-}
+import { describe, it, expect } from "vitest";
+import { crc32 } from "../../../src/target/format/crc32.js";
+
+describe("crc32", () => {
+    it("matches the specification's test vector (§4.2)", () => {
+        expect(crc32(new TextEncoder().encode("123456789"))).toBe(0xcbf43926);
+    });
+
+    it("returns the empty-input identity", () => {
+        expect(crc32(new Uint8Array(0))).toBe(0x00000000);
+    });
+
+    it("returns an unsigned value when the high bit is set", () => {
+        const c = crc32(new Uint8Array([0x00]));
+        expect(c).toBe(0xd202ef8d);
+        expect(c).toBeGreaterThan(0);
+    });
+
+    it("honours a subarray's bounds rather than the whole buffer", () => {
+        const whole = new TextEncoder().encode("xx123456789xx");
+        expect(crc32(whole.subarray(2, 11))).toBe(0xcbf43926);
+    });
+});
