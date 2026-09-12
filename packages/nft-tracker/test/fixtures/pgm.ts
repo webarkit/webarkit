@@ -37,8 +37,6 @@
  *
  */
 
-/// <reference types="node" />
-
 import { readFileSync } from "node:fs";
 import type { GrayImage } from "@webarkit/cv-backend-spec";
 

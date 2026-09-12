@@ -48,7 +48,15 @@
     // The base sets rootDir to ./src so the build emits a flat dist/. Nothing
     // is emitted here, so widen it to take test/ into the program too.
     "rootDir": ".",
-    "types": ["vitest/globals"]
+    // The base pins "types": [] so the BUILD program -- src/ alone, what
+    // `npm run build` type-checks and what CI runs -- is the actual guard
+    // against Node ambient globals leaking into the pure core (ADR-0001
+    // point 7): a stray `Buffer` or `process` in src/ fails the build with
+    // TS2591. This program re-opens "node" because it also covers test/,
+    // and test files and fixtures legitimately read from disk. That is
+    // safe: a Node global that leaked into src/ is still caught by the
+    // build, which never sees "node" in its own types array.
+    "types": ["node", "vitest/globals"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }
