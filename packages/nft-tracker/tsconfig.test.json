@@ -48,7 +48,7 @@
     // The base sets rootDir to ./src so the build emits a flat dist/. Nothing
     // is emitted here, so widen it to take test/ into the program too.
     "rootDir": ".",
-    "types": ["node", "vitest/globals"]
+    "types": ["vitest/globals"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }

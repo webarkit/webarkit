@@ -17,6 +17,7 @@
 *.wasm binary
 *.woff binary
 *.woff2 binary
+*.pgm binary
 
 # Generated: collapse it in review and keep it out of language statistics.
 # Deliberately NOT `-diff` -- that makes git treat the lockfile as binary, which
