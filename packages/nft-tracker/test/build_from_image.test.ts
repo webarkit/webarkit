@@ -203,6 +203,28 @@ describe("buildTargetFromImage", () => {
         expect(() => buildTargetFromImage(cv, blank)).toThrow(/no keypoints/i);
     });
 
+    it("throws if describe returns a different row count than the keypoints handed in", () => {
+        const truncating: CvBackend = {
+            capabilities: cv.capabilities,
+            detect: (img, o) => cv.detect(img, o),
+            describe: (img, kps, o) => {
+                const d = cv.describe(img, kps, o);
+                return {
+                    ...d,
+                    count: d.count - 1,
+                    data: d.data.subarray(0, (d.count - 1) * d.bytesPerDescriptor),
+                };
+            },
+            match: (q, t, o) => cv.match(q, t, o),
+            estimateHomography: (s, d, o) => cv.estimateHomography(s, d, o),
+            poseFromHomography: (H, K) => cv.poseFromHomography(H, K),
+        };
+
+        expect(() => buildTargetFromImage(truncating, image, { levels: 4 })).toThrow(
+            /one row per keypoint/i
+        );
+    });
+
     it("records the name it is given, and no wall-clock timestamp", () => {
         const target = buildTargetFromImage(cv, image, { levels: 4, name: "pinball" });
         expect(target.info?.name).toBe("pinball");

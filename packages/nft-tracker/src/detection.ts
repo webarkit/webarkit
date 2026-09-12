@@ -102,6 +102,12 @@ export interface TargetLevelView {
  * exactly one set. Throwing rather than returning `null` is deliberate — a
  * target whose descriptors this backend cannot read is a mismatch between
  * target and backend, not a frame that failed to track.
+ *
+ * Three more obligations stay with the codec too: §6.2's `NO_USABLE_DESCRIPTORS`
+ * error code (this helper throws a plain `Error` instead of returning one),
+ * §6.3's descriptor-width probe via `describe(probe, …, { bits })`, and the
+ * `PRODUCER_MISMATCH` warning when a set's declared producer differs from the
+ * reading backend.
  */
 export function chooseDescriptorSet(cv: CvBackend, target: TargetDb): UsableDescriptorSet {
     const supported: readonly string[] = cv.capabilities.descriptors;

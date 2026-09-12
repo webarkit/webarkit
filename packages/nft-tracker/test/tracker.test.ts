@@ -120,6 +120,10 @@ describe("NftTracker.process", () => {
         // bit-identical results -- a failure here indicts either the
         // tracker itself or a backend stage that received identical inputs,
         // and both of those are findings, not noise.
+        // The taped double below omits filterMatches; if the real backend ever
+        // gains one, its capabilities would claim a path the tape cannot take.
+        expect(cv.filterMatches).toBeUndefined();
+
         const detects: Keypoint[][] = [];
         const describes: Descriptors[] = [];
         let detectN = 0;

@@ -156,6 +156,14 @@ export function buildTargetFromImage(
     // rounding first would compute different bits than the pipeline this
     // package replaces.
     const described = cv.describe(image, sorted);
+    if (described.count !== sorted.length) {
+        throw new Error(
+            `@webarkit/nft-tracker: describe returned ${described.count} rows for ` +
+                `${sorted.length} keypoints. This builder assumes one row per keypoint ` +
+                `(format section 5.6, no multiview): a backend that drops keypoints in ` +
+                `describe needs kpIndex built from what it kept, which is not implemented.`
+        );
+    }
 
     // The emitted pyramid deliberately stops at the highest level that
     // produced a keypoint, not at the levels requested. A level with no
