@@ -38,6 +38,8 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { decode } from "../../../src/target/format/decode.js";
+import { encode } from "../../../src/target/format/encode.js";
 import { validateTarget } from "../../../src/target/format/validate-target.js";
 import type { JsonValue, TargetDb } from "../../../src/index.js";
 import { good, goodBitsSet, withParam } from "./targets.js";
@@ -294,5 +296,73 @@ describe("validateTarget — structural rules mirroring the reader", () => {
         expect(
             pathOf({ ...good(), extensionsUsed: [], extensionsRequired: ["WKNF_x"] }),
         ).toBe("extensionsRequired");
+    });
+});
+
+/**
+ * Reader and writer must agree.
+ *
+ * `validate-target.ts` deliberately restates the rules of `manifest.ts` and
+ * `consistency.ts` over a different shape — a parsed manifest addressed by
+ * accessor indices on one side, typed arrays in memory on the other. The risk
+ * that buys is drift: a rule one side enforces and the other does not makes a
+ * file that decodes but cannot be re-emitted, which breaks §8.2 item 2 for a
+ * file neither side rejects.
+ *
+ * Review found two such drifts, both of them the writer inventing a minimum
+ * §5 does not impose. These pin them.
+ */
+describe("reader and writer agree on what is legal", () => {
+    it("both accept a descriptor set with dimensions 0 (§5.6, rev 3)", () => {
+        const t = good();
+        const empty: TargetDb = {
+            ...t,
+            descriptorSets: [
+                {
+                    ...goodBitsSet(),
+                    dimensions: 0,
+                    bytesPerDescriptor: 0,
+                    data: new Uint8Array(0),
+                },
+            ],
+        };
+        expect(validateTarget(empty)).toBeNull();
+
+        const written = encode(empty);
+        expect(written.ok, written.ok ? "" : written.detail).toBe(true);
+        if (!written.ok) return;
+        const readBack = decode(written.bytes);
+        expect(readBack.ok, readBack.ok ? "" : readBack.detail).toBe(true);
+        if (!readBack.ok) return;
+        expect(readBack.target).toEqual(empty);
+    });
+
+    it("both accept an empty detector kind (§5.5, rev 3)", () => {
+        const t = good();
+        const anonymous: TargetDb = {
+            ...t,
+            keypoints: { ...t.keypoints, detector: { kind: "", params: {} } },
+        };
+        expect(validateTarget(anonymous)).toBeNull();
+
+        const written = encode(anonymous);
+        expect(written.ok, written.ok ? "" : written.detail).toBe(true);
+        if (!written.ok) return;
+        const readBack = decode(written.bytes);
+        expect(readBack.ok).toBe(true);
+        if (!readBack.ok) return;
+        expect(readBack.target.keypoints.detector.kind).toBe("");
+    });
+
+    it("the writer stays stricter on check (c) than the reader, by design (§7.3)", () => {
+        // 1e21 serialises as "1e+21" — an exponent, so not an integer literal,
+        // so a reader accepts it. The writer refuses it anyway, because Q8
+        // leaves number formatting free and another implementation may write
+        // the same value as a plain digit string, which readers reject.
+        expect(JSON.stringify(1e21)).toBe("1e+21");
+        const r = encode(withParam(1e21));
+        expect(r.ok).toBe(false);
+        if (r.ok) return;
+        expect(r.detail).toBe("descriptorSets[0].params.seed");
     });
 });

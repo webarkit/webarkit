@@ -93,9 +93,18 @@ function checkFreeForm(value: JsonValue, path: string): string | null {
     if (typeof value === "number") {
         // (d), and the NaN rule.
         if (!Number.isFinite(value)) return path;
-        // (c). An integer-valued double serialises as an integer literal, and
-        // outside this range two implementations would not read it back the
-        // same way — so a reader would reject the file.
+        // (c), applied to the *value* and therefore deliberately stricter than
+        // the reader, which applies it to the literal (§7.3).
+        //
+        // `JSON.stringify(1e21)` is `"1e+21"`, which carries an exponent and so
+        // is not an integer literal at all: this reader accepts it. Refusing it
+        // here anyway is the interoperable choice, because Q8 leaves number
+        // formatting free across languages — a Rust writer may well emit
+        // `1000000000000000000000` for the same value, and *that* is an integer
+        // literal outside the range, which every conforming reader rejects. A
+        // target one implementation can write and another cannot is what §1
+        // exists to prevent, and the cost here is nil: no real target carries
+        // an integer that large.
         if (Number.isInteger(value) && Math.abs(value) > MAX_EXACT_INTEGER) {
             return path;
         }
@@ -201,9 +210,10 @@ export function validateTarget(target: TargetDb): TargetViolation | null {
         if (array.length !== N) return at(`keypoints.${name}`);
     }
     if (kp.size !== undefined && kp.size.length !== N) return at("keypoints.size");
-    if (typeof kp.detector.kind !== "string" || kp.detector.kind.length === 0) {
-        return at("keypoints.detector.kind");
-    }
+    // Any string is a legal detector kind, the empty one included (§5.5): it is
+    // informative, and refusing one here would make a file the reader accepts
+    // impossible to re-emit.
+    if (typeof kp.detector.kind !== "string") return at("keypoints.detector.kind");
     if (kp.levelStart[0] !== 0) return at("keypoints.levelStart");
     for (let l = 1; l < kp.levelStart.length; l += 1) {
         if (kp.levelStart[l]! < kp.levelStart[l - 1]!) return at("keypoints.levelStart");
@@ -231,9 +241,10 @@ export function validateTarget(target: TargetDb): TargetViolation | null {
         if (!(KNOWN_ELEMENT_TYPES as readonly string[]).includes(set.elementType)) {
             return at(`${what}.elementType`);
         }
-        if (!isU32(set.dimensions) || set.dimensions < 1) {
-            return at(`${what}.dimensions`);
-        }
+        // No minimum (§5.6): 0 is legal and describes a set whose descriptors
+        // carry nothing. The reader accepts it, so the writer must too, or a
+        // file neither side rejects still fails §8.2 item 2's round trip.
+        if (!isU32(set.dimensions)) return at(`${what}.dimensions`);
         const expectedBytes =
             set.elementType === "bits"
                 ? set.dimensions % 8 === 0

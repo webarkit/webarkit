@@ -690,6 +690,9 @@ export function validateManifest(
         if (P > limits.maxPatchSize) {
             return { ok: false, ...fail("LIMIT_EXCEEDED", `patches.patchSize is ${P}, limit ${limits.maxPatchSize}`) };
         }
+        if (Q > limits.maxPatches) {
+            return { ok: false, ...fail("LIMIT_EXCEEDED", `patches.count is ${Q}, limit ${limits.maxPatches}`) };
+        }
         // Q and P are both checked u32s, so this product is exact.
         const pixelCount = Q * P * P;
         patches = {
