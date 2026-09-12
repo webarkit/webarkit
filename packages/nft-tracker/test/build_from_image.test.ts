@@ -104,6 +104,15 @@ describe("buildTargetFromImage", () => {
         for (let i = 0; i < set.count; i++) expect(set.kpIndex[i]).toBe(i);
     });
 
+    it("gives the descriptor set its own levelStart, equal in content but not the same buffer", () => {
+        const target = buildTargetFromImage(cv, image, { levels: 4 });
+        const set = target.descriptorSets[0];
+        expect(Array.from(set.levelStart)).toEqual(Array.from(target.keypoints.levelStart));
+        // Not the same instance: the two tables are independently owned, and a
+        // consumer mutating one through a bug must not silently corrupt the other.
+        expect(set.levelStart).not.toBe(target.keypoints.levelStart);
+    });
+
     it("describes the UNROUNDED detected keypoints, then stores their f32 narrowing", () => {
         // What this pins: the builder's dataflow is detect -> stable level
         // sort -> describe -> f32 storage, with describe seeing the float64

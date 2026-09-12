@@ -101,7 +101,9 @@ export interface BuildTargetOptions {
     readonly scaleStep?: number;
     /**
      * `[width, height]` in millimetres. `null` (the default) means unknown,
-     * and model-plane units stay level-0 pixels (§3).
+     * and model-plane units stay level-0 pixels (§3). Positivity (§5.3's `> 0`
+     * rule) is validated by the codec at encode time, not here; a non-positive
+     * size will be rejected there.
      */
     readonly physicalSizeMm?: readonly [number, number] | null;
     /** Recorded in `info.name`. Provenance only; nothing reads it. */
@@ -127,6 +129,12 @@ export function buildTargetFromImage(
 
     const detected = cv.detect(image, { levels, maxKeypoints });
     if (detected.length === 0) {
+        // This is a build-time hard error for the offline compiler seed, not
+        // per-frame control flow. ADR-0001 point 7 reserves exceptions for
+        // contract violations, never for app control flow; a featureless target
+        // is a build-time rejection every caller treats as fatal, the same
+        // reasoning as chooseDescriptorSet's throw. Callers must validate the
+        // reference image, not catch this.
         throw new Error(
             `@webarkit/nft-tracker: no keypoints found in a ${image.width}x${image.height} ` +
                 `image over ${levels} levels. A target with no features cannot be matched ` +
@@ -149,6 +157,9 @@ export function buildTargetFromImage(
     // package replaces.
     const described = cv.describe(image, sorted);
 
+    // The emitted pyramid deliberately stops at the highest level that
+    // produced a keypoint, not at the levels requested. A level with no
+    // keypoints carries no information a reader could use.
     const levelCount = sorted[sorted.length - 1].level + 1;
     const keypoints = toKeypointTable(cv, sorted, levelCount);
     const descriptorSet = toDescriptorSet(cv, described, keypoints.levelStart);
@@ -232,13 +243,13 @@ function toKeypointTable(cv: CvBackend, sorted: readonly Keypoint[], levelCount:
     }
 
     // One pass over the sorted levels: each boundary is where the level
-    // changes, and every level past the last one seen ends at `count`.
+    // changes. The loop's final iteration (l === levelCount) closes the table
+    // at `count`.
     let next = 0;
     for (let l = 0; l <= levelCount; l++) {
         while (next < count && sorted[next].level < l) next++;
         levelStart[l] = next;
     }
-    levelStart[levelCount] = count;
 
     const detector = cv.capabilities.detectors[0];
     if (detector === undefined) {
@@ -268,9 +279,12 @@ function toDescriptorSet(
         producer: cv.capabilities.name,
         params: {},
         count: described.count,
-        // Rows are in the same order as the keypoints, so the keypoints' own
-        // level ranges describe them too.
-        levelStart,
+        // Rows share the level ranges with the keypoints so a reader can map
+        // descriptors back to their levels, but the descriptor set owns its own
+        // copy of the table — two independently specified fields must not alias
+        // the same buffer, or a consumer bug that mutates one silently corrupts
+        // the other.
+        levelStart: Uint32Array.from(levelStart),
         // M = N and kpIndex[i] = i: anything else needs WKNF_multiview (§5.6),
         // which arrives with synthetic views in M4.
         kpIndex: Uint32Array.from({ length: described.count }, (_, i) => i),
