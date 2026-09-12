@@ -45,9 +45,10 @@
  * test assumes the second-nearest neighbour is a WRONG match, but a pooled
  * multi-scale set holds the same physical feature at several levels, so the
  * two best candidates are often both correct, the ratio approaches 1, and the
- * test throws them away. Measured on the demo images: matching per level found
- * roughly 2.5x the matches of pooling everything into one call, at the same
- * ratio threshold (see `examples/README.md`).
+ * test throws them away. Measured on the demo images: matching per level
+ * found roughly twice the matches of pooling everything into one call at the
+ * same ratio threshold -- 99 against 45, re-measured once jsfeat-next 0.17
+ * made detect pure (#27, #28); see `examples/README.md`.
  *
  * This logic began in `examples/js/pinball-shared.mjs`, where it had to build
  * a per-level index list and copy each level's descriptor rows into a fresh

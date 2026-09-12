@@ -55,10 +55,11 @@ once, offline, and the per-frame work stays cheap.
 **Matching runs one target level at a time.** Pooling every level into a single
 train set and applying Lowe's ratio test halves the match count, because the
 same physical feature appears at several levels and the two best candidates are
-then often both correct. Measured here: 97–98 matches per-level against 46 pooled (the count is only
-reproducible to within a match or two: jsfeatNext's FAST reads one
-uninitialised scratch cell per image row, so the exact corner set drifts with
-what earlier calls left in its buffers — webarkit/webarkit#27).
+then often both correct. Measured here: 99 matches per-level against 45 pooled (2.2×) — exact and
+reproducible figures, re-measured after jsfeat-next 0.17 made `detect` a pure
+function of its inputs (webarkit/webarkit#27, required since #28); the same
+fix recovered the last corner of every image row, which is why every count
+sits slightly above the 0.16-era measurements.
 Partitioning is the caller's job — `Descriptors` is deliberately a flat buffer,
 and `Keypoint.level` is what makes it possible from outside. Both pieces now
 come from `@webarkit/nft-tracker`: `buildTargetFromImage` prepares the
