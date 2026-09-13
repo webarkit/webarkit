@@ -74,6 +74,13 @@
 
 extern crate alloc;
 
+#[cfg(feature = "std")]
+extern crate std;
+
 mod crc32;
+mod error;
+mod limits;
 
 pub use crc32::crc32;
+pub use error::{DecodeError, EncodeError, ErrorCode, Warning, WarningCode};
+pub use limits::{DEFAULT_LIMITS, Limits};
