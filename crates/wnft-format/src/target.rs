@@ -112,7 +112,14 @@ pub struct Pyramid {
     pub level_sizes: Vec<[u32; 2]>,
 }
 
-/// The detector that produced a `keypoints` or `descriptorSets` entry (§5.5).
+/// The detector that produced `keypoints` (§5.5, the `detector` sub-object of
+/// `Keypoints`).
+///
+/// Only [`Keypoints`] embeds one. A [`DescriptorSet`] carries its own `kind`
+/// and `params` fields directly rather than nesting a `Detector` (§5.6), and
+/// the two `kind`s are different vocabularies: `Detector.kind` is a
+/// `DetectorKind` (e.g. `"fast"`), while `DescriptorSet.kind` is a
+/// `DescriptorKind` (e.g. `"orb"`, `"teblid"`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Detector {
     /// `kind`: any string, including one this reader does not know — it is
@@ -209,7 +216,10 @@ pub struct DescriptorSet {
     pub kind: String,
     /// `norm`: distance, e.g. `"hamming"`, `"hamming2"`, `"l2"`.
     pub norm: String,
-    /// `dimensions`: bits for `"bits"`, elements otherwise.
+    /// `dimensions`: bits for `"bits"`, elements otherwise. `0` is legal — it
+    /// describes a set whose descriptors carry nothing, and
+    /// `bytes_per_descriptor` MUST then be `0` too (§5.6). Unlike
+    /// `Patches.patch_size`, no minimum is imposed here.
     pub dimensions: u32,
     /// `bytesPerDescriptor`.
     pub bytes_per_descriptor: u32,
