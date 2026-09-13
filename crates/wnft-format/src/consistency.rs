@@ -40,7 +40,9 @@
 //! it cites (§5.3–§5.8) against the materialised arrays. Every failure is
 //! `INCONSISTENT_DATA` (§6.2).
 
+use alloc::collections::BTreeMap;
 use alloc::format;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 use crate::arrays::{Accessor, AccessorArray, materialise};
@@ -54,13 +56,13 @@ use crate::target::DescriptorData;
 /// `keypoints`' arrays (§5.5), materialised.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct KeypointArrays {
-    pub(crate) level_start: Vec<u32>,
-    pub(crate) x: Vec<f32>,
-    pub(crate) y: Vec<f32>,
-    pub(crate) angle: Vec<f32>,
-    pub(crate) score: Vec<f32>,
-    pub(crate) size: Option<Vec<f32>>,
-    pub(crate) level: Vec<u8>,
+    pub(crate) level_start: Arc<[u32]>,
+    pub(crate) x: Arc<[f32]>,
+    pub(crate) y: Arc<[f32]>,
+    pub(crate) angle: Arc<[f32]>,
+    pub(crate) score: Arc<[f32]>,
+    pub(crate) size: Option<Arc<[f32]>>,
+    pub(crate) level: Arc<[u8]>,
 }
 
 /// One entry of `descriptorSets` (§5.6), materialised. `kind`, `norm`,
@@ -69,26 +71,26 @@ pub(crate) struct KeypointArrays {
 /// references, so there is nothing here for this task to copy.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SetArrays {
-    pub(crate) level_start: Vec<u32>,
-    pub(crate) kp_index: Vec<u32>,
+    pub(crate) level_start: Arc<[u32]>,
+    pub(crate) kp_index: Arc<[u32]>,
     pub(crate) data: DescriptorData,
 }
 
 /// `patches`' arrays (§5.7), materialised.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PatchArrays {
-    pub(crate) score: Vec<f32>,
-    pub(crate) left: Vec<u16>,
-    pub(crate) top: Vec<u16>,
-    pub(crate) level: Vec<u8>,
-    pub(crate) pixels: Vec<u8>,
+    pub(crate) score: Arc<[f32]>,
+    pub(crate) left: Arc<[u16]>,
+    pub(crate) top: Arc<[u16]>,
+    pub(crate) level: Arc<[u8]>,
+    pub(crate) pixels: Arc<[u8]>,
 }
 
 /// `referenceImage`'s pixels (§5.8), materialised. `level`, `width` and
 /// `height` stay on the matching [`ManifestReferenceImage`].
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ReferenceImageArrays {
-    pub(crate) pixels: Vec<u8>,
+    pub(crate) pixels: Arc<[u8]>,
 }
 
 /// Every array a validated [`ManifestSpec`] references, materialised out of
@@ -107,6 +109,32 @@ pub(crate) struct TargetArrays {
     pub(crate) reference_image: Option<ReferenceImageArrays>,
 }
 
+/// One accessor, already materialised and wrapped in an `Arc` so a second
+/// reference to the same accessor index can clone it for the cost of a
+/// refcount bump instead of a second copy out of `bin`.
+///
+/// A plain [`AccessorArray`] (owning a `Vec`) is not itself cheap to share —
+/// cloning it clones the `Vec`. This type exists so [`materialise_cached`]
+/// has something whose `Clone` really is cheap to hand back on a cache hit.
+#[derive(Clone, Debug, PartialEq)]
+enum CachedArray {
+    U8(Arc<[u8]>),
+    U16(Arc<[u16]>),
+    U32(Arc<[u32]>),
+    F32(Arc<[f32]>),
+}
+
+impl From<AccessorArray> for CachedArray {
+    fn from(arr: AccessorArray) -> Self {
+        match arr {
+            AccessorArray::U8(v) => Self::U8(Arc::from(v)),
+            AccessorArray::U16(v) => Self::U16(Arc::from(v)),
+            AccessorArray::U32(v) => Self::U32(Arc::from(v)),
+            AccessorArray::F32(v) => Self::F32(Arc::from(v)),
+        }
+    }
+}
+
 /// Materialise the accessor at index `idx`, or `None` if the index is out of
 /// range. `spec`'s own construction guarantees every index it stores is in
 /// range, so this is a belt, not the primary check.
@@ -114,88 +142,143 @@ fn materialise_at(bin: &[u8], accessors: &[Accessor], idx: usize) -> Option<Acce
     materialise(bin, accessors.get(idx)?)
 }
 
-/// Narrow an [`AccessorArray`] to its `u8` variant, or `None` on a mismatch.
+/// Materialise the accessor at index `idx`, sharing one allocation across
+/// every reference to that index.
+///
+/// This is the fix for the amplification a `manifest.rs` overlap check
+/// cannot catch: nothing in §5.2 forbids two manifest *fields* from naming
+/// the same accessor *entry*, only distinct accessors from overlapping in
+/// `BIN`, so a file can legally point `keypoints.x`, a descriptor set's
+/// `data`, or all sixteen of its `descriptorSets[].data` at one accessor.
+/// `cache`, keyed by accessor index, makes the second and later reference a
+/// clone of the first's `Arc` rather than a second `materialise` call — so a
+/// decode allocates once per **accessor**, matching the file's own layout,
+/// rather than once per **reference**, which used to scale with however many
+/// fields a hostile manifest aliased onto it.
+fn materialise_cached(
+    bin: &[u8],
+    accessors: &[Accessor],
+    idx: usize,
+    cache: &mut BTreeMap<usize, CachedArray>,
+) -> Option<CachedArray> {
+    if let Some(cached) = cache.get(&idx) {
+        return Some(cached.clone());
+    }
+    let cached: CachedArray = materialise_at(bin, accessors, idx)?.into();
+    cache.insert(idx, cached.clone());
+    Some(cached)
+}
+
+/// Narrow a [`CachedArray`] to its `u8` variant, or `None` on a mismatch.
 /// Unreachable once step 6 has resolved the accessor reference against the
 /// expected type, exactly like [`materialise_at`]'s own `None`.
-fn as_u8(arr: AccessorArray) -> Option<Vec<u8>> {
+fn as_u8(arr: CachedArray) -> Option<Arc<[u8]>> {
     match arr {
-        AccessorArray::U8(v) => Some(v),
+        CachedArray::U8(v) => Some(v),
         _ => None,
     }
 }
 
-/// Narrow an [`AccessorArray`] to its `u16` variant.
-fn as_u16(arr: AccessorArray) -> Option<Vec<u16>> {
+/// Narrow a [`CachedArray`] to its `u16` variant.
+fn as_u16(arr: CachedArray) -> Option<Arc<[u16]>> {
     match arr {
-        AccessorArray::U16(v) => Some(v),
+        CachedArray::U16(v) => Some(v),
         _ => None,
     }
 }
 
-/// Narrow an [`AccessorArray`] to its `u32` variant.
-fn as_u32(arr: AccessorArray) -> Option<Vec<u32>> {
+/// Narrow a [`CachedArray`] to its `u32` variant.
+fn as_u32(arr: CachedArray) -> Option<Arc<[u32]>> {
     match arr {
-        AccessorArray::U32(v) => Some(v),
+        CachedArray::U32(v) => Some(v),
         _ => None,
     }
 }
 
-/// Narrow an [`AccessorArray`] to its `f32` variant.
-fn as_f32(arr: AccessorArray) -> Option<Vec<f32>> {
+/// Narrow a [`CachedArray`] to its `f32` variant.
+fn as_f32(arr: CachedArray) -> Option<Arc<[f32]>> {
     match arr {
-        AccessorArray::F32(v) => Some(v),
+        CachedArray::F32(v) => Some(v),
         _ => None,
     }
 }
 
-/// Materialise one `u8`-accessor field.
-fn field_u8(bin: &[u8], accessors: &[Accessor], idx: usize) -> Option<Vec<u8>> {
-    as_u8(materialise_at(bin, accessors, idx)?)
+/// Materialise one `u8`-accessor field, sharing the cache.
+fn field_u8(
+    bin: &[u8],
+    accessors: &[Accessor],
+    idx: usize,
+    cache: &mut BTreeMap<usize, CachedArray>,
+) -> Option<Arc<[u8]>> {
+    as_u8(materialise_cached(bin, accessors, idx, cache)?)
 }
 
-/// Materialise one `u16`-accessor field.
-fn field_u16(bin: &[u8], accessors: &[Accessor], idx: usize) -> Option<Vec<u16>> {
-    as_u16(materialise_at(bin, accessors, idx)?)
+/// Materialise one `u16`-accessor field, sharing the cache.
+fn field_u16(
+    bin: &[u8],
+    accessors: &[Accessor],
+    idx: usize,
+    cache: &mut BTreeMap<usize, CachedArray>,
+) -> Option<Arc<[u16]>> {
+    as_u16(materialise_cached(bin, accessors, idx, cache)?)
 }
 
-/// Materialise one `u32`-accessor field.
-fn field_u32(bin: &[u8], accessors: &[Accessor], idx: usize) -> Option<Vec<u32>> {
-    as_u32(materialise_at(bin, accessors, idx)?)
+/// Materialise one `u32`-accessor field, sharing the cache.
+fn field_u32(
+    bin: &[u8],
+    accessors: &[Accessor],
+    idx: usize,
+    cache: &mut BTreeMap<usize, CachedArray>,
+) -> Option<Arc<[u32]>> {
+    as_u32(materialise_cached(bin, accessors, idx, cache)?)
 }
 
-/// Materialise one `f32`-accessor field.
-fn field_f32(bin: &[u8], accessors: &[Accessor], idx: usize) -> Option<Vec<f32>> {
-    as_f32(materialise_at(bin, accessors, idx)?)
+/// Materialise one `f32`-accessor field, sharing the cache.
+fn field_f32(
+    bin: &[u8],
+    accessors: &[Accessor],
+    idx: usize,
+    cache: &mut BTreeMap<usize, CachedArray>,
+) -> Option<Arc<[f32]>> {
+    as_f32(materialise_cached(bin, accessors, idx, cache)?)
 }
 
-/// One `materialise` call per accessor a validated `spec` references (§6.1,
-/// between steps 6 and 7). `None` is unreachable once step 6 has passed —
-/// `decode` turns it into `BAD_LAYOUT`.
+/// One `materialise` call per **distinct accessor index** a validated `spec`
+/// references (§6.1, between steps 6 and 7) — not per reference to one.
+/// `cache` (keyed by accessor index) is what makes that true: two or more
+/// manifest fields naming the same `accessors` entry (legal under §5.2, see
+/// [`materialise_cached`]) materialise it once and share the resulting
+/// `Arc` from then on, rather than each paying for their own copy of a
+/// potentially large array.
+///
+/// `None` is unreachable once step 6 has passed — `decode` turns it into
+/// `BAD_LAYOUT`.
 pub(crate) fn materialise_all(bin: &[u8], spec: &ManifestSpec) -> Option<TargetArrays> {
     let accessors = &spec.accessors;
     let kp = &spec.keypoints;
+    let mut cache: BTreeMap<usize, CachedArray> = BTreeMap::new();
 
     let keypoints = KeypointArrays {
-        level_start: field_u32(bin, accessors, kp.level_start)?,
-        x: field_f32(bin, accessors, kp.x)?,
-        y: field_f32(bin, accessors, kp.y)?,
-        angle: field_f32(bin, accessors, kp.angle)?,
-        score: field_f32(bin, accessors, kp.score)?,
+        level_start: field_u32(bin, accessors, kp.level_start, &mut cache)?,
+        x: field_f32(bin, accessors, kp.x, &mut cache)?,
+        y: field_f32(bin, accessors, kp.y, &mut cache)?,
+        angle: field_f32(bin, accessors, kp.angle, &mut cache)?,
+        score: field_f32(bin, accessors, kp.score, &mut cache)?,
         size: match kp.size {
-            Some(idx) => Some(field_f32(bin, accessors, idx)?),
+            Some(idx) => Some(field_f32(bin, accessors, idx, &mut cache)?),
             None => None,
         },
-        level: field_u8(bin, accessors, kp.level)?,
+        level: field_u8(bin, accessors, kp.level, &mut cache)?,
     };
 
     let mut sets = Vec::with_capacity(spec.descriptor_sets.len());
     for set in &spec.descriptor_sets {
-        let level_start = field_u32(bin, accessors, set.level_start)?;
-        let kp_index = field_u32(bin, accessors, set.kp_index)?;
+        let level_start = field_u32(bin, accessors, set.level_start, &mut cache)?;
+        let kp_index = field_u32(bin, accessors, set.kp_index, &mut cache)?;
         let data = match set.element_type.as_str() {
-            "f32" => DescriptorData::F32(field_f32(bin, accessors, set.data)?),
-            "bits" => DescriptorData::Bits(field_u8(bin, accessors, set.data)?),
-            "u8" => DescriptorData::U8(field_u8(bin, accessors, set.data)?),
+            "f32" => DescriptorData::F32(field_f32(bin, accessors, set.data, &mut cache)?),
+            "bits" => DescriptorData::Bits(field_u8(bin, accessors, set.data, &mut cache)?),
+            "u8" => DescriptorData::U8(field_u8(bin, accessors, set.data, &mut cache)?),
             // Unreachable: step 6 drops any set whose elementType is not one
             // of these three before it is ever added to `descriptor_sets`.
             _ => return None,
@@ -210,18 +293,18 @@ pub(crate) fn materialise_all(bin: &[u8], spec: &ManifestSpec) -> Option<TargetA
     let patches = match &spec.patches {
         None => None,
         Some(p) => Some(PatchArrays {
-            score: field_f32(bin, accessors, p.score)?,
-            left: field_u16(bin, accessors, p.left)?,
-            top: field_u16(bin, accessors, p.top)?,
-            level: field_u8(bin, accessors, p.level)?,
-            pixels: field_u8(bin, accessors, p.pixels)?,
+            score: field_f32(bin, accessors, p.score, &mut cache)?,
+            left: field_u16(bin, accessors, p.left, &mut cache)?,
+            top: field_u16(bin, accessors, p.top, &mut cache)?,
+            level: field_u8(bin, accessors, p.level, &mut cache)?,
+            pixels: field_u8(bin, accessors, p.pixels, &mut cache)?,
         }),
     };
 
     let reference_image = match &spec.reference_image {
         None => None,
         Some(r) => Some(ReferenceImageArrays {
-            pixels: field_u8(bin, accessors, r.pixels)?,
+            pixels: field_u8(bin, accessors, r.pixels, &mut cache)?,
         }),
     };
 
@@ -463,12 +546,14 @@ mod tests {
     )]
 
     use alloc::string::{String, ToString};
+    use alloc::sync::Arc;
     use alloc::vec;
     use alloc::vec::Vec;
 
     use serde_json::Map;
 
-    use super::{KeypointArrays, SetArrays, TargetArrays, check_consistency};
+    use super::{KeypointArrays, SetArrays, TargetArrays, check_consistency, materialise_all};
+    use crate::arrays::{Accessor, AccessorType};
     use crate::error::ErrorCode;
     use crate::manifest::{
         ManifestDescriptorSet, ManifestHead, ManifestKeypoints, ManifestMeta, ManifestPyramid,
@@ -544,20 +629,20 @@ mod tests {
 
         let arrays = TargetArrays {
             keypoints: KeypointArrays {
-                level_start: vec![0, 2, 4],
-                x: vec![0.0, 0.0, 0.0, 0.0],
-                y: vec![0.0, 0.0, 0.0, 0.0],
-                angle: vec![0.0, 0.0, 0.0, 0.0],
-                score: vec![0.0, 0.0, 0.0, 0.0],
+                level_start: Arc::from(vec![0, 2, 4]),
+                x: Arc::from(vec![0.0, 0.0, 0.0, 0.0]),
+                y: Arc::from(vec![0.0, 0.0, 0.0, 0.0]),
+                angle: Arc::from(vec![0.0, 0.0, 0.0, 0.0]),
+                score: Arc::from(vec![0.0, 0.0, 0.0, 0.0]),
                 size: None,
                 // Two keypoints per level: [0, 1] at level 0, [2, 3] at level 1,
                 // agreeing with keypoints.levelStart = [0, 2, 4] above.
-                level: vec![0, 0, 1, 1],
+                level: Arc::from(vec![0, 0, 1, 1]),
             },
             sets: vec![SetArrays {
-                level_start: vec![0, 2, 4],
-                kp_index: vec![0, 1, 2, 3],
-                data: DescriptorData::U8(vec![0, 0, 0, 0]),
+                level_start: Arc::from(vec![0, 2, 4]),
+                kp_index: Arc::from(vec![0, 1, 2, 3]),
+                data: DescriptorData::U8(Arc::from(vec![0, 0, 0, 0])),
             }],
             patches: None,
             reference_image: None,
@@ -583,7 +668,7 @@ mod tests {
         // holds and no value repeats — this is exactly the file the rev-4
         // amendment exists to reject. A reader implementing only "M == N"
         // and "every kpIndex < N" would accept this file.
-        arrays.sets[0].kp_index = vec![1, 0, 2, 3];
+        arrays.sets[0].kp_index = Arc::from(vec![1, 0, 2, 3]);
 
         let error = check_consistency(&spec, &arrays).expect("a permutation must be rejected");
         assert_eq!(error.code, ErrorCode::InconsistentData);
@@ -596,7 +681,7 @@ mod tests {
         // identity would pass the negative test above for the wrong reason.
         let (mut spec, mut arrays) = valid_spec_and_arrays();
         spec.head.extensions_required = vec!["WKNF_multiview".to_string()];
-        arrays.sets[0].kp_index = vec![1, 0, 2, 3];
+        arrays.sets[0].kp_index = Arc::from(vec![1, 0, 2, 3]);
 
         assert_eq!(
             check_consistency(&spec, &arrays),
@@ -614,8 +699,8 @@ mod tests {
         // keypoints, but N = 4: without WKNF_multiview this must fail on the
         // count alone.
         spec.descriptor_sets[0].count = 3;
-        arrays.sets[0].level_start = vec![0, 2, 3];
-        arrays.sets[0].kp_index = vec![0, 1, 2];
+        arrays.sets[0].level_start = Arc::from(vec![0, 2, 3]);
+        arrays.sets[0].kp_index = Arc::from(vec![0, 1, 2]);
 
         let error = check_consistency(&spec, &arrays).expect("M != N must be rejected");
         assert_eq!(error.code, ErrorCode::InconsistentData);
@@ -626,8 +711,8 @@ mod tests {
         let (mut spec, mut arrays) = valid_spec_and_arrays();
         spec.head.extensions_required = vec!["WKNF_multiview".to_string()];
         spec.descriptor_sets[0].count = 3;
-        arrays.sets[0].level_start = vec![0, 2, 3];
-        arrays.sets[0].kp_index = vec![0, 1, 2];
+        arrays.sets[0].level_start = Arc::from(vec![0, 2, 3]);
+        arrays.sets[0].kp_index = Arc::from(vec![0, 1, 2]);
 
         assert_eq!(
             check_consistency(&spec, &arrays),
@@ -650,10 +735,12 @@ mod tests {
         // has to be caught by the explicit `kpIndex[r] < N` comparison, not
         // by an incidental lookup failure that would catch it for the wrong
         // reason.
-        arrays.keypoints.level.push(1);
+        let mut level = arrays.keypoints.level.to_vec();
+        level.push(1);
+        arrays.keypoints.level = Arc::from(level);
         assert_eq!(check_consistency(&spec, &arrays), None);
 
-        arrays.sets[0].kp_index = vec![0, 1, 2, 4];
+        arrays.sets[0].kp_index = Arc::from(vec![0, 1, 2, 4]);
 
         let error =
             check_consistency(&spec, &arrays).expect("an out-of-range kpIndex must be rejected");
@@ -676,9 +763,118 @@ mod tests {
 
         // levelStart still says index 2 belongs to level 1 ([2, 4)), but the
         // stored level now says 0 — `levels_agree` must catch this.
-        arrays.keypoints.level = vec![0, 0, 0, 1];
+        arrays.keypoints.level = Arc::from(vec![0, 0, 0, 1]);
 
         let error = check_consistency(&spec, &arrays).expect("a level mismatch must be rejected");
         assert_eq!(error.code, ErrorCode::InconsistentData);
+    }
+
+    /// The amplification fix, task 9: nothing in §5.2 stops two or more
+    /// manifest *fields* from naming the same `accessors` *entry* — the
+    /// overlap check `manifest.rs` runs builds one span per accessor, so
+    /// aliased references pass it untouched, and that aliasing is legal, not
+    /// a file to reject (see `target.rs`'s module docs). Before this fix,
+    /// `materialise_all` called `materialise` once per *reference*, so a
+    /// manifest that pointed several fields at one large accessor allocated
+    /// a multiple of its size. Here `keypoints.x`, `.y`, `.angle` and
+    /// `.score` all name accessor `0` — four references, one accessor — and
+    /// the test proves both halves of the fix: the file still decodes to the
+    /// right values, and every aliasing field ends up holding a clone of the
+    /// *same* `Arc`, not a fresh copy.
+    #[test]
+    fn materialise_all_shares_an_accessor_named_by_several_fields() {
+        // accessor 0: 2 `f32`s, at byte 0. Named by keypoints.x, .y, .angle
+        // and .score below — four fields, one accessor.
+        // accessor 1: 2 `u32`s (`levelStart`), at byte 8.
+        // accessor 2: 2 `u8`s (`level`), at byte 16.
+        let mut bin = Vec::new();
+        bin.extend_from_slice(&1.5f32.to_le_bytes());
+        bin.extend_from_slice(&2.5f32.to_le_bytes());
+        bin.extend_from_slice(&0u32.to_le_bytes());
+        bin.extend_from_slice(&2u32.to_le_bytes());
+        bin.extend_from_slice(&[0u8, 0u8]);
+
+        let accessors = vec![
+            Accessor {
+                offset: 0,
+                count: 2,
+                ty: AccessorType::F32,
+            },
+            Accessor {
+                offset: 8,
+                count: 2,
+                ty: AccessorType::U32,
+            },
+            Accessor {
+                offset: 16,
+                count: 2,
+                ty: AccessorType::U8,
+            },
+        ];
+
+        let head = ManifestHead {
+            doc: Map::new(),
+            generator: None,
+            extensions_used: Vec::new(),
+            extensions_required: Vec::new(),
+        };
+        let meta = ManifestMeta {
+            width_px: 64,
+            height_px: 48,
+            physical_size_mm: None,
+        };
+        let pyramid = ManifestPyramid {
+            scale_step: 2.0,
+            level_sizes: vec![[64, 48]],
+        };
+        let keypoints = ManifestKeypoints {
+            count: 2,
+            detector_kind: String::new(),
+            detector_params: Params::new(),
+            level_start: 1,
+            // The alias: four distinct fields, one accessor index.
+            x: 0,
+            y: 0,
+            angle: 0,
+            score: 0,
+            size: None,
+            level: 2,
+        };
+        let spec = ManifestSpec {
+            head,
+            accessors,
+            meta,
+            pyramid,
+            keypoints,
+            descriptor_sets: Vec::new(),
+            patches: None,
+            reference_image: None,
+            info: None,
+        };
+
+        let arrays = materialise_all(&bin, &spec)
+            .expect("a well-formed manifest with an aliased accessor must materialise");
+
+        // Decodes correctly: every aliasing field reads accessor 0's values.
+        assert_eq!(&*arrays.keypoints.x, [1.5_f32, 2.5].as_slice());
+        assert_eq!(&*arrays.keypoints.y, [1.5_f32, 2.5].as_slice());
+        assert_eq!(&*arrays.keypoints.angle, [1.5_f32, 2.5].as_slice());
+        assert_eq!(&*arrays.keypoints.score, [1.5_f32, 2.5].as_slice());
+        assert_eq!(
+            check_consistency(&spec, &arrays),
+            None,
+            "the aliased target is still internally consistent"
+        );
+
+        // Materialised once: every aliasing field is the *same* allocation.
+        assert!(Arc::ptr_eq(&arrays.keypoints.x, &arrays.keypoints.y));
+        assert!(Arc::ptr_eq(&arrays.keypoints.x, &arrays.keypoints.angle));
+        assert!(Arc::ptr_eq(&arrays.keypoints.x, &arrays.keypoints.score));
+        assert_eq!(
+            Arc::strong_count(&arrays.keypoints.x),
+            4,
+            "exactly the four aliasing fields hold a clone, once materialise_all's own \
+             cache (the only other holder) has gone out of scope"
+        );
     }
 }

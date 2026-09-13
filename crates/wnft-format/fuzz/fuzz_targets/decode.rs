@@ -40,6 +40,8 @@
 //! is asserted below is §8.4's round trip on top of it, and §5.6 and §7.3
 //! each carve out one legal case that round trip does not cover.
 
+use std::sync::Arc;
+
 use libfuzzer_sys::fuzz_target;
 use wnft_format::{
     DEFAULT_LIMITS, DescriptorData, DescriptorSet, ErrorCode, Keypoints, Params, Patches, Target,
@@ -71,7 +73,7 @@ fn f32_bits_eq(a: &[f32], b: &[f32]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits())
 }
 
-fn f32_opt_bits_eq(a: &Option<Vec<f32>>, b: &Option<Vec<f32>>) -> bool {
+fn f32_opt_bits_eq(a: &Option<Arc<[f32]>>, b: &Option<Arc<[f32]>>) -> bool {
     match (a, b) {
         (Some(a), Some(b)) => f32_bits_eq(a, b),
         (None, None) => true,

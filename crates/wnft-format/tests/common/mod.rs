@@ -280,12 +280,12 @@ pub fn target_to_json(target: &wnft_format::Target) -> serde_json::Value {
             "kind": target.keypoints.detector.kind,
             "params": serde_json::Value::Object(target.keypoints.detector.params.clone()),
         },
-        "levelStart": target.keypoints.level_start,
+        "levelStart": target.keypoints.level_start.to_vec(),
         "x": json_f32_array(&target.keypoints.x),
         "y": json_f32_array(&target.keypoints.y),
         "angle": json_f32_array(&target.keypoints.angle),
         "score": json_f32_array(&target.keypoints.score),
-        "level": target.keypoints.level,
+        "level": target.keypoints.level.to_vec(),
     });
     if let Some(size) = &target.keypoints.size {
         keypoints
@@ -299,9 +299,13 @@ pub fn target_to_json(target: &wnft_format::Target) -> serde_json::Value {
         .iter()
         .map(|set| {
             let (element_type, data) = match &set.data {
-                wnft_format::DescriptorData::Bits(bytes) => ("bits", serde_json::json!(bytes)),
-                wnft_format::DescriptorData::U8(bytes) => ("u8", serde_json::json!(bytes)),
-                wnft_format::DescriptorData::F32(values) => ("f32", serde_json::json!(values)),
+                wnft_format::DescriptorData::Bits(bytes) => {
+                    ("bits", serde_json::json!(bytes.to_vec()))
+                }
+                wnft_format::DescriptorData::U8(bytes) => ("u8", serde_json::json!(bytes.to_vec())),
+                wnft_format::DescriptorData::F32(values) => {
+                    ("f32", serde_json::json!(values.to_vec()))
+                }
             };
             serde_json::json!({
                 "kind": set.kind,
@@ -311,8 +315,8 @@ pub fn target_to_json(target: &wnft_format::Target) -> serde_json::Value {
                 "producer": set.producer,
                 "params": serde_json::Value::Object(set.params.clone()),
                 "count": set.count,
-                "levelStart": set.level_start,
-                "kpIndex": set.kp_index,
+                "levelStart": set.level_start.to_vec(),
+                "kpIndex": set.kp_index.to_vec(),
                 "elementType": element_type,
                 "data": data,
             })
@@ -350,10 +354,10 @@ pub fn target_to_json(target: &wnft_format::Target) -> serde_json::Value {
                 "patchSize": patches.patch_size,
                 "count": patches.count,
                 "score": json_f32_array(&patches.score),
-                "left": patches.left,
-                "top": patches.top,
-                "level": patches.level,
-                "pixels": patches.pixels,
+                "left": patches.left.to_vec(),
+                "top": patches.top.to_vec(),
+                "level": patches.level.to_vec(),
+                "pixels": patches.pixels.to_vec(),
             }),
         );
     }
@@ -364,7 +368,7 @@ pub fn target_to_json(target: &wnft_format::Target) -> serde_json::Value {
                 "level": reference_image.level,
                 "width": reference_image.width,
                 "height": reference_image.height,
-                "pixels": reference_image.pixels,
+                "pixels": reference_image.pixels.to_vec(),
             }),
         );
     }
