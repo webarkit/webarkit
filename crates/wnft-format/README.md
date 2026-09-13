@@ -91,6 +91,15 @@ cp fixtures/nft-target/0.2/*/*.wnft crates/wnft-format/fuzz/corpus/decode/
 cargo +nightly fuzz run decode -- -max_total_time=300
 ```
 
+The target treats an `INVALID_TARGET` encode failure as expected, not as a
+crash, when the decoded target has no descriptor sets: §5.6 documents this as
+the one legal case where a file decodes but the target it produced cannot be
+re-encoded (every descriptor set had an unknown `elementType` and was
+dropped). Any other encode failure, or an `INVALID_TARGET` with descriptor
+sets still present, fails the fuzz run instead — that would be a genuine
+reader/writer disagreement. Interpreting a fuzzer report on this target means
+knowing that distinction going in.
+
 A crash is written to `crates/wnft-format/fuzz/artifacts/decode/`. Reproduce and
 minimise it with:
 
