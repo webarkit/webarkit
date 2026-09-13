@@ -40,19 +40,9 @@
 //! would promise a decode path that cannot produce them.
 
 use alloc::string::String;
-// Task 5: uncomment with `Decoded`.
-// use alloc::vec::Vec;
-//
-// use crate::target::Target;
-//
-// /// A successful decode: the target, and every warning the file raised.
-// #[derive(Clone, Debug, PartialEq)]
-// pub struct Decoded {
-//     /// The decoded target.
-//     pub target: Target,
-//     /// Warnings, in the order the reader raised them (§6.2).
-//     pub warnings: Vec<Warning>,
-// }
+use alloc::vec::Vec;
+
+use crate::target::Target;
 
 /// Every failure this codec can report (§6.2, §7.3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -177,6 +167,15 @@ pub struct EncodeError {
     pub code: ErrorCode,
     /// The offending field path.
     pub detail: String,
+}
+
+/// A successful decode: the target, and every warning the file raised.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Decoded {
+    /// The decoded target.
+    pub target: Target,
+    /// Warnings, in the order the reader raised them (§6.2).
+    pub warnings: Vec<Warning>,
 }
 
 impl core::fmt::Display for DecodeError {
