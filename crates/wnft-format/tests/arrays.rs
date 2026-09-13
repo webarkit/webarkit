@@ -133,7 +133,22 @@ fn an_accessor_past_the_chunk_is_none_not_a_panic() {
         ),
         None
     );
-    // The product itself must not overflow on the way to that answer (§6.1).
+    // An accessor whose offset and count are both near u32::MAX must still
+    // come back as None, not a panic or a truncated read, once its (checked)
+    // end is compared against the 3-byte chunk.
+    //
+    // On this 64-bit host the checked arithmetic itself cannot actually
+    // overflow here: `count` and `offset` are `u32`, the element size is at
+    // most 4, so `checked_mul` tops out around 1.7e10 and the following
+    // `checked_add` around 2.1e10 — both far inside `usize::MAX` on 64-bit.
+    // The `None` below therefore comes entirely from the final bounds check
+    // against `bin`, not from `checked_mul`/`checked_add` returning `None`.
+    // On a 32-bit `usize` target (e.g. `thumbv7em-none-eabihf`, which this
+    // workspace builds — see the no_std gate — but does not run tests on),
+    // `usize::MAX` is only ~4.3e9, so that same product/sum genuinely
+    // overflows `usize` and the checked arithmetic is load-bearing there.
+    // This test cannot exercise that path on a 64-bit host, so that is
+    // recorded here rather than silently claimed.
     assert_eq!(
         materialise(
             &[1, 2, 3],
