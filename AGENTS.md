@@ -31,6 +31,16 @@
 - `examples/` — demos live at the repo root, not inside a package, because they exercise the **contract**, not one implementation. See [`examples/README.md`](./examples/README.md).
 - **Neither package is published to npm yet** (both are pre-1.0). Don't write installation instructions elsewhere in the repo that assume `npm install @webarkit/cv-backend-*` works from the public registry — it doesn't yet.
 - `crates/wnft-format` — the Rust codec for the `.wnft` target format. It is the format's **second** implementation and a **peer** of the TypeScript codec in `packages/nft-tracker/src/target/format`, not a port of it: [`docs/specs/nft-target-format.md`](./docs/specs/nft-target-format.md) is the source of truth, and the point of there being two implementations is that a specification with one is only a description of that one (§1). Implement from the specification text; if the two codecs disagree, that is a specification bug or a codec bug and it is decided before code is written.
+- `examples/targets/pinball.wnft` is **generated but committed**, by
+  `packages/nft-tracker/bin/compile-target.mjs` from `examples/images/pinball.jpg`
+  (the exact command is in [`examples/README.md`](./examples/README.md)). Two
+  things read it: the static demo's "target from" selector, and
+  `crates/wnft-format/tests/real_target.rs`, for which it is the first real —
+  as opposed to synthetic — target either codec has seen. Recompiling it is
+  therefore a change to that test's expectations, not a refresh: update the
+  asserted counts in the same commit, or don't recompile. It is deliberately
+  **not** in `fixtures/nft-target/`, which may only hold what the corpus
+  generator produces.
 - **`fixtures/nft-target/` is generated, shared, and read-only for Rust.** The TypeScript generator produces it; `crates/wnft-format` consumes it and MUST NEVER regenerate it. A second implementation that rebuilt the corpus from its own writer would be checking itself against itself, and §8.2 item 4 would prove nothing. See [`fixtures/nft-target/README.md`](./fixtures/nft-target/README.md).
 
 ## Conventions

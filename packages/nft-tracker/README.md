@@ -7,9 +7,14 @@ caller, so this package runs on any implementation of it.
 > **Not published to npm, and pre-0.1.** Develop against it from the monorepo:
 > `npm install` at the root symlinks the workspace packages together.
 
-What exists today is the **target layer**: the in-memory shape of a trained
-target, and the codec for the `.wnft` files that store one. The tracker itself
-is the next milestone ([ADR-0001](../../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md)).
+What exists today is the **target layer** — the in-memory shape of a trained
+target, the codec for the `.wnft` files that store one, and
+[`compile-target`](#compiling-a-target), which turns an image into such a file
+— plus **milestone M1** of the tracker itself: `NftTracker`, a per-frame
+`detect → describe → match → estimateHomography → poseFromHomography` with no
+state carried between frames. Repeated detection is not yet tracking; the
+patch tracker and the state machine that make it tracking are M2
+([ADR-0001](../../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md)).
 
 ## The `.wnft` codec
 
@@ -105,15 +110,74 @@ at all.
   `UNSUPPORTED_EXTENSION` rather than half-read, and one that merely lists it
   in `extensionsUsed` is ignored with `UNKNOWN_EXTENSION_IGNORED`.
 
+## Compiling a target
+
+`bin/compile-target.mjs` is the offline half: an image in, a `.wnft` out. It is
+`buildTargetFromImage` with `@webarkit/cv-backend-jsfeatnext` followed by
+`encode`, run from a command line instead of from a page.
+
+> **Repo-local dev tooling, not part of the package.** `bin/` names a concrete
+> backend and a JPEG decoder, and both are **dev**Dependencies — the package
+> itself stays backend-free, as ADR-0001 point 2 requires, and the library's own
+> `src/` imports neither. There is no `bin` field in `package.json` and nothing
+> here is published; run it from the monorepo.
+
+```bash
+npm run build                                  # the script imports dist/
+node packages/nft-tracker/bin/compile-target.mjs examples/images/pinball.jpg \
+    -o examples/targets/pinball.wnft --physical-size 210x262.5
+```
+
+Run from the repository root, as above. There is an `npm run compile-target -w
+@webarkit/nft-tracker --` too, but npm runs it with this package as the working
+directory, so every path in it would be relative to `packages/nft-tracker` —
+which is a good way to write a command that means something other than it
+reads.
+
+| Option | Default | What it decides |
+|---|---|---|
+| `-o`, `--out` | *required* | where the `.wnft` goes |
+| `--levels` | 8 | pyramid levels searched on the reference image |
+| `--keypoints` | `levels * 260` | total keypoint budget |
+| `--scale-step` | `2^(1/3)` | size ratio between levels; must be `> 1` |
+| `--physical-size` | unknown | `<W>x<H>` in millimetres, both `> 0` (§5.3). Left out, model-plane units stay level-0 pixels (§3) |
+| `--max-side` | 640 | cap on the image's longer side |
+| `--seed` | 0 | RNG seed, recorded in `info.compiler` and enforced during the build |
+| `--name` | the image's base name | `info.name` |
+
+Two of those deserve a word.
+
+**`--max-side` decides the target's coordinate space.** Keypoints are stored in
+level-0 pixels, so a page that draws them over the image it loaded must cap that
+image the same way. 640 is the demos' own cap, which is why it is the default.
+
+**`--seed` changes nothing about the output today, and is not decorative.** No
+stage of the compile draws randomness, so the same image and options produce the
+same bytes — which is what lets a compiled target be committed and reviewed as a
+diff. The seed is *enforced* anyway: the build runs with `Math.random` replaced
+by a seeded generator and the script reports the number of draws (`0`, so far).
+A backend that starts drawing therefore stays reproducible instead of quietly
+making every recompile a new file.
+
+[`examples/targets/pinball.wnft`](../../examples/targets) is one such target,
+committed, and the static demo can load it instead of building its own.
+
 ## Conformance
 
 The suites in `test/target/format/` implement §8.2, §8.3 and §8.4 against the
 committed corpus in [`fixtures/nft-target/`](../../fixtures/nft-target). §8.2
-item 4, cross-implementation conformance, is a documented skip until the Rust
-codec exists.
+item 4, cross-implementation conformance, is a documented skip **here** — this
+suite cannot run `cargo` — and is implemented from the other side, in
+[`crates/wnft-format`](../../crates/wnft-format)'s `tests/writer.rs` over the
+whole corpus and `tests/real_target.rs` over the compiled pinball target.
+
+`test/wnft_roundtrip.test.ts` closes the loop the format exists for: a real
+image through `buildTargetFromImage`, `encode`, `decode` and into `NftTracker`,
+asserted to return the *same* numbers as the tracker driven straight from the
+in-memory target. A file in between has to be invisible.
 
 ```bash
-npm run build      # the fixture generator imports dist/
+npm run build      # the fixture generator and compile-target import dist/
 npm test
 npm run fixtures   # regenerate the corpus; it must produce no diff
 ```
