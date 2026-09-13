@@ -307,7 +307,7 @@ pub fn decode(bytes: &[u8], limits: &Limits) -> Result<Decoded, DecodeError> {
 pub mod testing {
     pub use crate::arrays::{Accessor, AccessorArray, AccessorType, materialise};
     pub use crate::container::{Chunk, ParsedContainer, build_container, parse_container};
-    pub use crate::ijson::scan_ijson;
+    pub use crate::ijson::{MAX_EXACT_INTEGER, scan_ijson};
     pub use crate::manifest::{
         ManifestDescriptorSet, ManifestHead, ManifestKeypoints, ManifestMeta, ManifestPatches,
         ManifestPyramid, ManifestReferenceImage, ManifestSpec, decode_manifest, validate_manifest,

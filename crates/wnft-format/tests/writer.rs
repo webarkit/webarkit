@@ -177,16 +177,66 @@ fn the_writer_accepts_the_largest_exactly_representable_integer() {
 }
 
 #[test]
-fn the_writer_refuses_a_noncharacter_and_an_unpaired_surrogate() {
-    // Checks (e) and (b). Built from code units rather than written as literals,
-    // so no source file here contains one.
+fn the_writer_refuses_a_noncharacter() {
+    // Check (e). Built from a code unit rather than written as a literal, so
+    // no source file here contains one. Check (b) (an unpaired surrogate) has
+    // no test of its own: a Rust `String` cannot hold a lone surrogate at
+    // all, so it is unreachable from a well-typed `Target` — see
+    // `validate_target.rs`'s module docs and `string_units`'s doc comment for
+    // where that unreachability is recorded instead of asserted here.
     let noncharacter = String::from_utf16(&[0xFDD0]).expect("U+FDD0 is well-formed");
     rejects("nc", serde_json::json!(noncharacter));
-    // A lone surrogate cannot live in a Rust String at all, so (b) is
-    // unreachable from a well-typed target — the check exists for the decoded
-    // path and for a `params` assembled from escapes. Assert the guard is there
-    // rather than that it fires:
-    assert!(encode(&minimal_with_param("ok", serde_json::json!("plain"))).is_ok());
+}
+
+// --- task-8 review finding 1: checks (b)/(e) apply outside params/info too --
+
+#[test]
+fn the_writer_refuses_a_noncharacter_in_format_generator() {
+    // §5's checks (b) and (e) apply to every string in the manifest, not
+    // only the free-form content of `params`/`info` — the reader's own
+    // `scan_ijson` scans the whole manifest text. `format.generator` is the
+    // simplest manifest string outside a free-form object, so it stands in
+    // for the whole "every other plain string" family this review flagged.
+    let noncharacter = String::from_utf16(&[0xFDD0]).expect("U+FDD0 is well-formed");
+    let mut target = decode(&common::read("valid/minimal.wnft"), &DEFAULT_LIMITS)
+        .expect("must decode")
+        .target;
+    assert!(encode(&target).is_ok(), "the baseline must encode first");
+    target.generator = Some(noncharacter);
+    let error = encode(&target).expect_err("a noncharacter in generator must be refused");
+    assert_eq!(error.code, ErrorCode::InvalidTarget);
+    assert!(
+        error.detail.contains("format.generator"),
+        "detail must name the offending path, got {:?}",
+        error.detail
+    );
+}
+
+#[test]
+fn the_writer_refuses_a_noncharacter_in_a_descriptor_sets_producer() {
+    // The other family: a descriptor set's own plain strings (`kind`,
+    // `norm`, `producer`) are exactly as unconstrained by §5.6's domain as
+    // `detector.kind` is, and exactly as bound by checks (b)/(e) as anything
+    // else in the manifest. `producer` stands in for all three — `kind` and
+    // `norm` go through the identical `string_offends` call in
+    // `validate_descriptor_set`.
+    let noncharacter = String::from_utf16(&[0xFDD0]).expect("U+FDD0 is well-formed");
+    let mut target = decode(&common::read("valid/minimal.wnft"), &DEFAULT_LIMITS)
+        .expect("must decode")
+        .target;
+    assert!(encode(&target).is_ok(), "the baseline must encode first");
+    target
+        .descriptor_sets
+        .get_mut(0)
+        .expect("minimal has one set")
+        .producer = noncharacter;
+    let error = encode(&target).expect_err("a noncharacter in producer must be refused");
+    assert_eq!(error.code, ErrorCode::InvalidTarget);
+    assert!(
+        error.detail.contains("producer"),
+        "detail must name the offending path, got {:?}",
+        error.detail
+    );
 }
 
 #[test]
@@ -227,8 +277,24 @@ fn a_later_minor_is_rejected() {
 }
 
 #[test]
-fn a_set_of_an_unknown_family_leaves_the_other_usable() {
-    // §8.3: a file with two descriptor sets, one of an unknown family.
+fn a_preserved_unknown_kind_set_re_encodes_unchanged() {
+    // §5.6 rev 3's hazard, from the writer's side: a set with an unknown
+    // `kind` (known `elementType`) is "structurally understood" and MUST be
+    // "preserved and re-emitted unchanged" on decode — a legal file that
+    // decodes but cannot be re-emitted is exactly what that revision exists
+    // to rule out. `tests/corpus.rs` already covers the *decode* half (the
+    // set survives, §8.1's warning fires); this is the *encode* half §8.1
+    // states as its reason for the fixture existing at all.
+    //
+    // This fixture is not itself in canonical order (its three sets are
+    // "wombat", "orb", "teblid" in the file, not sorted by (kind, norm,
+    // dimensions, producer)), so re-encoding it legitimately reorders them —
+    // §7.3 requires that sort, and §7.3 only promises byte/member identity
+    // for a fixture already in canonical form (§8.2 item 2). So "unchanged"
+    // here is checked as a value round trip modulo that reordering: sort
+    // both sides' `descriptorSets` by the same key before comparing, so the
+    // assertion is about each set's own fields (kind included) surviving
+    // intact, not about the array position the source file happened to use.
     let decoded = decode(
         &common::read("warnings/unknown-descriptor-kind.wnft"),
         &DEFAULT_LIMITS,
@@ -237,5 +303,66 @@ fn a_set_of_an_unknown_family_leaves_the_other_usable() {
     assert!(
         decoded.target.descriptor_sets.len() >= 2,
         "the unknown-kind set is preserved beside the valid one (§5.6)"
+    );
+    let re = encode(&decoded.target).expect("must re-encode");
+    let round_tripped = decode(&re, &DEFAULT_LIMITS)
+        .expect("the canonical re-encode must itself decode")
+        .target;
+
+    fn sort_key(set: &wnft_format::DescriptorSet) -> (String, String, u32, String) {
+        (
+            set.kind.clone(),
+            set.norm.clone(),
+            set.dimensions,
+            set.producer.clone(),
+        )
+    }
+    let mut before = decoded.target;
+    let mut after = round_tripped;
+    before.descriptor_sets.sort_by_key(sort_key);
+    after.descriptor_sets.sort_by_key(sort_key);
+    assert_eq!(
+        after, before,
+        "the unknown-kind set (and everything else) must survive encode unchanged"
+    );
+}
+
+#[test]
+fn a_dropped_unknown_element_type_set_does_not_reappear() {
+    // §5.6 rev 3's other half: a set with an unknown `elementType` is
+    // dropped on decode, and §7.3's "a decoder keeps only what it
+    // understands, and the canonical writer emits only that" means it MUST
+    // NOT reappear on re-encode either.
+    let bytes = common::read("warnings/unknown-element-type.wnft");
+    let decoded = decode(&bytes, &DEFAULT_LIMITS).expect("must decode");
+    let re = encode(&decoded.target).expect("must re-encode");
+    // The dropped set's family/norm/producer identify it uniquely against
+    // whatever the valid set in the same fixture carries; asserting its
+    // count of descriptor sets shrank (rather than merely "some set with an
+    // unknown elementType is gone") pins the exact hazard §5.6 rev 3 names:
+    // a decoded target with N sets must re-encode with exactly the sets it
+    // actually carries, not the file's original N.
+    let source_sets = {
+        let source_manifest: serde_json::Value =
+            serde_json::from_slice(&common::split(&bytes).json).expect("manifest parses");
+        source_manifest["descriptorSets"]
+            .as_array()
+            .expect("descriptorSets is an array")
+            .len()
+    };
+    assert!(
+        decoded.target.descriptor_sets.len() < source_sets,
+        "the unknown-elementType set must have been dropped on decode"
+    );
+    let re_manifest: serde_json::Value =
+        serde_json::from_slice(&common::split(&re).json).expect("manifest parses");
+    let re_sets = re_manifest["descriptorSets"]
+        .as_array()
+        .expect("descriptorSets is an array")
+        .len();
+    assert_eq!(
+        re_sets,
+        decoded.target.descriptor_sets.len(),
+        "re-encoding must not resurrect the dropped set"
     );
 }

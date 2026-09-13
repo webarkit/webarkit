@@ -42,11 +42,13 @@ use crate::crc32::crc32;
 use crate::error::{DecodeError, ErrorCode, fail};
 use crate::known::{BIN_TYPE, JSON_TYPE, MAGIC, SUPPORTED_CONTAINER_MAJOR};
 
-/// The file header is 16 bytes (§4.1).
-const HEADER_LEN: usize = 16;
+/// The file header is 16 bytes (§4.1). `pub(crate)` so `encode.rs` can bound
+/// the whole file it is about to emit (§7.3, the oversized-target check)
+/// without duplicating this constant.
+pub(crate) const HEADER_LEN: usize = 16;
 
-/// Every chunk header is 16 bytes (§4.2).
-const CHUNK_HEADER_LEN: usize = 16;
+/// Every chunk header is 16 bytes (§4.2). Same visibility, same reason.
+pub(crate) const CHUNK_HEADER_LEN: usize = 16;
 
 /// One chunk, framed but not interpreted: where its data lives in the buffer,
 /// and how long that data is (excluding padding).
