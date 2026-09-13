@@ -80,6 +80,7 @@ extern crate std;
 mod container;
 mod crc32;
 mod error;
+mod ijson;
 mod known;
 mod limits;
 
@@ -93,4 +94,5 @@ pub use limits::{DEFAULT_LIMITS, Limits};
 #[doc(hidden)]
 pub mod testing {
     pub use crate::container::{Chunk, ParsedContainer, build_container, parse_container};
+    pub use crate::ijson::scan_ijson;
 }
