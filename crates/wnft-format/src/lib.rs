@@ -78,15 +78,18 @@ extern crate alloc;
 extern crate std;
 
 mod arrays;
+mod canonical_json;
 mod consistency;
 mod container;
 mod crc32;
+mod encode;
 mod error;
 mod ijson;
 mod known;
 mod limits;
 mod manifest;
 mod target;
+mod validate_target;
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -97,6 +100,7 @@ use error::fail;
 use manifest::{decode_manifest, validate_manifest};
 
 pub use crc32::crc32;
+pub use encode::encode;
 pub use error::{DecodeError, Decoded, EncodeError, ErrorCode, Warning, WarningCode};
 pub use limits::{DEFAULT_LIMITS, Limits};
 pub use target::{
