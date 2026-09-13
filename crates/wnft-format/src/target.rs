@@ -48,8 +48,37 @@
 //! stored pixels are read from exactly that level at those indices; storing
 //! them in level-0 coordinates would reintroduce a rounding step and make the
 //! stored pixels ambiguous about what they actually sample.
+//!
+//! The accessor-backed arrays below are `Arc<[T]>`, not `Vec<T>`. Two or more
+//! manifest fields are allowed to name the **same** `accessors` entry (§5.2
+//! constrains distinct accessors' byte ranges, not how many fields may
+//! reference one), and a decode materialises each *referenced* array once and
+//! hands every field that names it a clone of the same `Arc` — cheap, a
+//! refcount bump, rather than a fresh allocation per reference. Without
+//! sharing, a file with a handful of descriptor sets all naming one large
+//! `data` accessor would decode to a multiple of its own size in memory; see
+//! `consistency::materialise_all`'s cache for where the sharing actually
+//! happens.
+//!
+//! `Arc`, not `Rc`: a decoded [`Target`] stays `Send` (and, since nothing here
+//! uses interior mutability, `Sync`), so it can be produced on a worker
+//! thread and handed to a renderer on another — `Rc<[T]>` would make the
+//! whole `Target` `!Send` and forbid exactly that. The cost is that `Arc`'s
+//! reference count is updated atomically, which needs `target_has_atomic`;
+//! every target this crate's CI builds for (including
+//! `thumbv7em-none-eabihf`, the `no_std` gate) has atomics, so this is paid
+//! for, not merely assumed.
+//!
+//! This does mean a consumer can no longer mutate one of these arrays in
+//! place through a `&mut Target` — `Arc<[T]>` has no `IndexMut`, only
+//! `Arc::get_mut` when the refcount happens to be `1`. That is the intended
+//! trade: a decoded target is an artifact to *read*; nothing in this crate
+//! ever mutates one (`encode` only reads), and anything assembling a
+//! [`Target`] by hand builds each array first and converts it in, same as
+//! constructing any other `Arc<[T]>`.
 
 use alloc::string::String;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 /// Free-form content (§5.5, §5.6, §5.9). `serde_json::Map` is a `BTreeMap`
@@ -141,21 +170,21 @@ pub struct Keypoints {
     /// `levelStart`, `L + 1` entries: keypoints of level `l` are the indices
     /// `[level_start[l], level_start[l + 1])`. `level_start[0] = 0`,
     /// `level_start[L] = N`, non-decreasing.
-    pub level_start: Vec<u32>,
+    pub level_start: Arc<[u32]>,
     /// `x`: level-0 pixel coordinate (§3), `N` entries.
-    pub x: Vec<f32>,
+    pub x: Arc<[f32]>,
     /// `y`: level-0 pixel coordinate (§3), `N` entries.
-    pub y: Vec<f32>,
+    pub y: Arc<[f32]>,
     /// `angle`, radians, exactly as the detector produced it. No assumed
     /// range: angles are periodic (§3).
-    pub angle: Vec<f32>,
+    pub angle: Arc<[f32]>,
     /// `score`: the detector's response, `N` entries.
-    pub score: Vec<f32>,
+    pub score: Arc<[f32]>,
     /// `size`: diameter, in level-0 pixels, of the region the descriptor
     /// sampled. `None` means unknown (the field was absent).
-    pub size: Option<Vec<f32>>,
+    pub size: Option<Arc<[f32]>>,
     /// `level`: pyramid level, `N` entries. MUST agree with `level_start`.
-    pub level: Vec<u8>,
+    pub level: Arc<[u8]>,
 }
 
 /// The element array of a descriptor set (§5.6), discriminated by
@@ -169,11 +198,11 @@ pub struct Keypoints {
 #[derive(Clone, Debug, PartialEq)]
 pub enum DescriptorData {
     /// `"bits"`: packed binary, `dimensions` bits per descriptor.
-    Bits(Vec<u8>),
+    Bits(Arc<[u8]>),
     /// `"u8"`: one byte per element.
-    U8(Vec<u8>),
+    U8(Arc<[u8]>),
     /// `"f32"`: one 32-bit float per element.
-    F32(Vec<f32>),
+    F32(Arc<[f32]>),
 }
 
 impl DescriptorData {
@@ -232,10 +261,10 @@ pub struct DescriptorSet {
     pub count: u32,
     /// `levelStart`, `L + 1` entries: row ranges per level, closed and
     /// agreeing with the keypoints (§5.6).
-    pub level_start: Vec<u32>,
+    pub level_start: Arc<[u32]>,
     /// `kpIndex`, `M` entries: the keypoint each row describes. The identity
     /// permutation unless `WKNF_multiview` is required (§5.6).
-    pub kp_index: Vec<u32>,
+    pub kp_index: Arc<[u32]>,
     /// The descriptor bytes/elements themselves.
     pub data: DescriptorData,
 }
@@ -248,18 +277,18 @@ pub struct Patches {
     /// `Q`, the number of patches.
     pub count: u32,
     /// `score`: Shi–Tomasi minimum eigenvalue, `Q` entries.
-    pub score: Vec<f32>,
+    pub score: Arc<[f32]>,
     /// `left`: top-left pixel column, in the patch's **own level's**
     /// coordinates (§3), not level-0. `Q` entries.
-    pub left: Vec<u16>,
+    pub left: Arc<[u16]>,
     /// `top`: top-left pixel row, in the patch's **own level's** coordinates
     /// (§3), not level-0. `Q` entries.
-    pub top: Vec<u16>,
+    pub top: Arc<[u16]>,
     /// `level`: pyramid level the patch was sampled from, `Q` entries.
-    pub level: Vec<u8>,
+    pub level: Arc<[u8]>,
     /// `pixels`: row-major, `P × P` per patch, `Q × P × P` bytes total,
     /// stored without extra smoothing.
-    pub pixels: Vec<u8>,
+    pub pixels: Arc<[u8]>,
 }
 
 /// `referenceImage` (§5.8): an optional full-resolution (or chosen-level)
@@ -273,5 +302,5 @@ pub struct ReferenceImage {
     /// `height`, MUST equal `pyramid.level_sizes[level][1]`.
     pub height: u32,
     /// Row-major grayscale pixels, `width × height` bytes.
-    pub pixels: Vec<u8>,
+    pub pixels: Arc<[u8]>,
 }
