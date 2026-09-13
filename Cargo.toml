@@ -1,0 +1,32 @@
+# The Rust half of the repository. `crates/*` sits beside `packages/*` (npm
+# workspaces) rather than inside it: the two toolchains share the repository and
+# the `fixtures/` corpus, and nothing else.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+# cargo-fuzz generates a crate with its own `[workspace]`, and it is not part of
+# the build or of CI (§8.4 runs it out of band). Listing it here keeps
+# `cargo test --workspace` from reaching for libfuzzer on a machine that has no
+# nightly toolchain.
+exclude = ["crates/wnft-format/fuzz"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+license = "LGPL-3.0-or-later"
+repository = "https://github.com/webarkit/webarkit"
+
+# Deliberately no `[workspace.lints]` table. The strict lints this crate needs
+# belong to the *library* — see the inner attributes in
+# `crates/wnft-format/src/lib.rs` — and a package's `[lints]` table applies to
+# every target in the package, integration tests included. `unwrap_used`,
+# `expect_used` and `panic` denied over `tests/` would fail the build on
+# essentially every assertion, since `expect` and `assert!` are what a test is
+# made of. The constraint is about how the library behaves on untrusted input,
+# so the library is where it is expressed.
+
+[profile.release]
+# A wrap that slipped past the checked arithmetic of §6.1 would be a silent
+# security bug; with this it is a loud crash the fuzzer finds instead. Debug
+# builds check overflow already, and this makes release agree with them.
+overflow-checks = true
