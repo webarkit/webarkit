@@ -469,10 +469,50 @@ pub fn validate_manifest(
     ))
 }
 
+/// Whether `value` is a JSON **number** with no fractional part, in
+/// `[min, max]` — checked at the level of the *value*, not the literal
+/// `serde_json` happened to store it as.
+///
+/// §5.2 says "a JSON number with no fractional part", a property of the
+/// value; contrast §5's own check (c), worded "**integer literals** — no
+/// fraction, no exponent", a property of the text. Different words, a
+/// different rule: `serde_json` stores `20.0` as an `f64` (the literal has a
+/// decimal point), so `Value::as_u64()` returns `None` for it even though
+/// the *value* is a whole number. The peer TypeScript codec checks
+/// `Number.isInteger(v)`, which is `true` for `20.0` — JavaScript has no
+/// separate integer type — so a reader using `as_u64()` here would reject a
+/// file the peer accepts, which §1 forbids.
+///
+/// This is safe from the ±(2^53 − 1) magnitude question: I-JSON check (c)
+/// has already rejected, on the manifest **text**, every integer literal
+/// (no fraction, no exponent) outside that range before this function ever
+/// runs. A literal with a fraction or exponent — `20.0` included — is exempt
+/// from check (c) by its own wording, and is exactly the case this function
+/// exists for.
+fn number_as_u32(value: &Value, min: u32, max: u32) -> Option<u32> {
+    let n = value.as_f64()?;
+    // `f64::fract` is a `std`-only method (it needs `libm` under `no_std`),
+    // so the "no fractional part" check is done by truncating and comparing
+    // instead: both `is_finite` and the `as u32` cast are core-language
+    // operations, not method calls into a floating-point runtime.
+    if !n.is_finite() || n < f64::from(min) || n > f64::from(max) {
+        return None;
+    }
+    // `n` is finite and within `[min, max] ⊆ [0, u32::MAX]`, so this
+    // truncating cast cannot overflow or saturate; it is exact exactly when
+    // `n` has no fractional part, which is what "no fractional part" means.
+    let truncated = n as u32;
+    if f64::from(truncated) == n {
+        Some(truncated)
+    } else {
+        None
+    }
+}
+
 /// Require `doc[key]` to be a JSON number with no fractional part, in
-/// `[min, max]`. A fractional, negative, or out-of-range literal fails
-/// `as_u64` or the bound check and is `BAD_MANIFEST` — never reaching the
-/// checked arithmetic below (§5.2, §6.1 step 6).
+/// `[min, max]` (§5.2, §6.1 step 6; see [`number_as_u32`]). A fractional,
+/// negative, or out-of-range value is `BAD_MANIFEST` — never reaching the
+/// checked arithmetic below.
 fn require_u32(
     obj: &Map<String, Value>,
     key: &str,
@@ -481,9 +521,7 @@ fn require_u32(
     context: &str,
 ) -> Result<u32, DecodeError> {
     obj.get(key)
-        .and_then(Value::as_u64)
-        .and_then(|n| u32::try_from(n).ok())
-        .filter(|&n| n >= min && n <= max)
+        .and_then(|v| number_as_u32(v, min, max))
         .ok_or_else(|| {
             fail(
                 ErrorCode::BadManifest,
@@ -603,8 +641,10 @@ fn resolve_ref(
     count: u32,
     context: &str,
 ) -> Result<usize, DecodeError> {
-    let idx = value
-        .as_u64()
+    // §5.2: "an integer index in [0, accessors.length)" is the same
+    // value-level domain as every other integer field here (see
+    // `number_as_u32`) — a `20.0` index is as legal as a bare `20`.
+    let idx = number_as_u32(value, 0, u32::MAX)
         .and_then(|n| usize::try_from(n).ok())
         .filter(|&i| i < accessors.len())
         .ok_or_else(|| {
@@ -702,9 +742,7 @@ fn parse_pyramid(
         })?;
         let w = pair
             .first()
-            .and_then(Value::as_u64)
-            .and_then(|n| u32::try_from(n).ok())
-            .filter(|&n| (1..=U16_DOMAIN_MAX).contains(&n))
+            .and_then(|v| number_as_u32(v, 1, U16_DOMAIN_MAX))
             .ok_or_else(|| {
                 fail(
                     ErrorCode::BadManifest,
@@ -713,9 +751,7 @@ fn parse_pyramid(
             })?;
         let h = pair
             .get(1)
-            .and_then(Value::as_u64)
-            .and_then(|n| u32::try_from(n).ok())
-            .filter(|&n| (1..=U16_DOMAIN_MAX).contains(&n))
+            .and_then(|v| number_as_u32(v, 1, U16_DOMAIN_MAX))
             .ok_or_else(|| {
                 fail(
                     ErrorCode::BadManifest,
@@ -1081,6 +1117,18 @@ fn parse_descriptor_sets(
                 ));
             }
         };
+        // §6.1 nominally assigns this consistency check to step 7 ("data
+        // consistency" — §6.1's own step-7 bullet list includes "bytes_per_descriptor
+        // consistent with elementType and dimensions"), not step 6. It is
+        // evaluated here, in step 6, deliberately: the peer TypeScript codec
+        // does the same, hoisting this exact check into its own `validateManifest`
+        // (its step 6), at `manifest.ts:634`. Matching the peer's placement
+        // keeps the two implementations identical on every file (§1), which
+        // matters more here than which step's bucket the check nominally sits
+        // in — the error code is `INCONSISTENT_DATA` either way, so no
+        // observable behaviour depends on the step boundary. If the peer ever
+        // moves this to a later pass, move this one the same way, in the same
+        // change.
         if expected_bpd != bytes_per_descriptor {
             return Err(fail(
                 ErrorCode::InconsistentData,
@@ -1093,16 +1141,29 @@ fn parse_descriptor_sets(
         let params = optional_object(obj, "params", &ctx)?;
 
         // Uniqueness on (kind, norm, dimensions, producer) (§5.6). Built via
-        // `serde_json::to_string` of a small array so that a separator inside
-        // `kind` or `producer` cannot forge a collision.
+        // `format!("{:?}", ...)` of a small array so that a separator inside
+        // `kind` or `producer` cannot forge a collision; unlike
+        // `serde_json::to_string`, `Debug`-formatting a `[&str; 4]` cannot
+        // fail, so there is no fallback path whose failure mode would quietly
+        // collapse every key onto `""` and turn a false negative into a false
+        // positive (every second set rejected as a duplicate).
+        //
+        // Same placement note as `bytesPerDescriptor` above: §6.1 nominally
+        // assigns duplicate-key detection to step 7 ("duplicate descriptor-set
+        // key", §6.2's own wording for `INCONSISTENT_DATA`), but it is
+        // evaluated here, in step 6, deliberately, matching the peer's
+        // `manifest.ts:649`. Revisit both sites together if the peer ever
+        // moves this.
         let dimensions_str = format!("{dimensions}");
-        let key = serde_json::to_string(&[
-            kind.as_str(),
-            norm.as_str(),
-            dimensions_str.as_str(),
-            producer.as_str(),
-        ])
-        .unwrap_or_default();
+        let key = format!(
+            "{:?}",
+            [
+                kind.as_str(),
+                norm.as_str(),
+                dimensions_str.as_str(),
+                producer.as_str()
+            ]
+        );
         if !seen_keys.insert(key) {
             return Err(fail(
                 ErrorCode::InconsistentData,
