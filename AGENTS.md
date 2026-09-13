@@ -15,6 +15,13 @@
 - Typecheck: `npm run typecheck` — `tsc` across `src/` **and** `test/` in every workspace (separate from build, which only checks `src/`).
 - **Test:** `npm test` — Vitest across every workspace.
 - These four are exactly what [`.github/workflows/CI.yml`](./.github/workflows/CI.yml) runs on every push and pull request. Do not claim a change is verified without actually running them.
+- **Rust:** stable, 1.85 or newer (edition 2024); the crates live in a Cargo workspace at the repository root (`members = ["crates/*"]`), beside the npm workspaces. The two toolchains share this repository and the `fixtures/` corpus and nothing else — there is no build ordering between them.
+  - Test: `cargo test --workspace`
+  - Format: `cargo fmt --all --check`
+  - Lint: `cargo clippy --workspace --all-targets -- -D warnings`
+  - `no_std` check: `cargo build -p wnft-format --no-default-features --target thumbv7em-none-eabihf` — a bare-metal target, because a crate that accidentally depends on `std` still builds for the *host* with `--no-default-features`. Install it once with `rustup target add thumbv7em-none-eabihf`.
+  - These four are exactly what the `rust` job in [`.github/workflows/CI.yml`](./.github/workflows/CI.yml) runs. Do not claim a change is verified without actually running them.
+  - Fuzzing (§8.4) is **not** in CI: it needs nightly and has no natural stopping point. See [`crates/wnft-format/README.md`](./crates/wnft-format/README.md).
 
 ## Architecture — read this before editing
 
@@ -23,6 +30,8 @@
 - `packages/cv-backend-jsfeatnext` — jsfeatNext's implementation of that contract. Depends on **both** the spec and `@webarkit/jsfeat-next` (`^0.16.0`); neither of those depends on it — keep that dependency arrow one-directional.
 - `examples/` — demos live at the repo root, not inside a package, because they exercise the **contract**, not one implementation. See [`examples/README.md`](./examples/README.md).
 - **Neither package is published to npm yet** (both are pre-1.0). Don't write installation instructions elsewhere in the repo that assume `npm install @webarkit/cv-backend-*` works from the public registry — it doesn't yet.
+- `crates/wnft-format` — the Rust codec for the `.wnft` target format. It is the format's **second** implementation and a **peer** of the TypeScript codec in `packages/nft-tracker/src/target/format`, not a port of it: [`docs/specs/nft-target-format.md`](./docs/specs/nft-target-format.md) is the source of truth, and the point of there being two implementations is that a specification with one is only a description of that one (§1). Implement from the specification text; if the two codecs disagree, that is a specification bug or a codec bug and it is decided before code is written.
+- **`fixtures/nft-target/` is generated, shared, and read-only for Rust.** The TypeScript generator produces it; `crates/wnft-format` consumes it and MUST NEVER regenerate it. A second implementation that rebuilt the corpus from its own writer would be checking itself against itself, and §8.2 item 4 would prove nothing. See [`fixtures/nft-target/README.md`](./fixtures/nft-target/README.md).
 
 ## Conventions
 
