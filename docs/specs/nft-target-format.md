@@ -527,7 +527,7 @@ Fixtures live in a directory shared by `vitest` and `cargo test` (e.g. `fixtures
 
 1. `decode(valid/minimal.wnft)` equals `valid/minimal.json`.
 2. **Same-implementation round trip:** `encode(decode(f))` is byte-identical to `f` for every `valid/` fixture. The guarantee is scoped to **canonical files whose content the implementation fully understands**, which every `valid/` fixture is by construction — §7.3 discards unknown content, so no implementation can promise byte identity for a file carrying some.
-3. **Non-canonical inputs:** every `noncanonical/` fixture decodes to the same values as its `valid/` counterpart, and `encode(decode(f))` equals **that counterpart** byte for byte — not the input. This is what makes §7.3's "keeps only what it understands" testable rather than a disclaimer.
+3. **Non-canonical inputs:** every `noncanonical/` fixture decodes to the same values as its `valid/` counterpart, and `encode(decode(f))` equals **that counterpart** — not the input. This is what makes §7.3's "keeps only what it understands" testable rather than a disclaimer. "Equals" means byte identity for the implementation that wrote the corpus, and item 4's comparison — `BIN\0` byte-identical, manifests equal after parsing — for any other, since §7.3's last paragraph leaves number formatting free across languages (Q8).
 4. **Cross-implementation:** `BIN\0` chunks byte-identical; manifests equal after parsing.
 5. Every `invalid/` file yields exactly its expected error code; every `warnings/` file yields `ok` with exactly its expected warnings.
 6. CRC-32 test vector: `123456789` → `0xCBF43926`.
