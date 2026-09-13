@@ -66,15 +66,13 @@ use crate::known::{
     SUPPORTED_FORMAT_VERSION,
 };
 use crate::limits::Limits;
+use crate::rules::U16_DOMAIN_MAX;
 use crate::target::Params;
 
 // Re-exported so a caller reaching for the accessor vocabulary can do it
 // through this module rather than `crate::arrays` directly (Task 5's types are
 // declared in `arrays.rs` so that task stayed self-contained).
 pub(crate) use crate::arrays::{Accessor, AccessorType, element_size};
-
-/// The largest value in §5.4's/§5.8's `[1, 2^16 − 1]` domain.
-const U16_DOMAIN_MAX: u32 = u16::MAX as u32;
 
 /// What steps 3 to 5 produce: the parsed manifest object, not yet
 /// schema-checked, plus the three fields step 5 already settled.

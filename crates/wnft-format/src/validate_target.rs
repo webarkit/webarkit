@@ -37,6 +37,12 @@
 //! §5: format and extensions, pyramid, meta, keypoints, descriptor sets,
 //! patches, reference image, `info`.
 //!
+//! The exception is `level_start_closed`, `levels_agree` and
+//! `level_sizes_non_increasing`, plus `U16_DOMAIN_MAX`: none of these has a
+//! shape difference between reader and writer — both sides already have a
+//! materialised `&[u32]` / `&[[u32; 2]]` in hand — so they live once, in
+//! `crate::rules`, and both this module and `consistency.rs` call them.
+//!
 //! [`validate_target`] returns the offending field path on failure, e.g.
 //! `"descriptorSets[1].params.seed"`, and `None` when `target` is one this
 //! build can safely re-encode.
@@ -62,10 +68,8 @@ use serde_json::{Number, Value};
 
 use crate::ijson::{MAX_EXACT_INTEGER, has_noncharacter, has_unpaired_surrogate};
 use crate::known::{IMPLEMENTED_EXTENSIONS, SUPPORTED_FORMAT_VERSION};
+use crate::rules::{U16_DOMAIN_MAX, level_sizes_non_increasing, level_start_closed, levels_agree};
 use crate::target::{DescriptorSet, Params, Target};
-
-/// The largest value in §5.4's/§5.8's `[1, 2^16 − 1]` domain.
-const U16_DOMAIN_MAX: u32 = u16::MAX as u32;
 
 /// A JSON string's UTF-16 code units, for checks (b) and (e) (§5). A Rust
 /// `&str` cannot hold a lone surrogate — `encode_utf16` can never produce one
@@ -205,48 +209,6 @@ fn expected_bytes_per_descriptor(element_type: &str, dimensions: u32) -> Option<
         "f32" => dimensions.checked_mul(4),
         _ => None,
     }
-}
-
-/// Whether `level_start` is closed and non-decreasing against `total` (§5.5,
-/// §5.6).
-fn level_start_closed(level_start: &[u32], total: u32) -> bool {
-    match level_start.split_first() {
-        Some((&first, rest)) if first == 0 => {
-            let mut prev = first;
-            for &next in rest {
-                if next < prev {
-                    return false;
-                }
-                prev = next;
-            }
-            prev == total
-        }
-        _ => false,
-    }
-}
-
-/// Whether every keypoint's `level` agrees with `levelStart` (§5.5).
-fn levels_agree(level_start: &[u32], level: &[u8], level_count: usize) -> bool {
-    for l in 0..level_count {
-        let (Some(&start), Some(&end)) = (level_start.get(l), level_start.get(l + 1)) else {
-            return false;
-        };
-        let Some(range) = level.get((start as usize)..(end as usize)) else {
-            return false;
-        };
-        if range.iter().any(|&lv| usize::from(lv) != l) {
-            return false;
-        }
-    }
-    true
-}
-
-/// Whether `sizes` is non-increasing level to level (§5.4).
-fn level_sizes_non_increasing(sizes: &[[u32; 2]]) -> bool {
-    sizes.windows(2).all(|pair| match pair {
-        [[prev_w, prev_h], [next_w, next_h]] => next_w <= prev_w && next_h <= prev_h,
-        _ => true,
-    })
 }
 
 /// One descriptor set's own checks (§5.6), everything except the
