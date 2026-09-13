@@ -36,8 +36,8 @@
 ## Conventions
 
 - **Language:** every repository artifact — code, comments, commit messages, PR titles and bodies, issues, docs — is written in English, whatever language the conversation with the agent uses.
-- TypeScript. License: **LGPL-3.0-or-later**. Existing `src/` files in both packages carry an LGPL header — match that template for new files in the same package. This repo does not yet have jsfeatNext's automated header-check script (`scripts/check-license-headers.mjs`); for now this is enforced by review, not CI.
-- Preserve the public `CvBackend` contract surface (`detect`, `describe`, `match`, `estimateHomography`, `poseFromHomography`, optional `filterMatches`) unless a change to `cv-backend-spec` is explicitly intended and reflected in both packages together.
+- TypeScript, and Rust in `crates/`. License: **LGPL-3.0-or-later**. Existing `src/` files in both packages and in `crates/wnft-format` (its `src/`, `tests/` and fuzz target included) carry an LGPL header — match that template for new files in the same crate or package. This repo does not yet have jsfeatNext's automated header-check script (`scripts/check-license-headers.mjs`); for now this is enforced by review, not CI.
+- Preserve the public `CvBackend` contract surface (`detect`, `describe`, `match`, `estimateHomography`, `poseFromHomography`, optional `filterMatches`) unless a change to `cv-backend-spec` is explicitly intended and reflected in both packages together. Changing `DescriptorKind` or `DescriptorNorm` in `packages/cv-backend-spec/src/cv_backend.ts` requires resyncing `crates/wnft-format/src/known.rs`, which hand-transcribes both unions: a drift shows up only as a descriptor set that one codec warns about and drops while the other accepts it, on a file no fixture contains, so the shared corpus cannot catch it.
 - Keep the two packages' capability negotiation honest: `capabilities` must never claim something the API can't actually reach (see `cv-backend-jsfeatnext/README.md`'s own notes on `detectors`/`matchFilters` for why this matters).
 - Never commit `.idea/` (already in `.gitignore`).
 
