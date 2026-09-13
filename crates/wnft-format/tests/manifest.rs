@@ -208,3 +208,97 @@ fn every_valid_fixture_passes_steps_3_to_6_with_no_warnings() {
         );
     }
 }
+
+/// A minimal, otherwise-valid manifest, with `meta.physicalSizeMm: null`.
+/// `accessors` covers a 1096-byte `BIN` chunk (the `data` accessor ends at
+/// `456 + 640 = 1096`).
+const MANIFEST_WITH_NULL_PHYSICAL_SIZE_MM: &str = r#"{
+  "format": { "version": "0.2" },
+  "meta": { "widthPx": 64, "heightPx": 48, "physicalSizeMm": null },
+  "pyramid": { "scaleStep": 2, "levelSizes": [[64, 48], [32, 24]] },
+  "keypoints": {
+    "count": 20,
+    "detector": { "kind": "fast" },
+    "levelStart": 0, "x": 1, "y": 2, "angle": 3, "score": 4, "level": 5
+  },
+  "descriptorSets": [
+    {
+      "kind": "orb", "norm": "hamming", "elementType": "bits",
+      "dimensions": 256, "bytesPerDescriptor": 32, "producer": "jsfeatnext",
+      "count": 20, "levelStart": 6, "kpIndex": 7, "data": 8
+    }
+  ],
+  "accessors": [
+    { "offset": 0, "count": 3, "type": "u32" },
+    { "offset": 16, "count": 20, "type": "f32" },
+    { "offset": 96, "count": 20, "type": "f32" },
+    { "offset": 176, "count": 20, "type": "f32" },
+    { "offset": 256, "count": 20, "type": "f32" },
+    { "offset": 336, "count": 20, "type": "u8" },
+    { "offset": 360, "count": 3, "type": "u32" },
+    { "offset": 376, "count": 20, "type": "u32" },
+    { "offset": 456, "count": 640, "type": "u8" }
+  ]
+}"#;
+
+/// The same manifest, but `meta` omits `physicalSizeMm` entirely rather than
+/// carrying it as `null`.
+const MANIFEST_MISSING_PHYSICAL_SIZE_MM: &str = r#"{
+  "format": { "version": "0.2" },
+  "meta": { "widthPx": 64, "heightPx": 48 },
+  "pyramid": { "scaleStep": 2, "levelSizes": [[64, 48], [32, 24]] },
+  "keypoints": {
+    "count": 20,
+    "detector": { "kind": "fast" },
+    "levelStart": 0, "x": 1, "y": 2, "angle": 3, "score": 4, "level": 5
+  },
+  "descriptorSets": [
+    {
+      "kind": "orb", "norm": "hamming", "elementType": "bits",
+      "dimensions": 256, "bytesPerDescriptor": 32, "producer": "jsfeatnext",
+      "count": 20, "levelStart": 6, "kpIndex": 7, "data": 8
+    }
+  ],
+  "accessors": [
+    { "offset": 0, "count": 3, "type": "u32" },
+    { "offset": 16, "count": 20, "type": "f32" },
+    { "offset": 96, "count": 20, "type": "f32" },
+    { "offset": 176, "count": 20, "type": "f32" },
+    { "offset": 256, "count": 20, "type": "f32" },
+    { "offset": 336, "count": 20, "type": "u8" },
+    { "offset": 360, "count": 3, "type": "u32" },
+    { "offset": 376, "count": 20, "type": "u32" },
+    { "offset": 456, "count": 640, "type": "u8" }
+  ]
+}"#;
+
+/// §1 requires two conforming decoders to agree on every legal file, and the
+/// peer TypeScript codec's own check (`if (sizeMmRaw !== null) { ... }`)
+/// already rejects a manifest whose `meta` omits `physicalSizeMm` — `undefined
+/// !== null` sends it into the validating branch, which then fails on a
+/// non-array. This crate must reject the same file, even though §5.3's prose
+/// never spells out that the *key* (as opposed to the value it may hold) is
+/// required. An explicit `null`, by contrast, is squarely inside §5.3's
+/// documented domain and must decode to `None`.
+#[test]
+fn meta_physical_size_mm_null_decodes_to_none_but_absent_key_is_bad_manifest() {
+    let (head, warnings) = decode_manifest(
+        MANIFEST_WITH_NULL_PHYSICAL_SIZE_MM.as_bytes(),
+        &DEFAULT_LIMITS,
+    )
+    .expect("decode_manifest");
+    assert_eq!(warnings, vec![]);
+    let (spec, warnings) =
+        validate_manifest(head, Some(1096), &DEFAULT_LIMITS).expect("validate_manifest");
+    assert_eq!(warnings, vec![]);
+    assert_eq!(spec.meta.physical_size_mm, None);
+
+    let (head, _warnings) = decode_manifest(
+        MANIFEST_MISSING_PHYSICAL_SIZE_MM.as_bytes(),
+        &DEFAULT_LIMITS,
+    )
+    .expect("decode_manifest");
+    let err = validate_manifest(head, Some(1096), &DEFAULT_LIMITS)
+        .expect_err("an absent meta.physicalSizeMm must be BAD_MANIFEST");
+    assert_eq!(err.code, ErrorCode::BadManifest);
+}
