@@ -198,7 +198,6 @@ impl std::error::Error for DecodeError {}
 impl std::error::Error for EncodeError {}
 
 /// Build a [`DecodeError`]. Shorthand used throughout the codec.
-#[allow(dead_code)]
 pub(crate) fn fail(code: ErrorCode, detail: impl Into<String>) -> DecodeError {
     DecodeError {
         code,
