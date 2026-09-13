@@ -1,0 +1,24 @@
+# Its own workspace: cargo-fuzz builds with nightly and libfuzzer, neither of
+# which the crate or CI needs. The root workspace excludes this directory.
+[package]
+name = "wnft-format-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "LGPL-3.0-or-later"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+wnft-format = { path = ".." }
+
+[[bin]]
+name = "decode"
+path = "fuzz_targets/decode.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
