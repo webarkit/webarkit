@@ -52,8 +52,8 @@ fuzz_target!(|data: &[u8]| {
         Ok(bytes) => {
             // The real round trip (§8.4): what the writer emits for an
             // accepted target must decode back to the same values.
-            let again = decode(&bytes, &DEFAULT_LIMITS)
-                .expect("canonical output must decode (§8.2 item 4)");
+            let again =
+                decode(&bytes, &DEFAULT_LIMITS).expect("canonical output must decode (§8.4)");
             assert_eq!(again.target, decoded.target);
 
             // §7.3's opening line: the same content always produces the same
