@@ -79,14 +79,21 @@ terminating and never allocating beyond the limits. It is **not** part of CI —
 it needs a nightly toolchain and has no natural stopping point — so run it by
 hand when the decoder changes.
 
+`cargo fuzz` resolves its target and corpus relative to the **current
+package**, and that package is `crates/wnft-format` — not the repository
+root, which is a virtual workspace manifest with no `fuzz/` beside it. Run
+everything below from `crates/wnft-format/`:
+
 ```bash
 cargo install cargo-fuzz
 rustup toolchain install nightly
 
+cd crates/wnft-format
+
 # Seed the corpus from the real fixtures. Random bytes die at the magic (§4.1);
 # mutations of real files are what reach the manifest and the accessors.
-mkdir -p crates/wnft-format/fuzz/corpus/decode
-cp fixtures/nft-target/0.2/*/*.wnft crates/wnft-format/fuzz/corpus/decode/
+mkdir -p fuzz/corpus/decode
+cp ../../fixtures/nft-target/0.2/*/*.wnft fuzz/corpus/decode/
 
 cargo +nightly fuzz run decode -- -max_total_time=300
 ```
@@ -100,12 +107,12 @@ sets still present, fails the fuzz run instead — that would be a genuine
 reader/writer disagreement. Interpreting a fuzzer report on this target means
 knowing that distinction going in.
 
-A crash is written to `crates/wnft-format/fuzz/artifacts/decode/`. Reproduce and
-minimise it with:
+A crash is written to `fuzz/artifacts/decode/` (still relative to
+`crates/wnft-format/`). Reproduce and minimise it with:
 
 ```bash
-cargo +nightly fuzz run decode crates/wnft-format/fuzz/artifacts/decode/crash-<hash>
-cargo +nightly fuzz tmin decode crates/wnft-format/fuzz/artifacts/decode/crash-<hash>
+cargo +nightly fuzz run decode fuzz/artifacts/decode/crash-<hash>
+cargo +nightly fuzz tmin decode fuzz/artifacts/decode/crash-<hash>
 ```
 
 Then **add the minimised input as a regression test in `tests/`** — not to
