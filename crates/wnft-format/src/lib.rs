@@ -84,6 +84,7 @@ mod error;
 mod ijson;
 mod known;
 mod limits;
+mod manifest;
 mod target;
 
 pub use crc32::crc32;
@@ -102,4 +103,8 @@ pub mod testing {
     pub use crate::arrays::{Accessor, AccessorArray, AccessorType, materialise};
     pub use crate::container::{Chunk, ParsedContainer, build_container, parse_container};
     pub use crate::ijson::scan_ijson;
+    pub use crate::manifest::{
+        ManifestDescriptorSet, ManifestHead, ManifestKeypoints, ManifestMeta, ManifestPatches,
+        ManifestPyramid, ManifestReferenceImage, ManifestSpec, decode_manifest, validate_manifest,
+    };
 }

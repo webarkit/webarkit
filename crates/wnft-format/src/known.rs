@@ -32,9 +32,6 @@
 //! whether the set is usable, preserved, or dropped.
 
 /// The only `format.version` this build reads or writes (§7.1).
-// Not read until the manifest layer (Task 4) checks it; the allow is removed
-// there the same way Task 3 removed it from `error::fail`.
-#[allow(dead_code)]
 pub(crate) const SUPPORTED_FORMAT_VERSION: &str = "0.2";
 
 /// The only `container_major` this build frames (§7.1). Any `container_minor` is
@@ -64,8 +61,6 @@ pub(crate) const BIN_TYPE: [u8; 4] = [b'B', b'I', b'N', 0];
 /// present in one list and missing from the other makes one codec warn and drop
 /// a set the other accepts, on a file no fixture contains. Check the union, do
 /// not recall it.
-// Not read until Task 6 (§5.6 descriptor-set validation).
-#[allow(dead_code)]
 pub(crate) const KNOWN_DESCRIPTOR_KINDS: &[&str] = &["orb", "freak", "beblid", "teblid", "akaze"];
 
 /// Distance metrics this build recognises. Same source of truth: the
@@ -76,14 +71,10 @@ pub(crate) const KNOWN_DESCRIPTOR_KINDS: &[&str] = &["orb", "freak", "beblid", "
 /// deliberately **not** here: the contract's `DescriptorNorm` does not define
 /// it, so a set using it is one this reader does not know — warned about and
 /// preserved. That is the rule working, not a gap in this list.
-// Not read until Task 6 (§5.6 descriptor-set validation).
-#[allow(dead_code)]
 pub(crate) const KNOWN_DESCRIPTOR_NORMS: &[&str] = &["hamming", "l2"];
 
 /// Element types the format defines (§5.6). Unlike `kind` and `norm`, an
 /// unknown one makes a set uninterpretable, so such a set is dropped.
-// Not read until Task 6 (§5.6 descriptor-set validation).
-#[allow(dead_code)]
 pub(crate) const KNOWN_ELEMENT_TYPES: &[&str] = &["bits", "u8", "f32"];
 
 /// Extensions this build implements — none, because format 0.2 defines none to
@@ -101,6 +92,4 @@ pub(crate) const KNOWN_ELEMENT_TYPES: &[&str] = &["bits", "u8", "f32"];
 /// `extensionsRequired` gives `UNSUPPORTED_EXTENSION`, in `extensionsUsed` alone
 /// it is pruned with `UNKNOWN_EXTENSION_IGNORED`, and `M != N` or a non-identity
 /// `kpIndex` is therefore always `INCONSISTENT_DATA`.
-// Not read until the manifest layer (Task 4/6) checks extensionsRequired.
-#[allow(dead_code)]
 pub(crate) const IMPLEMENTED_EXTENSIONS: &[&str] = &[];
