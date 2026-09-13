@@ -199,6 +199,15 @@ impl BinBuilder {
 /// [`ErrorCode::InvalidTarget`] when `target` is one a conforming reader
 /// would reject — `detail` names the offending field path, e.g.
 /// `"descriptorSets[1].params.seed"`. Nothing is written on failure.
+///
+/// `encode` takes no [`Limits`](crate::Limits): the fixed ceilings of §6.4
+/// are a reader-side configuration knob, not part of what a conforming
+/// reader would reject (§7.3), so they play no part in validation here. A
+/// `target` with, say, an oversized `patchSize` therefore encodes
+/// successfully into a file that a later `decode` call may still refuse with
+/// `LIMIT_EXCEEDED`, if that call's own `Limits` are stricter than the file
+/// warrants. This is expected, not a bug: pick the `Limits` a caller decodes
+/// with accordingly.
 pub fn encode(target: &Target) -> Result<Vec<u8>, EncodeError> {
     // Phase 1: validate. Nothing below this line runs on a target this
     // build could not safely re-emit.
