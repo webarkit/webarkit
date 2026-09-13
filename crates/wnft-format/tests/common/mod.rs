@@ -140,6 +140,83 @@ pub fn limits_for(overrides: &Option<LimitOverrides>) -> wnft_format::Limits {
     limits
 }
 
+/// Every `valid/` fixture's path, relative to the corpus root (§8.2 item 2).
+/// Driven by `expectations.json`, like the rest of this module, so the corpus
+/// can grow without a change here.
+pub fn valid_fixtures() -> Vec<String> {
+    expectations().valid.into_iter().map(|v| v.file).collect()
+}
+
+/// Every `noncanonical/` case (§8.2 item 3).
+pub fn noncanonical_cases() -> Vec<NoncanonicalCase> {
+    expectations().noncanonical
+}
+
+/// A `.wnft` buffer's `JSON` and `BIN\0` chunk *data*, header and padding
+/// stripped — what `tests/writer.rs`'s conformance comparisons (§8.2 items
+/// 2-4) actually compare.
+pub struct Chunks {
+    pub json: Vec<u8>,
+    pub bin: Vec<u8>,
+}
+
+/// Split `bytes` (a whole `.wnft` file) into its chunk data. Panics on a
+/// malformed container — every caller here hands it either a corpus fixture
+/// or this crate's own `encode()` output, neither of which should ever fail
+/// to parse.
+pub fn split(bytes: &[u8]) -> Chunks {
+    let parsed = wnft_format::testing::parse_container(bytes)
+        .unwrap_or_else(|e| panic!("splitting a .wnft buffer: {e}"));
+    let json = bytes[parsed.json.data_start..parsed.json.data_start + parsed.json.length].to_vec();
+    let bin = match parsed.bin {
+        Some(chunk) => bytes[chunk.data_start..chunk.data_start + chunk.length].to_vec(),
+        None => Vec::new(),
+    };
+    Chunks { json, bin }
+}
+
+/// Normalise a `serde_json::Value` in place so two `Number`s that denote the
+/// same mathematical whole-number value compare equal after parsing,
+/// regardless of which literal spelling produced them.
+///
+/// This is not cosmetic (see `json_num` above, and `writer.rs`'s module
+/// docs): `serde_json::Value`'s derived `PartialEq` compares a `Number`'s own
+/// representation, not its mathematical value, so `100` (parsed from the
+/// TypeScript-written corpus) and `100.0` (this writer's `f64`-typed
+/// `pyramid.scaleStep` / `meta.physicalSizeMm`, serialised through
+/// `serde_json`'s float formatter) would otherwise compare unequal even
+/// though `100.0 == 100`. §7.3's last paragraph and Q8 leave number
+/// formatting free across languages, so item 4's "manifests equal after
+/// parsing" comparison must look past exactly this, on both sides.
+///
+/// Only a `Number`'s *representation* is touched, never its magnitude or
+/// type: a non-whole-number float, a string, a bool, `null`, and every
+/// object key are left exactly as parsed, so a genuine mismatch (a wrong
+/// value, a value present as the wrong JSON type) still fails the comparison
+/// this feeds.
+pub fn normalize_numbers(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Number(n) => {
+            if let Some(f) = n.as_f64() {
+                if f.is_finite() && f.fract() == 0.0 && f.abs() < 9e15 {
+                    *n = serde_json::Number::from(f as i64);
+                }
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for v in map.values_mut() {
+                normalize_numbers(v);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for v in items.iter_mut() {
+                normalize_numbers(v);
+            }
+        }
+        serde_json::Value::String(_) | serde_json::Value::Bool(_) | serde_json::Value::Null => {}
+    }
+}
+
 /// A JSON number for a widened `f32`/`f64` value, matching how a whole
 /// number reads when a human (or the canonical writer, via JS's
 /// `JSON.stringify`) wrote it as a bare integer literal, e.g. `100` rather

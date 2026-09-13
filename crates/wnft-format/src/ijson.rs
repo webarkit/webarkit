@@ -86,7 +86,7 @@ pub struct IJsonViolation {
 ///
 /// Operates on the UTF-16 code units a JSON string decodes to — see the module
 /// docs for why a `&str` cannot be used here.
-fn has_unpaired_surrogate(units: &[u16]) -> bool {
+pub(crate) fn has_unpaired_surrogate(units: &[u16]) -> bool {
     let mut i = 0usize;
     while i < units.len() {
         let Some(&u) = units.get(i) else { break };
@@ -116,7 +116,7 @@ fn has_unpaired_surrogate(units: &[u16]) -> bool {
 /// of a literal noncharacter or lone surrogate — editors, git filters and
 /// terminals all handle those differently, and a repository should not carry
 /// a byte sequence nobody can safely edit.
-fn has_noncharacter(units: &[u16]) -> bool {
+pub(crate) fn has_noncharacter(units: &[u16]) -> bool {
     let mut i = 0usize;
     while i < units.len() {
         let Some(&u) = units.get(i) else { break };
