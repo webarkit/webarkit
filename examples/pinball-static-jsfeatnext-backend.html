@@ -174,6 +174,13 @@
             <span><i class="swatch" style="background: #fbbf24"></i> target outline, reprojected</span>
           </div>
           <label><input id="showOutliers" type="checkbox" checked /> draw outliers</label>
+          <label>
+            target from
+            <select id="targetSource">
+              <option value="image" selected>the image (built here)</option>
+              <option value="file">targets/pinball.wnft</option>
+            </select>
+          </label>
         </div>
         <div class="panel" style="margin-top: 16px">
           <h2>Backend</h2>
@@ -190,12 +197,32 @@
         buildLevelIndex,
         buildTargetFromImage,
         chooseDescriptorSet,
+        decode,
         matchPerLevel,
       } from "@webarkit/nft-tracker";
       import { toGray, project } from "./js/pinball-shared.mjs";
 
       const TARGET = "./images/pinball.jpg";
       const SCENE = "./images/pinball-demo.jpg";
+
+      /**
+       * A target compiled offline by `packages/nft-tracker/bin/compile-target.mjs`
+       * from the very same `images/pinball.jpg`, and committed.
+       *
+       * The "target from" selector switches between the two paths a target can
+       * take to this page: built here, in the browser, at page load, or decoded
+       * from that file. It is the demo's answer to "does the file format
+       * actually carry a target?" — one that a passing test suite can assert but
+       * only a picture can show.
+       *
+       * **Expect the numbers to differ slightly between the two.** Not because
+       * the file loses anything (`test/wnft_roundtrip.test.ts` proves it does
+       * not), but because the two are not built from the same pixels: this page
+       * gets its grey image from `OffscreenCanvas.drawImage`, whose resampling
+       * is implementation-defined, and the compiler used a box filter in Node.
+       * Different pixels, a few keypoints apart. Both should lock on.
+       */
+      const TARGET_FILE = "./targets/pinball.wnft";
 
       const $ = (id) => document.getElementById(id);
       const canvas = $("view");
@@ -233,6 +260,81 @@
         dl.append(dt, dd);
       }
 
+      /** Empties the result list back to its single `status` row. */
+      function resetStats() {
+        const dl = $("stats");
+        dl.replaceChildren();
+        const dt = document.createElement("dt");
+        dt.textContent = "status";
+        const dd = document.createElement("dd");
+        dd.id = "status";
+        dd.textContent = "working…";
+        dl.append(dt, dd);
+      }
+
+      /** The target prepared here, from the image the page loaded. */
+      function buildFromImage(cv, target) {
+        // The scene is treated like a live frame: one level, whatever scale the
+        // camera happened to give us. The TARGET is the thing we search across
+        // scales, which is how a tracker works too - the reference is prepared
+        // once, offline, and the frame is cheap. buildTargetFromImage is that
+        // offline step, and what it returns is the same in-memory target a
+        // compiled .wnft file decodes to.
+        return buildTargetFromImage(cv, target, { levels: 8, name: "pinball" });
+      }
+
+      /**
+       * The committed target, decoded from its bytes.
+       *
+       * "The same in-memory target", above, is the whole claim of the file
+       * format, and this is the branch that makes the page test it: everything
+       * after this point is identical for both, because a decoded target is
+       * just a target.
+       */
+      async function loadCompiledTarget(image) {
+        const response = await fetch(TARGET_FILE);
+        if (!response.ok) {
+          throw new Error(`could not load ${TARGET_FILE} (HTTP ${response.status})`);
+        }
+        const decoded = decode(await response.arrayBuffer());
+        if (!decoded.ok) throw new Error(`${TARGET_FILE}: ${decoded.error} — ${decoded.detail}`);
+        // A decoder that kept going is still allowed to have found something
+        // worth saying; nothing here needs to act on it, but swallowing it
+        // would be the one way to make a half-understood file look perfect.
+        for (const w of decoded.warnings) console.warn(`${TARGET_FILE}: ${w.code} — ${w.detail}`);
+
+        // Keypoints are stored in the target's OWN level-0 pixels, and this
+        // page draws them over the image it decoded itself. The two agree only
+        // because the file was compiled at the same 640 cap this page uses; a
+        // file compiled with a different `--max-side` would land every overlay
+        // somewhere plausible and wrong, with nothing to report. So say it out
+        // loud rather than rescaling silently — rescaling is a real feature
+        // (the target's plane is the model plane, §3), and it belongs to a
+        // page that means to do it.
+        const { widthPx, heightPx } = decoded.target.meta;
+        if (widthPx !== image.width || heightPx !== image.height) {
+          throw new Error(
+            `${TARGET_FILE} is ${widthPx}x${heightPx}, but this page decoded ` +
+              `the same image at ${image.width}x${image.height}. Recompile it with ` +
+              `--max-side ${Math.max(image.width, image.height)}.`
+          );
+        }
+        return decoded.target;
+      }
+
+      function fail(e) {
+        const status = $("status");
+        if (status) status.textContent = "failed";
+        $("error").textContent =
+          `${e.message}\n\n` +
+          `If the images are missing, drop pinball-demo.jpg into examples/images/.\n` +
+          `If targets/pinball.wnft is missing, run:\n` +
+          `  node packages/nft-tracker/bin/compile-target.mjs examples/images/pinball.jpg \\\n` +
+          `      -o examples/targets/pinball.wnft --physical-size 210x262.5\n` +
+          `If the modules are missing, run "npm run build" at the repo root and serve over HTTP.`;
+        console.error(e);
+      }
+
       async function run() {
         const cv = await createJsfeatNextBackend();
 
@@ -252,142 +354,172 @@
         // Side by side, target on the left.
         canvas.width = target.width + scene.width;
         canvas.height = Math.max(target.height, scene.height);
-        drawGray(target, 0, 0);
-        drawGray(scene, target.width, 0);
         const shift = target.width;
 
-        // --- the pipeline, entirely through the interface ---
-        const t0 = performance.now();
-
-        // The scene is treated like a live frame: one level, whatever scale the
-        // camera happened to give us. The TARGET is the thing we search across
-        // scales, which is how a tracker works too - the reference is prepared
-        // once, offline, and the frame is cheap. buildTargetFromImage is that
-        // offline step, and what it returns is the same in-memory target a
-        // compiled .wnft file decodes to.
-        const LEVELS = 8;
-        const kScene = cv.detect(scene, { levels: 1, maxKeypoints: 900 });
-        const dScene = cv.describe(scene, kScene);
-        const targetDb = buildTargetFromImage(cv, target, { levels: LEVELS, name: "pinball" });
-
-        // Match each target level SEPARATELY and keep the best hit per scene
-        // keypoint, rather than pooling every level into one train set — see
-        // matchPerLevel's own doc comment for why. Measured on these images:
-        // 99 matches per-level against 45 pooled, at the same ratio --
-        // exact and reproducible, re-measured after jsfeat-next 0.17 made
-        // detect a pure function of its inputs (webarkit/webarkit#27,
-        // required since #28).
-        const targetLevels = buildLevelIndex(chooseDescriptorSet(cv, targetDb));
-        let matches = matchPerLevel(cv, dScene, targetLevels, 0.8);
-
-        // Optional filter, skipped exactly as the contract documents when a
-        // backend does not implement one.
-        if (cv.filterMatches) {
-          const kTarget = Array.from({ length: targetDb.keypoints.count }, (_, i) => ({
-            x: targetDb.keypoints.x[i],
-            y: targetDb.keypoints.y[i],
-            score: targetDb.keypoints.score[i],
-            angle: targetDb.keypoints.angle[i],
-            level: targetDb.keypoints.level[i],
-          }));
-          matches = cv.filterMatches(
-            matches,
-            { keypoints: kScene, width: scene.width, height: scene.height },
-            { keypoints: kTarget, width: targetDb.meta.widthPx, height: targetDb.meta.heightPx }
-          );
-        }
-
-        // src = target points, dst = scene points, so H maps the target plane
-        // into the scene and its corners can be drawn straight onto the frame.
-        const src = new Float64Array(matches.length * 2);
-        const dst = new Float64Array(matches.length * 2);
-        matches.forEach((m, i) => {
-          src[i * 2] = targetDb.keypoints.x[m.trainIdx];
-          src[i * 2 + 1] = targetDb.keypoints.y[m.trainIdx];
-          dst[i * 2] = kScene[m.queryIdx].x;
-          dst[i * 2 + 1] = kScene[m.queryIdx].y;
-        });
-
-        const h = matches.length >= 4 ? cv.estimateHomography(src, dst, { threshold: 4 }) : null;
-        const pose = h?.ok ? cv.poseFromHomography(h.H, intrinsics(scene.width, scene.height)) : null;
-        const ms = performance.now() - t0;
-
-        // --- drawing ---
         // lineWidth stays 1 for the lifetime of the page: drawOutline is the
         // only other place that changes it, and it saves/restores around its
         // own lineWidth=3, so setting this once here is enough for every
         // drawMatches() stroke that follows, on this call and every redraw.
         ctx.lineWidth = 1;
 
-        const drawKeypoints = () => {
-          ctx.fillStyle = "#60a5fa";
-          for (let i = 0; i < targetDb.keypoints.count; i++) ctx.fillRect(targetDb.keypoints.x[i] - 1, targetDb.keypoints.y[i] - 1, 2, 2);
-          for (const k of kScene) ctx.fillRect(k.x + shift - 1, k.y - 1, 2, 2);
-        };
+        // Both listeners are installed ONCE, here, and reach whichever run is
+        // current through `redraw`. Installing them inside `analyse` instead
+        // would add a second copy of each on every switch of the selector.
+        let redraw = () => {};
+        $("showOutliers").addEventListener("change", () => redraw());
+        $("targetSource").addEventListener("change", () => {
+          analyse().catch(fail);
+        });
 
-        const showOutliers = $("showOutliers");
-        const drawMatches = () => {
-          ctx.save();
+        // One of the two target paths awaits a fetch, so two flips of the
+        // selector can be in flight at once and finish out of order. `current`
+        // is the newest run's number; an older one that comes back late drops
+        // its results instead of drawing them over a newer run's.
+        let current = 0;
+
+        /** The whole pipeline, for whichever target the selector asks for. */
+        async function analyse() {
+          const run = ++current;
+          resetStats();
+          $("error").textContent = "";
+
+          // Preparing the target is timed SEPARATELY from the per-frame
+          // pipeline below, and reported as its own row. The two are different
+          // costs in a real application — the target is prepared once, the
+          // pipeline runs every frame — and this is the page where the
+          // difference between building one and loading one is visible at all.
+          // (The fetch is inside this measurement, so on a cold cache it is a
+          // network time as much as a decode time. It is still the honest
+          // answer to "what did it cost to get a target?")
+          const source = $("targetSource").value;
+          const p0 = performance.now();
+          const targetDb =
+            source === "file" ? await loadCompiledTarget(target) : buildFromImage(cv, target);
+          const prepareMs = performance.now() - p0;
+          if (run !== current) return;
+
+          // --- the pipeline, entirely through the interface ---
+          const t0 = performance.now();
+
+          const kScene = cv.detect(scene, { levels: 1, maxKeypoints: 900 });
+          const dScene = cv.describe(scene, kScene);
+
+          // Match each target level SEPARATELY and keep the best hit per scene
+          // keypoint, rather than pooling every level into one train set — see
+          // matchPerLevel's own doc comment for why. Measured on these images:
+          // 99 matches per-level against 45 pooled, at the same ratio --
+          // exact and reproducible, re-measured after jsfeat-next 0.17 made
+          // detect a pure function of its inputs (webarkit/webarkit#27,
+          // required since #28).
+          const targetLevels = buildLevelIndex(chooseDescriptorSet(cv, targetDb));
+          let matches = matchPerLevel(cv, dScene, targetLevels, 0.8);
+
+          // Optional filter, skipped exactly as the contract documents when a
+          // backend does not implement one.
+          if (cv.filterMatches) {
+            const kTarget = Array.from({ length: targetDb.keypoints.count }, (_, i) => ({
+              x: targetDb.keypoints.x[i],
+              y: targetDb.keypoints.y[i],
+              score: targetDb.keypoints.score[i],
+              angle: targetDb.keypoints.angle[i],
+              level: targetDb.keypoints.level[i],
+            }));
+            matches = cv.filterMatches(
+              matches,
+              { keypoints: kScene, width: scene.width, height: scene.height },
+              { keypoints: kTarget, width: targetDb.meta.widthPx, height: targetDb.meta.heightPx }
+            );
+          }
+
+          // src = target points, dst = scene points, so H maps the target plane
+          // into the scene and its corners can be drawn straight onto the frame.
+          const src = new Float64Array(matches.length * 2);
+          const dst = new Float64Array(matches.length * 2);
           matches.forEach((m, i) => {
-            const inlier = h?.inliers?.[i] === 1;
-            if (!inlier && !showOutliers.checked) return;
-            ctx.strokeStyle = inlier ? "rgba(74,222,128,.55)" : "rgba(248,113,113,.35)";
-            ctx.beginPath();
-            ctx.moveTo(targetDb.keypoints.x[m.trainIdx], targetDb.keypoints.y[m.trainIdx]);
-            ctx.lineTo(kScene[m.queryIdx].x + shift, kScene[m.queryIdx].y);
-            ctx.stroke();
+            src[i * 2] = targetDb.keypoints.x[m.trainIdx];
+            src[i * 2 + 1] = targetDb.keypoints.y[m.trainIdx];
+            dst[i * 2] = kScene[m.queryIdx].x;
+            dst[i * 2 + 1] = kScene[m.queryIdx].y;
           });
-          ctx.restore();
-        };
 
-        const drawOutline = () => {
-          if (!h?.ok) return;
-          const corners = [
-            [0, 0],
-            [target.width - 1, 0],
-            [target.width - 1, target.height - 1],
-            [0, target.height - 1],
-          ].map(([x, y]) => project(h.H, x, y));
-          ctx.save();
-          ctx.strokeStyle = "#fbbf24";
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          corners.forEach(([x, y], i) => (i ? ctx.lineTo(x + shift, y) : ctx.moveTo(x + shift, y)));
-          ctx.closePath();
-          ctx.stroke();
-          ctx.restore();
-        };
+          const h = matches.length >= 4 ? cv.estimateHomography(src, dst, { threshold: 4 }) : null;
+          const pose = h?.ok ? cv.poseFromHomography(h.H, intrinsics(scene.width, scene.height)) : null;
+          const ms = performance.now() - t0;
 
-        const redraw = () => {
-          drawGray(target, 0, 0);
-          drawGray(scene, shift, 0);
-          drawKeypoints();
-          drawMatches();
-          drawOutline();
-        };
-        showOutliers.addEventListener("change", redraw);
-        redraw();
+          // --- drawing ---
+          const drawKeypoints = () => {
+            ctx.fillStyle = "#60a5fa";
+            for (let i = 0; i < targetDb.keypoints.count; i++) ctx.fillRect(targetDb.keypoints.x[i] - 1, targetDb.keypoints.y[i] - 1, 2, 2);
+            for (const k of kScene) ctx.fillRect(k.x + shift - 1, k.y - 1, 2, 2);
+          };
 
-        $("status").textContent = h?.ok ? "locked on" : matches.length < 4 ? "too few matches" : "no consensus";
-        stat("keypoints (target)", targetDb.keypoints.count);
-        stat("keypoints (scene)", kScene.length);
-        stat("matches after ratio", matches.length);
-        stat("inliers", h ? `${h.numInliers} / ${matches.length}` : "—");
-        stat("pose", pose ? (pose.good ? "recovered" : "degenerate") : "—");
-        if (pose?.good) {
-          stat("translation", Array.from(pose.t, (v) => v.toFixed(2)).join(", "));
+          const showOutliers = $("showOutliers");
+          const drawMatches = () => {
+            ctx.save();
+            matches.forEach((m, i) => {
+              const inlier = h?.inliers?.[i] === 1;
+              if (!inlier && !showOutliers.checked) return;
+              ctx.strokeStyle = inlier ? "rgba(74,222,128,.55)" : "rgba(248,113,113,.35)";
+              ctx.beginPath();
+              ctx.moveTo(targetDb.keypoints.x[m.trainIdx], targetDb.keypoints.y[m.trainIdx]);
+              ctx.lineTo(kScene[m.queryIdx].x + shift, kScene[m.queryIdx].y);
+              ctx.stroke();
+            });
+            ctx.restore();
+          };
+
+          const drawOutline = () => {
+            if (!h?.ok) return;
+            // The corners of the TARGET PLANE, which is what H maps from, so
+            // they come from the target's own level-0 size and not from the
+            // image this page happens to have decoded. The two are equal here
+            // -- loadCompiledTarget refuses a file where they are not -- and
+            // naming the right one is what keeps that true by construction.
+            const w = targetDb.meta.widthPx;
+            const hgt = targetDb.meta.heightPx;
+            const corners = [
+              [0, 0],
+              [w - 1, 0],
+              [w - 1, hgt - 1],
+              [0, hgt - 1],
+            ].map(([x, y]) => project(h.H, x, y));
+            ctx.save();
+            ctx.strokeStyle = "#fbbf24";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            corners.forEach(([x, y], i) => (i ? ctx.lineTo(x + shift, y) : ctx.moveTo(x + shift, y)));
+            ctx.closePath();
+            ctx.stroke();
+            ctx.restore();
+          };
+
+          redraw = () => {
+            drawGray(target, 0, 0);
+            drawGray(scene, shift, 0);
+            drawKeypoints();
+            drawMatches();
+            drawOutline();
+          };
+          redraw();
+
+          $("status").textContent = h?.ok ? "locked on" : matches.length < 4 ? "too few matches" : "no consensus";
+          stat("target", source === "file" ? TARGET_FILE.replace("./", "") : "built from the image");
+          stat("target prepared in", `${prepareMs.toFixed(1)} ms`);
+          stat("keypoints (target)", targetDb.keypoints.count);
+          stat("keypoints (scene)", kScene.length);
+          stat("matches after ratio", matches.length);
+          stat("inliers", h ? `${h.numInliers} / ${matches.length}` : "—");
+          stat("pose", pose ? (pose.good ? "recovered" : "degenerate") : "—");
+          if (pose?.good) {
+            stat("translation", Array.from(pose.t, (v) => v.toFixed(2)).join(", "));
+          }
+          stat("pipeline", `${ms.toFixed(1)} ms`);
         }
-        stat("elapsed", `${ms.toFixed(1)} ms`);
+
+        await analyse();
       }
 
-      run().catch((e) => {
-        $("status").textContent = "failed";
-        $("error").textContent =
-          `${e.message}\n\n` +
-          `If the images are missing, drop pinball-demo.jpg into examples/images/.\n` +
-          `If the modules are missing, run "npm run build" at the repo root and serve over HTTP.`;
-        console.error(e);
-      });
+      run().catch(fail);
     </script>
   </body>
 </html>

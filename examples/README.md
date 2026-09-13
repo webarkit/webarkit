@@ -68,6 +68,10 @@ per-level matching over the target's stored level ranges. The page keeps its
 own explicit `detect → describe → match → estimateHomography →
 poseFromHomography` calls, because showing every stage is what it is for.
 
+The **"target from" selector** swaps `buildTargetFromImage` for a compiled
+`.wnft` decoded from disk, leaving every later stage untouched — see
+[Targets](#targets-targetspinballwnft) below.
+
 ### Why this one came first
 
 Two reasons the static demo was built before the webcam one, not instead of it.
@@ -129,6 +133,59 @@ per-frame cost, which is exactly why this demo does not do it by default (see
 the parameters above). Worth revisiting once the cost of a lighter multi-level
 search on the scene side is measured with the same rigour the current
 parameters got — tracked informally against this file for now, no issue yet.
+
+## Targets: `targets/pinball.wnft`
+
+The static demo's "target from" selector chooses between the two ways a target
+can reach the page:
+
+- **the image (built here)** — `buildTargetFromImage` at page load, over the
+  `<img>` the page just decoded. This is what the demo has always done.
+- **`targets/pinball.wnft`** — a target compiled once, offline, from the very
+  same `images/pinball.jpg`, committed, and `decode`d here.
+
+Everything after that point is identical for both, because a decoded target *is*
+a target. That is the whole claim of the file format, and the selector is the
+demo's way of showing it rather than asserting it — `packages/nft-tracker`'s
+`test/wnft_roundtrip.test.ts` is the assertion.
+
+**Expect the numbers to differ slightly between the two**, and do not read that
+as loss. The file carries the target exactly; the two runs simply do not start
+from the same pixels. This page builds its grey image with
+`OffscreenCanvas.drawImage`, whose resampling is implementation-defined, and the
+compiler used a box filter in Node. Measured on these images: 2067 keypoints and
+99 matches built here, 2062 and 91 from the file. Both lock on, and the
+recovered pose differs between them by less than it differs between two reloads
+of *either* one — RANSAC draws its minimal sample from `Math.random`, and the
+contract has no seed to pass it (webarkit/webarkit#24), so inlier counts and
+translations move a little on every run regardless of where the target came
+from.
+
+What *does* separate the two is the **"target prepared in"** row, which the page
+times apart from the per-frame **"pipeline"** row precisely so the difference is
+visible: building the target here costs tens of milliseconds every page load,
+decoding the file costs a fraction of that. That is the whole point of preparing
+a target offline, and it is the one number on the page that shows it.
+
+The file is regenerated with, and only with:
+
+```bash
+npm run build
+node packages/nft-tracker/bin/compile-target.mjs examples/images/pinball.jpg \
+    -o examples/targets/pinball.wnft --physical-size 210x262.5
+```
+
+The physical size is the sheet the reference was printed on: 210 mm wide, and a
+height that keeps the image's own 4:5 aspect rather than a stationery size that
+does not. Leave it out and model-plane units stay level-0 pixels — see
+[`compile-target`'s options](../packages/nft-tracker/README.md#compiling-a-target).
+
+`crates/wnft-format`'s `tests/real_target.rs` reads this file too. It is the
+first real target both codecs see — every file in `fixtures/nft-target/` is
+synthetic — so **recompiling it is a change to that test's expectations**, not a
+refresh. Committed on purpose, for the same reason: a `.wnft` that changed
+silently would make the demo and the Rust suite disagree about what the
+repository means by "the pinball target".
 
 ## Shared code: `js/pinball-shared.mjs`
 
