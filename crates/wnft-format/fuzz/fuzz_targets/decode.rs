@@ -54,7 +54,49 @@ fuzz_target!(|data: &[u8]| {
             // accepted target must decode back to the same values.
             let again =
                 decode(&bytes, &DEFAULT_LIMITS).expect("canonical output must decode (§8.4)");
-            assert_eq!(again.target, decoded.target);
+
+            // §7.3 requires the canonical writer to sort `descriptorSets` by
+            // (kind, norm, dimensions, producer) before writing (see the sort
+            // in src/encode.rs, just before the BIN layout); `decode`, by
+            // contrast, preserves the manifest's own file order verbatim
+            // (each set is pushed in file order in the `descriptorSets`
+            // parse loop in src/manifest.rs). So a `decoded.target` whose
+            // sets are not already in that sorted order re-encodes into
+            // sorted order and decodes back as `again.target` in that
+            // (possibly different) `Vec` order -- a legal disagreement in
+            // `descriptor_sets` order, not a reader/writer bug. Sorting both
+            // sides with the identical stable-sort key before comparing is
+            // exactly what `encode` itself computes: `sort_by`'s stability
+            // means sorting `decoded.target`'s sets here reproduces the same
+            // relative order among any tied keys that `encode` produced, so
+            // this is not a weaker check, only an order-insensitive one for
+            // this one field. Every other field of `Target`, and every
+            // non-ordering field of each `DescriptorSet`, is still compared
+            // strictly by the `assert_eq!` below.
+            //
+            // Note: the specification does not say whether a reader is
+            // expected to normalise `descriptorSets` order on decode. This
+            // codec and its TypeScript peer both happen to preserve file
+            // order, so they agree today -- but that agreement is a shared
+            // implementation choice, not a written contract, and a future
+            // change to either side's ordering behavior would not violate
+            // any documented rule.
+            fn descriptor_set_sort_key(s: &wnft_format::DescriptorSet) -> (&str, &str, u32, &str) {
+                (
+                    s.kind.as_str(),
+                    s.norm.as_str(),
+                    s.dimensions,
+                    s.producer.as_str(),
+                )
+            }
+            let mut left = again.target.clone();
+            let mut right = decoded.target.clone();
+            left.descriptor_sets
+                .sort_by(|a, b| descriptor_set_sort_key(a).cmp(&descriptor_set_sort_key(b)));
+            right
+                .descriptor_sets
+                .sort_by(|a, b| descriptor_set_sort_key(a).cmp(&descriptor_set_sort_key(b)));
+            assert_eq!(left, right);
 
             // §7.3's opening line: the same content always produces the same
             // bytes. Encoding twice must not be able to disagree with itself.
