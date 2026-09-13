@@ -40,6 +40,19 @@
 //! [`validate_target`] returns the offending field path on failure, e.g.
 //! `"descriptorSets[1].params.seed"`, and `None` when `target` is one this
 //! build can safely re-encode.
+//!
+//! Checks (b) and (e) of §5 (surrogates, noncharacters) apply to **every**
+//! string in the manifest, not only the free-form content of `params` and
+//! `info` — the reader's own `scan_ijson` (`ijson.rs`) scans the whole
+//! manifest text. So besides the recursive scan `check_params` runs over
+//! `params`/`info`, this module also runs [`string_offends`] directly over
+//! every other manifest string a hand-built `Target` can put a noncharacter
+//! or surrogate escape into: `format.generator`, `keypoints.detector.kind`,
+//! and each descriptor set's `kind`, `norm` and `producer`. A decoded target
+//! already passed the reader's scan on all of these, so this only matters
+//! for a target assembled by hand — for example a target compiler that
+//! copies a `producer` string from backend metadata it did not itself
+//! validate — but that is exactly the input `validate_target` exists for.
 
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -61,6 +74,11 @@ const U16_DOMAIN_MAX: u32 = u16::MAX as u32;
 /// still matches §5's five checks, and the day a `Params` is built from
 /// something that *can* carry one (raw code units from an FFI boundary, say)
 /// the guard is already in place.
+///
+/// This is also why no test targets check (b) directly on a hand-built
+/// `Target`: there is no well-typed way to construct the input it would
+/// need. `tests/writer.rs` documents this the same way, at the one test that
+/// exercises check (e) instead and notes the gap rather than faking it.
 fn string_units(s: &str) -> Vec<u16> {
     s.encode_utf16().collect()
 }
@@ -245,6 +263,20 @@ fn validate_descriptor_set(
     let ctx = format!("descriptorSets[{index}]");
     let m = set.count;
 
+    // Checks (b)/(e) on the three plain strings §5.6 leaves otherwise
+    // unconstrained ("any string" is a domain claim, not an I-JSON
+    // exemption) — see the module docs on why these three are checked
+    // outside `params`.
+    if string_offends(&set.kind) {
+        return Some(format!("{ctx}.kind"));
+    }
+    if string_offends(&set.norm) {
+        return Some(format!("{ctx}.norm"));
+    }
+    if string_offends(&set.producer) {
+        return Some(format!("{ctx}.producer"));
+    }
+
     let expected_bpd = expected_bytes_per_descriptor(set.data.element_type(), set.dimensions);
     if expected_bpd != Some(set.bytes_per_descriptor) {
         return Some(format!("{ctx}.bytesPerDescriptor"));
@@ -333,6 +365,11 @@ pub(crate) fn validate_target(target: &Target) -> Option<String> {
             return Some(String::from("extensionsUsed"));
         }
     }
+    if let Some(generator) = &target.generator {
+        if string_offends(generator) {
+            return Some(String::from("format.generator"));
+        }
+    }
 
     // --- pyramid (§5.4) ------------------------------------------------------
     let level_sizes = &target.pyramid.level_sizes;
@@ -403,7 +440,11 @@ pub(crate) fn validate_target(target: &Target) -> Option<String> {
     }
     // Any string is a legal detector.kind, the empty one included (§5.5 rev
     // 3): refusing one would make a file the reader accepts impossible to
-    // re-emit.
+    // re-emit. It still MUST pass checks (b)/(e) like every other manifest
+    // string, "any string" being a claim about §5.5's domain, not about I-JSON.
+    if string_offends(&kp.detector.kind) {
+        return Some(String::from("keypoints.detector.kind"));
+    }
     if !level_start_closed(&kp.level_start, n) {
         return Some(String::from("keypoints.levelStart"));
     }
