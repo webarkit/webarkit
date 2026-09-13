@@ -24,3 +24,11 @@ Thumbs.db
 *.log
 npm-debug.log*
 .npm/
+
+# Rust build output. `crates/*/target` cannot occur with a workspace, but the
+# fuzz crate is its own workspace and has its own.
+/target/
+crates/wnft-format/fuzz/target/
+crates/wnft-format/fuzz/corpus/
+crates/wnft-format/fuzz/artifacts/
+crates/wnft-format/fuzz/coverage/
