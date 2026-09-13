@@ -214,6 +214,14 @@ pub fn decode(bytes: &[u8], limits: &Limits) -> Result<Decoded, DecodeError> {
     } = spec;
 
     let target = Target {
+        // Taken from this build's own constant, not from the file: correct
+        // today only because §7.1's exact-minor rule means step 5 already
+        // rejected any `format.version` other than `SUPPORTED_FORMAT_VERSION`,
+        // so the two are guaranteed equal here. That stops being free once
+        // the format reaches `1.0`, when "same major, any minor" (§7) makes a
+        // 1.x file's own minor the one that must survive — this line will
+        // need to carry the manifest's parsed version through `ManifestHead`
+        // at that point rather than substituting the constant.
         format_version: String::from(known::SUPPORTED_FORMAT_VERSION),
         generator: head.generator,
         extensions_used: head.extensions_used,
@@ -257,6 +265,12 @@ pub fn decode(bytes: &[u8], limits: &Limits) -> Result<Decoded, DecodeError> {
                 data: set_arrays.data,
             })
             .collect(),
+        // `Option::zip` silently drops data if the two sides ever disagreed
+        // on `Some`/`None` — but they cannot: `materialise_all` builds
+        // `arrays.patches`/`arrays.reference_image` from `Some`/`None` on
+        // this very `spec.patches`/`spec.reference_image` (see
+        // `consistency.rs`), so the two are `Some` or `None` together by
+        // construction, not by coincidence checked here.
         patches: patches
             .zip(arrays.patches)
             .map(|(manifest_patches, patch_arrays)| Patches {
