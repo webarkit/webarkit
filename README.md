@@ -65,7 +65,15 @@ npm run typecheck   # tsc across src/ + test/ in every workspace
 npm test            # vitest across every workspace
 ```
 
-These three are exactly what CI runs on every push and pull request.
+These three are exactly what CI's Node job runs on every push and pull request.
+The Rust crate in `crates/` is a separate CI job, and needs a stable toolchain
+(1.85+, edition 2024):
+
+```bash
+cargo test --workspace
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+```
 
 ## 🖼️ Examples
 
@@ -80,6 +88,55 @@ Then open `http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html
 
 See [`examples/README.md`](./examples/README.md) for what each demo shows, why the static one came first, and the multi-scale detection/matching details that came out of building them.
 
+## 🎯 Compiled targets (`.wnft`)
+
+A tracker needs a *prepared* reference image: keypoints over a pyramid, plus a
+descriptor for each. The demos used to compute that in the browser on every page
+load. It can instead be compiled once, offline, into a `.wnft` file — the format
+specified in [`docs/specs/nft-target-format.md`](./docs/specs/nft-target-format.md)
+and implemented twice, in TypeScript ([`packages/nft-tracker`](./packages/nft-tracker))
+and in Rust ([`crates/wnft-format`](./crates/wnft-format)):
+
+```bash
+npm run build
+node packages/nft-tracker/bin/compile-target.mjs examples/images/pinball.jpg \
+    -o examples/targets/pinball.wnft --physical-size 210x262.5
+```
+
+The static demo's **"target from"** selector runs the same pipeline either way,
+which is how you can see that the file carries a target rather than merely
+storing one.
+
+### What it buys you
+
+Preparing this target costs roughly **200× more than loading it**. Measured on
+one development machine (Node as pinned in [`.nvmrc`](./.nvmrc), jsfeatNext
+backend, `examples/images/pinball.jpg` at 512×640 → 2062 keypoints over 8 levels,
+a 110,600-byte file), median of 30 runs after warm-up:
+
+| | median | min–max |
+|---|---|---|
+| `buildTargetFromImage` — detect + describe, 8 pyramid levels | **84.0 ms** | 68.6 – 120.9 |
+| `decode` of the `.wnft` | **0.40 ms** | 0.27 – 1.44 |
+| `decode` + reading every descriptor byte | 0.48 ms | 0.42 – 0.87 |
+
+Three things that table says, which a single ratio would not:
+
+- **The descriptors are not the cost of decoding.** Touching all 2062 × 32 bytes
+  adds 0.08 ms. They are stored as raw bytes and arrive as raw bytes; what the
+  decoder actually spends its time on is the CRC-32 over the file and the
+  manifest. "Loading descriptors" is very nearly free.
+- **The two costs scale differently.** Building grows with image area × pyramid
+  levels; decoding grows with file size, at a tiny constant. Raising `--levels`
+  or `--max-side` widens the gap rather than closing it.
+- **The demo's own "target prepared in" row shows a much smaller gap** (~25 ms
+  for the file path) because it times the `fetch()` of those 110 KB along with
+  the decode. That is the honest answer to "what did it cost to get a target
+  here?", and it is dominated by the network, not by the format.
+
+One machine, one image, one backend: the direction is not in doubt, the exact
+factor is.
+
 ## 🗂️ Layout
 
 This is an npm-workspaces monorepo — no build-system layer ([Turborepo](https://turbo.build/repo/docs)/[Nx](https://nx.dev))
@@ -90,7 +147,11 @@ cannot express.
 
 ```
 webarkit/
+  crates/
+    wnft-format/         # the Rust codec for .wnft — a peer of the TypeScript
+                         # one, written from the spec, not ported from it
   examples/
+    targets/             # compiled .wnft targets the demos can load
   fixtures/
     nft-target/          # the .wnft conformance corpus, one directory per
                          # released format version (generated, never edited)
@@ -100,10 +161,16 @@ webarkit/
     nft-tracker/
 ```
 
+`crates/` is a Cargo workspace beside the npm ones. The two toolchains share
+this repository and the `fixtures/` corpus and nothing else — there is no build
+ordering between them, which is why CI runs them as independent jobs.
+
 `fixtures/` sits at the repository root, not inside `nft-tracker`, for the
 reason `examples/` does: the corpus pins down the **format**, which
-[`crates/wnft-format`](./docs/specs/nft-target-format.md) will be checked
-against too, not one implementation of it.
+`crates/wnft-format` is checked against too, not one implementation of it. The
+point of a second implementation is that a specification with one is only a
+description of that one — so the Rust codec *consumes* that corpus and never
+regenerates it.
 
 ## ❓ Open questions for discussion
 
