@@ -195,7 +195,7 @@ Accessor rules:
 { "widthPx": 1024, "heightPx": 768, "physicalSizeMm": [210, 157.5] }
 ```
 
-`widthPx` and `heightPx` MUST equal `pyramid.levelSizes[0]`. `physicalSizeMm` is `[width, height]` in millimetres, both `> 0`, or `null` if unknown.
+`widthPx` and `heightPx` MUST each be a JSON number with no fractional part in `[1, 2^16 − 1]` — a violation is `BAD_MANIFEST`, checked at §6.1 step 6 — and MUST equal `pyramid.levelSizes[0]`, which is `INCONSISTENT_DATA` at step 7. `physicalSizeMm` is `[width, height]` in millimetres, both `> 0`, or `null` if unknown.
 
 ### 5.4 `pyramid`
 
@@ -297,13 +297,13 @@ const levelSet: Descriptors = {
 
 **Multi-view descriptors.** `kpIndex` lets several rows describe the same keypoint, e.g. descriptors computed on synthetic views (milestone M4). Multi-view rows break Lowe's ratio test, for the same reason pooled levels do (hence `matchPerLevel`): the two nearest rows can both be correct. A correct test requires the second-best row to belong to a *different* keypoint, which needs k-nearest matching that the contract does not expose yet.
 
-A reader that ignored `kpIndex` would therefore silently produce a worse ratio test. For that reason, `M ≠ N` or any repeated `kpIndex` value is allowed **only** when the extension `WKNF_multiview` is listed in `extensionsRequired`. Without it, writers MUST emit exactly one row per keypoint (`M = N`, `kpIndex[i] = i`).
+A reader that ignored `kpIndex` would therefore silently produce a worse ratio test. For that reason, a `kpIndex` that is anything but the identity is allowed **only** when the extension `WKNF_multiview` is listed in `extensionsRequired`. Without it, a file MUST carry exactly one row per keypoint: `M = N` and `kpIndex[i] = i` for every `i`. Readers MUST check the identity as well as the row count, and report `INCONSISTENT_DATA` for either — a permutation has no repeated value and would otherwise pass while still meaning that row `i` does not describe keypoint `i`.
 
 ### 5.7 `patches` (optional)
 
 | Field | Accessor type, count | Content |
 |---|---|---|
-| `patchSize` | — | `P`, e.g. 8 |
+| `patchSize` | — | `P`, e.g. 8. MUST be a JSON number with no fractional part in `[1, 2^32 − 1]`. Unlike `dimensions` (§5.6), `0` is **not** legal: a patch of no pixels records a position at which nothing was sampled, whereas a zero-dimension descriptor still records a keypoint correspondence. A violation is `BAD_MANIFEST` |
 | `count` | — | `Q` |
 | `score` | `f32`, `Q` | Shi–Tomasi minimum eigenvalue |
 | `left`, `top` | `u16`, `Q` | Top-left pixel **in level coordinates** |
@@ -322,7 +322,7 @@ Pixels are stored **without extra smoothing**: any blur is a tracker runtime par
 { "level": 0, "width": 1024, "height": 768, "pixels": 10 }
 ```
 
-`pixels` is a `u8` accessor of `width × height` grayscale values, row-major. `level` MUST be `< L`, checked **before** `levelSizes[level]` is indexed, and `width` and `height` MUST then equal `pyramid.levelSizes[level]`. A violation of either is `INCONSISTENT_DATA`. The image is optional because of its size (a full-resolution 1024 × 768 target adds 768 KiB). It enables re-compilation, debugging and dense refinement, and possibly re-description on the runtime backend (open question Q4).
+`pixels` is a `u8` accessor of `width × height` grayscale values, row-major. `level` MUST be a JSON number with no fractional part in `[0, 2^32 − 1]`, and `width` and `height` integers in `[1, 2^16 − 1]`; a violation of either domain is `BAD_MANIFEST` at §6.1 step 6. `level` MUST then be `< L`, checked **before** `levelSizes[level]` is indexed, and `width` and `height` MUST equal `pyramid.levelSizes[level]`. A violation of either is `INCONSISTENT_DATA`. The image is optional because of its size (a full-resolution 1024 × 768 target adds 768 KiB). It enables re-compilation, debugging and dense refinement, and possibly re-description on the runtime backend (open question Q4).
 
 ### 5.9 `info` (optional)
 
@@ -356,8 +356,8 @@ Free-form. Readers MUST NOT require any field. Suggested content:
    > **TypeScript implementers.** A single tokenizing pass over the manifest text does all five: it is the only pass that sees member names before they are deduplicated, string escapes before they are combined, and number literals before they become `Number`s.
    >
    > **Rust implementers.** Enable `serde_json`'s `float_roundtrip` feature. Verify duplicate-key rejection **explicitly, with a test**, rather than relying on serde's defaults: what a derived `Deserialize` does with a repeated field is a property of the derive, not a guarantee of the format.
-5. **Format version and required extensions** (§7).
-6. **Schema.** Required keys present with the right types; every accessor valid (§5.2), including the `[0, 2^32 − 1]` integer domains of `offset` and `count` and every accessor reference being an integer index in `[0, accessors.length)`, with the expected type and count; the pyramid domains of §5.4 (every `levelSizes` entry an integer in `[1, 2^16 − 1]`, `scaleStep` finite and `> 1`); every count within the resource limits (§6.4). Type and domain violations at this step are `BAD_MANIFEST`, and they are checked before any value reaches the arithmetic below.
+5. **Format version and required extensions** (§7), in that order. Within the extensions, the subset rule of §5.1 — every name in `extensionsRequired` also in `extensionsUsed` — is checked first, as `BAD_MANIFEST`, and only then whether the reader implements each required name, as `UNSUPPORTED_EXTENSION`. A file breaking both therefore reports the structural failure rather than the capability one.
+6. **Schema.** Required keys present with the right types; every accessor valid (§5.2), including the `[0, 2^32 − 1]` integer domains of `offset` and `count` and every accessor reference being an integer index in `[0, accessors.length)`, with the expected type and count; the pyramid domains of §5.4 (every `levelSizes` entry an integer in `[1, 2^16 − 1]`, `scaleStep` finite and `> 1`); the `meta` and `referenceImage` size domains of §5.3 and §5.8; the `patches.patchSize` domain of §5.7; every count within the resource limits (§6.4). Type and domain violations at this step are `BAD_MANIFEST`, and they are checked before any value reaches the arithmetic below.
 7. **Data consistency.** `levelStart` monotonic and closed; `level` agreeing with `levelStart`; `kpIndex[i] < N`; `meta` equal to `levelSizes[0]`; `bytesPerDescriptor` consistent with `elementType` and `dimensions`; the multi-view rule (§5.6). Also:
    - `levelSizes` non-increasing from level to level (§5.4).
    - For every descriptor set, `levelStart[0] = 0`, `levelStart[L] = M`, and every `kpIndex` inside the range of level `l` referencing a keypoint whose `level` is `l` (§5.6).
@@ -377,7 +377,7 @@ Readers return a result, never an exception, as ADR-0001 point 7 requires. Codes
 | `BAD_CONTAINER` | `total_length` mismatch, chunk out of bounds, `JSON` chunk missing or duplicated, `BIN\0` duplicated or out of place, non-zero reserved field |
 | `CHECKSUM_MISMATCH` | A chunk's CRC-32 does not match |
 | `MANIFEST_TOO_LARGE` | `JSON` chunk above the manifest limit |
-| `BAD_MANIFEST` | Not strict UTF-8, not JSON, not I-JSON (§5), not an object, required key missing, wrong type |
+| `BAD_MANIFEST` | Not strict UTF-8, not JSON, not I-JSON (§5), not an object, required key missing, wrong type, a value outside the domain its section fixes, a name in `extensionsRequired` that `extensionsUsed` does not list (§5.1) |
 | `UNSUPPORTED_FORMAT_VERSION` | `format.version` not supported (§7) |
 | `UNSUPPORTED_EXTENSION` | A name in `extensionsRequired` the reader does not implement |
 | `BAD_LAYOUT` | Accessor out of bounds, misaligned, overlapping, or with the wrong type or count |
@@ -540,7 +540,7 @@ Fixtures live in a directory shared by `vitest` and `cargo test` (e.g. `fixtures
 - Keys inside `params` and inside `info` are **data**: they are preserved and re-emitted unchanged, whatever they are (§5.1).
 - An unknown extension in `extensionsRequired` → `UNSUPPORTED_EXTENSION`; the same extension only in `extensionsUsed` → ignored.
 - A file with two descriptor sets, one of an unknown family: the other remains usable.
-- `M ≠ N` without `WKNF_multiview` in `extensionsRequired` → `INCONSISTENT_DATA`.
+- `M ≠ N`, or a `kpIndex` that is not the identity, without `WKNF_multiview` in `extensionsRequired` → `INCONSISTENT_DATA`.
 - **Backward-compatibility corpus.** Every released format version freezes its fixtures under `fixtures/nft-target/<version>/`. From then on, every reader either decodes them correctly or rejects them with an explicit error — never misreads them.
 
 ### 8.4 Robustness tests (untrusted input)
@@ -589,3 +589,4 @@ Decisions D1–D5 below are accepted as part of this specification.
 - **0.2** (2026-09-11) — normative: the manifest must be I-JSON (Q10). Files with duplicate keys, unpaired surrogates, integers beyond ±(2^53 − 1), number literals rounding to infinity, or Unicode noncharacters in strings become invalid. The canonical writer (§7.3) must validate a target before serializing it and return `INVALID_TARGET` rather than emit a file a reader would reject, and must never coerce a value to make it serializable. No 0.1 file or codec existed, so nothing is affected.
 - **0.2 rev 2** (2026-09-11) — editorial, from the first implementation: an unknown chunk may sit second when there is no `BIN\0` (§4.2); a missing `BIN\0` under a manifest that declares accessors is `BAD_LAYOUT` (§5.2); `keypoints.levelStart[0] = 0` stated (§5.5); a file whose every descriptor set is dropped still decodes (§5.6); the file-size limit is step 0 of the validation order (§6.1); the new warning `UNKNOWN_EXTENSION_IGNORED` (§6.2), which §8.1 already required a fixture for; readers accept a view so §3's copy fallback is reachable, and the unaligned base stops being listed as a fixture file (§3, §8.1). No change to the bytes or the meaning of any valid `0.2` file.
 - **0.2 rev 3** (2026-09-12) — editorial, from the first implementation's review: `dimensions` has no minimum and `detector.kind` may be any string, both stated because a writer had invented constraints the text did not impose, so a legal file decoded but could not be re-emitted (§5.5, §5.6); the writer's deliberate extra strictness on I-JSON check (c) is stated and justified, since Q8 leaves number formatting free across languages (§7.3); a limit on patches per file, the one repeated structure that had none (§6.4); `warnings/` must carry the dropped-`elementType` fixture (§8.1). No change to the bytes or the meaning of any valid `0.2` file.
+- **0.2 rev 4** (2026-09-13) — editorial, from the second implementation: the `kpIndex` identity becomes a reader rule, not only a writer one, since a permutation has no repeated value and would otherwise decode (§5.6, §8.3); `patchSize` gains the domain `[1, 2^32 − 1]`, with the reason it differs from `dimensions` (§5.7); the `meta`, `referenceImage` and `patchSize` domains are stated with their error code and step, so that an out-of-range size is `BAD_MANIFEST` at step 6 rather than reaching step 7 (§5.3, §5.7, §5.8, §6.1, §6.2); the §5.1 subset rule gets a code and an order against `UNSUPPORTED_EXTENSION` (§6.1, §6.2); §8.2 item 3's byte identity is scoped the way item 4 already is, for an implementation reading a corpus another one wrote (§8.2). No change to the bytes or the meaning of any valid `0.2` file.
