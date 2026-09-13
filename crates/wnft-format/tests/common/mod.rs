@@ -195,10 +195,15 @@ pub fn split(bytes: &[u8]) -> Chunks {
 /// value, a value present as the wrong JSON type) still fails the comparison
 /// this feeds.
 pub fn normalize_numbers(value: &mut serde_json::Value) {
+    // The boundary is §5 check (c)'s own, `2^53 - 1`, not a nearby round
+    // number: reusing `wnft_format::testing::MAX_EXACT_INTEGER` rather than
+    // a literal keeps this tolerance's edge pinned to the specification's,
+    // not to whatever looked close enough at the time.
+    let max = wnft_format::testing::MAX_EXACT_INTEGER as f64;
     match value {
         serde_json::Value::Number(n) => {
             if let Some(f) = n.as_f64() {
-                if f.is_finite() && f.fract() == 0.0 && f.abs() < 9e15 {
+                if f.is_finite() && f.fract() == 0.0 && f.abs() <= max {
                     *n = serde_json::Number::from(f as i64);
                 }
             }

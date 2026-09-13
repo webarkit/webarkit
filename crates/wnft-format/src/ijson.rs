@@ -67,7 +67,14 @@ use alloc::vec::Vec;
 use core::fmt::Write as _;
 
 /// The largest integer an IEEE 754 double represents exactly — check (c).
-pub(crate) const MAX_EXACT_INTEGER: i64 = 9_007_199_254_740_991;
+///
+/// `pub`, not `pub(crate)`: reached from outside the crate only through
+/// `testing`'s re-export (`#[doc(hidden)]`, exempt from semver — see that
+/// module's own doc comment), the same pattern `AccessorArray` and
+/// `materialise` already use, and for the same reason: `tests/common`'s
+/// numeric-normalisation helper pins its tolerance to this exact constant
+/// rather than to a nearby literal.
+pub const MAX_EXACT_INTEGER: i64 = 9_007_199_254_740_991;
 
 /// Where a violation sits, e.g. `$.descriptorSets[0].params.seed`, and why.
 ///
