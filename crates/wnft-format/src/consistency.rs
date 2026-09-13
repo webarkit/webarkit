@@ -494,3 +494,244 @@ pub(crate) fn check_consistency(spec: &ManifestSpec, arrays: &TargetArrays) -> O
 
     None
 }
+
+/// The `kpIndex` identity rule (§5.6, `0.2 rev 4`) and its neighbours: the
+/// corpus is the peer's and this repository never adds to it (see
+/// `tests/common/mod.rs`), so it cannot be relied on to exercise a rule the
+/// TypeScript generator's fixtures happen not to cover. None of the corpus's
+/// nine `INCONSISTENT_DATA` fixtures contains a non-identity `kpIndex`,
+/// `M != N`, an out-of-range `kpIndex`, or a keypoint `level` disagreeing
+/// with `levelStart` — so those four are hand-built here instead.
+#[cfg(test)]
+mod tests {
+    // The crate-wide denies exist to keep untrusted-input paths panic-free;
+    // this module never touches untrusted input; it constructs fixtures by
+    // hand, so the idiom is exactly the one the crate doc says lives in the
+    // integration test crates: direct indexing and `expect`.
+    #![allow(
+        clippy::indexing_slicing,
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic
+    )]
+
+    use alloc::string::{String, ToString};
+    use alloc::vec;
+    use alloc::vec::Vec;
+
+    use serde_json::Map;
+
+    use super::{KeypointArrays, SetArrays, TargetArrays, check_consistency};
+    use crate::error::ErrorCode;
+    use crate::manifest::{
+        ManifestDescriptorSet, ManifestHead, ManifestKeypoints, ManifestMeta, ManifestPyramid,
+        ManifestSpec,
+    };
+    use crate::target::{DescriptorData, Params};
+
+    /// A minimal, internally consistent target: two pyramid levels, four
+    /// keypoints (two per level), and one descriptor set with `M = N` and the
+    /// identity `kpIndex`. Every test below starts here and changes exactly
+    /// one thing, so a test that never fails before the mutation is a test
+    /// that pins nothing.
+    fn valid_spec_and_arrays() -> (ManifestSpec, TargetArrays) {
+        let head = ManifestHead {
+            doc: Map::new(),
+            generator: None,
+            extensions_used: Vec::new(),
+            extensions_required: Vec::new(),
+        };
+
+        let meta = ManifestMeta {
+            width_px: 64,
+            height_px: 48,
+            physical_size_mm: None,
+        };
+
+        let pyramid = ManifestPyramid {
+            scale_step: 2.0,
+            level_sizes: vec![[64, 48], [32, 24]],
+        };
+
+        // The `usize` fields below are accessor indices (§5.2); `check_consistency`
+        // never reads them — only `spec.keypoints.count` matters here — so `0` is
+        // as good a placeholder as any real index would be.
+        let keypoints = ManifestKeypoints {
+            count: 4,
+            detector_kind: String::new(),
+            detector_params: Params::new(),
+            level_start: 0,
+            x: 0,
+            y: 0,
+            angle: 0,
+            score: 0,
+            size: None,
+            level: 0,
+        };
+
+        let descriptor_set = ManifestDescriptorSet {
+            kind: "orb".to_string(),
+            norm: "hamming".to_string(),
+            element_type: "u8".to_string(),
+            dimensions: 8,
+            bytes_per_descriptor: 1,
+            producer: "test".to_string(),
+            params: Params::new(),
+            count: 4,
+            level_start: 0,
+            kp_index: 0,
+            data: 0,
+        };
+
+        let spec = ManifestSpec {
+            head,
+            accessors: Vec::new(),
+            meta,
+            pyramid,
+            keypoints,
+            descriptor_sets: vec![descriptor_set],
+            patches: None,
+            reference_image: None,
+            info: None,
+        };
+
+        let arrays = TargetArrays {
+            keypoints: KeypointArrays {
+                level_start: vec![0, 2, 4],
+                x: vec![0.0, 0.0, 0.0, 0.0],
+                y: vec![0.0, 0.0, 0.0, 0.0],
+                angle: vec![0.0, 0.0, 0.0, 0.0],
+                score: vec![0.0, 0.0, 0.0, 0.0],
+                size: None,
+                // Two keypoints per level: [0, 1] at level 0, [2, 3] at level 1,
+                // agreeing with keypoints.levelStart = [0, 2, 4] above.
+                level: vec![0, 0, 1, 1],
+            },
+            sets: vec![SetArrays {
+                level_start: vec![0, 2, 4],
+                kp_index: vec![0, 1, 2, 3],
+                data: DescriptorData::U8(vec![0, 0, 0, 0]),
+            }],
+            patches: None,
+            reference_image: None,
+        };
+
+        (spec, arrays)
+    }
+
+    #[test]
+    fn the_baseline_target_is_consistent() {
+        let (spec, arrays) = valid_spec_and_arrays();
+        assert_eq!(check_consistency(&spec, &arrays), None);
+    }
+
+    #[test]
+    fn a_within_level_kp_index_permutation_is_inconsistent_without_multiview() {
+        let (spec, mut arrays) = valid_spec_and_arrays();
+        // The baseline must be accepted before it is mutated, or this test
+        // would pass even with the identity check deleted.
+        assert_eq!(check_consistency(&spec, &arrays), None);
+
+        // Swap rows 0 and 1: both belong to level 0, so `levels_agree` still
+        // holds and no value repeats — this is exactly the file the rev-4
+        // amendment exists to reject. A reader implementing only "M == N"
+        // and "every kpIndex < N" would accept this file.
+        arrays.sets[0].kp_index = vec![1, 0, 2, 3];
+
+        let error = check_consistency(&spec, &arrays).expect("a permutation must be rejected");
+        assert_eq!(error.code, ErrorCode::InconsistentData);
+    }
+
+    #[test]
+    fn a_within_level_kp_index_permutation_is_accepted_under_multiview() {
+        // The positive control: without this, a `check_consistency` that
+        // ignored `extensionsRequired` entirely and always demanded the
+        // identity would pass the negative test above for the wrong reason.
+        let (mut spec, mut arrays) = valid_spec_and_arrays();
+        spec.head.extensions_required = vec!["WKNF_multiview".to_string()];
+        arrays.sets[0].kp_index = vec![1, 0, 2, 3];
+
+        assert_eq!(
+            check_consistency(&spec, &arrays),
+            None,
+            "WKNF_multiview must relax the identity requirement"
+        );
+    }
+
+    #[test]
+    fn m_not_equal_n_is_inconsistent_without_multiview() {
+        let (mut spec, mut arrays) = valid_spec_and_arrays();
+        assert_eq!(check_consistency(&spec, &arrays), None);
+
+        // M = 3 rows, still closed and still agreeing per-level with the
+        // keypoints, but N = 4: without WKNF_multiview this must fail on the
+        // count alone.
+        spec.descriptor_sets[0].count = 3;
+        arrays.sets[0].level_start = vec![0, 2, 3];
+        arrays.sets[0].kp_index = vec![0, 1, 2];
+
+        let error = check_consistency(&spec, &arrays).expect("M != N must be rejected");
+        assert_eq!(error.code, ErrorCode::InconsistentData);
+    }
+
+    #[test]
+    fn m_not_equal_n_is_accepted_under_multiview() {
+        let (mut spec, mut arrays) = valid_spec_and_arrays();
+        spec.head.extensions_required = vec!["WKNF_multiview".to_string()];
+        spec.descriptor_sets[0].count = 3;
+        arrays.sets[0].level_start = vec![0, 2, 3];
+        arrays.sets[0].kp_index = vec![0, 1, 2];
+
+        assert_eq!(
+            check_consistency(&spec, &arrays),
+            None,
+            "WKNF_multiview must relax M == N"
+        );
+    }
+
+    #[test]
+    fn a_kp_index_past_n_is_inconsistent_even_under_multiview() {
+        let (mut spec, mut arrays) = valid_spec_and_arrays();
+        // WKNF_multiview skips the identity check entirely, isolating the
+        // separate `kpIndex[r] < N` bound check this test targets.
+        spec.head.extensions_required = vec!["WKNF_multiview".to_string()];
+
+        // Give `keypoints.level` a fifth, out-of-domain entry that happens to
+        // agree with the level being checked (`1`, the same as level 1's
+        // range). This means a `kpIndex` pointing at that entry is not
+        // caught merely because index 4 is out of some array's bounds — it
+        // has to be caught by the explicit `kpIndex[r] < N` comparison, not
+        // by an incidental lookup failure that would catch it for the wrong
+        // reason.
+        arrays.keypoints.level.push(1);
+        assert_eq!(check_consistency(&spec, &arrays), None);
+
+        arrays.sets[0].kp_index = vec![0, 1, 2, 4];
+
+        let error =
+            check_consistency(&spec, &arrays).expect("an out-of-range kpIndex must be rejected");
+        assert_eq!(error.code, ErrorCode::InconsistentData);
+    }
+
+    #[test]
+    fn a_keypoint_level_disagreeing_with_level_start_is_inconsistent() {
+        let (mut spec, mut arrays) = valid_spec_and_arrays();
+        // No descriptor sets: every per-set check in `check_descriptor_set`
+        // (including its own keypoint-level lookup) also reads
+        // `keypoints.level`, so with the baseline's identity `kpIndex`
+        // referencing every keypoint, that check alone would independently
+        // catch the same mutation below and this test would pass for the
+        // wrong reason. Dropping the descriptor set isolates `levels_agree`
+        // (rule 2) as the only remaining thing that reads `keypoints.level`.
+        spec.descriptor_sets = Vec::new();
+        arrays.sets = Vec::new();
+        assert_eq!(check_consistency(&spec, &arrays), None);
+
+        // levelStart still says index 2 belongs to level 1 ([2, 4)), but the
+        // stored level now says 0 — `levels_agree` must catch this.
+        arrays.keypoints.level = vec![0, 0, 0, 1];
+
+        let error = check_consistency(&spec, &arrays).expect("a level mismatch must be rejected");
+        assert_eq!(error.code, ErrorCode::InconsistentData);
+    }
+}

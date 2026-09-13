@@ -38,7 +38,29 @@ use wnft_format::{DEFAULT_LIMITS, Decoded, decode};
 
 #[test]
 fn the_corpus_is_the_version_this_build_reads() {
-    assert_eq!(common::expectations().format_version, "0.2");
+    let e = common::expectations();
+    assert_eq!(e.format_version, "0.2");
+
+    // Lower bounds, not exact counts: the corpus is allowed to grow without a
+    // change to this file (that is the whole point of driving these suites
+    // from `expectations.json` rather than listing fixtures by hand). But a
+    // well-formed index with every category emptied out would otherwise make
+    // six of this file's seven tests iterate zero times, pass, and report
+    // 7/7 green while establishing nothing — this guards against exactly
+    // that silent-empty-corpus failure mode.
+    assert!(e.valid.len() >= 8, "valid corpus shrank below 8 cases");
+    assert!(
+        e.invalid.len() >= 36,
+        "invalid corpus shrank below 36 cases"
+    );
+    assert!(
+        e.warnings.len() >= 5,
+        "warnings corpus shrank below 5 cases"
+    );
+    assert!(
+        e.noncanonical.len() >= 6,
+        "noncanonical corpus shrank below 6 cases"
+    );
 }
 
 #[test]

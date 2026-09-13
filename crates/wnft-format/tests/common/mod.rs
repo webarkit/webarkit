@@ -77,7 +77,6 @@ pub struct Expectations {
 #[derive(serde::Deserialize)]
 pub struct ValidCase {
     pub file: String,
-    #[allow(dead_code)] // read by a future task; not every consumer needs it
     pub decoded: Option<String>,
 }
 
@@ -158,6 +157,15 @@ fn json_num(v: f64) -> serde_json::Value {
     if v.is_finite() && v.fract() == 0.0 && v.abs() < 9e15 {
         serde_json::Value::Number(serde_json::Number::from(v as i64))
     } else {
+        // `Number::from_f64` returns `None` only for NaN or an infinity, in
+        // which case this falls back to `Value::Null` — the same value
+        // `meta.physicalSizeMm: None` (an absent physical size) produces.
+        // The two are never actually reachable together on this decoder's
+        // output — no field this helper is applied to can decode to NaN or
+        // an infinity (§5's I-JSON checks reject any manifest literal that
+        // would round to one, and this decoder never computes a new float)
+        // — but the conflation is real and would bite a future caller who
+        // applied this helper to a field without that guarantee.
         serde_json::Number::from_f64(v)
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null)
