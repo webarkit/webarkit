@@ -77,10 +77,20 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+mod container;
 mod crc32;
 mod error;
+mod known;
 mod limits;
 
 pub use crc32::crc32;
 pub use error::{DecodeError, EncodeError, ErrorCode, Warning, WarningCode};
 pub use limits::{DEFAULT_LIMITS, Limits};
+
+/// Internals the crate's own test suites reach for. Not part of the public API
+/// and not covered by semver: the two public functions are `decode` and
+/// `encode`.
+#[doc(hidden)]
+pub mod testing {
+    pub use crate::container::{Chunk, ParsedContainer, build_container, parse_container};
+}
