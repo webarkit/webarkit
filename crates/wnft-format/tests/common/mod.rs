@@ -236,7 +236,10 @@ pub fn normalize_numbers(value: &mut serde_json::Value) {
 /// this decoder produces (`f32` widened to `f64`) would spuriously fail the
 /// comparison.
 fn json_num(v: f64) -> serde_json::Value {
-    if v.is_finite() && v.fract() == 0.0 && v.abs() < 9e15 {
+    if v.is_finite()
+        && v.fract() == 0.0
+        && v.abs() <= wnft_format::testing::MAX_EXACT_INTEGER as f64
+    {
         serde_json::Value::Number(serde_json::Number::from(v as i64))
     } else {
         // `Number::from_f64` returns `None` only for NaN or an infinity, in

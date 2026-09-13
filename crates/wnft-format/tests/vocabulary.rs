@@ -1,3 +1,30 @@
+/*
+ *  vocabulary.rs
+ *  wnft-format
+ *
+ *  This file is part of wnft-format - WebARKit.
+ *
+ *  SPDX-License-Identifier: LGPL-3.0-or-later
+ *
+ *  wnft-format is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU Lesser General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  wnft-format is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU Lesser General Public License for more details.
+ *
+ *  You should have received a copy of the GNU Lesser General Public License
+ *  along with wnft-format.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *  Copyright 2026 WebARKit.
+ *
+ *  Author(s): Walter Perdan @kalwalt https://github.com/kalwalt
+ *
+ */
+
 //! The codes of §6.2 are shared by every implementation, so their spelling is
 //! part of the contract, not an implementation detail. This pins it.
 
