@@ -82,7 +82,8 @@ hand when the decoder changes.
 `cargo fuzz` resolves its target and corpus relative to the **current
 package**, and that package is `crates/wnft-format` — not the repository
 root, which is a virtual workspace manifest with no `fuzz/` beside it. Run
-everything below from `crates/wnft-format/`:
+everything below from the **repository root**; the first command in the
+block below changes into `crates/wnft-format/` for you:
 
 ```bash
 cargo install cargo-fuzz
@@ -99,11 +100,17 @@ cargo +nightly fuzz run decode -- -max_total_time=300
 ```
 
 The target treats an `INVALID_TARGET` encode failure as expected, not as a
-crash, when the decoded target has no descriptor sets: §5.6 documents this as
-the one legal case where a file decodes but the target it produced cannot be
-re-encoded (every descriptor set had an unknown `elementType` and was
-dropped). Any other encode failure, or an `INVALID_TARGET` with descriptor
-sets still present, fails the fuzz run instead — that would be a genuine
+crash, for two documented reasons. The first is §5.6: a file whose every
+descriptor set has an unknown `elementType` still decodes (each such set is
+dropped), but the resulting target then carries none at all, and §5.1
+requires at least one, so the writer refuses to re-emit it. The second is
+§7.3's check-(c) asymmetry: a reader accepts an integer-valued number
+outside ±(2^53 − 1) written with a fraction or exponent (e.g. `1e21`, which
+is not an integer *literal*), but the canonical writer refuses to re-emit
+any such value wherever it appears in `params` or `info`, because another
+implementation might render it as a bare integer literal that every
+conforming reader rejects. Any encode failure whose code is not
+`INVALID_TARGET` fails the fuzz run instead — that would be a genuine
 reader/writer disagreement. Interpreting a fuzzer report on this target means
 knowing that distinction going in.
 
