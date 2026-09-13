@@ -108,7 +108,9 @@ pub struct ManifestMeta {
     /// `heightPx`, an integer in `[1, 2^16 − 1]`.
     pub height_px: u32,
     /// `physicalSizeMm`: `[width, height]` in millimetres, both `> 0`, or
-    /// `None` when the manifest carries `null` (or omits the field).
+    /// `None` when the manifest carries an explicit `null`. The key itself
+    /// is required — an absent key is `BAD_MANIFEST` (§1, §7.3; see the
+    /// comment at the parse site).
     pub physical_size_mm: Option<[f64; 2]>,
 }
 
@@ -737,8 +739,31 @@ fn parse_meta(doc: &Map<String, Value>) -> Result<ManifestMeta, DecodeError> {
     let width_px = require_u32(obj, "widthPx", 1, U16_DOMAIN_MAX, "meta")?;
     let height_px = require_u32(obj, "heightPx", 1, U16_DOMAIN_MAX, "meta")?;
 
+    // `physicalSizeMm` is REQUIRED, even though §5.3's prose only fixes the
+    // domain of a *present* value ("null ... or [width, height]") and never
+    // says in as many words that the key itself is mandatory. Two things
+    // settle it in favour of requiring the key:
+    //   - §1 is binding: "A file written by one implementation MUST decode
+    //     to the same values in any other." The peer TypeScript codec's
+    //     check is `if (sizeMmRaw !== null) { ... }`; an absent key reads as
+    //     `undefined`, and `undefined !== null`, so that reader already
+    //     rejects a missing key as BAD_MANIFEST. Treating "absent" as
+    //     equivalent to "null" here would accept a file the peer rejects,
+    //     breaking that guarantee silently.
+    //   - §7.3's canonical writer omits a key only when it is in that
+    //     section's short list of optional-and-omitted-when-empty fields:
+    //     `params`, `extensionsUsed`, `extensionsRequired`. `physicalSizeMm`
+    //     is not on that list, so no conforming file omits it — requiring
+    //     the key here rejects nothing a compliant writer would produce.
+    // Do not "fix" this back to lenient without re-reading both of the above.
     let physical_size_mm = match obj.get("physicalSizeMm") {
-        None | Some(Value::Null) => None,
+        None => {
+            return Err(fail(
+                ErrorCode::BadManifest,
+                "meta.physicalSizeMm is required (null, or [width, height])",
+            ));
+        }
+        Some(Value::Null) => None,
         Some(Value::Array(arr)) if arr.len() == 2 => {
             let w = arr
                 .first()
