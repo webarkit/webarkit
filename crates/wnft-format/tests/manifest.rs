@@ -302,3 +302,128 @@ fn meta_physical_size_mm_null_decodes_to_none_but_absent_key_is_bad_manifest() {
         .expect_err("an absent meta.physicalSizeMm must be BAD_MANIFEST");
     assert_eq!(err.code, ErrorCode::BadManifest);
 }
+
+/// A minimal, fully valid manifest as a `serde_json::Value`, so each test
+/// below can flip exactly one key to an explicit `null` without hand-editing
+/// JSON text. `accessors` covers a 1096-byte `BIN` chunk (the `data`
+/// accessor ends at `456 + 640 = 1096`) — every test below that reaches
+/// `validate_manifest` passes that same length.
+fn base_manifest() -> serde_json::Value {
+    serde_json::json!({
+        "format": { "version": "0.2", "generator": "gen" },
+        "meta": { "widthPx": 64, "heightPx": 48, "physicalSizeMm": [128.0, 96.0] },
+        "pyramid": { "scaleStep": 2.0, "levelSizes": [[64, 48], [32, 24]] },
+        "keypoints": {
+            "count": 20,
+            "detector": { "kind": "fast" },
+            "levelStart": 0, "x": 1, "y": 2, "angle": 3, "score": 4, "level": 5
+        },
+        "descriptorSets": [
+            {
+                "kind": "orb", "norm": "hamming", "elementType": "bits",
+                "dimensions": 256, "bytesPerDescriptor": 32, "producer": "jsfeatnext",
+                "count": 20, "levelStart": 6, "kpIndex": 7, "data": 8
+            }
+        ],
+        "accessors": [
+            { "offset": 0, "count": 3, "type": "u32" },
+            { "offset": 16, "count": 20, "type": "f32" },
+            { "offset": 96, "count": 20, "type": "f32" },
+            { "offset": 176, "count": 20, "type": "f32" },
+            { "offset": 256, "count": 20, "type": "f32" },
+            { "offset": 336, "count": 20, "type": "u8" },
+            { "offset": 360, "count": 3, "type": "u32" },
+            { "offset": 376, "count": 20, "type": "u32" },
+            { "offset": 456, "count": 640, "type": "u8" }
+        ]
+    })
+}
+
+/// Every optional key's response to an *explicit* `null`, matched row for row
+/// against the peer TypeScript codec's `manifest.ts` (verified by the
+/// coordinator's ruling, not re-derived from the specification text, which is
+/// silent on all eight). `format.generator`, the two `params` objects,
+/// `patches`, `referenceImage` and `info` all reject `null` as `BAD_MANIFEST`
+/// in the peer (each checks `!== undefined` and then a type, so `null` falls
+/// through to the type check and fails it); `extensionsUsed` and
+/// `extensionsRequired` are the peer's one inconsistent pair, both read with
+/// `?? []`, which is why they alone accept `null` as `[]` (see the comment on
+/// `read_string_array`).
+#[test]
+fn null_format_generator_is_bad_manifest() {
+    let mut manifest = base_manifest();
+    manifest["format"]["generator"] = serde_json::Value::Null;
+    let bytes = serde_json::to_vec(&manifest).expect("serialize");
+    let err = decode_manifest(&bytes, &DEFAULT_LIMITS).unwrap_err();
+    assert_eq!(err.code, ErrorCode::BadManifest);
+}
+
+#[test]
+fn null_extensions_used_is_accepted_as_empty() {
+    let mut manifest = base_manifest();
+    manifest["extensionsUsed"] = serde_json::Value::Null;
+    let bytes = serde_json::to_vec(&manifest).expect("serialize");
+    let (head, warnings) = decode_manifest(&bytes, &DEFAULT_LIMITS).expect("decode_manifest");
+    assert_eq!(warnings, vec![]);
+    assert_eq!(head.extensions_used, Vec::<String>::new());
+}
+
+#[test]
+fn null_extensions_required_is_accepted_as_empty() {
+    let mut manifest = base_manifest();
+    manifest["extensionsRequired"] = serde_json::Value::Null;
+    let bytes = serde_json::to_vec(&manifest).expect("serialize");
+    let (head, warnings) = decode_manifest(&bytes, &DEFAULT_LIMITS).expect("decode_manifest");
+    assert_eq!(warnings, vec![]);
+    assert_eq!(head.extensions_required, Vec::<String>::new());
+}
+
+#[test]
+fn null_keypoints_detector_params_is_bad_manifest() {
+    let mut manifest = base_manifest();
+    manifest["keypoints"]["detector"]["params"] = serde_json::Value::Null;
+    let bytes = serde_json::to_vec(&manifest).expect("serialize");
+    let (head, _warnings) = decode_manifest(&bytes, &DEFAULT_LIMITS).expect("decode_manifest");
+    let err = validate_manifest(head, Some(1096), &DEFAULT_LIMITS).unwrap_err();
+    assert_eq!(err.code, ErrorCode::BadManifest);
+}
+
+#[test]
+fn null_descriptor_set_params_is_bad_manifest() {
+    let mut manifest = base_manifest();
+    manifest["descriptorSets"][0]["params"] = serde_json::Value::Null;
+    let bytes = serde_json::to_vec(&manifest).expect("serialize");
+    let (head, _warnings) = decode_manifest(&bytes, &DEFAULT_LIMITS).expect("decode_manifest");
+    let err = validate_manifest(head, Some(1096), &DEFAULT_LIMITS).unwrap_err();
+    assert_eq!(err.code, ErrorCode::BadManifest);
+}
+
+#[test]
+fn null_patches_is_bad_manifest() {
+    let mut manifest = base_manifest();
+    manifest["patches"] = serde_json::Value::Null;
+    let bytes = serde_json::to_vec(&manifest).expect("serialize");
+    let (head, _warnings) = decode_manifest(&bytes, &DEFAULT_LIMITS).expect("decode_manifest");
+    let err = validate_manifest(head, Some(1096), &DEFAULT_LIMITS).unwrap_err();
+    assert_eq!(err.code, ErrorCode::BadManifest);
+}
+
+#[test]
+fn null_reference_image_is_bad_manifest() {
+    let mut manifest = base_manifest();
+    manifest["referenceImage"] = serde_json::Value::Null;
+    let bytes = serde_json::to_vec(&manifest).expect("serialize");
+    let (head, _warnings) = decode_manifest(&bytes, &DEFAULT_LIMITS).expect("decode_manifest");
+    let err = validate_manifest(head, Some(1096), &DEFAULT_LIMITS).unwrap_err();
+    assert_eq!(err.code, ErrorCode::BadManifest);
+}
+
+#[test]
+fn null_info_is_bad_manifest() {
+    let mut manifest = base_manifest();
+    manifest["info"] = serde_json::Value::Null;
+    let bytes = serde_json::to_vec(&manifest).expect("serialize");
+    let (head, _warnings) = decode_manifest(&bytes, &DEFAULT_LIMITS).expect("decode_manifest");
+    let err = validate_manifest(head, Some(1096), &DEFAULT_LIMITS).unwrap_err();
+    assert_eq!(err.code, ErrorCode::BadManifest);
+}

@@ -382,10 +382,23 @@ pub fn decode_manifest(
     ))
 }
 
-/// Read a top-level array-of-strings field, defaulting to `[]` when absent.
+/// Read a top-level array-of-strings field, defaulting to `[]` when absent —
+/// used for `extensionsUsed` and `extensionsRequired` (§5.1).
+///
+/// An explicit `null` is accepted here too, as `[]`. §5.1 does not say what
+/// `null` means for either field, so this is settled by matching the peer
+/// TypeScript codec: it reads both with `?? []`, whose nullish coalescing
+/// swallows `null` along with `undefined`, unlike every other optional key in
+/// that codec, which checks `!== undefined` and rejects `null` explicitly.
+/// This is suspected to be an artifact of reaching for `??` rather than a
+/// considered decision — but §1 requires two implementations to decode any
+/// file identically, suspect ones included, since untrusted input is exactly
+/// where a divergence would matter and nobody would go looking for it. If the
+/// peer ever tightens this to reject `null`, this arm must be tightened the
+/// same way, in the same change.
 fn read_string_array(doc: &Map<String, Value>, key: &str) -> Result<Vec<String>, DecodeError> {
     match doc.get(key) {
-        None => Ok(Vec::new()),
+        None | Some(Value::Null) => Ok(Vec::new()),
         Some(Value::Array(items)) => items
             .iter()
             .map(|v| {
