@@ -48,6 +48,7 @@ use crate::error::{DecodeError, ErrorCode, fail};
 use crate::manifest::{
     ManifestDescriptorSet, ManifestPatches, ManifestReferenceImage, ManifestSpec,
 };
+use crate::rules::{level_sizes_non_increasing, level_start_closed, levels_agree};
 use crate::target::DescriptorData;
 
 /// `keypoints`' arrays (§5.5), materialised.
@@ -229,60 +230,6 @@ pub(crate) fn materialise_all(bin: &[u8], spec: &ManifestSpec) -> Option<TargetA
         sets,
         patches,
         reference_image,
-    })
-}
-
-/// Whether `level_start` is closed and non-decreasing against `total` (§5.5,
-/// §5.6): `level_start[0] == 0`, non-decreasing, and its last entry equals
-/// `total`. An empty slice is never closed — a real `levelStart` always has
-/// at least one entry (`L >= 1`, so `L + 1 >= 2`).
-fn level_start_closed(level_start: &[u32], total: u32) -> bool {
-    match level_start.split_first() {
-        Some((&first, rest)) if first == 0 => {
-            let mut prev = first;
-            for &next in rest {
-                if next < prev {
-                    return false;
-                }
-                prev = next;
-            }
-            prev == total
-        }
-        _ => false,
-    }
-}
-
-/// Whether every keypoint's `level` agrees with `levelStart` (§5.5): for
-/// every `l` in `[0, level_count)`, every index in
-/// `[levelStart[l], levelStart[l+1])` has `level[i] == l`.
-///
-/// Comparing through `usize` rather than casting `l` down to `u8` means a
-/// `level_count` a caller's `Limits` raised past 256 is handled correctly
-/// too: no stored `level` value can ever equal such an `l`, so a non-empty
-/// range at that `l` correctly fails rather than wrapping into a false match.
-fn levels_agree(level_start: &[u32], level: &[u8], level_count: usize) -> bool {
-    for l in 0..level_count {
-        let (Some(&start), Some(&end)) = (level_start.get(l), level_start.get(l + 1)) else {
-            return false;
-        };
-        let Some(range) = level.get((start as usize)..(end as usize)) else {
-            return false;
-        };
-        if range.iter().any(|&lv| usize::from(lv) != l) {
-            return false;
-        }
-    }
-    true
-}
-
-/// Whether `sizes` is non-increasing level to level (§5.4). Destructured by
-/// pattern rather than indexed: `clippy::indexing_slicing` is denied
-/// crate-wide, and a `windows(2)` slice is exactly two elements wide, so a
-/// slice pattern reads them without ever calling `Index`.
-fn level_sizes_non_increasing(sizes: &[[u32; 2]]) -> bool {
-    sizes.windows(2).all(|pair| match pair {
-        [[prev_w, prev_h], [next_w, next_h]] => next_w <= prev_w && next_h <= prev_h,
-        _ => true,
     })
 }
 

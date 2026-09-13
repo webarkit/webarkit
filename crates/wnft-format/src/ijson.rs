@@ -751,19 +751,8 @@ pub fn scan_ijson(text: &str) -> Option<IJsonViolation> {
                 }
                 Some(b'"') => match parse_string_units(bytes, text, i, &stack, &ReachedVia::Root) {
                     Ok((units, next_i)) => {
-                        if has_unpaired_surrogate(&units) {
-                            return Some(violation_at(
-                                &stack,
-                                &ReachedVia::Root,
-                                "member name contains an unpaired surrogate escape",
-                            ));
-                        }
-                        if has_noncharacter(&units) {
-                            return Some(violation_at(
-                                &stack,
-                                &ReachedVia::Root,
-                                "member name contains a Unicode noncharacter",
-                            ));
+                        if let Err(v) = check_string(&units, &stack, &ReachedVia::Root) {
+                            return Some(v);
                         }
                         let name = match units_to_string(&units) {
                             Ok(name) => name,

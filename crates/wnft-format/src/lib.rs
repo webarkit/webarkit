@@ -88,6 +88,7 @@ mod ijson;
 mod known;
 mod limits;
 mod manifest;
+mod rules;
 mod target;
 mod validate_target;
 
