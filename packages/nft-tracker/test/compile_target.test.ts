@@ -53,7 +53,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -64,6 +64,10 @@ import type { DecodeResult } from "../src/target/format/errors.js";
 
 const SCRIPT = fileURLToPath(new URL("../bin/compile-target.mjs", import.meta.url));
 const IMAGE = fileURLToPath(new URL("../../../examples/images/pinball.jpg", import.meta.url));
+/** The repository root — what npm reports as `INIT_CWD` when run from there. */
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+/** The package directory — what npm makes the cwd for a workspace script. */
+const PACKAGE_DIR = fileURLToPath(new URL("../", import.meta.url));
 
 let work: string;
 
@@ -147,6 +151,78 @@ describe("compile-target", () => {
         compile([IMAGE, "-o", second, "--levels", "3", "--seed", "1"]);
 
         expect(new Uint8Array(readFileSync(second))).toEqual(new Uint8Array(readFileSync(first)));
+    });
+
+    /*
+     * npm runs a workspace script with the cwd set to the PACKAGE, not to the
+     * directory the command was typed in. Left alone, that makes every
+     * relative path in the command mean something other than it reads: an
+     * input is not found, and -- worse, because it is silent -- an output
+     * lands inside `packages/nft-tracker/` while the script reports the path
+     * the user asked for.
+     *
+     * The script therefore resolves relative paths against `INIT_CWD`, which
+     * npm sets to the invocation directory. These two cases pin both halves
+     * of that: the first reproduces npm's environment exactly without needing
+     * npm, and the second checks that npm really does set it -- on whatever
+     * platform this suite is running, which is the only way to claim it works
+     * on more than one.
+     */
+    describe("paths relative to where the command was typed", () => {
+        const RELATIVE_IMAGE = "examples/images/pinball.jpg";
+        let outDir: string;
+
+        beforeAll(() => {
+            // Inside the repository, because a path relative to the repo root
+            // is what is being tested and the OS temp directory may not even
+            // be on the same drive (Windows), where `relative()` gives up and
+            // returns an absolute path.
+            outDir = join(REPO_ROOT, ".tmp-compile-target");
+        });
+
+        afterAll(() => {
+            rmSync(outDir, { recursive: true, force: true });
+            rmSync(join(PACKAGE_DIR, ".tmp-compile-target"), { recursive: true, force: true });
+        });
+
+        it("resolves them against INIT_CWD, as npm sets it", () => {
+            const relativeOut = ".tmp-compile-target/from-env.wnft";
+            execFileSync(process.execPath, [SCRIPT, RELATIVE_IMAGE, "-o", relativeOut, "--levels", "2"], {
+                encoding: "utf8",
+                stdio: ["ignore", "pipe", "pipe"],
+                // Exactly what npm hands a workspace script.
+                cwd: PACKAGE_DIR,
+                env: { ...process.env, INIT_CWD: REPO_ROOT },
+            });
+
+            expect(existsSync(join(outDir, "from-env.wnft"))).toBe(true);
+            // The bug this replaces was silent: it reported success while
+            // writing here instead.
+            expect(existsSync(join(PACKAGE_DIR, relativeOut))).toBe(false);
+        });
+
+        it("works through the real npm script, from the repository root", () => {
+            const relativeOut = ".tmp-compile-target/from-npm.wnft";
+            execFileSync(
+                "npm",
+                ["run", "--silent", "compile-target", "-w", "@webarkit/nft-tracker", "--",
+                 RELATIVE_IMAGE, "-o", relativeOut, "--levels", "2"],
+                {
+                    encoding: "utf8",
+                    stdio: ["ignore", "pipe", "pipe"],
+                    cwd: REPO_ROOT,
+                    // npm is `npm.cmd` on Windows, and since the fix for
+                    // CVE-2024-27980 Node refuses to spawn a `.cmd` without a
+                    // shell. No argument below contains a space or a shell
+                    // metacharacter, so this is a launcher detail and not an
+                    // injection surface.
+                    shell: process.platform === "win32",
+                }
+            );
+
+            expect(existsSync(join(outDir, "from-npm.wnft"))).toBe(true);
+            expect(existsSync(join(PACKAGE_DIR, relativeOut))).toBe(false);
+        });
     });
 
     it("refuses to run without an output path", () => {
