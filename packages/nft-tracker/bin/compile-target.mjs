@@ -96,6 +96,32 @@ import { grayFromJpegFile } from "./image.mjs";
  */
 const DEFAULT_MAX_SIDE = 640;
 
+/**
+ * The directory the command was typed in, which is not always the cwd.
+ *
+ * npm runs a workspace script with the cwd set to the **package**, so
+ * `npm run compile-target -w @webarkit/nft-tracker -- examples/images/pinball.jpg
+ * -o examples/targets/pinball.wnft` from the repository root would resolve both
+ * paths inside `packages/nft-tracker/`. The input half fails loudly; the output
+ * half does not — it writes `packages/nft-tracker/examples/targets/…` and
+ * reports the path the user asked for, which is the worse of the two.
+ *
+ * `INIT_CWD` is how npm says where the command actually came from. It is set by
+ * the package manager, not by the shell or the operating system, so it behaves
+ * identically on Windows, Linux and macOS (yarn and pnpm set it too). Running
+ * the script directly with `node` leaves it unset — and then the cwd already
+ * *is* the invocation directory, so the fallback is not a guess.
+ *
+ * `||` rather than `??`, so an empty `INIT_CWD` falls back as well.
+ *
+ * The rule this buys is the one every command-line tool is expected to follow:
+ * a relative path is relative to where you typed it.
+ */
+const INVOCATION_DIR = process.env.INIT_CWD || process.cwd();
+
+/** {@link resolve}, but anchored to {@link INVOCATION_DIR}. */
+const fromInvocation = (path) => resolve(INVOCATION_DIR, path);
+
 const USAGE = `usage: compile-target <image.jpg> -o <out.wnft> [options]
 
   -o, --out <path>            where to write the .wnft file (required)
@@ -291,7 +317,7 @@ async function main(argv) {
         return 0;
     }
 
-    const image = grayFromJpegFile(resolve(options.image), options.maxSide);
+    const image = grayFromJpegFile(fromInvocation(options.image), options.maxSide);
     const cv = await createJsfeatNextBackend();
 
     const built = withSeededRandom(options.seed, () =>
@@ -333,7 +359,7 @@ async function main(argv) {
         return 1;
     }
 
-    const out = resolve(options.out);
+    const out = fromInvocation(options.out);
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, written.bytes);
 

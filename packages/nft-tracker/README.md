@@ -128,11 +128,19 @@ node packages/nft-tracker/bin/compile-target.mjs examples/images/pinball.jpg \
     -o examples/targets/pinball.wnft --physical-size 210x262.5
 ```
 
-Run from the repository root, as above. There is an `npm run compile-target -w
-@webarkit/nft-tracker --` too, but npm runs it with this package as the working
-directory, so every path in it would be relative to `packages/nft-tracker` —
-which is a good way to write a command that means something other than it
-reads.
+The npm script is equivalent, and takes its paths the same way:
+
+```bash
+npm run compile-target -w @webarkit/nft-tracker -- examples/images/pinball.jpg \
+    -o examples/targets/pinball.wnft --physical-size 210x262.5
+```
+
+Both read relative paths as relative to **where you typed the command**, which
+takes a small deliberate effort: npm runs a workspace script with the cwd set to
+the package, so without it `-o examples/targets/pinball.wnft` would land in
+`packages/nft-tracker/` — quietly, reporting the path you asked for. The script
+resolves against npm's `INIT_CWD` instead, and falls back to the cwd when it is
+unset, which is exactly the case where the cwd is already the right answer.
 
 | Option | Default | What it decides |
 |---|---|---|
