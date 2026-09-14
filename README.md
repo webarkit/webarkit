@@ -73,7 +73,14 @@ The Rust crate in `crates/` is a separate CI job, and needs a stable toolchain
 cargo test --workspace
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
+cargo build -p wnft-format --no-default-features --target thumbv7em-none-eabihf
 ```
+
+Those four are the whole Rust gate. The last one needs `rustup target add
+thumbv7em-none-eabihf` once: it is a bare-metal target because that is the only
+way to prove the crate really is `no_std` — one that accidentally depends on
+`std` still builds for the *host* with `--no-default-features`, since the host's
+`std` is right there.
 
 ## 🖼️ Examples
 

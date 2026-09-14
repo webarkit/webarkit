@@ -368,7 +368,7 @@
         let redraw = () => {};
         $("showOutliers").addEventListener("change", () => redraw());
         $("targetSource").addEventListener("change", () => {
-          analyse().catch(fail);
+          startAnalysis();
         });
 
         // One of the two target paths awaits a fetch, so two flips of the
@@ -377,9 +377,33 @@
         // its results instead of drawing them over a newer run's.
         let current = 0;
 
-        /** The whole pipeline, for whichever target the selector asks for. */
-        async function analyse() {
+        /**
+         * Starts a run and owns its outcome, successful or not.
+         *
+         * The failure half is the reason this wrapper exists. A run that lost
+         * the race owns nothing on the page — a newer one has already drawn —
+         * so reporting its error would replace a good result with a
+         * misleading one. That is not hypothetical: point the page at a
+         * `.wnft` compiled at the wrong `--max-side`, switch to it and
+         * straight back, and the older run's rejection lands after the newer
+         * run has finished, leaving `status: failed` above a full set of
+         * perfectly good numbers.
+         *
+         * Superseded failures still reach the console. A stale run that failed
+         * is a fact about the page; only its claim on the panel is revoked.
+         */
+        async function startAnalysis() {
           const run = ++current;
+          try {
+            await analyse(run);
+          } catch (e) {
+            if (run === current) fail(e);
+            else console.warn(`superseded run ${run} failed after run ${current} finished:`, e);
+          }
+        }
+
+        /** The whole pipeline, for whichever target the selector asks for. */
+        async function analyse(run) {
           resetStats();
           $("error").textContent = "";
 
@@ -516,9 +540,12 @@
           stat("pipeline", `${ms.toFixed(1)} ms`);
         }
 
-        await analyse();
+        await startAnalysis();
       }
 
+      // `startAnalysis` reports its own failures, so what is left for this
+      // catch is everything before the first run: the backend, the images,
+      // the canvas.
       run().catch(fail);
     </script>
   </body>

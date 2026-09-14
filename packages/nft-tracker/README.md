@@ -151,13 +151,25 @@ Two of those deserve a word.
 level-0 pixels, so a page that draws them over the image it loaded must cap that
 image the same way. 640 is the demos' own cap, which is why it is the default.
 
-**`--seed` changes nothing about the output today, and is not decorative.** No
-stage of the compile draws randomness, so the same image and options produce the
-same bytes — which is what lets a compiled target be committed and reviewed as a
-diff. The seed is *enforced* anyway: the build runs with `Math.random` replaced
-by a seeded generator and the script reports the number of draws (`0`, so far).
-A backend that starts drawing therefore stays reproducible instead of quietly
-making every recompile a new file.
+**`--seed` changes no target *data* today, and is not decorative.** Keep the two
+apart, because the file is not the data:
+
+- **The target data is unaffected.** No stage of the compile draws randomness,
+  so the keypoints, the descriptors and the pyramid are the same at any seed.
+- **The file still changes**, because the seed is recorded in `info.compiler` as
+  provenance. Two compiles differing only in `--seed` therefore produce
+  different bytes — same target, different manifest.
+
+What makes the file reviewable as a diff is not that the seed is inert, it is
+that everything is: fixed image, fixed options, fixed bytes, no clock
+(`info.createdAt` is deliberately never written).
+
+The seed is *enforced* rather than merely stored: the build runs with
+`Math.random` replaced by a seeded generator and the script reports the number
+of draws (`0`, so far). A backend that starts drawing therefore stays
+reproducible instead of quietly making every recompile a new file — and when
+that day comes, the seed will be changing target data too, which is the case
+this option exists for.
 
 [`examples/targets/pinball.wnft`](../../examples/targets) is one such target,
 committed, and the static demo can load it instead of building its own.
