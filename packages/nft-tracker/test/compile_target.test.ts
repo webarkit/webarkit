@@ -162,6 +162,35 @@ describe("compile-target", () => {
         const failure = compileExpectingFailure([IMAGE, "-o", out, "--seed", "1e300"]);
         expect(failure.status).toBe(2);
         expect(failure.stderr).toMatch(/--seed/);
+        // The message must name the domain the check actually enforces. An
+        // off-by-one here is not cosmetic: it is a CLI telling the user that a
+        // value it rejects is allowed.
+        expect(failure.stderr).toContain("[-4294967295, 4294967295]");
+    });
+
+    it("accepts the largest seed it says it accepts", () => {
+        const out = join(work, "max-seed.wnft");
+        compile([IMAGE, "-o", out, "--levels", "2", "--seed", "4294967295"]);
+
+        const { target } = decodeFile(out);
+        expect((target.info as { compiler?: { seed?: number } })?.compiler?.seed).toBe(4294967295);
+    });
+
+    it("honours a non-default --max-side", () => {
+        const out = join(work, "small.wnft");
+        compile([IMAGE, "-o", out, "--levels", "3", "--max-side", "320"]);
+
+        const { target, warnings } = decodeFile(out);
+        expect(warnings).toEqual([]);
+        // 614 x 768 capped to a 320 longer side, the longer side being the
+        // height — a cap applied to the width alone would leave 614 x 768
+        // untouched, which is the bug this asserts against.
+        expect(target.meta.widthPx).toBe(256);
+        expect(target.meta.heightPx).toBe(320);
+        expect(target.pyramid.levelSizes[0]).toEqual([256, 320]);
+        // `--max-side` decides the target's coordinate space, so a reader has
+        // to be able to find out which one it got.
+        expect((target.info as { compiler?: { maxSide?: number } })?.compiler?.maxSide).toBe(320);
     });
 
     it("refuses a --physical-size that is not two positive millimetre lengths", () => {

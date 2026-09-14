@@ -163,9 +163,15 @@ from.
 
 What *does* separate the two is the **"target prepared in"** row, which the page
 times apart from the per-frame **"pipeline"** row precisely so the difference is
-visible: building the target here costs tens of milliseconds every page load,
-decoding the file costs a fraction of that. That is the whole point of preparing
-a target offline, and it is the one number on the page that shows it.
+visible: building the target here costs the page an order of magnitude more than
+loading it does.
+
+Don't read either figure as the cost of the format, in either direction. The
+build row is worst on the first load, before the JIT has warmed up, and settles
+lower afterwards; the file row is mostly the `fetch()` of 110 KB, not the
+decode. Measured apart from both effects, the gap is roughly **200×** — 84 ms to
+build against 0.40 ms to decode. The [root README](../README.md#-compiled-targets-wnft)
+has the table and the conditions.
 
 The file is regenerated with, and only with:
 

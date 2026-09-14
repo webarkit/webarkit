@@ -247,8 +247,11 @@ function parseArgs(argv) {
                 const text = next(argv, i, arg);
                 options.seed = Number(text);
                 if (!Number.isSafeInteger(options.seed) || Math.abs(options.seed) > 0xffffffff) {
+                    // Spelled out, and matching the bound above exactly: the
+                    // check admits 0xffffffff, so a message saying "2^32"
+                    // would name a value the CLI refuses.
                     throw new UsageError(
-                        `--seed expects an integer in [-2^32, 2^32], got "${text}"`
+                        `--seed expects an integer in [-4294967295, 4294967295], got "${text}"`
                     );
                 }
                 i += 1;
