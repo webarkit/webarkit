@@ -15,8 +15,9 @@ npm run build          # the examples load the built dist/, not the sources
 npx http-server -p 8080 -s
 ```
 
-Then open <http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html>
-or <http://localhost:8080/examples/pinball-webcam-jsfeatnext-backend.html>.
+Then open <http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html>,
+<http://localhost:8080/examples/pinball-webcam-jsfeatnext-backend.html>, or
+<http://localhost:8080/examples/bench-nft.html>.
 
 Serve over HTTP: ES modules do not load from `file://`, and `getUserMedia`
 (the webcam demo) additionally requires a secure context — `http://localhost`
@@ -133,6 +134,39 @@ per-frame cost, which is exactly why this demo does not do it by default (see
 the parameters above). Worth revisiting once the cost of a lighter multi-level
 search on the scene side is measured with the same rigour the current
 parameters got — tracked informally against this file for now, no issue yet.
+
+## `bench-nft.html`
+
+Measures the pipeline frame-by-frame on whatever device opens it, against a
+live webcam or a looped video file (a file loops so a short clip still fills
+the measurement window, and so a run can be repeated). It changes nothing
+about how the pipeline runs — it only times it, in eight stages per frame:
+frame acquisition, grayscale conversion, `detect`, `describe`, `match`,
+`estimateHomography`, `poseFromHomography`, and the frame total — plus the
+tracker's own outcome (`locked on` / `too few matches` / `no consensus`).
+p50, p95 and max are kept over a configurable window (frame count), and the
+whole window is downloadable as JSON, with the user agent, the source and
+processing resolutions, and a device label typed in by hand — none of that
+is inferrable from the numbers alone, and a benchmark without it cannot be
+told apart from the one run before it.
+
+Two modes, selected before pressing Start:
+
+- **stateless pipeline** — the same inline `detect → describe → match →
+  estimateHomography → poseFromHomography` calls as the webcam demo above,
+  against `@webarkit/nft-tracker`'s own `DEFAULT_SCENE_LEVELS` /
+  `DEFAULT_MAX_SCENE_KEYPOINTS` / `DEFAULT_RATIO` / `DEFAULT_RANSAC_THRESHOLD`.
+- **NftTracker** — `tracker.process(frame, timestampMs)`, once per tick.
+
+Both modes are timed by wrapping the `CvBackend` instance passed to whichever
+one is active, so the stage split is available for `NftTracker` even though
+`process()` does not expose it itself. Milestone M1 of
+[ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) is
+parity, so the two modes are expected to report the same match/inlier counts
+here; the point of measuring both under one roof is to have a timing baseline
+in place *before* M2 gives the tracker state of its own, so that whatever
+that costs is visible as a change against this page rather than a number with
+nothing to compare it to.
 
 ## Targets: `targets/pinball.wnft`
 

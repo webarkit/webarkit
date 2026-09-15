@@ -1,0 +1,863 @@
+<!doctype html>
+<!--
+  bench-nft.html
+  cv-backend-jsfeatnext
+
+  This file is part of cv-backend-jsfeatnext - WebARKit.
+
+  SPDX-License-Identifier: LGPL-3.0-or-later
+
+  Copyright 2026 WebARKit.
+
+  Author(s): Walter Perdan @kalwalt https://github.com/kalwalt
+             Thorsten Bux @ThorstenBux https://github.com/ThorstenBux
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CvBackend — NFT pipeline benchmark</title>
+
+    <!--
+      No bundler. The packages ship ESM with explicit file extensions, so an
+      import map is enough to point the bare specifiers at the built output.
+      Run `npm run build` at the repo root first, then serve this directory
+      over HTTP (file:// will not load ES modules, and getUserMedia requires a
+      secure context — http://localhost is fine, a plain http:// host is not).
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@webarkit/jsfeat-next": "../node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs",
+          "@webarkit/cv-backend-spec": "../packages/cv-backend-spec/dist/index.js",
+          "@webarkit/cv-backend-jsfeatnext": "../packages/cv-backend-jsfeatnext/dist/index.js",
+          "@webarkit/nft-tracker": "../packages/nft-tracker/dist/index.js"
+        }
+      }
+    </script>
+
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #10131a;
+        --panel: #181c26;
+        --ink: #e8ecf4;
+        --muted: #9aa4b8;
+        --line: #2a3040;
+        --ok: #4ade80;
+        --bad: #f87171;
+        --accent: #60a5fa;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          14px/1.5 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 4px;
+      }
+      p.lede {
+        color: var(--muted);
+        margin: 0 0 20px;
+        max-width: 74ch;
+      }
+      .wrap {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: minmax(0, 480px) minmax(320px, 420px);
+        align-items: start;
+      }
+      @media (max-width: 900px) {
+        .wrap {
+          grid-template-columns: 1fr;
+        }
+      }
+      .stage {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 4 / 3;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .stage video,
+      .stage canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .stage video {
+        object-fit: contain;
+        background: #000;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px 16px;
+      }
+      .panel h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 0 0 10px;
+      }
+      .panel + .panel {
+        margin-top: 16px;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 4px 12px;
+        margin: 0;
+      }
+      dt {
+        color: var(--muted);
+      }
+      dd {
+        margin: 0;
+        font-variant-numeric: tabular-nums;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+      th,
+      td {
+        text-align: right;
+        padding: 3px 6px;
+        border-bottom: 1px solid var(--line);
+      }
+      th:first-child,
+      td:first-child {
+        text-align: left;
+      }
+      thead th {
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .controls {
+        display: grid;
+        gap: 10px;
+      }
+      .controls label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .controls .row {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        color: var(--ink);
+        flex-wrap: wrap;
+      }
+      .controls .row label {
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+      }
+      select,
+      input[type="number"],
+      input[type="text"] {
+        background: #0e1117;
+        color: var(--ink);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 8px;
+        font: inherit;
+      }
+      .buttons {
+        display: flex;
+        gap: 10px;
+        margin-top: 4px;
+      }
+      button {
+        background: var(--accent);
+        color: #0b1220;
+        border: none;
+        border-radius: 6px;
+        padding: 10px 16px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: transparent;
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .placeholder {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        color: var(--muted);
+        padding: 16px;
+      }
+      .legend {
+        margin-top: 14px;
+        display: grid;
+        gap: 6px;
+      }
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+      }
+      .swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        flex: none;
+      }
+      .err {
+        color: var(--bad);
+        white-space: pre-wrap;
+      }
+      code {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>CvBackend — NFT pipeline benchmark</h1>
+    <p class="lede">
+      Measures the <code>detect → describe → match → estimateHomography → poseFromHomography</code> pipeline
+      frame-by-frame, on this device, against a live webcam or a looped video file. Measurement only — nothing here
+      changes how the pipeline runs, it only times it. Two modes share every parameter and call the backend the same
+      way: <strong>stateless pipeline</strong> re-implements the calls inline (as the
+      <a href="./pinball-webcam-jsfeatnext-backend.html">webcam demo</a> does), <strong>NftTracker</strong> runs
+      <code>tracker.process()</code>. Milestone M1 of
+      <a href="../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md">ADR-0001</a> is parity, so the two should
+      report the same numbers here; the point of measuring both is to have a baseline once M2 gives the tracker state
+      of its own.
+    </p>
+
+    <div class="wrap">
+      <div>
+        <div class="stage" id="stage">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="overlay"></canvas>
+          <div class="placeholder" id="placeholder">
+            <p>Choose a source and press Start.</p>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top: 16px">
+          <h2>Source</h2>
+          <div class="controls">
+            <div class="row">
+              <label><input type="radio" name="source" value="webcam" checked /> webcam</label>
+              <label><input type="radio" name="source" value="file" /> video file</label>
+              <input type="file" id="fileInput" accept="video/*" disabled />
+            </div>
+            <div class="row">
+              <label
+                >mode
+                <select id="mode">
+                  <option value="stateless" selected>stateless pipeline</option>
+                  <option value="tracker">NftTracker</option>
+                </select>
+              </label>
+              <label
+                >window (frames)
+                <input type="number" id="windowSize" value="120" min="10" max="2000" step="10" />
+              </label>
+            </div>
+            <label
+              >device label (for the export, typed by hand)
+              <input type="text" id="deviceLabel" placeholder="e.g. Pixel 7, Chrome 129" />
+            </label>
+            <div class="buttons">
+              <button id="start">Start</button>
+              <button id="stop" class="secondary" disabled>Stop</button>
+              <button id="download" class="secondary" disabled>Download JSON</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <h2>Latest frame</h2>
+          <dl id="stats">
+            <dt>status</dt>
+            <dd id="status">idle</dd>
+          </dl>
+          <div class="legend">
+            <span><i class="swatch" style="background: #60a5fa"></i> keypoints</span>
+            <span><i class="swatch" style="background: #fbbf24"></i> target outline, reprojected</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Per-stage timing (ms), over the window</h2>
+          <table id="percentiles">
+            <thead>
+              <tr>
+                <th>stage</th>
+                <th>p50</th>
+                <th>p95</th>
+                <th>max</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <p id="error" class="err"></p>
+
+    <script type="module">
+      import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
+      import {
+        buildLevelIndex,
+        buildTargetFromImage,
+        chooseDescriptorSet,
+        matchPerLevel,
+        NftTracker,
+        DEFAULT_MAX_SCENE_KEYPOINTS,
+        DEFAULT_RANSAC_THRESHOLD,
+        DEFAULT_RATIO,
+        DEFAULT_SCENE_LEVELS,
+      } from "@webarkit/nft-tracker";
+      import { project, toGrayTimed } from "./js/pinball-shared.mjs";
+
+      const TARGET = "./images/pinball.jpg";
+      const TARGET_LEVELS = 8;
+      // The processing box the live/looped frame is downscaled into, same
+      // budget as the webcam demo -- this page compares two ways of running
+      // the SAME pipeline, not a different one, so it keeps the same knobs.
+      const PROC_WIDTH = 480;
+      const PROC_HEIGHT = 360;
+
+      const STAGES = [
+        "acquire",
+        "gray",
+        "detect",
+        "describe",
+        "match",
+        "filterMatches",
+        "estimateHomography",
+        "pose",
+        "total",
+      ];
+      const STAGE_LABELS = {
+        acquire: "frame acquisition",
+        gray: "grayscale conversion",
+        detect: "detect",
+        describe: "describe",
+        match: "match",
+        filterMatches: "filterMatches",
+        estimateHomography: "estimateHomography",
+        pose: "poseFromHomography",
+        total: "total",
+      };
+
+      const $ = (id) => document.getElementById(id);
+      const stage = $("stage");
+      const video = $("video");
+      const overlay = $("overlay");
+      const octx = overlay.getContext("2d");
+      const placeholder = $("placeholder");
+      const fileInput = $("fileInput");
+      const startButton = $("start");
+      const stopButton = $("stop");
+      const downloadButton = $("download");
+      const statusEl = $("status");
+      const errorEl = $("error");
+      const statsDl = $("stats");
+      const percentilesBody = document.querySelector("#percentiles tbody");
+
+      let currentStream = null;
+      let running = false;
+      let vfcHandle = null;
+      let rafHandle = null;
+      /** Ring buffer of recent per-frame records, capped at the window size. */
+      let history = [];
+      /**
+       * Whether the current run's backend implements `filterMatches`. `STAGES`
+       * always includes it so `resetTimings`/`instrumentBackend` have a slot to
+       * write into, but a backend without one (jsfeatNext today) never calls
+       * it, so a stage table or export that showed it anyway would report a
+       * flat 0ms for a stage that never ran -- indistinguishable from one that
+       * ran and was free. `activeStages()` is what keeps that stage out of
+       * both instead.
+       */
+      let filterMatchesSupported = false;
+
+      function activeStages() {
+        return filterMatchesSupported ? STAGES : STAGES.filter((s) => s !== "filterMatches");
+      }
+
+      function showError(message) {
+        errorEl.textContent = message;
+        statusEl.textContent = "failed";
+      }
+
+      function clearError() {
+        errorEl.textContent = "";
+      }
+
+      function loadImage(src) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error(`could not load ${src}`));
+          img.src = src;
+        });
+      }
+
+      /**
+       * Wraps a `CvBackend` so every call to the five stages the contract
+       * documents is timed into `timings`, in place. This is what lets both
+       * pipelines below be timed stage-by-stage without instrumenting either
+       * one directly: `NftTracker` only ever reaches the backend through the
+       * instance handed to its constructor, and the stateless pipeline calls
+       * the same instance directly, so one wrapper covers both.
+       */
+      function instrumentBackend(cv, timings) {
+        const time = (name, fn) => {
+          const t0 = performance.now();
+          const result = fn();
+          timings[name] += performance.now() - t0;
+          return result;
+        };
+        const wrapped = {
+          capabilities: cv.capabilities,
+          detect: (...args) => time("detect", () => cv.detect(...args)),
+          describe: (...args) => time("describe", () => cv.describe(...args)),
+          match: (...args) => time("match", () => cv.match(...args)),
+          estimateHomography: (...args) => time("estimateHomography", () => cv.estimateHomography(...args)),
+          poseFromHomography: (...args) => time("pose", () => cv.poseFromHomography(...args)),
+        };
+        if (cv.filterMatches) {
+          wrapped.filterMatches = (...args) => time("filterMatches", () => cv.filterMatches(...args));
+        }
+        return wrapped;
+      }
+
+      function resetTimings(timings) {
+        for (const s of STAGES) timings[s] = 0;
+        return timings;
+      }
+
+      /** The target's keypoint table as the contract's `Keypoint[]`, once. */
+      function toKeypointArray(target) {
+        const kp = target.keypoints;
+        const out = new Array(kp.count);
+        for (let i = 0; i < kp.count; i++) {
+          out[i] = { x: kp.x[i], y: kp.y[i], score: kp.score[i], angle: kp.angle[i], level: kp.level[i] };
+        }
+        return out;
+      }
+
+      /**
+       * The exact steps `NftTracker.process` runs (tracker.ts), written out
+       * inline against the same instrumented backend and the same defaults,
+       * so this page's "stateless pipeline" mode and its "NftTracker" mode
+       * measure the same work through the same calls -- the parity M1 claims,
+       * made checkable rather than assumed.
+       */
+      function runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, timestampMs) {
+        const sceneKeypoints = icv.detect(frame, {
+          levels: DEFAULT_SCENE_LEVELS,
+          maxKeypoints: DEFAULT_MAX_SCENE_KEYPOINTS,
+        });
+        const sceneDescriptors = icv.describe(frame, sceneKeypoints);
+        let matches = matchPerLevel(icv, sceneDescriptors, targetLevels, DEFAULT_RATIO);
+
+        if (icv.filterMatches && targetKeypoints) {
+          matches = icv.filterMatches(
+            matches,
+            { keypoints: sceneKeypoints, width: frame.width, height: frame.height },
+            { keypoints: targetKeypoints, width: targetDb.meta.widthPx, height: targetDb.meta.heightPx }
+          );
+        }
+
+        if (matches.length < 4) {
+          return {
+            ok: false,
+            reason: "too-few-matches",
+            timestampMs,
+            numMatches: matches.length,
+            numInliers: 0,
+            H: null,
+            pose: null,
+            sceneKeypoints,
+          };
+        }
+
+        const src = new Float64Array(matches.length * 2);
+        const dst = new Float64Array(matches.length * 2);
+        const kp = targetDb.keypoints;
+        for (let i = 0; i < matches.length; i++) {
+          const m = matches[i];
+          src[i * 2] = kp.x[m.trainIdx];
+          src[i * 2 + 1] = kp.y[m.trainIdx];
+          dst[i * 2] = sceneKeypoints[m.queryIdx].x;
+          dst[i * 2 + 1] = sceneKeypoints[m.queryIdx].y;
+        }
+
+        const h = icv.estimateHomography(src, dst, { threshold: DEFAULT_RANSAC_THRESHOLD });
+        if (!h.ok) {
+          return {
+            ok: false,
+            reason: "no-consensus",
+            timestampMs,
+            numMatches: matches.length,
+            numInliers: h.numInliers,
+            H: null,
+            pose: null,
+            sceneKeypoints,
+          };
+        }
+
+        return {
+          ok: true,
+          timestampMs,
+          numMatches: matches.length,
+          numInliers: h.numInliers,
+          H: h.H,
+          pose: icv.poseFromHomography(h.H, K),
+          sceneKeypoints,
+        };
+      }
+
+      function percentile(sortedAsc, p) {
+        if (sortedAsc.length === 0) return NaN;
+        const idx = Math.min(sortedAsc.length - 1, Math.floor((p / 100) * sortedAsc.length));
+        return sortedAsc[idx];
+      }
+
+      function renderPercentiles() {
+        percentilesBody.replaceChildren();
+        for (const s of activeStages()) {
+          const values = history.map((f) => f.timings[s]).sort((a, b) => a - b);
+          const tr = document.createElement("tr");
+          const cells = [
+            STAGE_LABELS[s],
+            values.length ? percentile(values, 50).toFixed(2) : "—",
+            values.length ? percentile(values, 95).toFixed(2) : "—",
+            values.length ? values[values.length - 1].toFixed(2) : "—",
+          ];
+          for (const c of cells) {
+            const td = document.createElement("td");
+            td.textContent = c;
+            tr.append(td);
+          }
+          percentilesBody.append(tr);
+        }
+      }
+
+      function renderStats(rows) {
+        statsDl.innerHTML = "";
+        for (const [label, value] of rows) {
+          const dt = document.createElement("dt");
+          dt.textContent = label;
+          const dd = document.createElement("dd");
+          dd.textContent = value;
+          statsDl.append(dt, dd);
+        }
+      }
+
+      function stopLoop() {
+        running = false;
+        if (vfcHandle !== null && video.cancelVideoFrameCallback) video.cancelVideoFrameCallback(vfcHandle);
+        if (rafHandle !== null) cancelAnimationFrame(rafHandle);
+        vfcHandle = null;
+        rafHandle = null;
+      }
+
+      function stopSource() {
+        if (currentStream) {
+          for (const track of currentStream.getTracks()) track.stop();
+          currentStream = null;
+        }
+        video.pause();
+        video.removeAttribute("srcObject");
+        video.srcObject = null;
+        if (video.src) {
+          URL.revokeObjectURL(video.src);
+          video.src = "";
+        }
+      }
+
+      async function startWebcam() {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: PROC_WIDTH }, height: { ideal: PROC_HEIGHT } },
+          audio: false,
+        });
+        currentStream = stream;
+        video.srcObject = stream;
+        video.loop = false;
+        await new Promise((resolve) => video.addEventListener("loadedmetadata", resolve, { once: true }));
+        await video.play();
+      }
+
+      async function startFile(file) {
+        const url = URL.createObjectURL(file);
+        video.src = url;
+        // Looped so a short clip still fills the window, and so the same run
+        // can be repeated -- the "for repeatability" reason this source
+        // exists at all.
+        video.loop = true;
+        await new Promise((resolve) => video.addEventListener("loadedmetadata", resolve, { once: true }));
+        await video.play();
+      }
+
+      function currentSource() {
+        return document.querySelector('input[name="source"]:checked').value;
+      }
+
+      function updateSourceInputs() {
+        fileInput.disabled = currentSource() !== "file";
+      }
+
+      /**
+       * Drives one tick per decoded frame via `requestVideoFrameCallback`
+       * where available -- a webcam and a played-back file both decode at
+       * their own rate, and this ties "per frame" to a frame the video
+       * element actually produced, rather than to the display's repaint
+       * rate (`requestAnimationFrame` alone would tick faster than the
+       * source and re-process the same decoded frame more than once).
+       */
+      function scheduleNextTick(tick) {
+        if (!running) return;
+        if (video.requestVideoFrameCallback) {
+          vfcHandle = video.requestVideoFrameCallback(tick);
+        } else {
+          rafHandle = requestAnimationFrame(tick);
+        }
+      }
+
+      function drawOverlay(result, targetDb) {
+        octx.clearRect(0, 0, overlay.width, overlay.height);
+        octx.fillStyle = "#60a5fa";
+        for (const k of result.sceneKeypoints) octx.fillRect(k.x - 1, k.y - 1, 2, 2);
+
+        if (result.ok) {
+          const corners = [
+            [0, 0],
+            [targetDb.meta.widthPx - 1, 0],
+            [targetDb.meta.widthPx - 1, targetDb.meta.heightPx - 1],
+            [0, targetDb.meta.heightPx - 1],
+          ].map(([x, y]) => project(result.H, x, y));
+          octx.strokeStyle = "#fbbf24";
+          octx.lineWidth = 3;
+          octx.beginPath();
+          corners.forEach(([x, y], i) => (i ? octx.lineTo(x, y) : octx.moveTo(x, y)));
+          octx.closePath();
+          octx.stroke();
+        }
+      }
+
+      function runBenchmark(cv, targetDb, mode, windowSize) {
+        filterMatchesSupported = !!cv.filterMatches;
+        const timings = resetTimings({});
+        const icv = instrumentBackend(cv, timings);
+        const targetLevels = buildLevelIndex(chooseDescriptorSet(cv, targetDb));
+        const targetKeypoints = cv.filterMatches ? toKeypointArray(targetDb) : null;
+
+        // Intrinsics and the overlay canvas must agree with what `detect`
+        // actually sees -- the downscaled processing frame, not the video's
+        // native size -- or a recovered pose and its on-screen outline both
+        // land in a coordinate space nothing else uses. Probed once, the same
+        // way the webcam demo derives it, because every later frame downscales
+        // to this exact size for the lifetime of the stream.
+        const probe = toGrayTimed(video, video.videoWidth, video.videoHeight, PROC_WIDTH, PROC_HEIGHT, resetTimings({}));
+        const K = intrinsics(probe.width, probe.height);
+        const tracker = mode === "tracker" ? new NftTracker(icv, targetDb, K) : null;
+
+        overlay.width = probe.width;
+        overlay.height = probe.height;
+
+        let lastTickAt = performance.now();
+        let fps = 0;
+
+        const tick = () => {
+          if (!running) return;
+          resetTimings(timings);
+          const t0 = performance.now();
+
+          const frame = toGrayTimed(video, video.videoWidth, video.videoHeight, PROC_WIDTH, PROC_HEIGHT, timings);
+          const result = tracker
+            ? tracker.process(frame, t0)
+            : runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, t0);
+
+          timings.total = performance.now() - t0;
+
+          const now = performance.now();
+          const instantFps = 1000 / Math.max(1, now - lastTickAt);
+          fps = fps === 0 ? instantFps : fps * 0.8 + instantFps * 0.2;
+          lastTickAt = now;
+
+          history.push({
+            timestampMs: t0,
+            timings: { ...timings },
+            ok: result.ok,
+            reason: result.ok ? null : result.reason,
+            numMatches: result.numMatches,
+            numInliers: result.numInliers,
+          });
+          if (history.length > windowSize) history.splice(0, history.length - windowSize);
+
+          drawOverlay(result, targetDb);
+          // `renderStats` rebuilds the whole `#stats` list every tick, which
+          // means the static "status" row from the markup does not survive
+          // the first call -- so status is a row passed in here, not a
+          // separate element updated on the side.
+          const statusText = result.ok
+            ? "locked on"
+            : result.reason === "too-few-matches"
+              ? "too few matches"
+              : "no consensus";
+          renderStats([
+            ["status", statusText],
+            ["mode", mode],
+            ["fps", fps.toFixed(1)],
+            ["keypoints (scene)", result.sceneKeypoints.length],
+            ["matches", result.numMatches],
+            ["inliers", result.numMatches >= 4 ? `${result.numInliers} / ${result.numMatches}` : "—"],
+            ["pose", result.ok ? (result.pose.good ? "recovered" : "degenerate") : "—"],
+            ["frame time", `${timings.total.toFixed(1)} ms`],
+            ["window", `${history.length} / ${windowSize}`],
+          ]);
+          renderPercentiles();
+          downloadButton.disabled = history.length === 0;
+
+          scheduleNextTick(tick);
+        };
+
+        scheduleNextTick(tick);
+      }
+
+      function downloadHistory() {
+        const summary = {};
+        for (const s of activeStages()) {
+          const values = history.map((f) => f.timings[s]).sort((a, b) => a - b);
+          summary[s] = {
+            p50: values.length ? percentile(values, 50) : null,
+            p95: values.length ? percentile(values, 95) : null,
+            max: values.length ? values[values.length - 1] : null,
+          };
+        }
+
+        const payload = {
+          exportedAt: new Date().toISOString(),
+          userAgent: navigator.userAgent,
+          deviceLabel: $("deviceLabel").value || null,
+          mode: $("mode").value,
+          source: currentSource(),
+          sourceResolution: { width: video.videoWidth, height: video.videoHeight },
+          processingResolution: { width: PROC_WIDTH, height: PROC_HEIGHT },
+          windowSize: history.length,
+          summaryMs: summary,
+          frames: history,
+        };
+
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const label = (payload.deviceLabel || "device").replace(/[^a-z0-9-]+/gi, "-");
+        a.href = url;
+        a.download = `bench-nft-${payload.mode}-${label}-${Date.now()}.json`;
+        document.body.append(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      async function main() {
+        const cv = await createJsfeatNextBackend();
+
+        statusEl.textContent = "preparing target…";
+        const targetImg = await loadImage(TARGET);
+        // Downscaled the same way the webcam demo builds its target -- this
+        // page is not exercising target preparation, so it borrows a setting
+        // already measured elsewhere rather than picking a new one. The
+        // timings object is thrown away: this cost is paid once, outside the
+        // per-frame loop the rest of the page measures.
+        const target = toGrayTimed(targetImg, targetImg.naturalWidth, targetImg.naturalHeight, 640, undefined, resetTimings({}));
+        const targetDb = buildTargetFromImage(cv, target, { levels: TARGET_LEVELS, name: "pinball" });
+
+        statusEl.textContent = "ready";
+        startButton.disabled = false;
+
+        for (const radio of document.querySelectorAll('input[name="source"]')) {
+          radio.addEventListener("change", updateSourceInputs);
+        }
+        updateSourceInputs();
+
+        startButton.addEventListener("click", async () => {
+          clearError();
+          startButton.disabled = true;
+          try {
+            const source = currentSource();
+            if (source === "webcam") {
+              await startWebcam();
+            } else {
+              const file = fileInput.files[0];
+              if (!file) throw new Error("Choose a video file first.");
+              await startFile(file);
+            }
+            placeholder.remove();
+            stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+
+            history = [];
+            running = true;
+            stopButton.disabled = false;
+            const mode = $("mode").value;
+            const windowSize = Math.max(1, Math.floor(Number($("windowSize").value) || 120));
+            runBenchmark(cv, targetDb, mode, windowSize);
+          } catch (e) {
+            showError(
+              `${e.message}\n\nA webcam source needs camera permission and a secure context ` +
+                `(https://, or http://localhost).`
+            );
+            startButton.disabled = false;
+          }
+        });
+
+        stopButton.addEventListener("click", () => {
+          stopLoop();
+          stopSource();
+          stopButton.disabled = true;
+          startButton.disabled = false;
+          statusEl.textContent = "stopped";
+        });
+
+        downloadButton.addEventListener("click", downloadHistory);
+      }
+
+      main().catch((e) => {
+        showError(e.message);
+        console.error(e);
+      });
+    </script>
+  </body>
+</html>
