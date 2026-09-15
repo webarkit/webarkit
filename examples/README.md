@@ -168,6 +168,18 @@ in place *before* M2 gives the tracker state of its own, so that whatever
 that costs is visible as a change against this page rather than a number with
 nothing to compare it to.
 
+**Comparing the two modes on the same footage.** `timestampMs` passed to each
+tick is `performance.now()`, not `video.currentTime`, so two separate Start
+clicks against a looped file land at two different, arbitrary points in the
+loop by default — a stateless-pipeline run and an NftTracker run then measure
+different content, not just different code paths, which defeats the point of
+comparing them. The **"start at (s)"** field (video file only; a webcam has no
+timeline to seek) seeks there before the first tick, so running it once for
+each mode with the same value gives two runs over the same frames. The export
+carries `startAtSeconds` (`null` for a webcam run) precisely so a downloaded
+report can be checked to have actually compared the same footage, rather than
+trusted on the assumption that the field was set the same way both times.
+
 ## Targets: `targets/pinball.wnft`
 
 The static demo's "target from" selector chooses between the two ways a target

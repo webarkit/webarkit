@@ -276,6 +276,16 @@
             </div>
             <div class="row">
               <label
+                >start at (s)
+                <input type="number" id="startAt" value="0" min="0" step="0.1" disabled />
+              </label>
+              <span style="color: var(--muted); font-size: 12px; max-width: 32ch"
+                >video file only — seeks here before Start, so a stateless-pipeline run and an NftTracker run see the
+                same frames</span
+              >
+            </div>
+            <div class="row">
+              <label
                 >mode
                 <select id="mode">
                   <option value="stateless" selected>stateless pipeline</option>
@@ -385,6 +395,7 @@
       const octx = overlay.getContext("2d");
       const placeholder = $("placeholder");
       const fileInput = $("fileInput");
+      const startAtInput = $("startAt");
       const startButton = $("start");
       const stopButton = $("stop");
       const downloadButton = $("download");
@@ -416,6 +427,18 @@
 
       /** The source's native resolution, snapshotted at run start -- see the note in `runBenchmark`. */
       let lastSourceResolution = { width: 0, height: 0 };
+      /** The source and mode actually used by the last run -- see the note on `lastSourceResolution`; both controls
+       * are live UI state and can change between Stop and Download just as easily as `video.videoWidth` does. */
+      let lastSource = null;
+      let lastMode = null;
+      /**
+       * The seek point of the last "video file" run, in seconds, or `null`
+       * for a webcam run (nothing to seek). Recorded in the export so two
+       * downloaded reports can be checked to have actually compared the same
+       * footage, rather than trusted on the assumption that "start at" was
+       * set the same way both times.
+       */
+      let lastStartAtSeconds = null;
 
       function showError(message) {
         errorEl.textContent = message;
@@ -622,7 +645,7 @@
         await video.play();
       }
 
-      async function startFile(file) {
+      async function startFile(file, startAt) {
         const url = URL.createObjectURL(file);
         video.src = url;
         // Looped so a short clip still fills the window, and so the same run
@@ -630,6 +653,41 @@
         // exists at all.
         video.loop = true;
         await new Promise((resolve) => video.addEventListener("loadedmetadata", resolve, { once: true }));
+
+        // A file muxed without a duration in its container header (observed
+        // with a MediaRecorder-produced webm -- e.g. a quick screen/webcam
+        // recording someone grabs specifically to test this page) reports a
+        // bogus, far-too-short `duration` right after `loadedmetadata`, and a
+        // seek past it silently clamps to that wrong value instead of
+        // reaching `startAt`. Seeking near the end once forces the browser to
+        // scan the rest of the file and correct `duration`; a proper file
+        // (a phone recording, an ffmpeg export) already has a correct
+        // duration and this is a harmless no-op extra seek for it.
+        if (startAt > 0 && (!isFinite(video.duration) || video.duration < startAt)) {
+          await new Promise((resolve) => {
+            video.addEventListener("seeked", resolve, { once: true });
+            video.currentTime = Number.MAX_SAFE_INTEGER;
+          });
+        }
+
+        // Seeking BEFORE play() so the first tick already sees `startAt`,
+        // not whatever landed on screen during the seek. This is what makes
+        // a stateless-pipeline run and an NftTracker run comparable: without
+        // it, two separate Start clicks land at two different, arbitrary
+        // points in the loop (measured on a real device: a paired stateless
+        // vs. tracker run this way showed match counts drifting from
+        // unrelated footage, not from a difference between the two modes).
+        if (startAt > 0) {
+          await new Promise((resolve) => {
+            video.addEventListener("seeked", resolve, { once: true });
+            // No clamp against `video.duration` here: even after the
+            // rescan above it can still be wrong for a pathological file,
+            // and a `startAt` past the real end is already handled by the
+            // browser itself -- `currentTime` just clamps to the seekable
+            // range -- so there is nothing more this page needs to do.
+            video.currentTime = startAt;
+          });
+        }
         await video.play();
       }
 
@@ -638,7 +696,11 @@
       }
 
       function updateSourceInputs() {
-        fileInput.disabled = currentSource() !== "file";
+        const isFile = currentSource() === "file";
+        fileInput.disabled = !isFile;
+        // Seeking only means anything against a file -- a webcam has no
+        // timeline to seek.
+        startAtInput.disabled = !isFile;
       }
 
       /**
@@ -784,9 +846,14 @@
           exportedAt: new Date().toISOString(),
           userAgent: navigator.userAgent,
           deviceLabel: $("deviceLabel").value || null,
-          mode: $("mode").value,
-          source: currentSource(),
+          mode: lastMode,
+          source: lastSource,
           sourceResolution: lastSourceResolution,
+          // Seconds into the file the run was seeked to before Start, or
+          // `null` for a webcam run (nothing to seek) -- what makes a
+          // stateless-pipeline export and an NftTracker export checkable as
+          // having compared the same footage, not just assumed to have.
+          startAtSeconds: lastStartAtSeconds,
           processingResolution: { width: PROC_WIDTH, height: PROC_HEIGHT },
           windowSize: history.length,
           summaryMs: summary,
@@ -831,12 +898,16 @@
           startButton.disabled = true;
           try {
             const source = currentSource();
+            lastSource = source;
             if (source === "webcam") {
               await startWebcam();
+              lastStartAtSeconds = null;
             } else {
               const file = fileInput.files[0];
               if (!file) throw new Error("Choose a video file first.");
-              await startFile(file);
+              const startAt = Math.max(0, Number(startAtInput.value) || 0);
+              await startFile(file, startAt);
+              lastStartAtSeconds = startAt;
             }
             placeholder.remove();
             stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
@@ -845,13 +916,15 @@
             running = true;
             stopButton.disabled = false;
             const mode = $("mode").value;
+            lastMode = mode;
             const windowSize = Math.max(1, Math.floor(Number($("windowSize").value) || 120));
             runBenchmark(cv, targetDb, mode, windowSize);
           } catch (e) {
-            showError(
-              `${e.message}\n\nA webcam source needs camera permission and a secure context ` +
-                `(https://, or http://localhost).`
-            );
+            const hint =
+              currentSource() === "webcam"
+                ? "A webcam source needs camera permission and a secure context (https://, or http://localhost)."
+                : "A video file source needs a file chosen and, for autoplay, the tab in the foreground.";
+            showError(`${e.message}\n\n${hint}`);
             startButton.disabled = false;
           }
         });
