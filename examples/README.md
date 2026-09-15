@@ -15,8 +15,9 @@ npm run build          # the examples load the built dist/, not the sources
 npx http-server -p 8080 -s
 ```
 
-Then open <http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html>
-or <http://localhost:8080/examples/pinball-webcam-jsfeatnext-backend.html>.
+Then open <http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html>,
+<http://localhost:8080/examples/pinball-webcam-jsfeatnext-backend.html>, or
+<http://localhost:8080/examples/bench-nft.html>.
 
 Serve over HTTP: ES modules do not load from `file://`, and `getUserMedia`
 (the webcam demo) additionally requires a secure context — `http://localhost`
@@ -133,6 +134,101 @@ per-frame cost, which is exactly why this demo does not do it by default (see
 the parameters above). Worth revisiting once the cost of a lighter multi-level
 search on the scene side is measured with the same rigour the current
 parameters got — tracked informally against this file for now, no issue yet.
+
+## `bench-nft.html`
+
+Measures the pipeline frame-by-frame on whatever device opens it, against a
+live webcam, a user-chosen video file, or the bundled reference clip
+(`videos/pinball-bench.mp4`) — all three loop, so a short clip still fills the
+measurement window and a run can be repeated. It changes nothing
+about how the pipeline runs — it only times it, in eight stages per frame:
+frame acquisition, grayscale conversion, `detect`, `describe`, `match`,
+`estimateHomography`, `poseFromHomography`, and the frame total — plus the
+tracker's own outcome (`locked on` / `too few matches` / `no consensus`).
+p50, p95 and max are kept over a configurable window (frame count), and the
+whole window is downloadable as JSON, with the user agent, the source and
+processing resolutions, and a device label typed in by hand — none of that
+is inferrable from the numbers alone, and a benchmark without it cannot be
+told apart from the one run before it.
+
+Two modes, selected before pressing Start:
+
+- **stateless pipeline** — the same inline `detect → describe → match →
+  estimateHomography → poseFromHomography` calls as the webcam demo above,
+  against `@webarkit/nft-tracker`'s own `DEFAULT_SCENE_LEVELS` /
+  `DEFAULT_MAX_SCENE_KEYPOINTS` / `DEFAULT_RATIO` / `DEFAULT_RANSAC_THRESHOLD`.
+- **NftTracker** — `tracker.process(frame, timestampMs)`, once per tick.
+
+Both modes are timed by wrapping the `CvBackend` instance passed to whichever
+one is active, so the stage split is available for `NftTracker` even though
+`process()` does not expose it itself. Milestone M1 of
+[ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) is
+parity, so the two modes are expected to report the same match/inlier counts
+here; the point of measuring both under one roof is to have a timing baseline
+in place *before* M2 gives the tracker state of its own, so that whatever
+that costs is visible as a change against this page rather than a number with
+nothing to compare it to.
+
+**Comparing the two modes on the same footage.** `timestampMs` passed to each
+tick is `performance.now()`, not `video.currentTime`, so two separate Start
+clicks against a looped video land at two different, arbitrary points in the
+loop by default — a stateless-pipeline run and an NftTracker run then measure
+different content, not just different code paths, which defeats the point of
+comparing them. The **"start at (s)"** field (either video source; a webcam
+has no timeline to seek) seeks there before the first tick, so running it once
+for each mode with the same value gives two runs over the same *starting*
+point. The export carries `startAtSeconds` (`null` for a webcam run) precisely
+so a downloaded report can be checked to have actually started from the same
+point, rather than trusted on the assumption that the field was set the same
+way both times.
+
+**A shared `startAt` is not a shared frame sequence, though.**
+`requestVideoFrameCallback` fires once per frame the browser actually
+*presents*, and a main thread busy for longer than the clip's own frame
+interval (real here: `total`'s own p50 sits close to a ~25fps clip's ~40ms
+budget) makes the browser coalesce to the latest decoded frame, skipping
+whichever ones went stale while it was blocked. Stateless-pipeline and
+NftTracker cost a slightly different number of milliseconds per frame, so
+they skip a different number of frames and drift apart — tick 47 in one run
+is not guaranteed to be the same clip moment as tick 47 in the other, even
+from an identical `startAt`. Each frame's own `mediaTimeSeconds` (from
+`requestVideoFrameCallback`'s metadata, or `video.currentTime` on the rAF
+fallback) is recorded for exactly this reason: **compare two exports by
+`mediaTimeSeconds`, not by array index or position in `frames`.**
+
+## The bundled reference clip: `videos/pinball-bench.mp4`
+
+A "user-chosen video file" is reproducible only as long as whoever reruns the
+benchmark still has the exact same file — which nobody but the original tester
+does. The **"bundled clip"** radio loads this committed file instead (fetched
+by URL, no file picker), so a report from one run can actually be compared
+against a report from another: same footage, byte for byte, on whoever's
+device opens the page.
+
+11.96s, 1280×720, H.264, no audio track, ~940 KB — the printed `pinball.jpg`
+target on a wall, filmed at an angle and a distance that changes over the
+clip, the same real-scene conditions `images/pinball-demo.jpg` was shot under
+for the static demo. Re-encoded from a phone-captured original (1920×1080,
+~11.6 Mbps, 16.6 MB) with:
+
+```bash
+ffmpeg -i original.mp4 -vf scale=1280:720 -an -c:v libx264 -preset medium -crf 28 -movflags +faststart videos/pinball-bench.mp4
+```
+
+720p and CRF 28 keep the file close in size to `images/pinball-demo.jpg`
+(877 KB) while still exceeding this page's own processing resolution
+(480×360) by a comfortable margin — downscaling further would start
+constraining what a *higher* processing resolution could be benchmarked
+against later. Audio is dropped because nothing here reads it; keeping it
+would have cost size for no benefit to a `GrayImage` pipeline.
+
+This is also the clip [ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md)'s
+action item 6 baseline was measured against — see that ADR (and wherever the
+baseline report itself is checked in) for the reference device and the
+numbers. Re-encoding this file to "improve" it is a change to that baseline's
+premise, not a refresh: a new baseline needs a new measurement, the same way
+recompiling `targets/pinball.wnft` needs updating the Rust test that reads it
+(see [Targets](#targets-targetspinballwnft) below).
 
 ## Targets: `targets/pinball.wnft`
 

@@ -46,6 +46,18 @@
  */
 
 /**
+ * The pixel box `toGray`/`toGrayTimed` downscale into, shared so the two
+ * can't compute it differently. See `toGray`'s own doc comment for what
+ * `maxHeight` being omitted changes.
+ */
+function fitSize(sourceW, sourceH, maxWidth, maxHeight) {
+    const scale = maxHeight
+        ? Math.min(1, maxWidth / sourceW, maxHeight / sourceH)
+        : Math.min(1, maxWidth / Math.max(sourceW, sourceH));
+    return { width: Math.max(1, Math.round(sourceW * scale)), height: Math.max(1, Math.round(sourceH * scale)) };
+}
+
+/**
  * Any drawable source (an `<img>`, a `<video>` frame, an `OffscreenCanvas`) to
  * the contract's `GrayImage`, downscaled so its longer side is `maxWidth`.
  *
@@ -69,20 +81,36 @@ export function toGray(source, sourceW, sourceH, maxWidth, maxHeight) {
     // -- get that wrong and a portrait source (its longer side is height)
     // sails straight past maxWidth uncapped, since maxWidth alone only ever
     // constrains sourceW.
-    const scale = maxHeight
-        ? Math.min(1, maxWidth / sourceW, maxHeight / sourceH)
-        : Math.min(1, maxWidth / Math.max(sourceW, sourceH));
-    const w = Math.max(1, Math.round(sourceW * scale));
-    const h = Math.max(1, Math.round(sourceH * scale));
+    return toGrayTimed(source, sourceW, sourceH, maxWidth, maxHeight, {});
+}
+
+/**
+ * `toGray`, with the cost split into `timings.acquire` (drawing the source
+ * and reading its pixels back -- `drawImage` + `getImageData`) and
+ * `timings.gray` (the RGBA -> grayscale reduction), each accumulated rather
+ * than overwritten so a caller can reuse one `timings` object across frames.
+ * `toGray` itself is this function against a throwaway object -- one
+ * implementation, so the two callers can't drift the way a second hand-copy
+ * of this math would (see this module's own doc comment).
+ *
+ * @param timings  Object to accumulate `acquire`/`gray` milliseconds into.
+ */
+export function toGrayTimed(source, sourceW, sourceH, maxWidth, maxHeight, timings) {
+    const t0 = performance.now();
+    const { width: w, height: h } = fitSize(sourceW, sourceH, maxWidth, maxHeight);
     const off = new OffscreenCanvas(w, h);
     const ctx = off.getContext("2d", { willReadFrequently: true });
     ctx.drawImage(source, 0, 0, w, h);
     const rgba = ctx.getImageData(0, 0, w, h).data;
+    const t1 = performance.now();
+    timings.acquire = (timings.acquire || 0) + (t1 - t0);
+
     const data = new Uint8Array(w * h);
     for (let i = 0, p = 0; i < data.length; i++, p += 4) {
         // Rec. 601 luma, the same weighting jsfeatNext's own grayscale uses.
         data[i] = (rgba[p] * 0.299 + rgba[p + 1] * 0.587 + rgba[p + 2] * 0.114) | 0;
     }
+    timings.gray = (timings.gray || 0) + (performance.now() - t1);
     return { data, width: w, height: h };
 }
 
