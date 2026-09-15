@@ -414,6 +414,9 @@
         return filterMatchesSupported ? STAGES : STAGES.filter((s) => s !== "filterMatches");
       }
 
+      /** The source's native resolution, snapshotted at run start -- see the note in `runBenchmark`. */
+      let lastSourceResolution = { width: 0, height: 0 };
+
       function showError(message) {
         errorEl.textContent = message;
         statusEl.textContent = "failed";
@@ -683,6 +686,16 @@
         const targetLevels = buildLevelIndex(chooseDescriptorSet(cv, targetDb));
         const targetKeypoints = cv.filterMatches ? toKeypointArray(targetDb) : null;
 
+        // The source's native size, captured now while it is guaranteed to
+        // still be attached, for the export -- `downloadHistory` runs
+        // whenever the user clicks it, which is routinely AFTER Stop, and
+        // `stopSource()` clears `video.src`/`srcObject`. Reading
+        // `video.videoWidth`/`videoHeight` at download time would then report
+        // 0x0, which is exactly what happened to the first real-device run of
+        // this page (a tablet, source "file", `sourceResolution: {0, 0}` in
+        // its export) once Stop had already been pressed.
+        lastSourceResolution = { width: video.videoWidth, height: video.videoHeight };
+
         // Intrinsics and the overlay canvas must agree with what `detect`
         // actually sees -- the downscaled processing frame, not the video's
         // native size -- or a recovered pose and its on-screen outline both
@@ -773,7 +786,7 @@
           deviceLabel: $("deviceLabel").value || null,
           mode: $("mode").value,
           source: currentSource(),
-          sourceResolution: { width: video.videoWidth, height: video.videoHeight },
+          sourceResolution: lastSourceResolution,
           processingResolution: { width: PROC_WIDTH, height: PROC_HEIGHT },
           windowSize: history.length,
           summaryMs: summary,
