@@ -276,12 +276,18 @@
             </div>
             <div class="row">
               <label
+                ><input type="radio" name="source" value="bundled" /> bundled clip
+                (<code>videos/pinball-bench.mp4</code>)</label
+              >
+            </div>
+            <div class="row">
+              <label
                 >start at (s)
                 <input type="number" id="startAt" value="0" min="0" step="0.1" disabled />
               </label>
               <span style="color: var(--muted); font-size: 12px; max-width: 32ch"
-                >video file only — seeks here before Start, so a stateless-pipeline run and an NftTracker run see the
-                same frames</span
+                >video sources only — seeks here before Start, so a stateless-pipeline run and an NftTracker run see
+                the same frames. Use the bundled clip for a run someone else can reproduce exactly.</span
               >
             </div>
             <div class="row">
@@ -646,8 +652,18 @@
       }
 
       async function startFile(file, startAt) {
-        const url = URL.createObjectURL(file);
-        video.src = url;
+        video.src = URL.createObjectURL(file);
+        await loadSeekAndPlay(startAt);
+      }
+
+      /** The bundled reference clip, fetched by URL rather than picked by the user -- see the "bundled clip" radio. */
+      async function startBundled(startAt) {
+        video.src = "./videos/pinball-bench.mp4";
+        await loadSeekAndPlay(startAt);
+      }
+
+      /** Shared by both video-file sources: load, optionally seek to `startAt`, then play. `video.src` must already be set. */
+      async function loadSeekAndPlay(startAt) {
         // Looped so a short clip still fills the window, and so the same run
         // can be repeated -- the "for repeatability" reason this source
         // exists at all.
@@ -696,11 +712,11 @@
       }
 
       function updateSourceInputs() {
-        const isFile = currentSource() === "file";
-        fileInput.disabled = !isFile;
-        // Seeking only means anything against a file -- a webcam has no
-        // timeline to seek.
-        startAtInput.disabled = !isFile;
+        const source = currentSource();
+        fileInput.disabled = source !== "file";
+        // Seeking only means anything against a video with a timeline -- a
+        // webcam has none.
+        startAtInput.disabled = source === "webcam";
       }
 
       /**
@@ -774,7 +790,7 @@
         let lastTickAt = performance.now();
         let fps = 0;
 
-        const tick = () => {
+        const tick = (_now, metadata) => {
           if (!running) return;
           resetTimings(timings);
           const t0 = performance.now();
@@ -793,6 +809,23 @@
 
           history.push({
             timestampMs: t0,
+            // The frame's own position in the clip -- `metadata.mediaTime`
+            // from requestVideoFrameCallback where available, else
+            // `video.currentTime` (rAF fallback). For a webcam this is time
+            // since the stream started, not a clip position -- meaningful
+            // within one run, not comparable across two separate sessions.
+            // Two runs seeked to the same `startAt` do NOT visit the same
+            // tick INDEX -> same clip moment: requestVideoFrameCallback
+            // fires once per PRESENTED frame, and a browser whose main
+            // thread is busy for longer than the video's own frame interval
+            // (real here -- this page's own `total` p50 sits close to a
+            // ~25fps clip's ~40ms budget) coalesces to the latest frame,
+            // skipping the ones that went stale. Stateless and NftTracker
+            // cost slightly different amounts per frame, so they skip a
+            // different number of frames and drift apart by tick index.
+            // Comparing two exports by this field instead of by array index
+            // is what makes the comparison honest.
+            mediaTimeSeconds: metadata?.mediaTime ?? video.currentTime,
             timings: { ...timings },
             ok: result.ok,
             reason: result.ok ? null : result.reason,
@@ -903,10 +936,14 @@
               await startWebcam();
               lastStartAtSeconds = null;
             } else {
-              const file = fileInput.files[0];
-              if (!file) throw new Error("Choose a video file first.");
               const startAt = Math.max(0, Number(startAtInput.value) || 0);
-              await startFile(file, startAt);
+              if (source === "bundled") {
+                await startBundled(startAt);
+              } else {
+                const file = fileInput.files[0];
+                if (!file) throw new Error("Choose a video file first.");
+                await startFile(file, startAt);
+              }
               lastStartAtSeconds = startAt;
             }
             placeholder.remove();
@@ -920,10 +957,13 @@
             const windowSize = Math.max(1, Math.floor(Number($("windowSize").value) || 120));
             runBenchmark(cv, targetDb, mode, windowSize);
           } catch (e) {
+            const src = currentSource();
             const hint =
-              currentSource() === "webcam"
+              src === "webcam"
                 ? "A webcam source needs camera permission and a secure context (https://, or http://localhost)."
-                : "A video file source needs a file chosen and, for autoplay, the tab in the foreground.";
+                : src === "bundled"
+                  ? "The bundled clip needs the tab in the foreground to autoplay, and examples/videos/pinball-bench.mp4 served alongside this page."
+                  : "A video file source needs a file chosen and, for autoplay, the tab in the foreground.";
             showError(`${e.message}\n\n${hint}`);
             startButton.disabled = false;
           }
