@@ -249,7 +249,8 @@
       frame-by-frame, on this device, against a live webcam or a looped video file. Measurement only — nothing here
       changes how the pipeline runs, it only times it. Two modes share every parameter and call the backend the same
       way: <strong>stateless pipeline</strong> re-implements the calls inline (as the
-      <a href="./pinball-webcam-jsfeatnext-backend.html">webcam demo</a> does), <strong>NftTracker</strong> runs
+      <a href="./pinball-static-jsfeatnext-backend.html">static demo</a> does; the webcam demo already runs
+      <code>NftTracker</code> itself), <strong>NftTracker</strong> runs
       <code>tracker.process()</code>. Milestone M1 of
       <a href="../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md">ADR-0001</a> is parity, so the two should
       report the same numbers here; the point of measuring both is to have a baseline once M2 gives the tracker state
@@ -405,7 +406,6 @@
       const startButton = $("start");
       const stopButton = $("stop");
       const downloadButton = $("download");
-      const statusEl = $("status");
       const errorEl = $("error");
       const statsDl = $("stats");
       const percentilesBody = document.querySelector("#percentiles tbody");
@@ -431,6 +431,21 @@
         return filterMatchesSupported ? STAGES : STAGES.filter((s) => s !== "filterMatches");
       }
 
+      /**
+       * The history records where `stage` actually ran, so its percentiles
+       * are computed only over frames that paid the cost -- not diluted by
+       * frames where it was skipped and its timing sits at the `resetTimings`
+       * zero. Both `runStatelessPipeline` and `NftTracker.process` skip
+       * `estimateHomography` below four matches, and skip `poseFromHomography`
+       * whenever RANSAC found no consensus, so a frame's `ok`/`reason` say
+       * which stages actually ran on it.
+       */
+      function framesForStage(stage) {
+        if (stage === "estimateHomography") return history.filter((f) => f.reason !== "too-few-matches");
+        if (stage === "pose") return history.filter((f) => f.ok);
+        return history;
+      }
+
       /** The source's native resolution, snapshotted at run start -- see the note in `runBenchmark`. */
       let lastSourceResolution = { width: 0, height: 0 };
       /** The source and mode actually used by the last run -- see the note on `lastSourceResolution`; both controls
@@ -445,10 +460,19 @@
        * set the same way both times.
        */
       let lastStartAtSeconds = null;
+      /**
+       * The actual `GrayImage` size fed to `detect` every tick -- `toGray`
+       * fits the source inside `PROC_WIDTH` x `PROC_HEIGHT` while PRESERVING
+       * aspect ratio, so a 16:9 source (the bundled clip, most cameras) is
+       * processed at e.g. 480x270, not 480x360. Exporting the configured box
+       * instead of this would describe pixels the benchmark never actually
+       * measured.
+       */
+      let lastProcessingResolution = { width: PROC_WIDTH, height: PROC_HEIGHT };
 
       function showError(message) {
         errorEl.textContent = message;
-        statusEl.textContent = "failed";
+        setStatusText("failed");
       }
 
       function clearError() {
@@ -461,6 +485,28 @@
           img.onload = () => resolve(img);
           img.onerror = () => reject(new Error(`could not load ${src}`));
           img.src = src;
+        });
+      }
+
+      /**
+       * Waits for `resolveEvent` on `target`, rejecting on `errorEvent`
+       * instead of hanging forever. A missing file, an unsupported codec, or
+       * (for the bundled clip) a 404 all fire `error` on the `<video>`
+       * rather than `loadedmetadata`/`seeked` -- without this, Start stayed
+       * disabled forever and the catch block's error hint never showed.
+       */
+      function waitForEvent(target, resolveEvent, errorEvent = "error") {
+        return new Promise((resolve, reject) => {
+          const onResolve = () => {
+            target.removeEventListener(errorEvent, onError);
+            resolve();
+          };
+          const onError = () => {
+            target.removeEventListener(resolveEvent, onResolve);
+            reject(new Error(`waiting for '${resolveEvent}': '${errorEvent}' fired instead`));
+          };
+          target.addEventListener(resolveEvent, onResolve, { once: true });
+          target.addEventListener(errorEvent, onError, { once: true });
         });
       }
 
@@ -589,7 +635,7 @@
       function renderPercentiles() {
         percentilesBody.replaceChildren();
         for (const s of activeStages()) {
-          const values = history.map((f) => f.timings[s]).sort((a, b) => a - b);
+          const values = framesForStage(s).map((f) => f.timings[s]).sort((a, b) => a - b);
           const tr = document.createElement("tr");
           const cells = [
             STAGE_LABELS[s],
@@ -612,9 +658,29 @@
           const dt = document.createElement("dt");
           dt.textContent = label;
           const dd = document.createElement("dd");
+          // The "status" row keeps a stable id across re-renders so
+          // `setStatusText` can find and update it later without holding a
+          // reference to a `dd` this function is about to replace -- the
+          // original static markup's own `id="status"` dd does not survive
+          // the very first call, since `innerHTML = ""` above discards it.
+          if (label === "status") dd.id = "status";
           dd.textContent = value;
           statsDl.append(dt, dd);
         }
+      }
+
+      /**
+       * Sets the visible "status" text, wherever it currently lives.
+       * A `dd` cached once at page load would only ever point at the
+       * ORIGINAL static markup's node -- the first `renderStats` call
+       * discards it (see above), so a write through a cached reference
+       * would be silently invisible from then on: `showError` and the Stop
+       * handler could both set a status no run would ever show. Looking it
+       * up fresh here is what keeps that from happening.
+       */
+      function setStatusText(text) {
+        const el = document.getElementById("status");
+        if (el) el.textContent = text;
       }
 
       function stopLoop() {
@@ -647,28 +713,34 @@
         currentStream = stream;
         video.srcObject = stream;
         video.loop = false;
-        await new Promise((resolve) => video.addEventListener("loadedmetadata", resolve, { once: true }));
+        await waitForEvent(video, "loadedmetadata");
         await video.play();
       }
 
       async function startFile(file, startAt) {
         video.src = URL.createObjectURL(file);
-        await loadSeekAndPlay(startAt);
+        return loadSeekAndPlay(startAt);
       }
 
       /** The bundled reference clip, fetched by URL rather than picked by the user -- see the "bundled clip" radio. */
       async function startBundled(startAt) {
         video.src = "./videos/pinball-bench.mp4";
-        await loadSeekAndPlay(startAt);
+        return loadSeekAndPlay(startAt);
       }
 
-      /** Shared by both video-file sources: load, optionally seek to `startAt`, then play. `video.src` must already be set. */
+      /**
+       * Shared by both video-file sources: load, optionally seek to
+       * `startAt`, then play. `video.src` must already be set. Returns the
+       * ACTUAL position after any seek -- a `startAt` past the clip's real
+       * end is clamped by the browser itself, and reporting the raw request
+       * instead would export a start point the run never actually used.
+       */
       async function loadSeekAndPlay(startAt) {
         // Looped so a short clip still fills the window, and so the same run
         // can be repeated -- the "for repeatability" reason this source
         // exists at all.
         video.loop = true;
-        await new Promise((resolve) => video.addEventListener("loadedmetadata", resolve, { once: true }));
+        await waitForEvent(video, "loadedmetadata");
 
         // A file muxed without a duration in its container header (observed
         // with a MediaRecorder-produced webm -- e.g. a quick screen/webcam
@@ -680,10 +752,9 @@
         // (a phone recording, an ffmpeg export) already has a correct
         // duration and this is a harmless no-op extra seek for it.
         if (startAt > 0 && (!isFinite(video.duration) || video.duration < startAt)) {
-          await new Promise((resolve) => {
-            video.addEventListener("seeked", resolve, { once: true });
-            video.currentTime = Number.MAX_SAFE_INTEGER;
-          });
+          const seeked = waitForEvent(video, "seeked");
+          video.currentTime = Number.MAX_SAFE_INTEGER;
+          await seeked;
         }
 
         // Seeking BEFORE play() so the first tick already sees `startAt`,
@@ -694,17 +765,21 @@
         // vs. tracker run this way showed match counts drifting from
         // unrelated footage, not from a difference between the two modes).
         if (startAt > 0) {
-          await new Promise((resolve) => {
-            video.addEventListener("seeked", resolve, { once: true });
-            // No clamp against `video.duration` here: even after the
-            // rescan above it can still be wrong for a pathological file,
-            // and a `startAt` past the real end is already handled by the
-            // browser itself -- `currentTime` just clamps to the seekable
-            // range -- so there is nothing more this page needs to do.
-            video.currentTime = startAt;
-          });
+          const seeked = waitForEvent(video, "seeked");
+          // No clamp against `video.duration` here: even after the rescan
+          // above it can still be wrong for a pathological file, and a
+          // `startAt` past the real end is already handled by the browser
+          // itself -- `currentTime` just clamps to the seekable range -- so
+          // there is nothing more this page needs to do.
+          video.currentTime = startAt;
+          await seeked;
         }
+        // Captured before play() so it is the exact seeked position, not
+        // wherever playback has already advanced to by the time this
+        // function returns.
+        const actualStartAt = video.currentTime;
         await video.play();
+        return actualStartAt;
       }
 
       function currentSource() {
@@ -719,20 +794,57 @@
         startAtInput.disabled = source === "webcam";
       }
 
+      /** Last `video.currentTime` a tick actually ran against, under the rAF fallback below. Reset per run. */
+      let lastRafFrameTime = -1;
+
+      /**
+       * `renderPercentiles` sorts every active stage's entire window (up to
+       * `windowSize`, user-settable to 2000) on every call -- doing that on
+       * every single tick would run several sorts of up to 2000 samples each
+       * on the SAME main thread the video callbacks and the CV pipeline run
+       * on, adding load that can itself change how many frames get
+       * coalesced (see `scheduleNextTick`'s own doc comment) and so distort
+       * the very timings this page exists to measure. Throttled instead: the
+       * exported JSON always recomputes its summary from the full, untouched
+       * `history`, so this only affects how fresh the live table looks.
+       */
+      let lastPercentileRenderAt = 0;
+      const PERCENTILE_RENDER_INTERVAL_MS = 250;
+
       /**
        * Drives one tick per decoded frame via `requestVideoFrameCallback`
        * where available -- a webcam and a played-back file both decode at
        * their own rate, and this ties "per frame" to a frame the video
        * element actually produced, rather than to the display's repaint
-       * rate (`requestAnimationFrame` alone would tick faster than the
-       * source and re-process the same decoded frame more than once).
+       * rate. The rAF fallback (browsers without `requestVideoFrameCallback`,
+       * e.g. Safari) has no such per-frame signal, so it polls
+       * `video.currentTime` itself and only invokes `tick` when that has
+       * actually moved -- without this check, a repaint rate faster than the
+       * source's own frame rate reprocesses the same decoded pixels every
+       * time and records them as distinct samples.
        */
       function scheduleNextTick(tick) {
         if (!running) return;
         if (video.requestVideoFrameCallback) {
           vfcHandle = video.requestVideoFrameCallback(tick);
         } else {
-          rafHandle = requestAnimationFrame(tick);
+          const pollForNewFrame = () => {
+            if (!running) return;
+            const currentTime = video.currentTime;
+            if (currentTime !== lastRafFrameTime) {
+              lastRafFrameTime = currentTime;
+              // Snapshotted here, before frame acquisition and the whole CV
+              // pipeline run -- not read fresh inside `tick`, where the main
+              // thread has been blocked long enough for playback to have
+              // moved on, which would make `mediaTimeSeconds` name a LATER
+              // frame than the one actually processed and undermine aligning
+              // two runs by it.
+              tick(performance.now(), { mediaTime: currentTime });
+            } else {
+              rafHandle = requestAnimationFrame(pollForNewFrame);
+            }
+          };
+          rafHandle = requestAnimationFrame(pollForNewFrame);
         }
       }
 
@@ -758,6 +870,8 @@
       }
 
       function runBenchmark(cv, targetDb, mode, windowSize) {
+        lastRafFrameTime = -1;
+        lastPercentileRenderAt = 0;
         filterMatchesSupported = !!cv.filterMatches;
         const timings = resetTimings({});
         const icv = instrumentBackend(cv, timings);
@@ -781,6 +895,7 @@
         // way the webcam demo derives it, because every later frame downscales
         // to this exact size for the lifetime of the stream.
         const probe = toGrayTimed(video, video.videoWidth, video.videoHeight, PROC_WIDTH, PROC_HEIGHT, resetTimings({}));
+        lastProcessingResolution = { width: probe.width, height: probe.height };
         const K = intrinsics(probe.width, probe.height);
         const tracker = mode === "tracker" ? new NftTracker(icv, targetDb, K) : null;
 
@@ -855,7 +970,10 @@
             ["frame time", `${timings.total.toFixed(1)} ms`],
             ["window", `${history.length} / ${windowSize}`],
           ]);
-          renderPercentiles();
+          if (now - lastPercentileRenderAt >= PERCENTILE_RENDER_INTERVAL_MS || history.length === 1) {
+            lastPercentileRenderAt = now;
+            renderPercentiles();
+          }
           downloadButton.disabled = history.length === 0;
 
           scheduleNextTick(tick);
@@ -867,7 +985,7 @@
       function downloadHistory() {
         const summary = {};
         for (const s of activeStages()) {
-          const values = history.map((f) => f.timings[s]).sort((a, b) => a - b);
+          const values = framesForStage(s).map((f) => f.timings[s]).sort((a, b) => a - b);
           summary[s] = {
             p50: values.length ? percentile(values, 50) : null,
             p95: values.length ? percentile(values, 95) : null,
@@ -887,7 +1005,7 @@
           // stateless-pipeline export and an NftTracker export checkable as
           // having compared the same footage, not just assumed to have.
           startAtSeconds: lastStartAtSeconds,
-          processingResolution: { width: PROC_WIDTH, height: PROC_HEIGHT },
+          processingResolution: lastProcessingResolution,
           windowSize: history.length,
           summaryMs: summary,
           frames: history,
@@ -908,7 +1026,7 @@
       async function main() {
         const cv = await createJsfeatNextBackend();
 
-        statusEl.textContent = "preparing target…";
+        setStatusText("preparing target…");
         const targetImg = await loadImage(TARGET);
         // Downscaled the same way the webcam demo builds its target -- this
         // page is not exercising target preparation, so it borrows a setting
@@ -918,7 +1036,7 @@
         const target = toGrayTimed(targetImg, targetImg.naturalWidth, targetImg.naturalHeight, 640, undefined, resetTimings({}));
         const targetDb = buildTargetFromImage(cv, target, { levels: TARGET_LEVELS, name: "pinball" });
 
-        statusEl.textContent = "ready";
+        setStatusText("ready");
         startButton.disabled = false;
 
         for (const radio of document.querySelectorAll('input[name="source"]')) {
@@ -930,31 +1048,39 @@
           clearError();
           startButton.disabled = true;
           try {
+            // Local until every step that can throw is behind us. Committing
+            // to `lastSource`/`lastMode`/`lastStartAtSeconds` any earlier
+            // would mislabel the PREVIOUS run's still-downloadable history
+            // with this attempt's (possibly failed) setup -- e.g. a source
+            // switch with no file chosen throwing before anything started,
+            // yet the old history exporting as having come from the new
+            // source.
             const source = currentSource();
-            lastSource = source;
+            let startAtSeconds = null;
             if (source === "webcam") {
               await startWebcam();
-              lastStartAtSeconds = null;
             } else {
-              const startAt = Math.max(0, Number(startAtInput.value) || 0);
+              const requestedStartAt = Math.max(0, Number(startAtInput.value) || 0);
               if (source === "bundled") {
-                await startBundled(startAt);
+                startAtSeconds = await startBundled(requestedStartAt);
               } else {
                 const file = fileInput.files[0];
                 if (!file) throw new Error("Choose a video file first.");
-                await startFile(file, startAt);
+                startAtSeconds = await startFile(file, requestedStartAt);
               }
-              lastStartAtSeconds = startAt;
             }
             placeholder.remove();
             stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
 
+            const mode = $("mode").value;
+            const windowSize = Math.max(1, Math.floor(Number($("windowSize").value) || 120));
+
+            lastSource = source;
+            lastMode = mode;
+            lastStartAtSeconds = startAtSeconds;
             history = [];
             running = true;
             stopButton.disabled = false;
-            const mode = $("mode").value;
-            lastMode = mode;
-            const windowSize = Math.max(1, Math.floor(Number($("windowSize").value) || 120));
             runBenchmark(cv, targetDb, mode, windowSize);
           } catch (e) {
             const src = currentSource();
@@ -965,6 +1091,23 @@
                   ? "The bundled clip needs the tab in the foreground to autoplay, and examples/videos/pinball-bench.mp4 served alongside this page."
                   : "A video file source needs a file chosen and, for autoplay, the tab in the foreground.";
             showError(`${e.message}\n\n${hint}`);
+            // A camera stream can be live (getUserMedia succeeded, then
+            // loadedmetadata or play() failed) or an object URL allocated
+            // (startFile succeeded that far, then play() failed) by this
+            // point -- `running` is never true here (it is set only after
+            // every step below has succeeded), but the source itself can
+            // still be, and retrying Start without releasing it first would
+            // leak the camera or the URL. Safe to call unconditionally:
+            // stopSource() is a no-op against a source that never started.
+            stopLoop();
+            stopSource();
+            // Defensive rather than provably necessary: `runBenchmark`
+            // itself can throw synchronously (e.g. a target whose descriptor
+            // set this backend cannot read) after `running` was already set
+            // true for its own tick loop to see, but before that loop's
+            // first tick ever ran.
+            running = false;
+            stopButton.disabled = true;
             startButton.disabled = false;
           }
         });
@@ -974,7 +1117,7 @@
           stopSource();
           stopButton.disabled = true;
           startButton.disabled = false;
-          statusEl.textContent = "stopped";
+          setStatusText("stopped");
         });
 
         downloadButton.addEventListener("click", downloadHistory);

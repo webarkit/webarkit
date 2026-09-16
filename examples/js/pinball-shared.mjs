@@ -81,36 +81,45 @@ export function toGray(source, sourceW, sourceH, maxWidth, maxHeight) {
     // -- get that wrong and a portrait source (its longer side is height)
     // sails straight past maxWidth uncapped, since maxWidth alone only ever
     // constrains sourceW.
-    return toGrayTimed(source, sourceW, sourceH, maxWidth, maxHeight, {});
+    return toGrayTimed(source, sourceW, sourceH, maxWidth, maxHeight);
 }
 
 /**
- * `toGray`, with the cost split into `timings.acquire` (drawing the source
- * and reading its pixels back -- `drawImage` + `getImageData`) and
- * `timings.gray` (the RGBA -> grayscale reduction), each accumulated rather
- * than overwritten so a caller can reuse one `timings` object across frames.
- * `toGray` itself is this function against a throwaway object -- one
+ * `toGray`, optionally with the cost split into `timings.acquire` (drawing
+ * the source and reading its pixels back -- `drawImage` + `getImageData`)
+ * and `timings.gray` (the RGBA -> grayscale reduction), each accumulated
+ * rather than overwritten so a caller can reuse one `timings` object across
+ * frames. `toGray` itself is this function with `timings` omitted -- one
  * implementation, so the two callers can't drift the way a second hand-copy
- * of this math would (see this module's own doc comment).
+ * of this math would (see this module's own doc comment) -- and the timing
+ * itself stays opt-in: the webcam demo calls `toGray` every tick inside a
+ * 33ms/frame budget (ADR-0001), and unconditionally allocating a `timings`
+ * object plus two extra `performance.now()` calls it never reads would tax
+ * every one of its frames for a cost only this page's own benchmark needs.
  *
- * @param timings  Object to accumulate `acquire`/`gray` milliseconds into.
+ * @param timings  Optional object to accumulate `acquire`/`gray` milliseconds into.
  */
 export function toGrayTimed(source, sourceW, sourceH, maxWidth, maxHeight, timings) {
-    const t0 = performance.now();
+    const t0 = timings ? performance.now() : 0;
     const { width: w, height: h } = fitSize(sourceW, sourceH, maxWidth, maxHeight);
     const off = new OffscreenCanvas(w, h);
     const ctx = off.getContext("2d", { willReadFrequently: true });
     ctx.drawImage(source, 0, 0, w, h);
     const rgba = ctx.getImageData(0, 0, w, h).data;
-    const t1 = performance.now();
-    timings.acquire = (timings.acquire || 0) + (t1 - t0);
+    let t1 = t0;
+    if (timings) {
+        t1 = performance.now();
+        timings.acquire = (timings.acquire || 0) + (t1 - t0);
+    }
 
     const data = new Uint8Array(w * h);
     for (let i = 0, p = 0; i < data.length; i++, p += 4) {
         // Rec. 601 luma, the same weighting jsfeatNext's own grayscale uses.
         data[i] = (rgba[p] * 0.299 + rgba[p + 1] * 0.587 + rgba[p + 2] * 0.114) | 0;
     }
-    timings.gray = (timings.gray || 0) + (performance.now() - t1);
+    if (timings) {
+        timings.gray = (timings.gray || 0) + (performance.now() - t1);
+    }
     return { data, width: w, height: h };
 }
 

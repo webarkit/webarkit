@@ -139,8 +139,9 @@ parameters got — tracked informally against this file for now, no issue yet.
 
 Measures the pipeline frame-by-frame on whatever device opens it, against a
 live webcam, a user-chosen video file, or the bundled reference clip
-(`videos/pinball-bench.mp4`) — all three loop, so a short clip still fills the
-measurement window and a run can be repeated. It changes nothing
+(`videos/pinball-bench.mp4`) — the two video sources loop, so a short clip
+still fills the measurement window and a run can be repeated; a webcam is
+already live and has no clip to loop. It changes nothing
 about how the pipeline runs — it only times it, in eight stages per frame:
 frame acquisition, grayscale conversion, `detect`, `describe`, `match`,
 `estimateHomography`, `poseFromHomography`, and the frame total — plus the
@@ -154,8 +155,9 @@ told apart from the one run before it.
 Two modes, selected before pressing Start:
 
 - **stateless pipeline** — the same inline `detect → describe → match →
-  estimateHomography → poseFromHomography` calls as the webcam demo above,
-  against `@webarkit/nft-tracker`'s own `DEFAULT_SCENE_LEVELS` /
+  estimateHomography → poseFromHomography` calls as the static demo above (the
+  webcam demo already runs `NftTracker` itself), against
+  `@webarkit/nft-tracker`'s own `DEFAULT_SCENE_LEVELS` /
   `DEFAULT_MAX_SCENE_KEYPOINTS` / `DEFAULT_RATIO` / `DEFAULT_RANSAC_THRESHOLD`.
 - **NftTracker** — `tracker.process(frame, timestampMs)`, once per tick.
 
@@ -216,11 +218,13 @@ ffmpeg -i original.mp4 -vf scale=1280:720 -an -c:v libx264 -preset medium -crf 2
 ```
 
 720p and CRF 28 keep the file close in size to `images/pinball-demo.jpg`
-(877 KB) while still exceeding this page's own processing resolution
-(480×360) by a comfortable margin — downscaling further would start
-constraining what a *higher* processing resolution could be benchmarked
-against later. Audio is dropped because nothing here reads it; keeping it
-would have cost size for no benefit to a `GrayImage` pipeline.
+(877 KB) while still exceeding this page's own processing box (480×360,
+fitted with aspect preserved — a 16:9 source like this one actually lands at
+480×270, not 480×360; the export's `processingResolution` records that real
+size, not the configured box) by a comfortable margin — downscaling further
+would start constraining what a *higher* processing resolution could be
+benchmarked against later. Audio is dropped because nothing here reads it;
+keeping it would have cost size for no benefit to a `GrayImage` pipeline.
 
 This is also the clip [ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md)'s
 action item 6 baseline was measured against — see that ADR (and wherever the
