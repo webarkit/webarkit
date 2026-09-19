@@ -175,7 +175,15 @@ the spread is much wider relative to the median than `Tab_9_WiFi` showed:
 for the same stages (1.6× and 3.5× respectively). A single run can't say
 whether that is thermal throttling, background-app interference, or this
 device simply being noisier; it is recorded here as an open question, not
-an explanation.
+an explanation. One thing narrows it slightly: thermal throttling usually
+lifts all stages together and progressively, which this doesn't show — the
+spread is concentrated in `detect` and `estimateHomography`, not uniform. A
+likelier candidate for `estimateHomography`'s 21× tail is RANSAC hitting its
+iteration cap on frames with few or poor matches, where long tails are
+inherent to the algorithm rather than a device anomaly. Checkable without a
+new measurement, by correlating the slow frames against the `numMatches`/
+`numInliers` already in the export — recorded here as a hypothesis, not a
+finding.
 
 Read together with the tablet's two runs, this is the answer to "is the
 budget overrun specific to one device": no — a second, independent
