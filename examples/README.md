@@ -138,8 +138,8 @@ parameters got — tracked informally against this file for now, no issue yet.
 ## `bench-nft.html`
 
 Measures the pipeline frame-by-frame on whatever device opens it, against a
-live webcam, a user-chosen video file, or the bundled reference clip
-(`videos/pinball-bench.mp4`) — the two video sources loop, so a short clip
+live webcam, a user-chosen video file, or one of two bundled reference clips
+(`videos/pinball-bench*.mp4`) — the two video sources loop, so a short clip
 still fills the measurement window and a run can be repeated; a webcam is
 already live and has no clip to loop. It changes nothing
 about how the pipeline runs — it only times it, in eight stages per frame:
@@ -198,39 +198,69 @@ from an identical `startAt`. Each frame's own `mediaTimeSeconds` (from
 fallback) is recorded for exactly this reason: **compare two exports by
 `mediaTimeSeconds`, not by array index or position in `frames`.**
 
-## The bundled reference clip: `videos/pinball-bench.mp4`
+## The bundled reference clips: `videos/pinball-bench*.mp4`
 
 A "user-chosen video file" is reproducible only as long as whoever reruns the
 benchmark still has the exact same file — which nobody but the original tester
-does. The **"bundled clip"** radio loads this committed file instead (fetched
-by URL, no file picker), so a report from one run can actually be compared
-against a report from another: same footage, byte for byte, on whoever's
-device opens the page.
+does. The **"bundled clip"** radio loads one of these committed files instead
+(fetched by URL, no file picker), so a report from one run can actually be
+compared against a report from another: same footage, byte for byte, on
+whoever's device opens the page. The dropdown next to the radio picks which
+one; the export's `bundledClip` field records which was actually used, for
+the same reason `startAtSeconds` does.
 
-11.96s, 1280×720, H.264, no audio track, ~940 KB — the printed `pinball.jpg`
-target on a wall, filmed at an angle and a distance that changes over the
-clip, the same real-scene conditions `images/pinball-demo.jpg` was shot under
-for the static demo. Re-encoded from a phone-captured original (1920×1080,
-~11.6 Mbps, 16.6 MB) with:
+- **`pinball-bench.mp4`** — 11.96s, 1280×720, ~940 KB. The printed
+  `pinball.jpg` target on a wall, filmed frontally at an angle and a distance
+  that changes over the clip, the same real-scene conditions
+  `images/pinball-demo.jpg` was shot under for the static demo.
+- **`pinball-bench-table.mp4`** — 8.90s, 1080×1920 (portrait), ~2.3 MB. The
+  same target lying flat on a table, filmed from a steep oblique angle — a
+  much harder shot for a single-scale scene detector (see the webcam demo's
+  own "known limitation" section above) than the frontal wall clip, and
+  useful for exactly that reason.
+
+Both are re-encoded from a phone-captured original with `-an` (audio dropped;
+nothing here reads it) and `-crf 28` (visually lossless at this content and
+resolution, a large size cut from the source's typical ~15 Mbps phone
+bitrate). Beyond that the two commands differ, and the difference matters:
 
 ```bash
+# pinball-bench.mp4 -- landscape source, explicitly downscaled
 ffmpeg -i original.mp4 -vf scale=1280:720 -an -c:v libx264 -preset medium -crf 28 -movflags +faststart videos/pinball-bench.mp4
+
+# pinball-bench-table.mp4 -- portrait phone recording, NO -vf at all
+ffmpeg -i original.mp4 -an -c:v libx264 -preset medium -crf 28 -movflags +faststart videos/pinball-bench-table.mp4
 ```
 
-720p and CRF 28 keep the file close in size to `images/pinball-demo.jpg`
-(877 KB) while still exceeding this page's own processing box (480×360,
-fitted with aspect preserved — a 16:9 source like this one actually lands at
-480×270, not 480×360; the export's `processingResolution` records that real
-size, not the configured box) by a comfortable margin — downscaling further
-would start constraining what a *higher* processing resolution could be
-benchmarked against later. Audio is dropped because nothing here reads it;
-keeping it would have cost size for no benefit to a `GrayImage` pipeline.
+The table clip's source carries a `rotate: 90` / `displaymatrix: -90°` tag (a
+portrait recording stored as a 1920×1080 landscape-coded frame, tagged to
+display rotated). ffmpeg auto-applies that correction ONLY when no `-vf` is
+given; supplying one — as the wall clip's command does, to downscale it —
+replaces ffmpeg's own auto-rotate step instead of adding to it, so the
+rotation tag is silently dropped and the output plays back squished into the
+wrong aspect ratio. This is not hypothetical: it happened on the first attempt
+at this exact file, produced a `pinball-bench-table.mp4` that looked distorted
+and never locked onto anything, and cost the original raw recording (kept in
+no other copy) to find. Check `ffmpeg -i` for a `rotate`/`displaymatrix` line
+before deciding whether a re-encode may use `-vf` at all; if it must (to
+resize), bake the rotation in explicitly rather than omitting it, and verify
+with an extracted frame before compressing away the only copy.
 
-This is also the clip [ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md)'s
-action item 6 baseline was measured against — see that ADR (and wherever the
-baseline report itself is checked in) for the reference device and the
-numbers. Re-encoding this file to "improve" it is a change to that baseline's
-premise, not a refresh: a new baseline needs a new measurement, the same way
+The wall clip's own processing-box note: 720p and CRF 28 keep it close in size
+to `images/pinball-demo.jpg` (877 KB) while still exceeding this page's own
+processing box (480×360, fitted with aspect preserved — a 16:9 source like
+this one actually lands at 480×270, not 480×360; the export's
+`processingResolution` records that real size, not the configured box) by a
+comfortable margin — downscaling further would start constraining what a
+*higher* processing resolution could be benchmarked against later. The table
+clip is left at its native 1080×1920 rather than downscaled to match, since
+after the rotation incident above the priority was verifying orientation over
+minimizing size a second time; revisit if its ~2.3 MB becomes a real problem.
+
+Neither clip has an ADR-0001 action item 6 baseline measured against it yet —
+that step is still open. Once one is recorded, note here (and in the ADR)
+which clip and which device it used: re-encoding a clip a baseline depends on
+is a change to that baseline's premise, not a refresh, the same way
 recompiling `targets/pinball.wnft` needs updating the Rust test that reads it
 (see [Targets](#targets-targetspinballwnft) below).
 
