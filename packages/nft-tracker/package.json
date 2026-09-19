@@ -1,0 +1,42 @@
+{
+  "name": "@webarkit/nft-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Natural-feature tracking for planar image targets, written above the @webarkit/cv-backend-spec CvBackend contract.",
+  "license": "LGPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "fixtures": "npm run build && node scripts/generate-fixtures.mjs",
+    "compile-target": "node bin/compile-target.mjs"
+  },
+  "keywords": [
+    "webarkit",
+    "webar",
+    "nft",
+    "tracking",
+    "computer-vision"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/webarkit/webarkit.git",
+    "directory": "packages/nft-tracker"
+  },
+  "dependencies": {
+    "@webarkit/cv-backend-spec": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.4",
+    "@webarkit/cv-backend-jsfeatnext": "0.1.0",
+    "fast-check": "^4.10.0",
+    "jpeg-js": "^0.4.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  }
+}

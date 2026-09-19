@@ -56,3 +56,42 @@ jobs:
 
             - name: Test
               run: npm run test
+
+    rust:
+        runs-on: ubuntu-24.04
+
+        # Separate from build-and-test, deliberately: the two toolchains share
+        # the repository and the fixtures/ corpus and nothing else, so they have
+        # no ordering between them and running them in parallel costs nothing.
+        # `crates/wnft-format` consumes the corpus the TypeScript generator
+        # produces (fixtures/nft-target/README.md) but does not build it, so it
+        # needs no Node step.
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v7
+
+            - name: Install the Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: rustfmt, clippy
+                  # The no_std build below needs a bare-metal target, which is
+                  # the only way to prove the crate really is no_std: a crate
+                  # that accidentally depends on std still builds for the host
+                  # with --no-default-features, because the host std is there.
+                  targets: thumbv7em-none-eabihf
+
+            - uses: Swatinem/rust-cache@v2
+
+            - name: Format
+              run: cargo fmt --all --check
+
+            - name: Clippy
+              # --all-targets so that the test suites are linted too: they are
+              # where an `unwrap` on file-supplied data is most likely to slip in.
+              run: cargo clippy --workspace --all-targets -- -D warnings
+
+            - name: Test
+              run: cargo test --workspace
+
+            - name: Build for a no_std target
+              run: cargo build -p wnft-format --no-default-features --target thumbv7em-none-eabihf

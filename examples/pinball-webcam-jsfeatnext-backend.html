@@ -30,7 +30,8 @@
         "imports": {
           "@webarkit/jsfeat-next": "../node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs",
           "@webarkit/cv-backend-spec": "../packages/cv-backend-spec/dist/index.js",
-          "@webarkit/cv-backend-jsfeatnext": "../packages/cv-backend-jsfeatnext/dist/index.js"
+          "@webarkit/cv-backend-jsfeatnext": "../packages/cv-backend-jsfeatnext/dist/index.js",
+          "@webarkit/nft-tracker": "../packages/nft-tracker/dist/index.js"
         }
       }
     </script>
@@ -242,7 +243,8 @@
 
     <script type="module">
       import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
-      import { toGray, project, buildLevelIndex, matchPerLevel } from "./js/pinball-shared.mjs";
+      import { NftTracker, buildTargetFromImage } from "@webarkit/nft-tracker";
+      import { toGray, project } from "./js/pinball-shared.mjs";
 
       const TARGET = "./images/pinball.jpg";
 
@@ -319,9 +321,7 @@
         statusEl.textContent = "preparing target…";
         const targetImg = await loadImage(TARGET);
         const target = toGray(targetImg, targetImg.naturalWidth, targetImg.naturalHeight, 640);
-        const kTarget = cv.detect(target, { levels: TARGET_LEVELS, maxKeypoints: TARGET_LEVELS * 260 });
-        const dTarget = cv.describe(target, kTarget);
-        const targetLevels = buildLevelIndex(kTarget, dTarget);
+        const targetDb = buildTargetFromImage(cv, target, { levels: TARGET_LEVELS, name: "pinball" });
 
         statusEl.textContent = "ready";
         startButton.disabled = false;
@@ -334,10 +334,10 @@
         // disabled buttons don't dispatch click in any browser. On success the
         // whole placeholder (this button's parent) is removed from the DOM, so
         // the listener stops mattering rather than needing explicit cleanup.
-        startButton.addEventListener("click", () => startCamera(cv, target, kTarget, targetLevels));
+        startButton.addEventListener("click", () => startCamera(cv, targetDb));
       }
 
-      async function startCamera(cv, target, kTarget, targetLevels) {
+      async function startCamera(cv, targetDb) {
         startButton.disabled = true;
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
@@ -377,10 +377,14 @@
         overlay.height = probe.height;
         const K = intrinsics(probe.width, probe.height);
 
-        runLoop(cv, target, kTarget, targetLevels, K);
+        // The tracker owns the pipeline from here on: ADR-0001 point 7 keeps
+        // the loop, the camera and the canvas out of the package, which is why
+        // this page still owns all three.
+        const tracker = new NftTracker(cv, targetDb, K, { maxSceneKeypoints: SCENE_MAX_KEYPOINTS });
+        runLoop(tracker, targetDb);
       }
 
-      function runLoop(cv, target, kTarget, targetLevels, K) {
+      function runLoop(tracker, targetDb) {
         // No frame-skipping, no target frame rate: each tick starts as soon as
         // the previous one's drawing is done, and the browser's own paint
         // scheduling (via requestAnimationFrame) throttles that to whatever the
@@ -392,35 +396,8 @@
         const tick = () => {
           const t0 = performance.now();
 
-          // --- the pipeline, entirely through the interface, no state kept
-          // between calls: this tick does not know what the last one found. ---
           const scene = toGray(video, video.videoWidth, video.videoHeight, PROC_WIDTH, PROC_HEIGHT);
-          const kScene = cv.detect(scene, { levels: 1, maxKeypoints: SCENE_MAX_KEYPOINTS });
-          const dScene = cv.describe(scene, kScene);
-          let matches = matchPerLevel(cv, dScene, targetLevels, 0.8);
-
-          if (cv.filterMatches) {
-            matches = cv.filterMatches(
-              matches,
-              { keypoints: kScene, width: scene.width, height: scene.height },
-              { keypoints: kTarget, width: target.width, height: target.height }
-            );
-          }
-
-          let h = null;
-          let pose = null;
-          if (matches.length >= 4) {
-            const src = new Float64Array(matches.length * 2);
-            const dst = new Float64Array(matches.length * 2);
-            matches.forEach((m, i) => {
-              src[i * 2] = kTarget[m.trainIdx].x;
-              src[i * 2 + 1] = kTarget[m.trainIdx].y;
-              dst[i * 2] = kScene[m.queryIdx].x;
-              dst[i * 2 + 1] = kScene[m.queryIdx].y;
-            });
-            h = cv.estimateHomography(src, dst, { threshold: 4 });
-            if (h.ok) pose = cv.poseFromHomography(h.H, K);
-          }
+          const result = tracker.process(scene, t0);
 
           const elapsed = performance.now() - t0;
           const now = performance.now();
@@ -433,15 +410,15 @@
           // video and the canvas to the same on-screen box). ---
           octx.clearRect(0, 0, overlay.width, overlay.height);
           octx.fillStyle = "#60a5fa";
-          for (const k of kScene) octx.fillRect(k.x - 1, k.y - 1, 2, 2);
+          for (const k of result.sceneKeypoints) octx.fillRect(k.x - 1, k.y - 1, 2, 2);
 
-          if (h?.ok) {
+          if (result.ok) {
             const corners = [
               [0, 0],
-              [target.width - 1, 0],
-              [target.width - 1, target.height - 1],
-              [0, target.height - 1],
-            ].map(([x, y]) => project(h.H, x, y));
+              [targetDb.meta.widthPx - 1, 0],
+              [targetDb.meta.widthPx - 1, targetDb.meta.heightPx - 1],
+              [0, targetDb.meta.heightPx - 1],
+            ].map(([x, y]) => project(result.H, x, y));
             octx.strokeStyle = "#fbbf24";
             octx.lineWidth = 3;
             octx.beginPath();
@@ -450,13 +427,19 @@
             octx.stroke();
           }
 
-          statusEl.textContent = h?.ok ? "locked on" : matches.length < 4 ? "too few matches" : "no consensus";
+          statusEl.textContent = result.ok
+            ? "locked on"
+            : result.reason === "too-few-matches"
+              ? "too few matches"
+              : "no consensus";
           renderStats([
             ["fps", fps.toFixed(1)],
-            ["keypoints (scene)", kScene.length],
-            ["matches", matches.length],
-            ["inliers", h ? `${h.numInliers} / ${matches.length}` : "—"],
-            ["pose", pose ? (pose.good ? "recovered" : "degenerate") : "—"],
+            ["keypoints (scene)", result.sceneKeypoints.length],
+            ["matches", result.numMatches],
+            // "—" exactly where the old code had no `h` to report: below four
+            // matches the pipeline never reached RANSAC.
+            ["inliers", result.numMatches >= 4 ? `${result.numInliers} / ${result.numMatches}` : "—"],
+            ["pose", result.ok ? (result.pose.good ? "recovered" : "degenerate") : "—"],
             ["frame time", `${elapsed.toFixed(1)} ms`],
           ]);
 

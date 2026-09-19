@@ -24,3 +24,15 @@ Thumbs.db
 *.log
 npm-debug.log*
 .npm/
+
+# Rust build output. `crates/*/target` cannot occur with a workspace, but the
+# fuzz crate is its own workspace and has its own.
+/target/
+crates/wnft-format/fuzz/target/
+crates/wnft-format/fuzz/corpus/
+crates/wnft-format/fuzz/artifacts/
+crates/wnft-format/fuzz/coverage/
+# The fuzz crate is its own workspace (see above), so `cargo check`/`cargo
+# fuzz` inside it regenerates this lockfile — a plain `cargo check` at the
+# repository root never touches it, so it does not belong in version control.
+crates/wnft-format/fuzz/Cargo.lock

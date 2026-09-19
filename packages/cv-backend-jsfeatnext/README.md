@@ -150,6 +150,10 @@ regardless of which backend is plugged in:
 
 ## Requirements
 
-`@webarkit/jsfeat-next` **≥ 0.16.0** — earlier releases lack `bfmatcher`,
-`pose_estimator` and `orb.ic_angle` (needed since 0.15.0), and lack
-`motion_estimator.find_homography` (needed since 0.16.0 — see above).
+`@webarkit/jsfeat-next` **≥ 0.17.0** — earlier releases lack `bfmatcher`,
+`pose_estimator` and `orb.ic_angle` (needed since 0.15.0), lack
+`motion_estimator.find_homography` (needed since 0.16.0 — see above), and
+carry the `fast_corners` candidate-buffer bug that made `detect` read
+uninitialised scratch memory and drop each row's last corner — so `detect`
+was not actually a pure function of its arguments until 0.17.0
+(webarkit/webarkit#27, fixed upstream by webarkit/jsfeatNext#203).

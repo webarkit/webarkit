@@ -1,0 +1,31 @@
+# Its own workspace: cargo-fuzz builds with nightly and libfuzzer, neither of
+# which the crate or CI needs. The root workspace excludes this directory.
+[package]
+name = "wnft-format-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "LGPL-3.0-or-later"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+wnft-format = { path = ".." }
+# `Params` (`wnft_format::Params`) is a `serde_json::Map<String,
+# serde_json::Value>`, and this target needs to name `serde_json::Value` and
+# `serde_json::Number` directly to walk `params`/`info` recursively for
+# §7.3's check (c). serde_json is only a transitive dependency of
+# `wnft-format` otherwise, and Rust's extern prelude does not expose those to
+# a crate that does not list it itself.
+serde_json = "1.0"
+
+[[bin]]
+name = "decode"
+path = "fuzz_targets/decode.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

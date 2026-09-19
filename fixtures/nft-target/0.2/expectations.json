@@ -1,0 +1,240 @@
+{
+  "formatVersion": "0.2",
+  "valid": [
+    {
+      "file": "valid/minimal.wnft",
+      "decoded": "valid/minimal.json"
+    },
+    {
+      "file": "valid/several-sets.wnft"
+    },
+    {
+      "file": "valid/single-level.wnft"
+    },
+    {
+      "file": "valid/zero-keypoints.wnft"
+    },
+    {
+      "file": "valid/no-patches.wnft"
+    },
+    {
+      "file": "valid/reference-image.wnft"
+    },
+    {
+      "file": "valid/boundary-max-safe-integer.wnft"
+    },
+    {
+      "file": "valid/params-numeric-keys.wnft"
+    }
+  ],
+  "invalid": [
+    {
+      "file": "invalid/bad-magic.wnft",
+      "error": "BAD_MAGIC"
+    },
+    {
+      "file": "invalid/unsupported-container.wnft",
+      "error": "UNSUPPORTED_CONTAINER"
+    },
+    {
+      "file": "invalid/bad-container-total-length.wnft",
+      "error": "BAD_CONTAINER"
+    },
+    {
+      "file": "invalid/bad-container-flags.wnft",
+      "error": "BAD_CONTAINER"
+    },
+    {
+      "file": "invalid/bad-container-json-not-first.wnft",
+      "error": "BAD_CONTAINER"
+    },
+    {
+      "file": "invalid/checksum-mismatch.wnft",
+      "error": "CHECKSUM_MISMATCH"
+    },
+    {
+      "file": "invalid/manifest-too-large.wnft",
+      "error": "MANIFEST_TOO_LARGE",
+      "limits": {
+        "maxManifestBytes": 32
+      }
+    },
+    {
+      "file": "invalid/bad-manifest-not-json.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/bad-manifest-not-utf8.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/unsupported-format-version.wnft",
+      "error": "UNSUPPORTED_FORMAT_VERSION"
+    },
+    {
+      "file": "invalid/unsupported-extension.wnft",
+      "error": "UNSUPPORTED_EXTENSION"
+    },
+    {
+      "file": "invalid/bad-layout-out-of-bounds.wnft",
+      "error": "BAD_LAYOUT"
+    },
+    {
+      "file": "invalid/limit-exceeded-keypoints.wnft",
+      "error": "LIMIT_EXCEEDED",
+      "limits": {
+        "maxKeypoints": 4
+      }
+    },
+    {
+      "file": "invalid/inconsistent-meta.wnft",
+      "error": "INCONSISTENT_DATA"
+    },
+    {
+      "file": "invalid/accessor-fractional-offset.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/accessor-negative-count.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/accessor-count-above-u32.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/accessor-ref-not-index.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/level-size-zero.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/level-size-above-u16.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/scale-step-one.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/level-sizes-growing.wnft",
+      "error": "INCONSISTENT_DATA"
+    },
+    {
+      "file": "invalid/set-levelstart-not-zero.wnft",
+      "error": "INCONSISTENT_DATA"
+    },
+    {
+      "file": "invalid/set-levelstart-not-m.wnft",
+      "error": "INCONSISTENT_DATA"
+    },
+    {
+      "file": "invalid/kpindex-wrong-level.wnft",
+      "error": "INCONSISTENT_DATA"
+    },
+    {
+      "file": "invalid/patch-level-out-of-range.wnft",
+      "error": "INCONSISTENT_DATA"
+    },
+    {
+      "file": "invalid/patch-crosses-right-edge.wnft",
+      "error": "INCONSISTENT_DATA"
+    },
+    {
+      "file": "invalid/patch-crosses-bottom-edge.wnft",
+      "error": "INCONSISTENT_DATA"
+    },
+    {
+      "file": "invalid/reference-image-level-out-of-range.wnft",
+      "error": "INCONSISTENT_DATA"
+    },
+    {
+      "file": "invalid/ijson-duplicate-key.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/ijson-duplicate-key-escaped.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/ijson-unpaired-surrogate.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/ijson-integer-2p53.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/ijson-infinity.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/ijson-raw-noncharacter.wnft",
+      "error": "BAD_MANIFEST"
+    },
+    {
+      "file": "invalid/ijson-noncharacter-in-name.wnft",
+      "error": "BAD_MANIFEST"
+    }
+  ],
+  "warnings": [
+    {
+      "file": "warnings/unknown-chunk.wnft",
+      "warnings": [
+        "UNKNOWN_CHUNK_SKIPPED"
+      ]
+    },
+    {
+      "file": "warnings/unknown-descriptor-kind.wnft",
+      "warnings": [
+        "UNSUPPORTED_DESCRIPTOR_SET"
+      ]
+    },
+    {
+      "file": "warnings/unknown-norm.wnft",
+      "warnings": [
+        "UNSUPPORTED_DESCRIPTOR_SET"
+      ]
+    },
+    {
+      "file": "warnings/unknown-element-type.wnft",
+      "warnings": [
+        "UNSUPPORTED_DESCRIPTOR_SET"
+      ]
+    },
+    {
+      "file": "warnings/unknown-extension.wnft",
+      "warnings": [
+        "UNKNOWN_EXTENSION_IGNORED"
+      ]
+    }
+  ],
+  "noncanonical": [
+    {
+      "file": "noncanonical/key-order.wnft",
+      "canonical": "valid/minimal.wnft"
+    },
+    {
+      "file": "noncanonical/whitespace.wnft",
+      "canonical": "valid/minimal.wnft"
+    },
+    {
+      "file": "noncanonical/explicit-empty-params.wnft",
+      "canonical": "valid/minimal.wnft"
+    },
+    {
+      "file": "noncanonical/unknown-top-level-key.wnft",
+      "canonical": "valid/minimal.wnft"
+    },
+    {
+      "file": "noncanonical/unknown-extension-payload.wnft",
+      "canonical": "valid/minimal.wnft"
+    },
+    {
+      "file": "noncanonical/unsorted-params.wnft",
+      "canonical": "valid/params-numeric-keys.wnft"
+    }
+  ]
+}

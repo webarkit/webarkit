@@ -15,8 +15,9 @@ npm run build          # the examples load the built dist/, not the sources
 npx http-server -p 8080 -s
 ```
 
-Then open <http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html>
-or <http://localhost:8080/examples/pinball-webcam-jsfeatnext-backend.html>.
+Then open <http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html>,
+<http://localhost:8080/examples/pinball-webcam-jsfeatnext-backend.html>, or
+<http://localhost:8080/examples/bench-nft.html>.
 
 Serve over HTTP: ES modules do not load from `file://`, and `getUserMedia`
 (the webcam demo) additionally requires a secure context — `http://localhost`
@@ -55,9 +56,22 @@ once, offline, and the per-frame work stays cheap.
 **Matching runs one target level at a time.** Pooling every level into a single
 train set and applying Lowe's ratio test halves the match count, because the
 same physical feature appears at several levels and the two best candidates are
-then often both correct. Measured here: 98 matches per-level against 46 pooled.
+then often both correct. Measured here: 99 matches per-level against 45 pooled (2.2×) — exact and
+reproducible figures, re-measured after jsfeat-next 0.17 made `detect` a pure
+function of its inputs (webarkit/webarkit#27, required since #28); the same
+fix recovered the last corner of every image row, which is why every count
+sits slightly above the 0.16-era measurements.
 Partitioning is the caller's job — `Descriptors` is deliberately a flat buffer,
-and `Keypoint.level` is what makes it possible from outside.
+and `Keypoint.level` is what makes it possible from outside. Both pieces now
+come from `@webarkit/nft-tracker`: `buildTargetFromImage` prepares the
+multi-scale reference, and `buildLevelIndex` + `matchPerLevel` do the
+per-level matching over the target's stored level ranges. The page keeps its
+own explicit `detect → describe → match → estimateHomography →
+poseFromHomography` calls, because showing every stage is what it is for.
+
+The **"target from" selector** swaps `buildTargetFromImage` for a compiled
+`.wnft` decoded from disk, leaving every later stage untouched — see
+[Targets](#targets-targetspinballwnft) below.
 
 ### Why this one came first
 
@@ -80,10 +94,14 @@ either example's. Neither demo attempts it.
 
 ## `pinball-webcam-jsfeatnext-backend.html`
 
-The same pipeline, live, once per tick, with **no state carried between
-ticks** — each frame is detected, matched, and pose-estimated from nothing,
-exactly like a fresh call to the static demo's pipeline would be. A tick that
-fails to lock on has no memory of the tick before it that did.
+The same pipeline, live, through `NftTracker` — the page calls
+`tracker.process(frame, timestampMs)` once per tick and draws what comes
+back. Milestone M1 of
+[ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) is
+parity, so the tracker still carries **no state between ticks**: each frame is
+detected, matched and pose-estimated from nothing, and a tick that fails to
+lock on has no memory of the tick before it that did. The page still owns the
+camera, the loop and the canvas; the package owns none of them (ADR point 7).
 
 Parameters, chosen from measurements taken directly against these images (see
 the commit `938aab0`'s follow-on and this README's own history for the sweep):
@@ -117,15 +135,206 @@ the parameters above). Worth revisiting once the cost of a lighter multi-level
 search on the scene side is measured with the same rigour the current
 parameters got — tracked informally against this file for now, no issue yet.
 
+## `bench-nft.html`
+
+Measures the pipeline frame-by-frame on whatever device opens it, against a
+live webcam, a user-chosen video file, or one of two bundled reference clips
+(`videos/pinball-bench*.mp4`) — the two video sources loop, so a short clip
+still fills the measurement window and a run can be repeated; a webcam is
+already live and has no clip to loop. It changes nothing
+about how the pipeline runs — it only times it, in eight stages per frame:
+frame acquisition, grayscale conversion, `detect`, `describe`, `match`,
+`estimateHomography`, `poseFromHomography`, and the frame total — plus the
+tracker's own outcome (`locked on` / `too few matches` / `no consensus`).
+p50, p95 and max are kept over a configurable window (frame count), and the
+whole window is downloadable as JSON, with the user agent, the source and
+processing resolutions, and a device label typed in by hand — none of that
+is inferrable from the numbers alone, and a benchmark without it cannot be
+told apart from the one run before it.
+
+Two modes, selected before pressing Start:
+
+- **stateless pipeline** — the same inline `detect → describe → match →
+  estimateHomography → poseFromHomography` calls as the static demo above (the
+  webcam demo already runs `NftTracker` itself), against
+  `@webarkit/nft-tracker`'s own `DEFAULT_SCENE_LEVELS` /
+  `DEFAULT_MAX_SCENE_KEYPOINTS` / `DEFAULT_RATIO` / `DEFAULT_RANSAC_THRESHOLD`.
+- **NftTracker** — `tracker.process(frame, timestampMs)`, once per tick.
+
+Both modes are timed by wrapping the `CvBackend` instance passed to whichever
+one is active, so the stage split is available for `NftTracker` even though
+`process()` does not expose it itself. Milestone M1 of
+[ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) is
+parity, so the two modes are expected to report the same match/inlier counts
+here; the point of measuring both under one roof is to have a timing baseline
+in place *before* M2 gives the tracker state of its own, so that whatever
+that costs is visible as a change against this page rather than a number with
+nothing to compare it to.
+
+**Comparing the two modes on the same footage.** `timestampMs` passed to each
+tick is `performance.now()`, not `video.currentTime`, so two separate Start
+clicks against a looped video land at two different, arbitrary points in the
+loop by default — a stateless-pipeline run and an NftTracker run then measure
+different content, not just different code paths, which defeats the point of
+comparing them. The **"start at (s)"** field (either video source; a webcam
+has no timeline to seek) seeks there before the first tick, so running it once
+for each mode with the same value gives two runs over the same *starting*
+point. The export carries `startAtSeconds` (`null` for a webcam run) precisely
+so a downloaded report can be checked to have actually started from the same
+point, rather than trusted on the assumption that the field was set the same
+way both times.
+
+**A shared `startAt` is not a shared frame sequence, though.**
+`requestVideoFrameCallback` fires once per frame the browser actually
+*presents*, and a main thread busy for longer than the clip's own frame
+interval (real here: `total`'s own p50 sits close to a ~25fps clip's ~40ms
+budget) makes the browser coalesce to the latest decoded frame, skipping
+whichever ones went stale while it was blocked. Stateless-pipeline and
+NftTracker cost a slightly different number of milliseconds per frame, so
+they skip a different number of frames and drift apart — tick 47 in one run
+is not guaranteed to be the same clip moment as tick 47 in the other, even
+from an identical `startAt`. Each frame's own `mediaTimeSeconds` (from
+`requestVideoFrameCallback`'s metadata, or `video.currentTime` on the rAF
+fallback) is recorded for exactly this reason: **compare two exports by
+`mediaTimeSeconds`, not by array index or position in `frames`.**
+
+## The bundled reference clips: `videos/pinball-bench*.mp4`
+
+A "user-chosen video file" is reproducible only as long as whoever reruns the
+benchmark still has the exact same file — which nobody but the original tester
+does. The **"bundled clip"** radio loads one of these committed files instead
+(fetched by URL, no file picker), so a report from one run can actually be
+compared against a report from another: same footage, byte for byte, on
+whoever's device opens the page. The dropdown next to the radio picks which
+one; the export's `bundledClip` field records which was actually used, for
+the same reason `startAtSeconds` does.
+
+- **`pinball-bench.mp4`** — 11.96s, 1280×720, ~940 KB. The printed
+  `pinball.jpg` target on a wall, filmed frontally at an angle and a distance
+  that changes over the clip, the same real-scene conditions
+  `images/pinball-demo.jpg` was shot under for the static demo.
+- **`pinball-bench-table.mp4`** — 8.90s, 1080×1920 (portrait), ~2.3 MB. The
+  same target lying flat on a table, filmed from a steep oblique angle — a
+  much harder shot for a single-scale scene detector (see the webcam demo's
+  own "known limitation" section above) than the frontal wall clip, and
+  useful for exactly that reason.
+
+Both are re-encoded from a phone-captured original with `-an` (audio dropped;
+nothing here reads it) and `-crf 28` (visually lossless at this content and
+resolution, a large size cut from the source's typical ~15 Mbps phone
+bitrate). Beyond that the two commands differ, and the difference matters:
+
+```bash
+# pinball-bench.mp4 -- landscape source, explicitly downscaled
+ffmpeg -i original.mp4 -vf scale=1280:720 -an -c:v libx264 -preset medium -crf 28 -movflags +faststart videos/pinball-bench.mp4
+
+# pinball-bench-table.mp4 -- portrait phone recording, NO -vf at all
+ffmpeg -i original.mp4 -an -c:v libx264 -preset medium -crf 28 -movflags +faststart videos/pinball-bench-table.mp4
+```
+
+The table clip's source carries a `rotate: 90` / `displaymatrix: -90°` tag (a
+portrait recording stored as a 1920×1080 landscape-coded frame, tagged to
+display rotated). ffmpeg auto-applies that correction ONLY when no `-vf` is
+given; supplying one — as the wall clip's command does, to downscale it —
+replaces ffmpeg's own auto-rotate step instead of adding to it, so the
+rotation tag is silently dropped and the output plays back squished into the
+wrong aspect ratio. This is not hypothetical: it happened on the first attempt
+at this exact file, produced a `pinball-bench-table.mp4` that looked distorted
+and never locked onto anything, and cost the original raw recording (kept in
+no other copy) to find. Check `ffmpeg -i` for a `rotate`/`displaymatrix` line
+before deciding whether a re-encode may use `-vf` at all; if it must (to
+resize), bake the rotation in explicitly rather than omitting it, and verify
+with an extracted frame before compressing away the only copy.
+
+The wall clip's own processing-box note: 720p and CRF 28 keep it close in size
+to `images/pinball-demo.jpg` (877 KB) while still exceeding this page's own
+processing box (480×360, fitted with aspect preserved — a 16:9 source like
+this one actually lands at 480×270, not 480×360; the export's
+`processingResolution` records that real size, not the configured box) by a
+comfortable margin — downscaling further would start constraining what a
+*higher* processing resolution could be benchmarked against later. The table
+clip is left at its native 1080×1920 rather than downscaled to match, since
+after the rotation incident above the priority was verifying orientation over
+minimizing size a second time; revisit if its ~2.3 MB becomes a real problem.
+
+`pinball-bench.mp4` has an [ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md)
+action item 6 baseline measured against it, run **on** the reference device
+chosen there (a Samsung-class Android tablet), not merely sourced from
+footage recorded on it — see [`docs/benchmarks/README.md`](../docs/benchmarks/README.md)
+for the numbers, the device, and why that distinction is called out
+explicitly. Re-encoding a clip a baseline depends on is a change to that
+baseline's premise, not a refresh: a new baseline needs a new measurement,
+the same way recompiling `targets/pinball.wnft` needs updating the Rust test
+that reads it (see [Targets](#targets-targetspinballwnft) below).
+
+## Targets: `targets/pinball.wnft`
+
+The static demo's "target from" selector chooses between the two ways a target
+can reach the page:
+
+- **the image (built here)** — `buildTargetFromImage` at page load, over the
+  `<img>` the page just decoded. This is what the demo has always done.
+- **`targets/pinball.wnft`** — a target compiled once, offline, from the very
+  same `images/pinball.jpg`, committed, and `decode`d here.
+
+Everything after that point is identical for both, because a decoded target *is*
+a target. That is the whole claim of the file format, and the selector is the
+demo's way of showing it rather than asserting it — `packages/nft-tracker`'s
+`test/wnft_roundtrip.test.ts` is the assertion.
+
+**Expect the numbers to differ slightly between the two**, and do not read that
+as loss. The file carries the target exactly; the two runs simply do not start
+from the same pixels. This page builds its grey image with
+`OffscreenCanvas.drawImage`, whose resampling is implementation-defined, and the
+compiler used a box filter in Node. Measured on these images: 2067 keypoints and
+99 matches built here, 2062 and 91 from the file. Both lock on, and the
+recovered pose differs between them by less than it differs between two reloads
+of *either* one — RANSAC draws its minimal sample from `Math.random`, and the
+contract has no seed to pass it (webarkit/webarkit#24), so inlier counts and
+translations move a little on every run regardless of where the target came
+from.
+
+What *does* separate the two is the **"target prepared in"** row, which the page
+times apart from the per-frame **"pipeline"** row precisely so the difference is
+visible: building the target here costs the page an order of magnitude more than
+loading it does.
+
+Don't read either figure as the cost of the format, in either direction. The
+build row is worst on the first load, before the JIT has warmed up, and settles
+lower afterwards; the file row is mostly the `fetch()` of 110 KB, not the
+decode. Measured apart from both effects, the gap is roughly **200×** — 84 ms to
+build against 0.40 ms to decode. The [root README](../README.md#-compiled-targets-wnft)
+has the table and the conditions.
+
+The file is regenerated with, and only with:
+
+```bash
+npm run build
+node packages/nft-tracker/bin/compile-target.mjs examples/images/pinball.jpg \
+    -o examples/targets/pinball.wnft --physical-size 210x262.5
+```
+
+The physical size is the sheet the reference was printed on: 210 mm wide, and a
+height that keeps the image's own 4:5 aspect rather than a stationery size that
+does not. Leave it out and model-plane units stay level-0 pixels — see
+[`compile-target`'s options](../packages/nft-tracker/README.md#compiling-a-target).
+
+`crates/wnft-format`'s `tests/real_target.rs` reads this file too. It is the
+first real target both codecs see — every file in `fixtures/nft-target/` is
+synthetic — so **recompiling it is a change to that test's expectations**, not a
+refresh. Committed on purpose, for the same reason: a `.wnft` that changed
+silently would make the demo and the Rust suite disagree about what the
+repository means by "the pinball target".
+
 ## Shared code: `js/pinball-shared.mjs`
 
-Both demos need the same three pieces — `toGray` (any drawable source to the
-contract's `GrayImage`), `project` (apply a homography to a point), and the
-per-pyramid-level matching strategy (`buildLevelIndex` + `matchPerLevel`) that
-makes multi-scale target matching actually work (see the static demo's own
-notes on why pooling levels into one `match()` call halves the results). Kept
+Both demos need the same two pieces — `toGray` (any drawable source to the
+contract's `GrayImage`) and `project` (apply a homography to a point). Kept
 in one module so the two pages can't drift against each other the way the
-static demo's own inline copy did before this file existed.
+static demo's own inline copy did before this file existed. The
+per-pyramid-level matching strategy that used to live here moved into
+[`@webarkit/nft-tracker`](../packages/nft-tracker) — it is tracker logic, not
+page logic, and the tracker needs it too. What stayed is what touches the DOM.
 
 ## Images
 
