@@ -1,6 +1,6 @@
 {
   "name": "@webarkit/nft-tracker",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Natural-feature tracking for planar image targets, written above the @webarkit/cv-backend-spec CvBackend contract.",
   "license": "LGPL-3.0-or-later",
