@@ -130,6 +130,15 @@ The expected cost of Option A on a WASM backend is small but unmeasured: trackin
 
 - The point 5 thresholds, after the first measurements on the reference device.
 - Whether `nft-tracker` should be split (e.g. the target compiler as its own package) once it grows.
+- The 33 ms/frame real-time budget itself: the M1 stateless baseline, measured
+  **on the reference device** ([`docs/benchmarks/README.md`](../benchmarks/README.md#2026-09-19--adr-0001-action-item-6-baseline)),
+  exceeds it by roughly 3× **at p50**, not just at p95 (101.1 ms median
+  against a 33 ms budget; `match` alone is 62.7 ms), before M2 adds any
+  tracking-state cost on top. Whether that means the budget was optimistic,
+  the reference device is on the slow end of "mid-range," or M2's savings (no
+  detection on tracking-state frames) bring the number back under budget even
+  though M1 does not, is open until M2 has its own on-device numbers to
+  compare.
 
 ## Action items
 
@@ -138,7 +147,7 @@ The expected cost of Option A on a WASM backend is small but unmeasured: trackin
 3. [ ] Scaffold `packages/nft-tracker` (package.json, tsconfig, vitest, LGPL headers) and append it to the root `build` script **after** the spec — the build order is load-bearing.
 4. [ ] **M1 — parity:** a detection-only `NftTracker` equivalent to the webcam demo; move `buildLevelIndex` / `matchPerLevel` from `examples/js/pinball-shared.mjs` into the package, with tests.
 5. [ ] File the contract issues listed under "Contract gaps".
-6. [ ] Pick the reference device; record baseline numbers for the stateless demo.
+6. [x] Pick the reference device; record baseline numbers for the stateless demo. Reference device: a Samsung-class Android tablet, model `Tab_9_WiFi`. See [`docs/benchmarks/README.md`](../benchmarks/README.md#2026-09-19--adr-0001-action-item-6-baseline) (2026-09-19) — measured **on-device**, not on a desktop browser against tablet-sourced footage, a distinction that matters here (see that file's own note on why).
 7. [ ] **M2** patch tracker + state machine → **M3** IPPE + One Euro filter → **M4** target compiler with synthetic views. Each milestone is measured against the previous one on the same recorded sequences.
 
 ## References
