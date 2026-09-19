@@ -77,6 +77,41 @@ is a materially different problem than the laptop numbers implied, and this
 is now the number to measure any of that against — not the 33 ms figure taken
 on faith, and not the laptop's 36 ms p95 that looked merely "close."
 
+### On-device, the harder clip: `pinball-bench-table.mp4`
+
+Same device, same session, same `stateless` mode, `startAtSeconds: 0` — the
+oblique table clip instead of the frontal wall clip. Not itself an ADR-0001
+baseline (item 6 only asks for one), but the first apples-to-apples
+comparison of both bundled clips **on the reference device**, which the
+laptop-only table-clip run below could not give.
+
+| stage (p50 / p95 / max, ms) | wall (`pinball-bench.mp4`) | **table (`pinball-bench-table.mp4`)** |
+|---|---|---|
+| acquire | 18.9 / 28.3 / 29.0 | 37.0 / 40.3 / 47.0 |
+| gray | 1.5 / 1.7 / 5.2 | 0.9 / 1.0 / 5.4 |
+| detect | 5.3 / 7.6 / 8.4 | 4.5 / 7.2 / 23.6 |
+| describe | 10.2 / 10.8 / 17.6 | 10.1 / 10.7 / 18.1 |
+| match | 62.7 / 65.1 / 84.8 | 64.1 / 69.4 / 89.0 |
+| estimateHomography | 2.1 / 4.0 / 7.4 | 1.6 / 3.1 / 3.8 |
+| poseFromHomography | 0.1 / 0.1 / 0.2 | 0.1 / 0.2 / 0.4 |
+| **total** | **101.1 / 113.0 / 135.9** | **119.3 / 126.3 / 155.4** |
+
+Raw file: `2026-09-19-tab9-ondevice-stateless-pinball-bench-table.json`
+(101-frame window, not the usual 120 — the run was stopped before the window
+filled; every recorded frame is still a valid, independently-timed sample).
+
+`acquire` roughly doubles (the table clip's native 1080×1920 frame is larger
+to draw and read back than the wall clip's 1280×720, before either is
+downscaled for processing — the same effect the laptop comparison showed,
+just starting from a much higher on-device floor). `match` and `describe`
+barely move, which argues those costs are dominated by the fixed
+`maxKeypoints`/ratio-test budget rather than by scene content. Net effect:
+`total` p50 is **119.3 ms — roughly 3.6× the 33 ms budget**, the worst
+number recorded so far. Whether a future scene-detection change (multi-level
+live-frame search, the webcam demo's own documented "known limitation")
+narrows or widens this gap between the two clips is now checkable against
+this table, not just against the wall clip alone.
+
 ### Why the laptop numbers are kept
 
 `2026-09-19-laptop-stateless-pinball-bench.json` (wall clip) and
