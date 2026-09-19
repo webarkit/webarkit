@@ -138,7 +138,10 @@ The expected cost of Option A on a WASM backend is small but unmeasured: trackin
   the reference device is on the slow end of "mid-range," or M2's savings (no
   detection on tracking-state frames) bring the number back under budget even
   though M1 does not, is open until M2 has its own on-device numbers to
-  compare.
+  compare. The same device against the harder, oblique `pinball-bench-table.mp4`
+  clip is worse still: 119.3 ms p50, roughly 3.6× the budget, with `acquire`
+  alone roughly doubling on the larger native frame — see that same
+  benchmarks file's follow-on section.
 
 ## Action items
 
