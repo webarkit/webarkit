@@ -112,6 +112,33 @@ live-frame search, the webcam demo's own documented "known limitation")
 narrows or widens this gap between the two clips is now checkable against
 this table, not just against the wall clip alone.
 
+### What this implies for M2
+
+Two facts fall out of the breakdown above without needing a new measurement:
+
+- `match` alone is 62.7 ms p50 on the wall clip — nearly twice the entire
+  33 ms budget by itself, before `describe` (10.2 ms) or `acquire` (18.9 ms)
+  are even counted.
+- `match` and `describe` barely move between the wall clip and the oblique
+  one (62.7→64.1 ms, 10.2→10.1 ms) while `acquire` roughly doubles
+  (18.9→37.0 ms) with the native frame size. The matching cost tracks the
+  fixed `maxKeypoints`/ratio-test budget, not scene content.
+
+What that implies, stated as what the numbers show rather than as an M2
+design decision (that planning belongs to M2 itself, not here):
+
+- This baseline's `total` is the re-acquisition cost — the worst case, for a
+  frame with nothing carried over. A tracking-state frame (M2) runs none of
+  `detect`/`describe`/`match`, so M2's number will not be "this baseline
+  minus a constant"; it is a different, currently-unmeasured pipeline.
+- `maxKeypoints` (300, fixed today) is the parameter directly behind the
+  largest single cost, which this data says makes it worth tuning rather
+  than leaving as a constant.
+- `acquire` tracks the source's native frame size, not the processing size
+  it is downscaled to — so it is addressed by downscaling *before*
+  acquisition (constraining what the camera or decoder delivers), not after
+  it the way this benchmark's own `PROC_WIDTH`/`PROC_HEIGHT` box does today.
+
 ### Why the laptop numbers are kept
 
 `2026-09-19-laptop-stateless-pinball-bench.json` (wall clip) and
