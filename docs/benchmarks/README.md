@@ -139,6 +139,49 @@ design decision (that planning belongs to M2 itself, not here):
   acquisition (constraining what the camera or decoder delivers), not after
   it the way this benchmark's own `PROC_WIDTH`/`PROC_HEIGHT` box does today.
 
+### A second on-device sample: Oppo A72
+
+Not the ADR-0001 reference device (that stays `Tab_9_WiFi`; picking one is
+what item 6 asked for, and this doesn't change it) — a second real phone,
+run the same way, to check whether the budget overrun above is specific to
+one tablet or a broader pattern. Same clip, same mode, same method: on the
+phone's own Chrome, reached over USB via `adb reverse`, confirmed by
+`userAgent`: `Mozilla/5.0 (Linux; Android 10; K) ... Chrome/152.0.0.0
+Mobile Safari/537.36`. Wall clip (`pinball-bench.mp4`), `stateless`,
+`startAtSeconds: 0`, 110-frame window (stopped before the usual 120 filled;
+every recorded frame is still valid).
+
+| stage (p50 / p95 / max, ms) | `Tab_9_WiFi` | **Oppo A72** |
+|---|---|---|
+| acquire | 18.9 / 28.3 / 29.0 | 22.7 / 34.1 / 52.6 |
+| gray | 1.5 / 1.7 / 5.2 | 2.1 / 4.0 / 24.4 |
+| detect | 5.3 / 7.6 / 8.4 | 7.1 / 13.6 / 40.3 |
+| describe | 10.2 / 10.8 / 17.6 | 11.6 / 17.1 / 20.9 |
+| match | 62.7 / 65.1 / 84.8 | 71.9 / 80.0 / 102.8 |
+| estimateHomography | 2.1 / 4.0 / 7.4 | 2.1 / 6.5 / 45.0 |
+| poseFromHomography | 0.1 / 0.1 / 0.2 | 0.1 / 0.2 / 1.5 |
+| **total** | **101.1 / 113.0 / 135.9** | **117.4 / 145.2 / 217.2** |
+
+Raw file: `2026-09-19-oppo-a72-ondevice-stateless-pinball-bench.json`.
+
+Two things stand out. First, the Oppo A72 is slower on **every** stage, not
+just the expected ones — consistent with weaker hardware (Snapdragon 665, a
+budget-tier chip) rather than a fluke in one measurement. `total` p50 is
+117.4 ms, roughly **3.6× the 33 ms budget** — the same order as the
+oblique-clip result above, but on the *easy* frontal clip this time. Second,
+the spread is much wider relative to the median than `Tab_9_WiFi` showed:
+`detect` max (40.3 ms) is 5.7× its own p50, and `estimateHomography` max
+(45.0 ms) is 21× its own p50 — both far outside what `Tab_9_WiFi` showed
+for the same stages (1.6× and 3.5× respectively). A single run can't say
+whether that is thermal throttling, background-app interference, or this
+device simply being noisier; it is recorded here as an open question, not
+an explanation.
+
+Read together with the tablet's two runs, this is the answer to "is the
+budget overrun specific to one device": no — a second, independent
+mid-range Android phone exceeds it by a comparable or larger margin, on the
+easier of the two clips.
+
 ### Why the laptop numbers are kept
 
 `2026-09-19-laptop-stateless-pinball-bench.json` (wall clip) and
