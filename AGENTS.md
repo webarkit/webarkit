@@ -54,7 +54,8 @@
 ## Design records
 
 - Architecture decisions live in [`docs/adr/`](./docs/adr/); the formats and protocols they decide are specified in [`docs/specs/`](./docs/specs/). Read the relevant record before changing anything it covers.
-- **An accepted ADR is not edited — it is superseded by a new one.** To change an accepted decision, write the next ADR, state what it supersedes, and mark the old one `Superseded by ADR-XXXX`. Only ADRs still in `Proposed` are edited in place.
+- **An accepted ADR's decision is never edited in place.** Changing it needs the next ADR: state what it supersedes there, and mark the old one `Superseded by ADR-XXXX`. Only ADRs still in `Proposed` are edited freely.
+- Three edits to an accepted ADR are allowed in place, because none of them changes the decision: ticking off an action item, fixing a broken link, and adding an entry under "To revisit" that records a measurement or a fact which may later justify revisiting the decision. The third is the one worth explaining, since it looks the most like changing the decision without actually doing so: it doesn't change what was decided, it records the evidence a future superseding ADR would be written from — and if that evidence is written down somewhere else instead, the next person to read the ADR weighs the original decision without it.
 
 ## Git & contribution workflow
 
