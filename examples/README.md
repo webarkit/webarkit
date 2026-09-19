@@ -257,12 +257,15 @@ clip is left at its native 1080×1920 rather than downscaled to match, since
 after the rotation incident above the priority was verifying orientation over
 minimizing size a second time; revisit if its ~2.3 MB becomes a real problem.
 
-Neither clip has an ADR-0001 action item 6 baseline measured against it yet —
-that step is still open. Once one is recorded, note here (and in the ADR)
-which clip and which device it used: re-encoding a clip a baseline depends on
-is a change to that baseline's premise, not a refresh, the same way
-recompiling `targets/pinball.wnft` needs updating the Rust test that reads it
-(see [Targets](#targets-targetspinballwnft) below).
+`pinball-bench.mp4` has an [ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md)
+action item 6 baseline measured against it, run **on** the reference device
+chosen there (a Samsung-class Android tablet), not merely sourced from
+footage recorded on it — see [`docs/benchmarks/README.md`](../docs/benchmarks/README.md)
+for the numbers, the device, and why that distinction is called out
+explicitly. Re-encoding a clip a baseline depends on is a change to that
+baseline's premise, not a refresh: a new baseline needs a new measurement,
+the same way recompiling `targets/pinball.wnft` needs updating the Rust test
+that reads it (see [Targets](#targets-targetspinballwnft) below).
 
 ## Targets: `targets/pinball.wnft`
 
