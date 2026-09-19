@@ -276,10 +276,11 @@
               <input type="file" id="fileInput" accept="video/*" disabled />
             </div>
             <div class="row">
-              <label
-                ><input type="radio" name="source" value="bundled" /> bundled clip
-                (<code>videos/pinball-bench.mp4</code>)</label
-              >
+              <label><input type="radio" name="source" value="bundled" /> bundled clip</label>
+              <select id="bundledClip" disabled>
+                <option value="pinball-bench.mp4" selected>wall, frontal (pinball-bench.mp4)</option>
+                <option value="pinball-bench-table.mp4">table, oblique (pinball-bench-table.mp4)</option>
+              </select>
             </div>
             <div class="row">
               <label
@@ -402,6 +403,7 @@
       const octx = overlay.getContext("2d");
       const placeholder = $("placeholder");
       const fileInput = $("fileInput");
+      const bundledClipSelect = $("bundledClip");
       const startAtInput = $("startAt");
       const startButton = $("start");
       const stopButton = $("stop");
@@ -452,6 +454,8 @@
        * are live UI state and can change between Stop and Download just as easily as `video.videoWidth` does. */
       let lastSource = null;
       let lastMode = null;
+      /** Which bundled clip a "bundled" run actually used, or `null` for any other source. */
+      let lastBundledClip = null;
       /**
        * The seek point of the last "video file" run, in seconds, or `null`
        * for a webcam run (nothing to seek). Recorded in the export so two
@@ -722,9 +726,9 @@
         return loadSeekAndPlay(startAt);
       }
 
-      /** The bundled reference clip, fetched by URL rather than picked by the user -- see the "bundled clip" radio. */
-      async function startBundled(startAt) {
-        video.src = "./videos/pinball-bench.mp4";
+      /** A bundled reference clip, fetched by URL rather than picked by the user -- see the "bundled clip" radio. */
+      async function startBundled(startAt, clipFile) {
+        video.src = `./videos/${clipFile}`;
         return loadSeekAndPlay(startAt);
       }
 
@@ -789,6 +793,7 @@
       function updateSourceInputs() {
         const source = currentSource();
         fileInput.disabled = source !== "file";
+        bundledClipSelect.disabled = source !== "bundled";
         // Seeking only means anything against a video with a timeline -- a
         // webcam has none.
         startAtInput.disabled = source === "webcam";
@@ -999,6 +1004,10 @@
           deviceLabel: $("deviceLabel").value || null,
           mode: lastMode,
           source: lastSource,
+          // Which of the two bundled clips a "bundled" run used, or `null`
+          // for any other source -- same reproducibility reasoning as
+          // `startAtSeconds` below, now that there is more than one.
+          bundledClip: lastBundledClip,
           sourceResolution: lastSourceResolution,
           // Seconds into the file the run was seeked to before Start, or
           // `null` for a webcam run (nothing to seek) -- what makes a
@@ -1057,12 +1066,14 @@
             // source.
             const source = currentSource();
             let startAtSeconds = null;
+            let bundledClip = null;
             if (source === "webcam") {
               await startWebcam();
             } else {
               const requestedStartAt = Math.max(0, Number(startAtInput.value) || 0);
               if (source === "bundled") {
-                startAtSeconds = await startBundled(requestedStartAt);
+                bundledClip = bundledClipSelect.value;
+                startAtSeconds = await startBundled(requestedStartAt, bundledClip);
               } else {
                 const file = fileInput.files[0];
                 if (!file) throw new Error("Choose a video file first.");
@@ -1078,6 +1089,7 @@
             lastSource = source;
             lastMode = mode;
             lastStartAtSeconds = startAtSeconds;
+            lastBundledClip = bundledClip;
             history = [];
             running = true;
             stopButton.disabled = false;
@@ -1088,7 +1100,7 @@
               src === "webcam"
                 ? "A webcam source needs camera permission and a secure context (https://, or http://localhost)."
                 : src === "bundled"
-                  ? "The bundled clip needs the tab in the foreground to autoplay, and examples/videos/pinball-bench.mp4 served alongside this page."
+                  ? `The bundled clip needs the tab in the foreground to autoplay, and examples/videos/${bundledClipSelect.value} served alongside this page.`
                   : "A video file source needs a file chosen and, for autoplay, the tab in the foreground.";
             showError(`${e.message}\n\n${hint}`);
             // A camera stream can be live (getUserMedia succeeded, then
