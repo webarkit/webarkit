@@ -43,6 +43,13 @@
   generator produces.
 - **`fixtures/nft-target/` is generated, shared, and read-only for Rust.** The TypeScript generator produces it; `crates/wnft-format` consumes it and MUST NEVER regenerate it. A second implementation that rebuilt the corpus from its own writer would be checking itself against itself, and §8.2 item 4 would prove nothing. See [`fixtures/nft-target/README.md`](./fixtures/nft-target/README.md).
 
+## Test assets
+
+- **Deterministic fixtures that a committed script regenerates** — the `.wnft` corpus in `fixtures/nft-target/`, the PGMs in `packages/nft-tracker/test/fixtures/`, `examples/targets/*.wnft` — stay in this repository, next to their generator. A format change must touch the spec, the fixtures and both codecs in one PR; splitting them out into another repository makes it possible to forget one of the three.
+- **Opaque binary media** (video, photos) is added only when it serves a reproducible measurement, is re-encoded as small as the measurement allows, and is replaced as rarely as possible — every replacement leaves the old bytes in this repository's git history forever.
+- When the media total passes roughly 50 MB, or a clip needs replacing more than once or twice, move it to a versioned npm package (`@webarkit/test-assets`, a devDependency) instead of committing it directly. Not a submodule, and not a branch-name-pinned sibling repository the way OpenCV vendors `opencv_extra`: both let the two trees drift apart and fail CI for reasons unrelated to the change at hand. Current total: about 3.2 MB, across the two clips in `examples/videos/`.
+- **Benchmark exports** (`docs/benchmarks/`) keep the per-frame JSON for the runs a milestone is measured against; the directory's own README carries the summary. If the per-frame files become numerous, keep the summaries and only the most recent runs' raw files, and say so there when that happens.
+
 ## Conventions
 
 - **Language:** every repository artifact — code, comments, commit messages, PR titles and bodies, issues, docs — is written in English, whatever language the conversation with the agent uses.
