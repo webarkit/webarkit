@@ -26,7 +26,12 @@
  */
 
 /**
- * The `.wnft` 0.2 conformance corpus (§8.1).
+ * The `.wnft` 0.3 conformance corpus (§8.1).
+ *
+ * `fixtures/nft-target/0.2/` is **not** this script's output any more. It is
+ * the frozen corpus of a released version (§8.3), and this script must never
+ * write to it again: regenerating it would silently rewrite the files a
+ * backward-compatibility test exists to hold still.
  *
  * Fixtures are "produced by a committed, deterministic generator script and
  * never edited by hand". Two halves, and the split is the point:
@@ -55,7 +60,7 @@ import { decode } from "../dist/target/format/decode.js";
 import { encode } from "../dist/target/format/encode.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const OUT = join(HERE, "..", "..", "..", "fixtures", "nft-target", "0.2");
+const OUT = join(HERE, "..", "..", "..", "fixtures", "nft-target", "0.3");
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -83,7 +88,7 @@ function baseTarget() {
     const Q = 4;
 
     return {
-        formatVersion: "0.2",
+        formatVersion: "0.3",
         generator: "@webarkit/nft-tracker fixtures",
         extensionsUsed: [],
         extensionsRequired: [],
@@ -218,7 +223,7 @@ const clone = (manifest) => JSON.parse(JSON.stringify(manifest));
 export function buildFixtures() {
     const files = new Map();
     const expectations = {
-        formatVersion: "0.2",
+        formatVersion: "0.3",
         valid: [],
         invalid: [],
         warnings: [],
@@ -392,7 +397,7 @@ export function buildFixtures() {
     }
     {
         const m = clone(baseManifest);
-        m.format.version = "0.3";
+        m.format.version = "0.4";
         addInvalid("unsupported-format-version", fileOf(m, baseBin), "UNSUPPORTED_FORMAT_VERSION");
     }
     {
@@ -446,6 +451,23 @@ export function buildFixtures() {
     withManifest("level-sizes-growing", "INCONSISTENT_DATA", (m) => {
         m.pyramid.levelSizes[1] = [65, 24];
     });
+    withManifest("patch-size-zero", "BAD_MANIFEST", (m) => {
+        // §5.7: unlike `dimensions`, `0` is not legal for `patchSize`. The
+        // pixels accessor is zeroed along with it — with P = 0 the expected
+        // count Q x P x P is 0 — so the domain is the only rule broken and
+        // the case cannot be satisfied by a BAD_LAYOUT instead.
+        m.patches.patchSize = 0;
+        m.accessors[m.patches.pixels].count = 0;
+    });
+    withManifest("physical-size-absent", "BAD_MANIFEST", (m) => {
+        // §5.3: required. Only an explicit null means the size is unknown.
+        delete m.meta.physicalSizeMm;
+    });
+    withManifest("extensions-used-null", "BAD_MANIFEST", (m) => {
+        // §5.1 in 0.3: an explicit null is BAD_MANIFEST on every optional
+        // key. Through 0.2 these two arrays read it as [].
+        m.extensionsUsed = null;
+    });
     // levelStart and kpIndex live in the BIN chunk, so these cases edit the
     // payload rather than the manifest text.
     {
@@ -468,6 +490,19 @@ export function buildFixtures() {
         const kpIndex = baseManifest.accessors[baseManifest.descriptorSets[0].kpIndex].offset;
         dv.setUint32(kpIndex, 19, true); // row 0 (level 0) -> keypoint 19 (level 1)
         addInvalid("kpindex-wrong-level", fileFrom(baseText, bin), "INCONSISTENT_DATA");
+    }
+    {
+        // A within-level permutation: rows 0 and 1 swapped, both on level 0.
+        // M = N, no value repeats and every row still lands on a keypoint of
+        // its own level, so every rule but the identity itself holds — which
+        // is why §5.6 (rev 4) had to make the identity a reader rule and not
+        // only a writer one. Without WKNF_multiview this is INCONSISTENT_DATA.
+        const bin = baseBin.slice();
+        const dv = new DataView(bin.buffer);
+        const kpIndex = baseManifest.accessors[baseManifest.descriptorSets[0].kpIndex].offset;
+        dv.setUint32(kpIndex, 1, true);
+        dv.setUint32(kpIndex + 4, 0, true);
+        addInvalid("kpindex-permutation", fileFrom(baseText, bin), "INCONSISTENT_DATA");
     }
     {
         const bin = baseBin.slice();
@@ -623,6 +658,19 @@ export function buildFixtures() {
         const m = JSON.parse(parts.manifestText);
         m.descriptorSets[0].params = { b: 4, a: 3, 9: 1, 10: 2 };
         addNoncanonical("unsorted-params", fileOf(m, parts.bin), numericKeysPath);
+    }
+    {
+        // descriptorSets in an order the canonical writer would not emit.
+        // §5.6 has the reader keep the file's order and §7.3 has the writer
+        // sort on encode, so encode(decode(f)) lands back on the sorted
+        // counterpart. A reader that sorted on decode, or a writer that did
+        // not sort on encode, fails against this pair — and nothing else in
+        // the corpus tells those two apart.
+        const several = files.get("valid/several-sets.wnft");
+        const parts = split(several);
+        const m = JSON.parse(parts.manifestText);
+        m.descriptorSets = m.descriptorSets.slice().reverse();
+        addNoncanonical("unsorted-sets", fileOf(m, parts.bin), "valid/several-sets.wnft");
     }
 
     files.set(
