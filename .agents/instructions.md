@@ -8,6 +8,6 @@ It also covers the exact commands CI runs — `npm install`, `npm run build`, `n
 
 Design records live in [`docs/adr/`](../docs/adr/) and the formats they decide in [`docs/specs/`](../docs/specs/); read the relevant one before changing anything it covers. An accepted ADR's decision is never edited in place.
 
-Some packages carry their own `AGENTS.md` with package-local detail — today [`packages/nft-tracker`](../packages/nft-tracker/AGENTS.md). Those add to the root file and never override it.
+Every package carries its own `AGENTS.md` with package-local detail — [cv-backend-spec](../packages/cv-backend-spec/AGENTS.md), [cv-backend-jsfeatnext](../packages/cv-backend-jsfeatnext/AGENTS.md), [nft-tracker](../packages/nft-tracker/AGENTS.md) — each with a thin `CLAUDE.md` importing it. Those add to the root file and never override it.
 
 No package is published to npm yet (all are pre-1.0, and `nft-tracker` is `"private": true`) — see the root [README](../README.md) for building from source and for how this repo fits into the wider webarkit ecosystem (jsfeatNext, WebARKitLib-rs, PureCV, jsartoolkitNFT).

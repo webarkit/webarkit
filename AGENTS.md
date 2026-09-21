@@ -2,7 +2,7 @@
 
 > Canonical instructions for AI coding agents (Claude Code, GitHub Copilot, Cursor, Antigravity, Codex, …).
 > This is the **single source of truth**; `CLAUDE.md`, `.agents/instructions.md`, and `.github/copilot-instructions.md` point here.
-> A package may carry its own `AGENTS.md` for package-local detail — today [`packages/nft-tracker`](./packages/nft-tracker/AGENTS.md), which holds ADR-0001's dependency and portability rules and the fixture-generator hazards. Those files **add to** this one and never override it; where they disagree, this file wins and the package file is the bug.
+> Every package carries its own `AGENTS.md` for package-local detail — [`cv-backend-spec`](./packages/cv-backend-spec/AGENTS.md), [`cv-backend-jsfeatnext`](./packages/cv-backend-jsfeatnext/AGENTS.md), [`nft-tracker`](./packages/nft-tracker/AGENTS.md) — each with a thin `CLAUDE.md` importing it. Those files **add to** this one and never override it; where they disagree, this file wins and the package file is the bug.
 
 ## What this project is
 
@@ -27,8 +27,8 @@
 ## Architecture — read this before editing
 
 - npm-workspaces monorepo (`workspaces: ["packages/*"]`), **no Turborepo/Nx yet** — deliberately: with three packages in one straight line, ordering the build steps by hand in the root `package.json` script is still simpler than standing up a task-graph tool. Revisit once there are several packages, or once builds start depending on each other's outputs in a way plain scripts can't express (see the root README's Layout section for the fuller reasoning, and [turbo.build/repo/docs](https://turbo.build/repo/docs) / [nx.dev](https://nx.dev) if evaluating that later).
-- `packages/cv-backend-spec` — the `CvBackend` **contract only**: types and interfaces, no implementation. Neutral types (typed arrays, plain structs) — no `matrix_t`, no jsfeatNext- or WASM-specific types.
-- `packages/cv-backend-jsfeatnext` — jsfeatNext's implementation of that contract. Depends on **both** the spec and `@webarkit/jsfeat-next` (`^0.17.0`); neither of those depends on it — keep that dependency arrow one-directional.
+- `packages/cv-backend-spec` — the `CvBackend` **contract only**: types and interfaces, no implementation. Neutral types (typed arrays, plain structs) — no `matrix_t`, no jsfeatNext- or WASM-specific types. Zero runtime dependencies, and it must stay that way. See its own [`AGENTS.md`](./packages/cv-backend-spec/AGENTS.md).
+- `packages/cv-backend-jsfeatnext` — jsfeatNext's implementation of that contract, and the org's numeric oracle. Depends on **both** the spec and `@webarkit/jsfeat-next` (`^0.17.0`); neither of those depends on it — keep that dependency arrow one-directional. See its own [`AGENTS.md`](./packages/cv-backend-jsfeatnext/AGENTS.md).
 - `packages/nft-tracker` — the NFT tracker, written **above** the contract ([ADR-0001](./docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md)), and the TypeScript codec for the `.wnft` target format in `src/target/format`. Its only runtime dependency is the spec; every backend is a devDependency and is injected by the caller, so nothing in its `src/` may import one. It has its own [`AGENTS.md`](./packages/nft-tracker/AGENTS.md) for the rest, including the fixture generator's delete-before-write behaviour.
 - `examples/` — demos live at the repo root, not inside a package, because they exercise the **contract**, not one implementation. See [`examples/README.md`](./examples/README.md).
 - **No package is published to npm yet** (all pre-1.0, and `nft-tracker` is additionally `"private": true`). Don't write installation instructions elsewhere in the repo that assume `npm install @webarkit/cv-backend-*` works from the public registry — it doesn't yet.
