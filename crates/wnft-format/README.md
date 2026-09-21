@@ -1,7 +1,7 @@
 # `wnft-format`
 
 Reader and canonical writer for the WebARKit `.wnft` NFT target format
-(format **0.2**). The specification is the source of truth:
+(format **0.3**). The specification is the source of truth:
 [`docs/specs/nft-target-format.md`](../../docs/specs/nft-target-format.md).
 Section references throughout this crate and this README (§4.2, §6.1, …)
 point into it — where code and document disagree, the document wins and the
@@ -94,7 +94,7 @@ cd crates/wnft-format
 # Seed the corpus from the real fixtures. Random bytes die at the magic (§4.1);
 # mutations of real files are what reach the manifest and the accessors.
 mkdir -p fuzz/corpus/decode
-cp ../../fixtures/nft-target/0.2/*/*.wnft fuzz/corpus/decode/
+cp ../../fixtures/nft-target/0.3/*/*.wnft fuzz/corpus/decode/
 
 cargo +nightly fuzz run decode -- -max_total_time=300
 ```
