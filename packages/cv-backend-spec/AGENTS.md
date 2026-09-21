@@ -41,13 +41,20 @@ not an edit to an accepted one.
 
 `DescriptorKind` and `DescriptorNorm` in `src/cv_backend.ts` are
 **hand-transcribed** into `crates/wnft-format/src/known.rs`. Nothing links the
-two — no codegen, no shared schema, no test that compares them.
+two — no codegen, no shared schema, and no test in either suite that compares
+them.
 
 Adding or renaming a member on either union therefore has to be done in both
 places, in the same commit. Skip the Rust side and the failure is invisible for
 a long time: it appears only as a descriptor set that one codec warns about and
 drops while the other accepts it, on a `.wnft` file no fixture contains, so the
-shared corpus stays green. Check `known.rs` whenever you touch either union.
+shared corpus stays green.
+
+`npm run check:contract` is what catches it. Run it after touching either
+union — a green `npm test` and `cargo test` prove nothing here, which is the
+whole reason that script exists. It also checks the TypeScript codec's own
+`known.ts` lists against these unions, and both codecs' supported format and
+container versions against each other.
 
 ## Commands
 

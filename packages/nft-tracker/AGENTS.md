@@ -103,6 +103,18 @@ Also:
   Recompiling it is a change to that test's expectations, not a refresh: update
   both in one commit, or do not recompile.
 
+## `known.ts` is one end of a hand-made link
+
+`src/target/format/known.ts` enumerates the contract's `DescriptorKind`,
+`DescriptorNorm` and `DetectorKind` unions, and `crates/wnft-format/src/known.rs`
+transcribes the same lists by hand for the peer codec. TypeScript pins its end
+at compile time (`satisfies`, plus an `Exclude<...>` guard for the other
+direction); Rust has no view of the union at all.
+
+So after touching `known.ts`, run `npm run check:contract`. It is the only
+thing that compares the two codecs' lists, and neither test suite can: a member
+in one and not the other only shows up on a `.wnft` file no fixture contains.
+
 ## Before you open a PR
 
 Beyond the root file's rules: run the `nft-reviewer` agent on the diff. It
