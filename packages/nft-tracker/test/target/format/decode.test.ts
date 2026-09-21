@@ -172,6 +172,18 @@ describe("decode — one accessor materialised once (§6.1)", () => {
         // staying aligned and falling back on views.
         expect(kp.x.buffer.byteLength).toBe(4);
     });
+
+    it("keeps distinct accessors distinct", () => {
+        // The negative half. Without it, a reader that handed every f32 field
+        // one shared array would satisfy both tests above while being
+        // catastrophically wrong, and nothing here would notice.
+        const r = decode(validBytes());
+        expect(r.ok, r.ok ? "" : `${r.error}: ${r.detail}`).toBe(true);
+        if (!r.ok) return;
+        const kp = r.target.keypoints;
+        expect(kp.x).not.toBe(kp.y);
+        expect([...kp.x]).not.toEqual([...kp.y]);
+    });
 });
 
 describe("decode — a valid file", () => {

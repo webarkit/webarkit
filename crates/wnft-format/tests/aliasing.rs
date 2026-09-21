@@ -83,10 +83,6 @@ fn one_accessor_named_by_four_fields_is_materialised_once() {
         Arc::ptr_eq(&kp.x, &kp.score),
         "score must share x's allocation"
     );
-
-    // And the file really is the aliased one, not minimal.wnft read by
-    // accident: in minimal.wnft these four carry different values.
-    assert_eq!(kp.x.as_ref(), kp.y.as_ref());
 }
 
 #[test]

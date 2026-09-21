@@ -61,6 +61,7 @@ import type { DecodeOptions } from "../../../src/target/format/limits.js";
 // declarations. It is imported rather than duplicated so that "the corpus is
 // what its generator produces" is a real check and not a second generator.
 import { buildFixtures } from "../../../scripts/generate-fixtures.mjs";
+import { compareByCodePoint } from "../../../src/target/format/canonical-json.js";
 import { SUPPORTED_FORMAT_VERSION } from "../../../src/target/format/known.js";
 import { CORPUS_ROOT, FIXTURES_DIR, FROZEN_VERSIONS } from "./fixtures-dir.js";
 
@@ -120,12 +121,16 @@ const withSortedSets = (value: unknown): unknown => {
     const o = plain(value) as Record<string, unknown>;
     const sets = o["descriptorSets"];
     if (!Array.isArray(sets)) return o;
+    // §7.3's comparator, not `localeCompare`: the spec orders by Unicode code
+    // point, which is what `encode` itself sorts by. `localeCompare` is locale-
+    // and ICU-version-dependent and may return 0 for two distinct strings,
+    // which would make this order non-total and let a real difference through.
     const sorted = [...(sets as PlainSet[])].sort(
         (a, b) =>
-            a.kind.localeCompare(b.kind) ||
-            a.norm.localeCompare(b.norm) ||
+            compareByCodePoint(a.kind, b.kind) ||
+            compareByCodePoint(a.norm, b.norm) ||
             a.dimensions - b.dimensions ||
-            a.producer.localeCompare(b.producer),
+            compareByCodePoint(a.producer, b.producer),
     );
     return { ...o, descriptorSets: sorted };
 };
@@ -178,6 +183,38 @@ describe("§8.2 item 3 — non-canonical inputs", () => {
             expect(bytesOf(encode(r.target))).toEqual(read(canonical));
         },
     );
+});
+
+describe("§5.6 — the reader preserves the file's descriptorSets order", () => {
+    // `withSortedSets` makes item 3 tolerant of set order, which is what §8.2
+    // item 3 now asks for — but it also means a reader that sorted on decode
+    // would pass the whole of item 3, and its byte-identity half passes either
+    // way because the writer re-sorts regardless. So the tolerance has to be
+    // paid for with a test that looks at the order directly. Without it, §8.1's
+    // claim that `unsorted-sets` "catches a reader that sorts on decode" would
+    // be true of the Rust codec and false of this one — a rule the spec states
+    // that no test here exercises, which is the gap #31 existed to close.
+    const keysOf = (target: unknown): string[] => {
+        const sets = (plain(target) as Record<string, unknown>)["descriptorSets"];
+        return (sets as PlainSet[]).map(
+            (s) => `${s.kind}/${s.norm}/${String(s.dimensions)}/${s.producer}`,
+        );
+    };
+
+    it("decodes unsorted-sets in file order, not in canonical order", () => {
+        const unsorted = decode(read("noncanonical/unsorted-sets.wnft"));
+        const canonical = decode(read("valid/several-sets.wnft"));
+        expect(unsorted.ok).toBe(true);
+        expect(canonical.ok).toBe(true);
+        if (!unsorted.ok || !canonical.ok) return;
+
+        const asRead = keysOf(unsorted.target);
+        const expected = keysOf(canonical.target);
+
+        expect(asRead.length).toBeGreaterThanOrEqual(2);
+        expect(asRead).not.toEqual(expected);
+        expect([...asRead].sort()).toEqual([...expected].sort());
+    });
 });
 
 describe("§8.2 item 4 — cross-implementation conformance", () => {
