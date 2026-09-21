@@ -20,7 +20,7 @@ patch tracker and the state machine that make it tracking are M2
 
 [`docs/specs/nft-target-format.md`](../../docs/specs/nft-target-format.md) is
 the source of truth; where this README and the specification disagree, the
-specification wins. This build implements **format 0.2** and **container
+specification wins. This build implements **format 0.3** and **container
 major 1**.
 
 ```ts

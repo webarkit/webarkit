@@ -1,4 +1,4 @@
-# NFT target format — v0.2
+# NFT target format — v0.3
 
 **Status:** Accepted (format 0.3). The format version is `0.3`: while the major is `0`, every minor may break compatibility (§7).
 **Decided by:** [ADR-0001](../adr/0001-nft-tracker-ts-reference-above-cvbackend.md), point 6.
@@ -593,8 +593,8 @@ Decisions D1–D5 below are accepted as part of this specification.
 ## 11. Open questions
 
 - **Q3 — Multi-view descriptors.** The format side is settled (`WKNF_multiview`, §5.6). Adoption is blocked on k-nearest matching in the contract.
-- **Q4 — Producer mismatch strategy.** Warn only (v0.2), or store a full-resolution `referenceImage` and re-describe on the runtime backend when its scale step matches. The second avoids bit incompatibility but costs about 1 byte per pixel.
-- **Q6 — Multiple targets.** v0.2 stores one target per file; a container of targets or a manifest of files could come later.
+- **Q4 — Producer mismatch strategy.** Warn only (0.3), or store a full-resolution `referenceImage` and re-describe on the runtime backend when its scale step matches. The second avoids bit incompatibility but costs about 1 byte per pixel.
+- **Q6 — Multiple targets.** 0.3 stores one target per file; a container of targets or a manifest of files could come later.
 - **Q8 — Canonical JSON numbers across languages.** Defining a strict number grammar for the manifest would give byte identity of the whole file across implementations, not only of the `BIN\0` chunk. It is probably not worth the complexity; to be revisited if the cross-implementation tests turn out to need it. **They do.** The second implementation found that *every* `valid/` fixture needs §8.2 item 4's tolerance rather than byte equality, because the TypeScript codec writes `"scaleStep":2` where the Rust crate's `f64`-typed field renders `2.0`. The tolerance is load-bearing across the whole corpus, then, not a margin held in reserve for some exotic value — which is both the evidence a decision to close this question would be written from, and the reason it stays open rather than being dropped.
 - **Q9 — Media type** for serving `.wnft` (e.g. a vendor type such as `application/vnd.webarkit.nft-target`).
 

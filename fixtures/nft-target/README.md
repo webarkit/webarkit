@@ -1,8 +1,7 @@
 # `.wnft` conformance fixtures
 
 The corpus §8.1 of [the target format specification](../../docs/specs/nft-target-format.md)
-describes, shared by `vitest` and — once `crates/wnft-format` exists —
-`cargo test`.
+describes, shared by `vitest` and `cargo test`.
 
 **These files are generated and must never be edited by hand.** They come from
 [`packages/nft-tracker/scripts/generate-fixtures.mjs`](../../packages/nft-tracker/scripts/generate-fixtures.mjs),
@@ -36,7 +35,15 @@ One directory per **released format version**, frozen from then on (§8.3):
 every reader either decodes a frozen file correctly or rejects it with an
 explicit error, and never misreads it.
 
-Inside `0.2/`:
+One directory per format version. `0.3/` is the live corpus, the one the
+generator writes and both codecs read. `0.2/` is **frozen**: it is the corpus
+of a released version (§8.3), the generator no longer writes to it, and both
+codecs carry a test that every file in it is rejected with
+`UNSUPPORTED_FORMAT_VERSION` rather than read — §7.1's exact-minor rule while
+the major is `0`. A frozen directory is never regenerated, so it does not gain
+fixtures added to later versions.
+
+Inside `0.3/`:
 
 | Directory | What it holds |
 |---|---|
