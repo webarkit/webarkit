@@ -383,20 +383,24 @@ pub fn decode_manifest(
 /// Read a top-level array-of-strings field, defaulting to `[]` when absent —
 /// used for `extensionsUsed` and `extensionsRequired` (§5.1).
 ///
-/// An explicit `null` is accepted here too, as `[]`. §5.1 does not say what
-/// `null` means for either field, so this is settled by matching the peer
-/// TypeScript codec: it reads both with `?? []`, whose nullish coalescing
-/// swallows `null` along with `undefined`, unlike every other optional key in
-/// that codec, which checks `!== undefined` and rejects `null` explicitly.
-/// This is suspected to be an artifact of reaching for `??` rather than a
-/// considered decision — but §1 requires two implementations to decode any
-/// file identically, suspect ones included, since untrusted input is exactly
-/// where a divergence would matter and nobody would go looking for it. If the
-/// peer ever tightens this to reject `null`, this arm must be tightened the
-/// same way, in the same change.
+/// An absent key reads as `[]`. An explicit `null` is `BAD_MANIFEST`, like
+/// every other optional key (§5.1).
+///
+/// Through format `0.2` these two were the exception: `null` read as `[]`,
+/// and this crate matched that deliberately rather than diverge from the peer
+/// in silence, on untrusted input, where a divergence would matter most and
+/// nobody would go looking for it. The peer's behaviour was a `?? []` whose
+/// nullish coalescing swallowed `null` along with `undefined` — never a
+/// decision, which is why the note here said that if the peer ever tightened
+/// this, the same change had to tighten this arm. Format `0.3` is that
+/// change, and it lands on both sides at once.
 fn read_string_array(doc: &Map<String, Value>, key: &str) -> Result<Vec<String>, DecodeError> {
     match doc.get(key) {
-        None | Some(Value::Null) => Ok(Vec::new()),
+        None => Ok(Vec::new()),
+        Some(Value::Null) => Err(fail(
+            ErrorCode::BadManifest,
+            format!("{key} must not be null (§5.1)"),
+        )),
         Some(Value::Array(items)) => items
             .iter()
             .map(|v| {

@@ -27,7 +27,7 @@
 
 //! `examples/targets/pinball.wnft` — the first **real** target both codecs read.
 //!
-//! Everything in `fixtures/nft-target/0.2/` is synthetic: each file was built
+//! Everything in `fixtures/nft-target/0.3/` is synthetic: each file was built
 //! to exercise one rule, with values computed from an index so the corpus
 //! reproduces byte for byte. That is exactly what a conformance corpus should
 //! be, and it is also its blind spot. A synthetic file never has 2062
@@ -86,7 +86,7 @@ fn decodes_the_compiled_pinball_target() {
     );
 
     let target = decoded.target;
-    assert_eq!(target.format_version, "0.2");
+    assert_eq!(target.format_version, "0.3");
 
     // 614 x 768, capped to a 640 longer side by compile-target's `--max-side`.
     assert_eq!(target.meta.width_px, 512);

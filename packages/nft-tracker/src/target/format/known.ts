@@ -54,7 +54,7 @@ import type {
 } from "@webarkit/cv-backend-spec";
 
 /** The only `format.version` this build reads or writes (§7.1). */
-export const SUPPORTED_FORMAT_VERSION = "0.2";
+export const SUPPORTED_FORMAT_VERSION = "0.3";
 
 /**
  * The only `container_major` this build frames (§7.1).

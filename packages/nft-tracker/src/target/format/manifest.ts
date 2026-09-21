@@ -161,8 +161,23 @@ export function decodeManifest(
         return no("BAD_MANIFEST", "format.generator must be a string when present");
     }
 
-    const used = parsed["extensionsUsed"] ?? [];
-    const required = parsed["extensionsRequired"] ?? [];
+    // §5.1 in format 0.3: an explicit `null` is BAD_MANIFEST on every
+    // optional key, these two included. Through 0.2 the `?? []` below also
+    // swallowed `null` and read it as an empty array — which was never a
+    // decision, only what the operator happened to do, and which the peer
+    // matched deliberately rather than diverge in silence. The `??` stays,
+    // but now it means what it says: absent is empty, null is a malformed
+    // manifest.
+    const usedRaw = parsed["extensionsUsed"];
+    const requiredRaw = parsed["extensionsRequired"];
+    if (usedRaw === null) {
+        return no("BAD_MANIFEST", "extensionsUsed must not be null (§5.1)");
+    }
+    if (requiredRaw === null) {
+        return no("BAD_MANIFEST", "extensionsRequired must not be null (§5.1)");
+    }
+    const used = usedRaw ?? [];
+    const required = requiredRaw ?? [];
     if (!isStringArray(used)) {
         return no("BAD_MANIFEST", "extensionsUsed must be an array of strings");
     }

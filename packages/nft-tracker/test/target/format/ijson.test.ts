@@ -69,7 +69,7 @@ describe("scanIJson — accepts conforming I-JSON", () => {
     it("accepts the manifest shapes the specification shows", () => {
         expect(
             scanIJson(
-                '{"format":{"version":"0.2"},"accessors":[{"offset":0,"count":3,"type":"f32"}]}',
+                '{"format":{"version":"0.3"},"accessors":[{"offset":0,"count":3,"type":"f32"}]}',
             ),
         ).toBeNull();
         expect(scanIJson('{"a":[1,-2,3.5,true,false,null,""],"b":{}}')).toBeNull();

@@ -61,7 +61,7 @@ import type { BitsDescriptorSet, KeypointTable, TargetDb } from "./types.js";
  * will export its own constant when it lands. Duplicating the string here is
  * cheaper than reaching across into a component that does not exist yet.
  */
-const FORMAT_VERSION = "0.2";
+const FORMAT_VERSION = "0.3";
 
 /**
  * Size ratio between consecutive pyramid levels when the caller does not say.

@@ -50,7 +50,7 @@
 //! Reader and canonical writer for the WebARKit `.wnft` NFT target format.
 //!
 //! The specification is the source of truth: `docs/specs/nft-target-format.md`,
-//! format **0.2**. Section references throughout this crate (§4.2, §6.1, …)
+//! format **0.3**. Section references throughout this crate (§4.2, §6.1, …)
 //! point into it. Where this code and that document disagree, the document
 //! wins and the code is the bug.
 //!

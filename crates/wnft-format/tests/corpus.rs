@@ -34,12 +34,43 @@
 
 mod common;
 
-use wnft_format::{DEFAULT_LIMITS, Decoded, decode};
+use wnft_format::{DEFAULT_LIMITS, Decoded, ErrorCode, decode};
+
+#[test]
+fn every_frozen_version_is_rejected_for_being_that_version() {
+    // §8.3 requires a reader to decode a frozen corpus correctly or reject it
+    // explicitly, never misread it. Under §7.1's exact-minor rule for `0.x`
+    // the obligation is sharper than that floor: a file of a frozen minor is
+    // refused for *being* that minor, and not for some incidental reason that
+    // could stop applying if those bytes were ever regenerated.
+    for version in common::FROZEN_VERSIONS {
+        let dir = common::frozen_corpus(version).join("valid");
+        let mut seen = 0usize;
+        for entry in std::fs::read_dir(&dir).expect("the frozen valid/ directory") {
+            let path = entry.expect("a directory entry").path();
+            if path.extension().and_then(|e| e.to_str()) != Some("wnft") {
+                continue;
+            }
+            let bytes = std::fs::read(&path).expect("reading a frozen fixture");
+            let err = decode(&bytes, &DEFAULT_LIMITS)
+                .err()
+                .unwrap_or_else(|| panic!("{} decoded, but {version} is frozen", path.display()));
+            assert_eq!(
+                err.code,
+                ErrorCode::UnsupportedFormatVersion,
+                "{}",
+                path.display()
+            );
+            seen += 1;
+        }
+        assert!(seen > 0, "the frozen {version} corpus has no valid/ files");
+    }
+}
 
 #[test]
 fn the_corpus_is_the_version_this_build_reads() {
     let e = common::expectations();
-    assert_eq!(e.format_version, "0.2");
+    assert_eq!(e.format_version, "0.3");
 
     // Lower bounds, not exact counts: the corpus is allowed to grow without a
     // change to this file (that is the whole point of driving these suites
@@ -111,14 +142,37 @@ fn every_warning_fixture_yields_exactly_its_warnings() {
 fn every_noncanonical_fixture_decodes_to_its_counterpart() {
     // §8.2 item 3, first half: the decoded values must match, which is what
     // makes §7.3's "a decoder keeps only what it understands" testable. The
-    // re-encoding half is in tests/writer.rs, once encode exists.
+    // re-encoding half is in tests/writer.rs.
+    //
+    // "The same values" is compared after putting `descriptorSets` in §7.3's
+    // canonical order. §5.6 has the reader preserve the file's order rather
+    // than normalise it, so `noncanonical/unsorted-sets` decodes to its
+    // counterpart in every respect except that one — and comparing raw would
+    // fail it for the single reason the pair exists to test. The tolerance is
+    // confined to this half: writer.rs still demands byte identity, which is
+    // what proves the writer re-sorts.
     for case in common::expectations().noncanonical {
-        let a = decode(&common::read(&case.file), &DEFAULT_LIMITS)
+        let mut a = decode(&common::read(&case.file), &DEFAULT_LIMITS)
             .unwrap_or_else(|e| panic!("{} must decode, got {}", case.file, e.code));
-        let b = decode(&common::read(&case.canonical), &DEFAULT_LIMITS)
+        let mut b = decode(&common::read(&case.canonical), &DEFAULT_LIMITS)
             .unwrap_or_else(|e| panic!("{} must decode, got {}", case.canonical, e.code));
+        sort_sets(&mut a.target);
+        sort_sets(&mut b.target);
         assert_eq!(a.target, b.target, "{} vs {}", case.file, case.canonical);
     }
+}
+
+/// `descriptorSets` in §7.3's canonical order: by `kind`, `norm`,
+/// `dimensions`, `producer`. §5.6 makes that key unique across a file's sets,
+/// so the sort is total and this cannot mask a difference of its own.
+fn sort_sets(target: &mut wnft_format::Target) {
+    target.descriptor_sets.sort_by(|a, b| {
+        a.kind
+            .cmp(&b.kind)
+            .then_with(|| a.norm.cmp(&b.norm))
+            .then_with(|| a.dimensions.cmp(&b.dimensions))
+            .then_with(|| a.producer.cmp(&b.producer))
+    });
 }
 
 #[test]

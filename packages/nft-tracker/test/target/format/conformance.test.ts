@@ -61,7 +61,9 @@ import type { DecodeOptions } from "../../../src/target/format/limits.js";
 // declarations. It is imported rather than duplicated so that "the corpus is
 // what its generator produces" is a real check and not a second generator.
 import { buildFixtures } from "../../../scripts/generate-fixtures.mjs";
-import { CORPUS_ROOT, FIXTURES_DIR } from "./fixtures-dir.js";
+import { compareByCodePoint } from "../../../src/target/format/canonical-json.js";
+import { SUPPORTED_FORMAT_VERSION } from "../../../src/target/format/known.js";
+import { CORPUS_ROOT, FIXTURES_DIR, FROZEN_VERSIONS } from "./fixtures-dir.js";
 
 const read = (rel: string): Uint8Array =>
     new Uint8Array(readFileSync(join(FIXTURES_DIR, rel)));
@@ -95,6 +97,43 @@ const plain = (value: unknown): unknown =>
             ArrayBuffer.isView(v) ? Array.from(v as unknown as ArrayLike<number>) : v,
         ),
     );
+
+/** The §7.3 sort key of one decoded descriptor set, as `plain` renders it. */
+interface PlainSet {
+    readonly kind: string;
+    readonly norm: string;
+    readonly dimensions: number;
+    readonly producer: string;
+}
+
+/**
+ * `plain(target)` with `descriptorSets` put in §7.3's canonical order.
+ *
+ * §8.2 item 3 compares a `noncanonical/` fixture's decoded values with its
+ * `valid/` counterpart's. §5.6 has the reader **preserve** the file's set
+ * order rather than normalise it, so a fixture that presents its sets in
+ * another order decodes to the same target in every respect except that one —
+ * and comparing raw would fail for the single reason the pair exists to test.
+ * Only this half is tolerant: the byte identity below stays strict, because
+ * that is what proves the *writer* re-sorts.
+ */
+const withSortedSets = (value: unknown): unknown => {
+    const o = plain(value) as Record<string, unknown>;
+    const sets = o["descriptorSets"];
+    if (!Array.isArray(sets)) return o;
+    // §7.3's comparator, not `localeCompare`: the spec orders by Unicode code
+    // point, which is what `encode` itself sorts by. `localeCompare` is locale-
+    // and ICU-version-dependent and may return 0 for two distinct strings,
+    // which would make this order non-total and let a real difference through.
+    const sorted = [...(sets as PlainSet[])].sort(
+        (a, b) =>
+            compareByCodePoint(a.kind, b.kind) ||
+            compareByCodePoint(a.norm, b.norm) ||
+            a.dimensions - b.dimensions ||
+            compareByCodePoint(a.producer, b.producer),
+    );
+    return { ...o, descriptorSets: sorted };
+};
 
 const bytesOf = (r: ReturnType<typeof encode>): Uint8Array => {
     if (!r.ok) throw new Error(`encode failed: ${r.error} at ${r.detail}`);
@@ -136,8 +175,8 @@ describe("§8.2 item 3 — non-canonical inputs", () => {
             expect(r.ok, r.ok ? "" : `${r.error}: ${r.detail}`).toBe(true);
             expect(c.ok).toBe(true);
             if (!r.ok || !c.ok) return;
-            // Same values...
-            expect(plain(r.target)).toEqual(plain(c.target));
+            // Same values, up to the order of descriptorSets (§8.2 item 3).
+            expect(withSortedSets(r.target)).toEqual(withSortedSets(c.target));
             // ...and re-encoding yields the counterpart, not the input. This
             // is what makes §7.3's "keeps only what it understands" testable
             // rather than a disclaimer.
@@ -146,14 +185,66 @@ describe("§8.2 item 3 — non-canonical inputs", () => {
     );
 });
 
+describe("§5.6 — the reader preserves the file's descriptorSets order", () => {
+    // `withSortedSets` makes item 3 tolerant of set order, which is what §8.2
+    // item 3 now asks for — but it also means a reader that sorted on decode
+    // would pass the whole of item 3, and its byte-identity half passes either
+    // way because the writer re-sorts regardless. So the tolerance has to be
+    // paid for with a test that looks at the order directly. Without it, §8.1's
+    // claim that `unsorted-sets` "catches a reader that sorts on decode" would
+    // be true of the Rust codec and false of this one — a rule the spec states
+    // that no test here exercises, which is the gap #31 existed to close.
+    const keysOf = (target: unknown): string[] => {
+        const sets = (plain(target) as Record<string, unknown>)["descriptorSets"];
+        return (sets as PlainSet[]).map(
+            (s) => `${s.kind}/${s.norm}/${String(s.dimensions)}/${s.producer}`,
+        );
+    };
+
+    it("decodes unsorted-sets in file order, not in canonical order", () => {
+        const unsorted = decode(read("noncanonical/unsorted-sets.wnft"));
+        const canonical = decode(read("valid/several-sets.wnft"));
+        expect(unsorted.ok).toBe(true);
+        expect(canonical.ok).toBe(true);
+        if (!unsorted.ok || !canonical.ok) return;
+
+        const asRead = keysOf(unsorted.target);
+        const expected = keysOf(canonical.target);
+
+        expect(asRead.length).toBeGreaterThanOrEqual(2);
+        expect(asRead).not.toEqual(expected);
+        expect([...asRead].sort()).toEqual([...expected].sort());
+    });
+});
+
 describe("§8.2 item 4 — cross-implementation conformance", () => {
-    // Not runnable: crates/wnft-format does not exist yet. When it does, this
-    // compares BIN chunks byte for byte and manifests after parsing (§7.3
-    // leaves number formatting to each language, open question Q8). The corpus
-    // committed here is what it will be compared against, so the gap is a
-    // missing peer, not a missing fixture.
+    // Exercised from the other side, and deliberately not duplicated here.
+    //
+    // Item 4 compares two *implementations*: BIN chunks byte for byte, and
+    // manifests after parsing, since §7.3 leaves number formatting free across
+    // languages (Q8). This corpus is this codec's own output, so running that
+    // comparison here would check this codec against itself and establish
+    // nothing — the same reason `fixtures/nft-target/` is read-only for Rust.
+    //
+    // crates/wnft-format is the second implementation and runs item 4 against
+    // these very bytes. `every_valid_fixture_round_trips` in
+    // crates/wnft-format/tests/writer.rs decodes each `valid/` fixture and
+    // re-encodes it; `assert_conformant`, in that same file, *is* item 4's
+    // comparison. The noncanonical corpus and the real pinball target get the
+    // same treatment there and in tests/real_target.rs.
+    //
+    // Wiring it up from here would mean invoking cargo from vitest, coupling
+    // the npm suite to a Rust toolchain. CI runs the two as parallel jobs
+    // precisely because they share this repository and the fixtures corpus and
+    // nothing else (AGENTS.md).
+    //
+    // Left as a skip rather than deleted so this file still walks §8.2's items
+    // in order: a reader who finds items 3 and 5 here and no item 4 has to go
+    // and find out whether it was forgotten.
     it.skip("BIN chunks byte-identical and manifests equal after parsing", () => {
-        expect.unreachable("needs the Rust codec");
+        expect.unreachable(
+            "covered by wnft-format's tests/writer.rs — see the comment above",
+        );
     });
 });
 
@@ -347,13 +438,33 @@ describe("§8.3 — evolution", () => {
         expect(!r.ok && r.error).toBe("INCONSISTENT_DATA");
     });
 
+    it("rejects every frozen version's valid/ corpus by version (§8.3)", () => {
+        // "Never misreads them" is the floor. Under §7.1's exact-minor rule
+        // for 0.x the actual obligation is sharper: a file of a frozen minor
+        // is refused *for being that minor*, not for some incidental reason
+        // that might stop applying if its bytes were regenerated.
+        for (const version of FROZEN_VERSIONS) {
+            const dir = join(CORPUS_ROOT, version, "valid");
+            const names = readdirSync(dir).filter((n) => n.endsWith(".wnft"));
+            expect(names.length, version).toBeGreaterThan(0);
+            for (const name of names) {
+                const r = decode(new Uint8Array(readFileSync(join(dir, name))));
+                expect(!r.ok && r.error, `${version}/valid/${name}`).toBe(
+                    "UNSUPPORTED_FORMAT_VERSION",
+                );
+            }
+        }
+    });
+
     it("reads or rejects every frozen version's corpus, never misreads it", () => {
-        // The backward-compatibility corpus. Today only 0.2 exists; written as
-        // a loop so a future frozen directory is covered the day it lands.
+        // The backward-compatibility corpus, over every version directory
+        // that exists — this build's own and every frozen one.
         const versions = readdirSync(CORPUS_ROOT).filter((name) =>
             statSync(join(CORPUS_ROOT, name)).isDirectory(),
         );
-        expect(versions).toContain("0.2");
+        expect(versions).toEqual(
+            expect.arrayContaining([...FROZEN_VERSIONS, SUPPORTED_FORMAT_VERSION]),
+        );
         for (const version of versions) {
             const dir = join(CORPUS_ROOT, version);
             const walk = (sub: string): void => {

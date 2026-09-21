@@ -57,7 +57,7 @@ describe("buildTargetFromImage", () => {
         expect(target.meta.widthPx).toBe(image.width);
         expect(target.meta.heightPx).toBe(image.height);
         expect(target.meta.physicalSizeMm).toBeNull();
-        expect(target.formatVersion).toBe("0.2");
+        expect(target.formatVersion).toBe("0.3");
         expect(target.extensionsUsed).toEqual([]);
         expect(target.extensionsRequired).toEqual([]);
     });

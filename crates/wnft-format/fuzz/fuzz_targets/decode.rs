@@ -31,7 +31,7 @@
 //! the limits — on any input at all.
 //!
 //! The interesting inputs are not random bytes, which die at the magic. Seed the
-//! corpus from `fixtures/nft-target/0.2/` (see the crate README) and let the
+//! corpus from `fixtures/nft-target/0.3/` (see the crate README) and let the
 //! fuzzer mutate real files: that is what reaches the manifest, the accessors
 //! and the consistency gates.
 //!

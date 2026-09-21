@@ -50,7 +50,7 @@ const run = (s: string | Uint8Array, limits = DEFAULT_LIMITS) =>
 const errorOf = (r: ReturnType<typeof run>): string | null =>
     r.ok ? null : r.error;
 
-const MINIMAL = '{"format":{"version":"0.2"}}';
+const MINIMAL = '{"format":{"version":"0.3"}}';
 
 describe("decodeManifest — size (§6.1 step 3)", () => {
     it("rejects a manifest above the limit, before decoding it", () => {
@@ -84,19 +84,19 @@ describe("decodeManifest — text (§6.1 step 4)", () => {
     });
 
     it("rejects each I-JSON violation as BAD_MANIFEST", () => {
-        expect(errorOf(run('{"format":{"version":"0.2"},"a":1,"a":2}'))).toBe(
+        expect(errorOf(run('{"format":{"version":"0.3"},"a":1,"a":2}'))).toBe(
             "BAD_MANIFEST",
         );
-        expect(errorOf(run('{"format":{"version":"0.2"},"a":9007199254740992}'))).toBe(
+        expect(errorOf(run('{"format":{"version":"0.3"},"a":9007199254740992}'))).toBe(
             "BAD_MANIFEST",
         );
-        expect(errorOf(run('{"format":{"version":"0.2"},"a":1e400}'))).toBe(
+        expect(errorOf(run('{"format":{"version":"0.3"},"a":1e400}'))).toBe(
             "BAD_MANIFEST",
         );
     });
 
     it("names the offending path in the detail", () => {
-        const r = run('{"format":{"version":"0.2"},"info":{"x":1e400}}');
+        const r = run('{"format":{"version":"0.3"},"info":{"x":1e400}}');
         expect(r.ok).toBe(false);
         if (r.ok) return;
         expect(r.detail).toContain("$.info.x");
@@ -121,12 +121,12 @@ describe("decodeManifest — text (§6.1 step 4)", () => {
 });
 
 describe("decodeManifest — version and extensions (§6.1 step 5)", () => {
-    it("accepts exactly 0.2", () => {
+    it("accepts exactly 0.3", () => {
         expect(run(MINIMAL).ok).toBe(true);
     });
 
     it("rejects every other version while the major is 0 (§7.1)", () => {
-        for (const v of ["0.1", "0.3", "1.0", "0.2.0", "", "x"]) {
+        for (const v of ["0.1", "0.2", "0.4", "1.0", "0.3.0", "", "x"]) {
             expect(errorOf(run(`{"format":{"version":"${v}"}}`)), v).toBe(
                 "UNSUPPORTED_FORMAT_VERSION",
             );
@@ -142,32 +142,44 @@ describe("decodeManifest — version and extensions (§6.1 step 5)", () => {
     });
 
     it("carries the optional generator through", () => {
-        const r = run('{"format":{"version":"0.2","generator":"gen 1.0"}}');
+        const r = run('{"format":{"version":"0.3","generator":"gen 1.0"}}');
         expect(r.ok && r.value.generator).toBe("gen 1.0");
         const bare = run(MINIMAL);
         expect(bare.ok && bare.value.generator).toBeUndefined();
     });
 
     it("rejects a generator that is not a string", () => {
-        expect(errorOf(run('{"format":{"version":"0.2","generator":1}}'))).toBe(
+        expect(errorOf(run('{"format":{"version":"0.3","generator":1}}'))).toBe(
             "BAD_MANIFEST",
         );
     });
 
     it("rejects an unimplemented extension in extensionsRequired", () => {
         const r = run(
-            '{"format":{"version":"0.2"},"extensionsUsed":["WKNF_multiview"],"extensionsRequired":["WKNF_multiview"]}',
+            '{"format":{"version":"0.3"},"extensionsUsed":["WKNF_multiview"],"extensionsRequired":["WKNF_multiview"]}',
         );
         expect(errorOf(r)).toBe("UNSUPPORTED_EXTENSION");
     });
 
     it("prunes an unimplemented extension used but not required, and warns", () => {
-        const r = run('{"format":{"version":"0.2"},"extensionsUsed":["WKNF_multiview"]}');
+        const r = run('{"format":{"version":"0.3"},"extensionsUsed":["WKNF_multiview"]}');
         expect(r.ok).toBe(true);
         if (!r.ok) return;
         expect(r.value.extensionsUsed).toEqual([]);
         expect(r.warnings.map((w) => w.code)).toEqual(["UNKNOWN_EXTENSION_IGNORED"]);
         expect(r.warnings[0]!.detail).toContain("WKNF_multiview");
+    });
+
+    it("rejects an explicit null on either extension array (§5.1)", () => {
+        // Through format 0.2 a `?? []` fallback read null here as an empty
+        // array. That was never a decision, and undoing it is the narrowing
+        // that made 0.3 a new minor rather than a sixth revision of 0.2.
+        expect(errorOf(run('{"format":{"version":"0.3"},"extensionsUsed":null}'))).toBe(
+            "BAD_MANIFEST",
+        );
+        expect(
+            errorOf(run('{"format":{"version":"0.3"},"extensionsRequired":null}')),
+        ).toBe("BAD_MANIFEST");
     });
 
     it("treats absent extension arrays as empty", () => {
@@ -178,10 +190,10 @@ describe("decodeManifest — version and extensions (§6.1 step 5)", () => {
     });
 
     it("rejects extension arrays that are not arrays of strings", () => {
-        expect(errorOf(run('{"format":{"version":"0.2"},"extensionsUsed":"x"}'))).toBe(
+        expect(errorOf(run('{"format":{"version":"0.3"},"extensionsUsed":"x"}'))).toBe(
             "BAD_MANIFEST",
         );
-        expect(errorOf(run('{"format":{"version":"0.2"},"extensionsRequired":[1]}'))).toBe(
+        expect(errorOf(run('{"format":{"version":"0.3"},"extensionsRequired":[1]}'))).toBe(
             "BAD_MANIFEST",
         );
     });
@@ -190,26 +202,26 @@ describe("decodeManifest — version and extensions (§6.1 step 5)", () => {
         expect(
             errorOf(
                 run(
-                    '{"format":{"version":"0.2"},"extensionsRequired":["WKNF_x"],"extensionsUsed":[]}',
+                    '{"format":{"version":"0.3"},"extensionsRequired":["WKNF_x"],"extensionsUsed":[]}',
                 ),
             ),
         ).toBe("BAD_MANIFEST");
     });
 
     it("checks the version before the extensions", () => {
-        // A 0.3 file with an unimplemented required extension is a version
+        // A 0.4 file with an unimplemented required extension is a version
         // problem: §6.1 step 5 reads the version first.
         expect(
             errorOf(
                 run(
-                    '{"format":{"version":"0.3"},"extensionsUsed":["WKNF_x"],"extensionsRequired":["WKNF_x"]}',
+                    '{"format":{"version":"0.4"},"extensionsUsed":["WKNF_x"],"extensionsRequired":["WKNF_x"]}',
                 ),
             ),
         ).toBe("UNSUPPORTED_FORMAT_VERSION");
     });
 
     it("hands the parsed document back for the schema pass", () => {
-        const r = run('{"format":{"version":"0.2"},"meta":{"widthPx":8}}');
+        const r = run('{"format":{"version":"0.3"},"meta":{"widthPx":8}}');
         expect(r.ok).toBe(true);
         if (!r.ok) return;
         expect(r.value.doc["meta"]).toEqual({ widthPx: 8 });
@@ -222,7 +234,7 @@ describe("decodeManifest — version and extensions (§6.1 step 5)", () => {
  * so a failure names the rule it broke and nothing else.
  */
 const good = () => ({
-    format: { version: "0.2" },
+    format: { version: "0.3" },
     meta: { widthPx: 8, heightPx: 4, physicalSizeMm: [80, 40] },
     pyramid: { scaleStep: 2, levelSizes: [[8, 4], [4, 2]] },
     keypoints: {
