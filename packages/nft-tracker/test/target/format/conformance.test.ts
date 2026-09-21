@@ -218,13 +218,33 @@ describe("§5.6 — the reader preserves the file's descriptorSets order", () =>
 });
 
 describe("§8.2 item 4 — cross-implementation conformance", () => {
-    // Not runnable: crates/wnft-format does not exist yet. When it does, this
-    // compares BIN chunks byte for byte and manifests after parsing (§7.3
-    // leaves number formatting to each language, open question Q8). The corpus
-    // committed here is what it will be compared against, so the gap is a
-    // missing peer, not a missing fixture.
+    // Exercised from the other side, and deliberately not duplicated here.
+    //
+    // Item 4 compares two *implementations*: BIN chunks byte for byte, and
+    // manifests after parsing, since §7.3 leaves number formatting free across
+    // languages (Q8). This corpus is this codec's own output, so running that
+    // comparison here would check this codec against itself and establish
+    // nothing — the same reason `fixtures/nft-target/` is read-only for Rust.
+    //
+    // crates/wnft-format is the second implementation and runs item 4 against
+    // these very bytes. `every_valid_fixture_round_trips` in
+    // crates/wnft-format/tests/writer.rs decodes each `valid/` fixture and
+    // re-encodes it; `assert_conformant`, in that same file, *is* item 4's
+    // comparison. The noncanonical corpus and the real pinball target get the
+    // same treatment there and in tests/real_target.rs.
+    //
+    // Wiring it up from here would mean invoking cargo from vitest, coupling
+    // the npm suite to a Rust toolchain. CI runs the two as parallel jobs
+    // precisely because they share this repository and the fixtures corpus and
+    // nothing else (AGENTS.md).
+    //
+    // Left as a skip rather than deleted so this file still walks §8.2's items
+    // in order: a reader who finds items 3 and 5 here and no item 4 has to go
+    // and find out whether it was forgotten.
     it.skip("BIN chunks byte-identical and manifests equal after parsing", () => {
-        expect.unreachable("needs the Rust codec");
+        expect.unreachable(
+            "covered by wnft-format's tests/writer.rs — see the comment above",
+        );
     });
 });
 
