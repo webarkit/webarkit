@@ -50,17 +50,68 @@
  * `fixtures` script chains the two.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { buildContainer, BIN_TYPE } from "../dist/target/format/container.js";
 import { crc32 } from "../dist/target/format/crc32.js";
 import { decode } from "../dist/target/format/decode.js";
 import { encode } from "../dist/target/format/encode.js";
+import { SUPPORTED_FORMAT_VERSION } from "../dist/target/format/known.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const OUT = join(HERE, "..", "..", "..", "fixtures", "nft-target", "0.3");
+/** `fixtures/nft-target/`, one directory per format version. */
+const CORPUS_ROOT = join(HERE, "..", "..", "..", "fixtures", "nft-target");
+
+/**
+ * Where this run writes: the directory named for the version the codec
+ * actually supports, never a literal.
+ *
+ * This is load-bearing, not tidiness. `main` clears this directory before
+ * writing, so that a fixture retired from the generator does not survive as a
+ * stale file the suites keep reading. A hand-written version here would mean
+ * that the one time someone bumps `SUPPORTED_FORMAT_VERSION` and forgets this
+ * line, the generator deletes and rewrites the **frozen** corpus of the
+ * previous version — the one §8.3 requires every future reader to keep intact
+ * and reject explicitly. Derived, a bump writes a new directory and the old
+ * one is never opened.
+ */
+const OUT = join(CORPUS_ROOT, SUPPORTED_FORMAT_VERSION);
+
+/**
+ * The version the `unsupported-format-version` fixture declares: the next
+ * minor after the supported one, for the same reason `OUT` is derived. Left as
+ * a literal, it would silently become *the* supported version at some future
+ * bump, and the fixture would assert that a file this build reads perfectly is
+ * rejected.
+ */
+const UNSUPPORTED_FORMAT_VERSION = (() => {
+    const [major, minor] = SUPPORTED_FORMAT_VERSION.split(".");
+    return `${major}.${Number(minor) + 1}`;
+})();
+
+/**
+ * Refuse to delete anything that is not this version's own corpus directory.
+ *
+ * The guard is cheap and the thing it guards against is unrecoverable: a
+ * malformed or empty version string would make `join` above resolve somewhere
+ * else entirely, and `rmSync(..., { recursive: true })` does not ask twice.
+ */
+function assertSafeToClear() {
+    if (!/^\d+\.\d+$/.test(SUPPORTED_FORMAT_VERSION)) {
+        throw new Error(
+            `SUPPORTED_FORMAT_VERSION is ${JSON.stringify(SUPPORTED_FORMAT_VERSION)}, ` +
+                `which is not a "MAJOR.MINOR" version; refusing to delete anything`,
+        );
+    }
+    const within = relative(resolve(CORPUS_ROOT), resolve(OUT));
+    if (within !== SUPPORTED_FORMAT_VERSION) {
+        throw new Error(
+            `refusing to clear ${OUT}: it is not fixtures/nft-target/${SUPPORTED_FORMAT_VERSION}/`,
+        );
+    }
+}
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -88,7 +139,7 @@ function baseTarget() {
     const Q = 4;
 
     return {
-        formatVersion: "0.3",
+        formatVersion: SUPPORTED_FORMAT_VERSION,
         generator: "@webarkit/nft-tracker fixtures",
         extensionsUsed: [],
         extensionsRequired: [],
@@ -223,7 +274,7 @@ const clone = (manifest) => JSON.parse(JSON.stringify(manifest));
 export function buildFixtures() {
     const files = new Map();
     const expectations = {
-        formatVersion: "0.3",
+        formatVersion: SUPPORTED_FORMAT_VERSION,
         valid: [],
         invalid: [],
         warnings: [],
@@ -397,7 +448,7 @@ export function buildFixtures() {
     }
     {
         const m = clone(baseManifest);
-        m.format.version = "0.4";
+        m.format.version = UNSUPPORTED_FORMAT_VERSION;
         addInvalid("unsupported-format-version", fileOf(m, baseBin), "UNSUPPORTED_FORMAT_VERSION");
     }
     {
@@ -690,7 +741,13 @@ function plain(value) {
 }
 
 function main() {
+    // Built first, deleted second: a generator that throws half way through
+    // must not leave the corpus gone. `buildFixtures` is pure — it returns
+    // bytes and touches no file — so by the time anything is removed the
+    // replacement is already in hand.
     const files = buildFixtures();
+    assertSafeToClear();
+    rmSync(OUT, { recursive: true, force: true });
     for (const [path, bytes] of files) {
         const full = join(OUT, path);
         mkdirSync(dirname(full), { recursive: true });
