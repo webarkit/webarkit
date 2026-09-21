@@ -80,8 +80,26 @@ function materialiseAll(
     binStart: number,
     spec: ManifestSpec,
 ): TargetArrays {
-    const get = (index: number): AccessorArray =>
-        materialise(buffer, binStart, spec.accessors[index]!);
+    // §6.1: a reader's total materialised accessor bytes MUST NOT exceed the
+    // BIN chunk's length. Accessors do not overlap (§5.2), but nothing there
+    // limits how many manifest *fields* may name one, so this cache is what
+    // holds the bound: each distinct accessor is materialised once and every
+    // field naming it is handed the same array.
+    //
+    // Viewing is not enough on its own. materialise() falls back to copying
+    // when the absolute offset is not a multiple of the element size (§3) —
+    // which is exactly a `.wnft` sitting at a non-8-aligned `byteOffset`
+    // inside a larger ArrayBuffer, the case §3's fallback exists for — and
+    // without the cache that copy is paid once per reference. Sixteen sets
+    // naming one large `data` accessor then decode to sixteen copies of it.
+    const cache = new Map<number, AccessorArray>();
+    const get = (index: number): AccessorArray => {
+        const hit = cache.get(index);
+        if (hit !== undefined) return hit;
+        const array = materialise(buffer, binStart, spec.accessors[index]!);
+        cache.set(index, array);
+        return array;
+    };
 
     const kp = spec.keypoints;
     const sets: SetArrays[] = spec.descriptorSets.map((s) => ({

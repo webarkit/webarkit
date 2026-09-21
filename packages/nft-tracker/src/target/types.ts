@@ -41,7 +41,7 @@
  * The **in-memory** shape of a trained NFT target.
  *
  * This is the decoded form of a `.wnft` file, as specified in
- * `docs/specs/nft-target-format.md` (format 0.2). Section references below
+ * `docs/specs/nft-target-format.md` (format 0.3). Section references below
  * point into that document, which is the source of truth: where these types
  * and the specification disagree, the specification wins.
  *

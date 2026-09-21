@@ -340,7 +340,7 @@ describe("§8.4 — property-based round trip", () => {
 
                     const bytesPerDescriptor = dimensions / 8;
                     return {
-                        formatVersion: "0.2",
+                        formatVersion: "0.3",
                         extensionsUsed: [],
                         extensionsRequired: [],
                         meta: {

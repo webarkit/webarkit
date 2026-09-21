@@ -55,7 +55,7 @@ const err = (r: ReturnType<typeof parseContainer>) => {
     return r.error;
 };
 
-const MANIFEST = '{"format":{"version":"0.2"}}';
+const MANIFEST = '{"format":{"version":"0.3"}}';
 const BIN = new Uint8Array([1, 2, 3, 4, 5]);
 
 describe("BIN_TYPE", () => {

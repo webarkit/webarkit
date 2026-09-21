@@ -140,7 +140,7 @@ describe("validateTarget — §8.2 item 7: the writer rejects what the reader wo
 
 describe("validateTarget — structural rules mirroring the reader", () => {
     it("rejects a format version this build does not read", () => {
-        expect(pathOf({ ...good(), formatVersion: "0.3" })).toBe("formatVersion");
+        expect(pathOf({ ...good(), formatVersion: "0.4" })).toBe("formatVersion");
     });
 
     it("rejects an empty descriptorSets (§5.1)", () => {

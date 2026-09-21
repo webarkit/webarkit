@@ -56,7 +56,7 @@ import { buildRaw, jsonChunk } from "./raw.js";
  */
 const manifestOf = (overrides: Record<string, unknown> = {}): string =>
     JSON.stringify({
-        format: { version: "0.2" },
+        format: { version: "0.3" },
         meta: { widthPx: 8, heightPx: 4, physicalSizeMm: null },
         pyramid: { scaleStep: 2, levelSizes: [[8, 4]] },
         keypoints: {
@@ -114,13 +114,73 @@ const validBytes = (
         ],
     });
 
+describe("decode — one accessor materialised once (§6.1)", () => {
+    /**
+     * Four keypoint fields naming accessor 1.
+     *
+     * §5.2 constrains distinct accessors' byte ranges, not how many manifest
+     * fields may reference one, so this is a legal file — just not one the
+     * canonical writer would ever emit, which is what `noncanonical/` is for.
+     * All four are `f32` of count `N`, so the per-field type and count checks
+     * pass. Accessors 2, 3 and 4 become unreferenced, which §5.2 allows.
+     */
+    const aliased = manifestOf({
+        keypoints: {
+            count: 1,
+            detector: { kind: "fast", params: {} },
+            levelStart: 0, x: 1, y: 1, angle: 1, score: 1, level: 5,
+        },
+    });
+
+    /** `bytes` copied to `offset` inside a larger buffer, as a view (§3). */
+    const atOffset = (bytes: Uint8Array, offset: number): Uint8Array => {
+        const view = new Uint8Array(new ArrayBuffer(offset + bytes.length), offset, bytes.length);
+        view.set(bytes);
+        return view;
+    };
+
+    it("hands every field naming it the same array — aligned, via a view", () => {
+        const bytes = validBytes(aliased);
+        const r = decode(bytes);
+        expect(r.ok, r.ok ? "" : `${r.error}: ${r.detail}`).toBe(true);
+        if (!r.ok) return;
+        const kp = r.target.keypoints;
+        expect(kp.x).toBe(kp.y);
+        expect(kp.x).toBe(kp.angle);
+        expect(kp.x).toBe(kp.score);
+        // Pins the view path: the array reads the file's own buffer rather
+        // than a fresh 4-byte allocation of its own.
+        expect(kp.x.buffer.byteLength).toBe(bytes.buffer.byteLength);
+    });
+
+    it("hands every field naming it the same array — misaligned, via a copy", () => {
+        // A `.wnft` at an odd byteOffset inside a larger ArrayBuffer: §3
+        // forbids reading misaligned data through a view, so materialise()
+        // falls back to copying. Without a per-accessor cache that copy is
+        // paid once per reference, and §6.1's bound on total materialised
+        // bytes fails by a factor of the number of references — which is the
+        // whole amplification, reached through the very path §3 exists for.
+        const bytes = atOffset(validBytes(aliased), 1);
+        const r = decode(bytes);
+        expect(r.ok, r.ok ? "" : `${r.error}: ${r.detail}`).toBe(true);
+        if (!r.ok) return;
+        const kp = r.target.keypoints;
+        expect(kp.x).toBe(kp.y);
+        expect(kp.x).toBe(kp.angle);
+        expect(kp.x).toBe(kp.score);
+        // Pins the copy path, so this test cannot pass by accidentally
+        // staying aligned and falling back on views.
+        expect(kp.x.buffer.byteLength).toBe(4);
+    });
+});
+
 describe("decode — a valid file", () => {
     it("returns the target and no warnings", () => {
         const r = decode(validBytes());
         expect(r.ok, r.ok ? "" : `${r.error}: ${r.detail}`).toBe(true);
         if (!r.ok) return;
         expect(r.warnings).toEqual([]);
-        expect(r.target.formatVersion).toBe("0.2");
+        expect(r.target.formatVersion).toBe("0.3");
         expect(r.target.meta).toEqual({ widthPx: 8, heightPx: 4, physicalSizeMm: null });
         expect(r.target.pyramid.levelSizes).toEqual([[8, 4]]);
         expect([...r.target.keypoints.x]).toEqual([3]);
@@ -170,7 +230,7 @@ describe("decode — a valid file", () => {
 
     it("carries the generator through when the file has one", () => {
         const r = decode(
-            validBytes(manifestOf({ format: { version: "0.2", generator: "gen 1" } })),
+            validBytes(manifestOf({ format: { version: "0.3", generator: "gen 1" } })),
         );
         expect(r.ok && r.target.generator).toBe("gen 1");
     });

@@ -61,7 +61,8 @@ import type { DecodeOptions } from "../../../src/target/format/limits.js";
 // declarations. It is imported rather than duplicated so that "the corpus is
 // what its generator produces" is a real check and not a second generator.
 import { buildFixtures } from "../../../scripts/generate-fixtures.mjs";
-import { CORPUS_ROOT, FIXTURES_DIR } from "./fixtures-dir.js";
+import { SUPPORTED_FORMAT_VERSION } from "../../../src/target/format/known.js";
+import { CORPUS_ROOT, FIXTURES_DIR, FROZEN_VERSIONS } from "./fixtures-dir.js";
 
 const read = (rel: string): Uint8Array =>
     new Uint8Array(readFileSync(join(FIXTURES_DIR, rel)));
@@ -95,6 +96,39 @@ const plain = (value: unknown): unknown =>
             ArrayBuffer.isView(v) ? Array.from(v as unknown as ArrayLike<number>) : v,
         ),
     );
+
+/** The §7.3 sort key of one decoded descriptor set, as `plain` renders it. */
+interface PlainSet {
+    readonly kind: string;
+    readonly norm: string;
+    readonly dimensions: number;
+    readonly producer: string;
+}
+
+/**
+ * `plain(target)` with `descriptorSets` put in §7.3's canonical order.
+ *
+ * §8.2 item 3 compares a `noncanonical/` fixture's decoded values with its
+ * `valid/` counterpart's. §5.6 has the reader **preserve** the file's set
+ * order rather than normalise it, so a fixture that presents its sets in
+ * another order decodes to the same target in every respect except that one —
+ * and comparing raw would fail for the single reason the pair exists to test.
+ * Only this half is tolerant: the byte identity below stays strict, because
+ * that is what proves the *writer* re-sorts.
+ */
+const withSortedSets = (value: unknown): unknown => {
+    const o = plain(value) as Record<string, unknown>;
+    const sets = o["descriptorSets"];
+    if (!Array.isArray(sets)) return o;
+    const sorted = [...(sets as PlainSet[])].sort(
+        (a, b) =>
+            a.kind.localeCompare(b.kind) ||
+            a.norm.localeCompare(b.norm) ||
+            a.dimensions - b.dimensions ||
+            a.producer.localeCompare(b.producer),
+    );
+    return { ...o, descriptorSets: sorted };
+};
 
 const bytesOf = (r: ReturnType<typeof encode>): Uint8Array => {
     if (!r.ok) throw new Error(`encode failed: ${r.error} at ${r.detail}`);
@@ -136,8 +170,8 @@ describe("§8.2 item 3 — non-canonical inputs", () => {
             expect(r.ok, r.ok ? "" : `${r.error}: ${r.detail}`).toBe(true);
             expect(c.ok).toBe(true);
             if (!r.ok || !c.ok) return;
-            // Same values...
-            expect(plain(r.target)).toEqual(plain(c.target));
+            // Same values, up to the order of descriptorSets (§8.2 item 3).
+            expect(withSortedSets(r.target)).toEqual(withSortedSets(c.target));
             // ...and re-encoding yields the counterpart, not the input. This
             // is what makes §7.3's "keeps only what it understands" testable
             // rather than a disclaimer.
@@ -347,13 +381,33 @@ describe("§8.3 — evolution", () => {
         expect(!r.ok && r.error).toBe("INCONSISTENT_DATA");
     });
 
+    it("rejects every frozen version's valid/ corpus by version (§8.3)", () => {
+        // "Never misreads them" is the floor. Under §7.1's exact-minor rule
+        // for 0.x the actual obligation is sharper: a file of a frozen minor
+        // is refused *for being that minor*, not for some incidental reason
+        // that might stop applying if its bytes were regenerated.
+        for (const version of FROZEN_VERSIONS) {
+            const dir = join(CORPUS_ROOT, version, "valid");
+            const names = readdirSync(dir).filter((n) => n.endsWith(".wnft"));
+            expect(names.length, version).toBeGreaterThan(0);
+            for (const name of names) {
+                const r = decode(new Uint8Array(readFileSync(join(dir, name))));
+                expect(!r.ok && r.error, `${version}/valid/${name}`).toBe(
+                    "UNSUPPORTED_FORMAT_VERSION",
+                );
+            }
+        }
+    });
+
     it("reads or rejects every frozen version's corpus, never misreads it", () => {
-        // The backward-compatibility corpus. Today only 0.2 exists; written as
-        // a loop so a future frozen directory is covered the day it lands.
+        // The backward-compatibility corpus, over every version directory
+        // that exists — this build's own and every frozen one.
         const versions = readdirSync(CORPUS_ROOT).filter((name) =>
             statSync(join(CORPUS_ROOT, name)).isDirectory(),
         );
-        expect(versions).toContain("0.2");
+        expect(versions).toEqual(
+            expect.arrayContaining([...FROZEN_VERSIONS, SUPPORTED_FORMAT_VERSION]),
+        );
         for (const version of versions) {
             const dir = join(CORPUS_ROOT, version);
             const walk = (sub: string): void => {

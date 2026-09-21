@@ -73,7 +73,7 @@ function makeSet(rowsPerLevel: readonly number[], overrides: Record<string, unkn
 
 function makeTarget(sets: readonly DescriptorSet[]): TargetDb {
     return {
-        formatVersion: "0.2",
+        formatVersion: "0.3",
         extensionsUsed: [],
         extensionsRequired: [],
         meta: { widthPx: 64, heightPx: 64, physicalSizeMm: null },
