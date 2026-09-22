@@ -11,6 +11,7 @@
     "prepare": "npm run build",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "check:contract": "node scripts/check-contract-sync.mjs",
     "lint": "npm run lint --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present"
   },
