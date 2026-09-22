@@ -268,6 +268,40 @@ export interface BackendCapabilities {
  * The stateless CV surface. An implementation holds no per-frame state; all
  * inputs are passed in explicitly and all outputs are owned by the caller.
  *
+ * ## Purity
+ *
+ * "Stateless" is stronger than it first reads, so it is worth saying plainly:
+ * {@link CvBackend.detect}, {@link CvBackend.describe}, {@link CvBackend.match}
+ * and {@link CvBackend.poseFromHomography} are **pure functions of their
+ * arguments**. The same inputs produce the same outputs on every call, whatever
+ * ran in between.
+ *
+ * **{@link CvBackend.estimateHomography} is the one exception**, and it is
+ * named here rather than left out, because in a contract an omission reads as a
+ * permission. It samples randomly — RANSAC draws minimal sets — so it is not a
+ * function of its arguments alone. It becomes pure *for a given RNG* as soon as
+ * one can be injected, which is what
+ * [#24](https://github.com/webarkit/webarkit/issues/24) is for; until then a
+ * caller that needs reproducibility from it cannot get it, and that is a known
+ * gap rather than licence to be non-deterministic elsewhere.
+ *
+ * Nothing else is exempt. {@link CvBackend.filterMatches} and
+ * {@link CvBackend.detectAndCompute} are optional, not impure: an
+ * implementation that provides them holds them to the same rule.
+ *
+ * Internal caches, pools and scratch buffers are allowed, but only where they
+ * cannot be observed. The failure is quiet when they can be: a pool that leaks
+ * a buffer on an error path, a scratch cell read before it is written, a cache
+ * keyed on something that is not the input. Results then depend on call
+ * *history*, nothing in a signature shows it, and everything above the contract
+ * inherits it — a target compiled twice stops matching itself, a tracker
+ * re-acquires differently, a committed fixture stops reproducing.
+ *
+ * {@link findPurityViolations} is the conformance check; every backend should
+ * run it. It calls each of the three twice on identical inputs with an
+ * unrelated call in between, which is the part that catches state carried
+ * across calls rather than merely within one.
+ *
  * ## Negotiation
  *
  * These rules are as much a part of the contract as the signatures. They exist
