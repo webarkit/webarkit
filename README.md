@@ -114,6 +114,20 @@ The static demo's **"target from"** selector runs the same pipeline either way,
 which is how you can see that the file carries a target rather than merely
 storing one.
 
+To check one — a file you were given, or one that refuses to track:
+
+```bash
+node packages/nft-tracker/bin/validate-target.mjs examples/targets/pinball.wnft
+```
+
+It answers two questions, and they are not the same one. **Is the file valid?**
+against the specification, with a §6.2 error code when it is not. **Can a
+backend use it?** by running §6.3's descriptor-set selection against a real
+backend's capabilities — because a perfectly valid file can still be unusable,
+and decoding alone never says so. Exit `0` valid and usable, `1` neither, `2`
+bad usage; `--decode-only` checks the file without loading a backend, `--json`
+for scripts.
+
 ### What it buys you
 
 Preparing this target costs roughly **200× more than loading it**. Measured on

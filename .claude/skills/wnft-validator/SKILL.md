@@ -48,9 +48,17 @@ agree on shape and still compute different bits, and this is the only signal
 that they might (§6.3, ADR-0001's contract gaps). If matching is poor on a
 target that validates cleanly, suspect this.
 
-**`probe not conclusive`** — the backend would not describe the synthetic probe
-keypoint. Reported as inconclusive rather than folded into a pass, because
-calling it a pass is exactly the overclaim the probe exists to prevent.
+**`skipped <set> — width or norm mismatch`** — §6.3 working, not a fault. A
+candidate that fails the descriptor-width probe is skipped and selection moves
+on to the next one. A target whose first set is the wrong width and whose
+second fits is **usable**, and the `skipped` line is how you see why the
+chosen set is not the first one in the file.
+
+**`usable UNKNOWN`** — different from `NO`, and they call for different
+actions. `NO` is a target/backend mismatch. `UNKNOWN` means no candidate could
+be confirmed because a probe would not run: a check that did not happen. It
+still exits non-zero, because "we could not check" is the one answer this tool
+must never dress up as "yes".
 
 **`UNSUPPORTED_DESCRIPTOR_SET`** in the warnings is often the rule working
 rather than a fault: a set whose `kind`, `norm` or `elementType` this reader

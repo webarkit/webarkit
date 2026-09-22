@@ -76,6 +76,8 @@ function run(...args: string[]): Run {
 
 let tmp: string;
 let unusable: string;
+let fallback: string;
+let allRejected: string;
 
 beforeAll(() => {
     tmp = mkdtempSync(join(tmpdir(), "wnft-validate-"));
@@ -89,12 +91,48 @@ beforeAll(() => {
     const decoded = decode(source);
     if (!decoded.ok) throw new Error(`minimal.wnft must decode: ${decoded.error}`);
     const target = structuredClone(decoded.target);
-    (target.descriptorSets[0] as { kind: string }).kind = "teblid";
+    (target.descriptorSets[0] as unknown as { kind: string }).kind = "teblid";
     const written = encode(target);
     if (!written.ok) throw new Error(`must re-encode: ${written.detail}`);
 
     unusable = join(tmp, "unusable.wnft");
     writeFileSync(unusable, written.bytes);
+
+    // Two orb sets: a 128-bit one and a 256-bit one. §7.3 sorts by dimensions,
+    // so the 128-bit set comes *first* in the file and is what §6.3 offers as
+    // the first candidate — and jsfeatNext computes 32-byte ORB, so its width
+    // probe must fail and selection must move on to the second. That is
+    // §6.3's "moves on to the next candidate", and it is the case an earlier
+    // version of this tool got wrong: it probed once and gave up.
+    const good = decoded.target.descriptorSets[0]!;
+    const narrow = {
+        ...good,
+        dimensions: 128,
+        bytesPerDescriptor: 16,
+        data: new Uint8Array(good.count * 16),
+        kpIndex: good.kpIndex.slice(),
+        levelStart: good.levelStart.slice(),
+    };
+    const twoSets = structuredClone(decoded.target);
+    (twoSets as unknown as { descriptorSets: unknown[] }).descriptorSets = [
+        narrow,
+        { ...good, producer: "purecv" },
+    ];
+    const withFallback = encode(twoSets);
+    if (!withFallback.ok) throw new Error(`must re-encode: ${withFallback.detail}`);
+    fallback = join(tmp, "fallback.wnft");
+    writeFileSync(fallback, withFallback.bytes);
+
+    // One set, zero-dimension — legal under §5.6, and the wrong width for any
+    // real backend. Every candidate is rejected, and nothing is left.
+    const zero = structuredClone(decoded.target);
+    (zero.descriptorSets[0] as unknown as Record<string, unknown>).dimensions = 0;
+    (zero.descriptorSets[0] as unknown as Record<string, unknown>).bytesPerDescriptor = 0;
+    (zero.descriptorSets[0] as unknown as Record<string, unknown>).data = new Uint8Array(0);
+    const zeroDim = encode(zero);
+    if (!zeroDim.ok) throw new Error(`must re-encode: ${zeroDim.detail}`);
+    allRejected = join(tmp, "all-rejected.wnft");
+    writeFileSync(allRejected, zeroDim.bytes);
 });
 
 afterAll(() => {
@@ -155,6 +193,27 @@ describe("validate-target", () => {
         expect(parsed[0]!.valid).toBe(true);
         expect(parsed[0]!.usable.ok).toBe(false);
         expect(parsed[0]!.usable.chosen).toBeNull();
+    });
+
+    it("moves on to the next candidate when one fails the width probe (§6.3)", () => {
+        // The first set is 128-bit and this backend computes 32-byte ORB, so
+        // its probe must fail; the 256-bit set behind it must then be chosen.
+        // Probing only the first candidate would call this usable target
+        // unusable — which is exactly what an earlier version of this tool did.
+        const r = run(fallback);
+        expect(r.status).toBe(0);
+        expect(r.stdout).toContain("skipped     orb/hamming/128");
+        expect(r.stdout).toMatch(/usable\s+yes on 'jsfeatnext' via orb\/hamming\/256/);
+    });
+
+    it("says what was rejected, not that the target offers nothing", () => {
+        // Selection walks a shrinking copy of the set list, so the helper's own
+        // message would describe the emptied copy once every candidate has been
+        // tried. The verdict has to describe the file the user handed over.
+        const r = run(allRejected);
+        expect(r.status).toBe(1);
+        expect(r.stdout).toContain("every candidate was probed and rejected");
+        expect(r.stdout).not.toContain("offers []");
     });
 
     it("exits 2 on bad usage, distinct from an invalid target", () => {

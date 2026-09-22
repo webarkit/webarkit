@@ -58,6 +58,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import process from "node:process";
 
 import { createJsfeatNextBackend } from "@webarkit/cv-backend-jsfeatnext";
@@ -74,6 +75,19 @@ const USAGE = `usage: validate-target <file.wnft> [more.wnft ...] [options]
 exit: 0 every file valid (and usable, unless --decode-only), 1 otherwise,
       2 bad usage
 `;
+
+/**
+ * Where the user actually typed the command, as `compile-target.mjs` computes
+ * it and for the same reason: npm runs a workspace script with the cwd set to
+ * the **package**, so `npm run validate-target -w @webarkit/nft-tracker --
+ * examples/targets/pinball.wnft` from the repository root would look inside
+ * `packages/nft-tracker/` and report a file that is missing when it is not.
+ *
+ * `INIT_CWD` is how npm says where the command came from; running the script
+ * directly with `node` leaves it unset, and then the cwd already *is* the
+ * invocation directory. `||` rather than `??`, so an empty value falls back too.
+ */
+const INVOCATION_DIR = process.env.INIT_CWD || process.cwd();
 
 const EXIT_USAGE = 2;
 
@@ -162,6 +176,116 @@ function summarise(target) {
     };
 }
 
+/**
+ * §6.3's selection loop: probe each candidate, and move on when one fails.
+ *
+ * §6.3 is explicit that a set failing a check is skipped rather than fatal —
+ * "the reader reports the warning `UNSUPPORTED_DESCRIPTOR_SET` and moves on to
+ * the next candidate. When no set survives, the result is the error
+ * `NO_USABLE_DESCRIPTORS`." `chooseDescriptorSet` answers only "which is the
+ * first set matching `elementType`, `norm` and `kind`", by design; continuing
+ * past a width mismatch is this loop's job, not the helper's.
+ *
+ * Which is why the loop calls the helper again on a target minus the rejected
+ * set, rather than filtering the sets itself: the *rule* for what counts as a
+ * candidate stays in one place, and only §6.3's "try the next one" lives here.
+ *
+ * Three outcomes, kept apart on purpose:
+ *
+ * - **usable** — a candidate's probe ran and agreed.
+ * - **no** — every candidate was probed and mismatched, or none was a
+ *   candidate at all.
+ * - **unknown** — no candidate agreed, and at least one probe could not be
+ *   run. Not a pass: "we could not check" is the one answer this tool must
+ *   never dress up as "yes", and it is still a non-zero exit, because a
+ *   validator that shrugs silently is worse than one that says so.
+ */
+function assessUsability(cv, target) {
+    const backend = cv.capabilities.name;
+    // Shallow copy: only `descriptorSets` shrinks, and the arrays inside each
+    // set are never touched.
+    const remaining = { ...target, descriptorSets: [...target.descriptorSets] };
+    const rejected = [];
+
+    for (;;) {
+        let set;
+        try {
+            set = chooseDescriptorSet(cv, remaining);
+        } catch (error) {
+            // No candidate left. If every candidate we did try was merely
+            // inconclusive, say so rather than claiming the target is unusable.
+            const inconclusive = rejected.filter((x) => !x.probe.ran);
+            if (rejected.length > 0 && inconclusive.length === rejected.length) {
+                return {
+                    ok: false,
+                    status: "unknown",
+                    backend,
+                    chosen: null,
+                    rejected,
+                    reason:
+                        `every candidate's width probe was inconclusive, so descriptor ` +
+                        `compatibility could not be established: ${inconclusive[0].probe.reason}`,
+                };
+            }
+            return {
+                ok: false,
+                status: "no",
+                backend,
+                chosen: null,
+                rejected,
+                // The helper's message describes `remaining`, which this loop
+                // has been emptying as it goes — so it would say the target
+                // "offers []" once every candidate has been probed and
+                // skipped. Use it only when nothing was ever a candidate;
+                // otherwise say what actually happened.
+                reason:
+                    rejected.length === 0
+                        ? error instanceof Error
+                            ? error.message
+                            : String(error)
+                        : `every candidate was probed and rejected: ` +
+                          rejected
+                              .map(
+                                  (x) =>
+                                      `${x.set} (${
+                                          x.probe.ran
+                                              ? `backend gives ${x.probe.bytesPerDescriptor} B/${x.probe.norm}`
+                                              : `probe inconclusive`
+                                      })`,
+                              )
+                              .join(", "),
+            };
+        }
+
+        const probe = probeWidth(cv, set);
+        const label = `${set.kind}/${set.norm}/${set.dimensions}`;
+
+        if (probe.ran && probe.ok) {
+            return {
+                ok: true,
+                status: "yes",
+                backend,
+                chosen: label,
+                producer: set.producer,
+                // §6.2's PRODUCER_MISMATCH: the chosen set was computed by a
+                // different backend than the one reading it. A **warning**, not
+                // a failure, and deliberately not folded into `ok` — §6.3 keeps
+                // it one until cross-backend descriptor conformance is
+                // established (ADR-0001, contract gaps). The probe checks
+                // descriptor *shape*; two backends can agree on shape and still
+                // compute different bits, and this is the only signal a user
+                // gets that they might.
+                producerMismatch: set.producer !== backend,
+                rejected,
+                probe,
+            };
+        }
+
+        rejected.push({ set: label, producer: set.producer, probe });
+        remaining.descriptorSets = remaining.descriptorSets.filter((s) => s !== set);
+    }
+}
+
 function checkOne(bytes, cv) {
     const r = decode(bytes);
     if (!r.ok) {
@@ -175,36 +299,7 @@ function checkOne(bytes, cv) {
     };
     if (cv === null) return result;
 
-    try {
-        const set = chooseDescriptorSet(cv, r.target);
-        const probe = probeWidth(cv, set);
-        result.usable = {
-            // Usable only when the probe agrees, or could not be run. An
-            // outright width or norm mismatch is a "no": `match` cannot
-            // compare rows of different widths.
-            ok: probe.ran ? probe.ok : true,
-            backend: cv.capabilities.name,
-            chosen: `${set.kind}/${set.norm}/${set.dimensions}`,
-            producer: set.producer,
-            // §6.2's PRODUCER_MISMATCH: the chosen set was computed by a
-            // different backend than the one reading it. A **warning**, not a
-            // failure, and deliberately not folded into `ok` — §6.3 keeps it
-            // one until cross-backend descriptor conformance is established
-            // (ADR-0001, contract gaps). The probe above checks descriptor
-            // *shape*; two backends can agree on shape and still compute
-            // different bits, and this is the only signal a user gets that
-            // they might.
-            producerMismatch: set.producer !== cv.capabilities.name,
-            probe,
-        };
-    } catch (error) {
-        result.usable = {
-            ok: false,
-            backend: cv.capabilities.name,
-            chosen: null,
-            reason: error instanceof Error ? error.message : String(error),
-        };
-    }
+    result.usable = assessUsability(cv, r.target);
     return result;
 }
 
@@ -237,25 +332,40 @@ function printHuman(file, r) {
         console.log(`  warning     ${w.code}${w.detail === null ? "" : `  ${w.detail}`}`);
     }
     if (r.usable === undefined) return;
+    const u = r.usable;
 
-    if (!r.usable.ok && r.usable.chosen === null) {
-        console.log(`  usable      NO, on backend '${r.usable.backend}'`);
-        console.log(`              ${r.usable.reason}`);
+    // Candidates tried and moved past, in the order §6.3 tried them. Printed
+    // before the verdict because they are how it was reached, and because a
+    // target that only works on its third set is worth knowing about even
+    // when the answer is "yes".
+    for (const x of u.rejected) {
+        const why = x.probe.ran
+            ? `width or norm mismatch: this backend gives ${x.probe.bytesPerDescriptor} B/${x.probe.norm}`
+            : `probe inconclusive: ${x.probe.reason}`;
+        console.log(`  skipped     ${x.set} by ${x.producer} — ${why}`);
+    }
+
+    if (u.status === "yes") {
+        console.log(
+            `  usable      yes on '${u.backend}' via ${u.chosen} ` +
+                `(probe: ${u.probe.bytesPerDescriptor} B/descriptor, ${u.probe.norm})`,
+        );
+        if (u.producerMismatch) {
+            console.log(
+                `  warning     PRODUCER_MISMATCH  the chosen set was produced by '${u.producer}', ` +
+                    `not by '${u.backend}'. Descriptor shape matches; the bits may still differ.`,
+            );
+        }
         return;
     }
-    const p = r.usable.probe;
-    const probeText = p.ran
-        ? `probe: ${p.bytesPerDescriptor} B/descriptor, ${p.norm}`
-        : `probe not conclusive: ${p.reason}`;
+
+    // "Unknown" is kept distinct from "no" in the output as well as in the
+    // exit status. They call for different actions: one is a target/backend
+    // mismatch, the other is a check that did not happen.
     console.log(
-        `  usable      ${r.usable.ok ? "yes" : "NO"} on '${r.usable.backend}' via ${r.usable.chosen} (${probeText})`,
+        `  usable      ${u.status === "unknown" ? "UNKNOWN" : "NO"}, on backend '${u.backend}'`,
     );
-    if (r.usable.producerMismatch) {
-        console.log(
-            `  warning     PRODUCER_MISMATCH  the chosen set was produced by '${r.usable.producer}', ` +
-                `not by '${r.usable.backend}'. Descriptor shape matches; the bits may still differ.`,
-        );
-    }
+    console.log(`              ${u.reason}`);
 }
 
 async function main(argv) {
@@ -272,7 +382,7 @@ async function main(argv) {
     for (const file of args.files) {
         let r;
         try {
-            r = checkOne(new Uint8Array(readFileSync(file)), cv);
+            r = checkOne(new Uint8Array(readFileSync(resolve(INVOCATION_DIR, file))), cv);
         } catch (error) {
             r = {
                 valid: false,
