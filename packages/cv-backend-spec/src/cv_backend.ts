@@ -268,6 +268,26 @@ export interface BackendCapabilities {
  * The stateless CV surface. An implementation holds no per-frame state; all
  * inputs are passed in explicitly and all outputs are owned by the caller.
  *
+ * ## Purity
+ *
+ * "Stateless" is stronger than it first reads, so it is worth saying plainly:
+ * {@link CvBackend.detect}, {@link CvBackend.describe} and
+ * {@link CvBackend.match} are **pure functions of their arguments**. The same
+ * inputs produce the same outputs on every call, whatever ran in between.
+ *
+ * Internal caches, pools and scratch buffers are allowed, but only where they
+ * cannot be observed. The failure is quiet when they can be: a pool that leaks
+ * a buffer on an error path, a scratch cell read before it is written, a cache
+ * keyed on something that is not the input. Results then depend on call
+ * *history*, nothing in a signature shows it, and everything above the contract
+ * inherits it — a target compiled twice stops matching itself, a tracker
+ * re-acquires differently, a committed fixture stops reproducing.
+ *
+ * {@link findPurityViolations} is the conformance check; every backend should
+ * run it. It calls each of the three twice on identical inputs with an
+ * unrelated call in between, which is the part that catches state carried
+ * across calls rather than merely within one.
+ *
  * ## Negotiation
  *
  * These rules are as much a part of the contract as the signatures. They exist
