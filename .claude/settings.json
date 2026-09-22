@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/format-rust-on-edit.mjs"
+            "command": "node .claude/hooks/format-on-edit.mjs"
           }
         ]
       }
