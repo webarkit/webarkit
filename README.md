@@ -2,6 +2,9 @@
 
 [![CI](https://github.com/webarkit/webarkit/actions/workflows/CI.yml/badge.svg)](https://github.com/webarkit/webarkit/actions/workflows/CI.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Rust](https://img.shields.io/badge/Rust-2024-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![no_std](https://img.shields.io/badge/no__std-forbid(unsafe__code)-success)](./crates/wnft-format)
+[![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg)](https://prettier.io/)
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/webarkit/webarkit.svg?style=social)](https://github.com/webarkit/webarkit/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/webarkit/webarkit.svg?style=social)](https://github.com/webarkit/webarkit/network/members)
