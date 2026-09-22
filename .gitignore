@@ -36,3 +36,7 @@ crates/wnft-format/fuzz/coverage/
 # fuzz` inside it regenerates this lockfile — a plain `cargo check` at the
 # repository root never touches it, so it does not belong in version control.
 crates/wnft-format/fuzz/Cargo.lock
+
+# Claude Code personal overrides. .claude/settings.json is shared and checked
+# in; settings.local.json is per-developer and must not be.
+.claude/settings.local.json
