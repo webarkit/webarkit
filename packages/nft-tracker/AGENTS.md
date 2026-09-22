@@ -38,6 +38,12 @@ package):
 | `npm run fixtures -w @webarkit/nft-tracker` | Builds, then regenerates the `.wnft` corpus. See **Fixtures** below — this deletes a directory |
 | `npm run compile-target -w @webarkit/nft-tracker` | `bin/compile-target.mjs`, the target compiler |
 
+Note which step needs what. The **build** compiles `src/` only, so it needs the
+spec's `dist/` and not any backend's — `src/` may not import one (below), and
+that is why this package compiles with `cv-backend-jsfeatnext/dist` deleted.
+The **typecheck** widens to `test/`, where a real backend is injected, so that
+one does need the backend built.
+
 `scripts/generate-fixtures.mjs` and `bin/*.mjs` import the built `dist/`, so a
 stale build makes them fail in ways that look like logic errors. Build first.
 
