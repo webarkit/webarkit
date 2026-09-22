@@ -37,6 +37,7 @@ package):
 | `npm test -w @webarkit/nft-tracker` | Vitest |
 | `npm run fixtures -w @webarkit/nft-tracker` | Builds, then regenerates the `.wnft` corpus. See **Fixtures** below — this deletes a directory |
 | `npm run compile-target -w @webarkit/nft-tracker` | `bin/compile-target.mjs`, the target compiler |
+| `npm run validate-target -w @webarkit/nft-tracker` | `bin/validate-target.mjs`. Answers two questions, not one: is the file valid (§6.2), and can a backend actually use it (§6.3). |
 
 Note which step needs what. The **build** compiles `src/` only, so it needs the
 spec's `dist/` and not any backend's — `src/` may not import one (below), and

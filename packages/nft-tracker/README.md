@@ -182,6 +182,65 @@ this option exists for.
 [`examples/targets/pinball.wnft`](../../examples/targets) is one such target,
 committed, and the static demo can load it instead of building its own.
 
+## Validating a target
+
+`bin/validate-target.mjs` is the other half of the offline tooling, and it
+answers **two** questions rather than one:
+
+- **Is the file valid?** `decode` against the specification — a §6.2 error code
+  when it is not, and any §6.2 warnings when it is.
+- **Can a backend use it?** §6.3 selection against a real backend's
+  `capabilities`. This is the half worth having, because **a valid file can be
+  unusable**: `NO_USABLE_DESCRIPTORS` is an outcome of *selection*, not of
+  decoding — §8.1 exempts it by name from "one fixture per error code", because
+  no file produces it on its own. If a target decodes cleanly and still never
+  tracks, this is the first thing to run.
+
+```bash
+npm run build                                  # the script imports dist/
+node packages/nft-tracker/bin/validate-target.mjs examples/targets/pinball.wnft
+```
+
+```
+examples/targets/pinball.wnft
+  decode      ok, format 0.3
+  target      512x640, 8 levels, 2062 keypoints, 0 patches
+  physical    210 x 262.5 mm
+  set         orb/hamming/bits/256 by jsfeatnext, 2062 rows, 32 B each
+  usable      yes on 'jsfeatnext' via orb/hamming/256 (probe: 32 B/descriptor, hamming)
+```
+
+The npm script is equivalent and reads relative paths the same way — relative
+to where you typed the command, via `INIT_CWD`, for the reason the compile
+section gives:
+
+```bash
+npm run validate-target -w @webarkit/nft-tracker -- examples/targets/pinball.wnft
+```
+
+| Option | What it does |
+|---|---|
+| `--decode-only` | check the file against the specification only; load no backend |
+| `--json` | the same verdict, machine-readable |
+| `-h`, `--help` | usage |
+
+**Exit status:** `0` every file valid and usable, `1` any file invalid or
+unusable, `2` bad usage. The three are kept apart on purpose — a bad
+command line is not a bad target.
+
+Three things in the output are worth knowing:
+
+- **`skipped`** lines are §6.3 working. A candidate that fails the
+  descriptor-width probe is skipped and selection moves on to the next; a
+  target whose first set is the wrong width and whose second fits is *usable*.
+- **`UNKNOWN`** is not `NO`. It means no candidate could be confirmed because a
+  probe would not run — a check that did not happen, reported as such rather
+  than dressed up as a pass. It still exits non-zero.
+- **`PRODUCER_MISMATCH`** is a warning and never changes the exit status. The
+  probe checks descriptor *shape*; two backends can agree on shape and still
+  compute different bits, and this is the only signal that they might (§6.3,
+  ADR-0001's contract gaps).
+
 ## Conformance
 
 The suites in `test/target/format/` implement §8.2, §8.3 and §8.4 against the
