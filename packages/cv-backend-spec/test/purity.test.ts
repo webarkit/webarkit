@@ -241,6 +241,55 @@ describe("findPurityViolations", () => {
         expect(seen.every((o) => o?.ratio === 0.7 && o.crossCheck === true)).toBe(true);
     });
 
+    it("catches an impure poseFromHomography", () => {
+        // Deterministic math, held to the same rule — and the contract would
+        // otherwise be silent about it, which reads as permission.
+        let calls = 0;
+        const cv = {
+            ...makeBackend(),
+            poseFromHomography: () => {
+                calls += 1;
+                return {
+                    R: new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
+                    t: new Float64Array([0, 0, calls]),
+                    good: true,
+                };
+            },
+        };
+
+        const { violations } = findPurityViolations(cv, IMAGE);
+        expect(violations.find((v) => v.method === "poseFromHomography")?.detail).toMatch(
+            /t\[2\]:/,
+        );
+    });
+
+    it("catches poseFromHomography handing back the same arrays", () => {
+        const R = new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+        const t = new Float64Array([0, 0, 1]);
+        const cv = { ...makeBackend(), poseFromHomography: () => ({ R, t, good: true }) };
+
+        const { violations } = findPurityViolations(cv, IMAGE);
+        expect(violations.find((v) => v.method === "poseFromHomography")?.detail).toMatch(
+            /same R or t array/,
+        );
+    });
+
+    it("reports whether the pose probe recovered anything", () => {
+        // `good: false` twice compares equal and establishes nothing about the
+        // decomposition, so the caller gets told which it was.
+        expect(findPurityViolations(makeBackend(), IMAGE).coverage.poseGood).toBe(true);
+
+        const refusing = {
+            ...makeBackend(),
+            poseFromHomography: () => ({
+                R: new Float64Array(9),
+                t: new Float64Array(3),
+                good: false,
+            }),
+        };
+        expect(findPurityViolations(refusing, IMAGE).coverage.poseGood).toBe(false);
+    });
+
     it("separates the repeated calls with work on a different image", () => {
         // The historical defect was state carried across *unrelated* calls, so
         // a probe that repeated a call back to back would have missed it. This

@@ -65,6 +65,14 @@
  * **It is framework-agnostic on purpose.** It returns findings rather than
  * asserting, so it adds no test-runner dependency to this package. The caller
  * does the asserting, in whatever runner it uses.
+ *
+ * **`estimateHomography` is not probed, and that is a decision, not an
+ * oversight.** It samples randomly, so it is the contract's one deliberate
+ * exception to purity. It becomes pure *for a given RNG* the moment one can be
+ * injected ([#24](https://github.com/webarkit/webarkit/issues/24)), and should
+ * join this check then, with the RNG fixed. Until it does, a caller wanting
+ * determinism from it has to pin the seed itself — which is exactly what it
+ * cannot do yet.
  */
 
 import type {
@@ -74,14 +82,24 @@ import type {
     DetectOptions,
     GrayImage,
     Keypoint,
+    Mat3,
     Match,
     MatchOptions,
+    Pose,
 } from "./cv_backend.js";
 
 /** One way an implementation was observed not to be a pure function. */
 export interface PurityViolation {
-    /** The contract method whose result changed. */
-    readonly method: "detect" | "describe" | "match";
+    /**
+     * The contract method whose result changed.
+     *
+     * `estimateHomography` is absent on purpose, and the absence is the one
+     * thing here worth stating rather than leaving to inference: it samples
+     * randomly, so it is the contract's single deliberate exception to purity.
+     * Once an RNG can be injected (#24) it becomes pure *for a given RNG*, and
+     * belongs in this list with that RNG fixed.
+     */
+    readonly method: "detect" | "describe" | "match" | "poseFromHomography";
     /** What differed, precisely enough to start debugging from. */
     readonly detail: string;
 }
@@ -106,6 +124,14 @@ export interface PurityCoverage {
      * — the most important kind of vacuous pass here, and the least visible.
      */
     readonly decoyDiffers: boolean;
+    /**
+     * Whether `poseFromHomography` actually recovered a pose.
+     *
+     * A backend that refuses every input returns `good: false` twice and
+     * compares equal, which is deterministic but establishes nothing about the
+     * path that matters. Same reason the counts above are reported.
+     */
+    readonly poseGood: boolean;
 }
 
 /** The result of a purity probe. */
@@ -124,6 +150,32 @@ export interface PurityProbeOptions {
      * defaults.
      */
     readonly match?: MatchOptions;
+    /**
+     * The pair `poseFromHomography` is probed with. Defaults to a mild
+     * perspective transform and plausible intrinsics, which is enough to reach
+     * the decomposition rather than an early rejection.
+     */
+    readonly pose?: { readonly H: Mat3; readonly K: Mat3 };
+}
+
+/** A homography with real rotation in it, so the decomposition has work to do. */
+const DEFAULT_H = (): Mat3 =>
+    new Float64Array([0.94, -0.18, 42, 0.16, 0.97, -25, 0.00021, -0.00014, 1]);
+
+/** Plausible pinhole intrinsics for a 640x480 frame. */
+const DEFAULT_K = (): Mat3 => new Float64Array([800, 0, 320, 0, 800, 240, 0, 0, 1]);
+
+function poseDifference(a: Pose, b: Pose): string | null {
+    if (a.good !== b.good) return `good ${String(a.good)} then ${String(b.good)}`;
+    for (const field of ["R", "t"] as const) {
+        const x = a[field];
+        const y = b[field];
+        if (x.length !== y.length) return `${field} length ${x.length} then ${y.length}`;
+        for (let i = 0; i < x.length; i += 1) {
+            if (x[i] !== y[i]) return `${field}[${i}]: ${x[i]} then ${y[i]}`;
+        }
+    }
+    return null;
 }
 
 const keypointKey = (k: Keypoint): string => `${k.x},${k.y},${k.score},${k.angle},${k.level}`;
@@ -249,6 +301,25 @@ export function findPurityViolations(
     }
     add("match", firstDifference(m1, copyMatches(m2Live), matchKey));
 
+    // --- poseFromHomography ------------------------------------------------
+    // Deterministic math, and therefore held to the same rule as the other
+    // three. It is cheap to check and the contract would otherwise be silent
+    // about it, which in a contract reads as permission.
+    const H = options.pose?.H ?? DEFAULT_H();
+    const K = options.pose?.K ?? DEFAULT_K();
+    const p1Live = cv.poseFromHomography(H, K);
+    const p1: Pose = {
+        R: Float64Array.from(p1Live.R),
+        t: Float64Array.from(p1Live.t),
+        good: p1Live.good,
+    };
+    cv.poseFromHomography(DEFAULT_H(), new Float64Array([650, 0, 400, 0, 650, 300, 0, 0, 1]));
+    const p2Live = cv.poseFromHomography(H, K);
+    if (p2Live.R === p1Live.R || p2Live.t === p1Live.t) {
+        add("poseFromHomography", "reused the same R or t array; outputs are owned by the caller");
+    }
+    add("poseFromHomography", poseDifference(p1, p2Live));
+
     return {
         violations,
         coverage: {
@@ -256,6 +327,7 @@ export function findPurityViolations(
             descriptors: d1.count,
             matches: m1.length,
             decoyDiffers: !sameBytes(decoy.data, image.data),
+            poseGood: p1.good,
         },
     };
 }

@@ -116,11 +116,20 @@ async function run(createBackend: () => Promise<CvBackend>) {
 
 ## Conformance: purity
 
-`detect`, `describe` and `match` are **pure functions of their arguments** —
-the same inputs give the same outputs on every call, whatever ran in between.
-That follows from "stateless", but a type signature cannot enforce it, and the
-way it breaks is quiet: a buffer pool that leaks on an error path, a scratch
-cell read before it is written, an output array handed back and then reused.
+`detect`, `describe`, `match` and `poseFromHomography` are **pure functions of
+their arguments** — the same inputs give the same outputs on every call,
+whatever ran in between. That follows from "stateless", but a type signature
+cannot enforce it, and the way it breaks is quiet: a buffer pool that leaks on
+an error path, a scratch cell read before it is written, an output array handed
+back and then reused.
+
+**`estimateHomography` is the one exception, and it is named rather than left
+out** — in a contract, an omission reads as a permission. RANSAC draws minimal
+sets at random, so it is not a function of its arguments alone. It becomes pure
+*for a given RNG* as soon as one can be injected
+([#24](https://github.com/webarkit/webarkit/issues/24)), and joins the check
+then. Nothing else is exempt: `filterMatches` and `detectAndCompute` are
+optional, not impure.
 
 Every backend should run the check. It ships as its own entry point, so
 importing the contract itself still pulls in no runtime code:
@@ -134,7 +143,8 @@ expect(violations).toEqual([]);
 // And refuse a vacuous pass: an image yielding no keypoints yields no
 // descriptors and no matches, and every comparison then trivially succeeds.
 expect(coverage.keypoints).toBeGreaterThan(0);
-expect(coverage.decoyDiffers).toBe(true);
+expect(coverage.decoyDiffers).toBe(true);  // the intervening call saw other pixels
+expect(coverage.poseGood).toBe(true);      // the pose probe decomposed something
 ```
 
 It calls each of the three twice on identical inputs **with an unrelated call

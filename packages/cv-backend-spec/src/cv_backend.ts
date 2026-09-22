@@ -271,9 +271,23 @@ export interface BackendCapabilities {
  * ## Purity
  *
  * "Stateless" is stronger than it first reads, so it is worth saying plainly:
- * {@link CvBackend.detect}, {@link CvBackend.describe} and
- * {@link CvBackend.match} are **pure functions of their arguments**. The same
- * inputs produce the same outputs on every call, whatever ran in between.
+ * {@link CvBackend.detect}, {@link CvBackend.describe}, {@link CvBackend.match}
+ * and {@link CvBackend.poseFromHomography} are **pure functions of their
+ * arguments**. The same inputs produce the same outputs on every call, whatever
+ * ran in between.
+ *
+ * **{@link CvBackend.estimateHomography} is the one exception**, and it is
+ * named here rather than left out, because in a contract an omission reads as a
+ * permission. It samples randomly — RANSAC draws minimal sets — so it is not a
+ * function of its arguments alone. It becomes pure *for a given RNG* as soon as
+ * one can be injected, which is what
+ * [#24](https://github.com/webarkit/webarkit/issues/24) is for; until then a
+ * caller that needs reproducibility from it cannot get it, and that is a known
+ * gap rather than licence to be non-deterministic elsewhere.
+ *
+ * Nothing else is exempt. {@link CvBackend.filterMatches} and
+ * {@link CvBackend.detectAndCompute} are optional, not impure: an
+ * implementation that provides them holds them to the same rule.
  *
  * Internal caches, pools and scratch buffers are allowed, but only where they
  * cannot be observed. The failure is quiet when they can be: a pool that leaks

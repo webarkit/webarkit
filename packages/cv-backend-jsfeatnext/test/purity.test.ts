@@ -100,6 +100,12 @@ describe("purity (#27)", () => {
         expect(coverage.keypoints).toBeGreaterThan(0);
         expect(coverage.descriptors).toBeGreaterThan(0);
         expect(coverage.matches).toBeGreaterThan(0);
+        // The decoy must be a genuinely different image, or the intervening
+        // call exercises nothing and the whole probe degenerates.
+        expect(coverage.decoyDiffers).toBe(true);
+        // And the pose probe must have decomposed something rather than
+        // refusing: `good: false` twice is deterministic but says nothing.
+        expect(coverage.poseGood).toBe(true);
     });
 
     it("is still pure on a backend that has already done unrelated work", () => {
