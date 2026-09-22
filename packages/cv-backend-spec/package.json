@@ -1,11 +1,23 @@
 {
   "name": "@webarkit/cv-backend-spec",
   "version": "0.1.0",
-  "description": "Minimal stateless CV backend interface shared by jsfeatNext and PureCV — detect, describe, match, estimateHomography, poseFromHomography.",
+  "description": "Minimal stateless CV backend interface shared by jsfeatNext and PureCV \u00e2\u20ac\u201d detect, describe, match, estimateHomography, poseFromHomography.",
   "license": "LGPL-3.0-or-later",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./purity": {
+      "types": "./dist/purity.d.ts",
+      "import": "./dist/purity.js",
+      "default": "./dist/purity.js"
+    }
+  },
   "files": [
     "dist"
   ],

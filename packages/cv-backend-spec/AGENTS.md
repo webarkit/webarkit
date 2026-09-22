@@ -32,8 +32,13 @@ contains no computer vision and names no backend, it calls the contract's own
 methods and compares their outputs. A contract nobody can conformance-check is
 a contract in name only, and a check living in one backend's test suite
 protects that backend alone — the next implementation reintroduces the bug and
-nothing notices (#27). Such code stays framework-agnostic: it returns findings,
-the caller asserts, and this package gains no test-runner dependency.
+nothing notices (#27). Such code stays framework-agnostic — it returns findings, the
+caller asserts, and this package gains no test-runner dependency — and it
+ships from its **own entry point** (`@webarkit/cv-backend-spec/purity`), never
+from the barrel. That is what keeps the exception narrow rather than a hole:
+`import ... from "@webarkit/cv-backend-spec"` still pulls in no executable
+code at all, and anything that would have to go in the barrel is not covered
+by this exception.
 
 **The dependency arrow is one-directional.** `cv-backend-jsfeatnext` depends on
 this package; this package must never import from it, or from `nft-tracker`,

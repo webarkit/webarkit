@@ -41,7 +41,8 @@
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
-import { findPurityViolations, type CvBackend, type GrayImage } from "@webarkit/cv-backend-spec";
+import { findPurityViolations } from "@webarkit/cv-backend-spec/purity";
+import type { CvBackend, GrayImage } from "@webarkit/cv-backend-spec";
 
 import { createJsfeatNextBackend } from "../src/index.js";
 

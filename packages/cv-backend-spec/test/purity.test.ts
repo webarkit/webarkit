@@ -36,14 +36,15 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { findPurityViolations } from "../src/purity";
 import {
-    findPurityViolations,
     type CvBackend,
     type BackendCapabilities,
     type Descriptors,
     type GrayImage,
     type Keypoint,
     type Match,
+    type MatchOptions,
     type PointArray,
 } from "../src/index";
 
@@ -159,6 +160,85 @@ describe("findPurityViolations", () => {
     it("catches an impure match", () => {
         const { violations } = findPurityViolations(makeBackend({ match: true }), IMAGE);
         expect(violations.map((v) => v.method)).toContain("match");
+    });
+
+    it("catches a backend that hands back the very same array", () => {
+        // Reuse, not drift. Contents are identical on both calls, so every
+        // value comparison passes; the only thing that can notice is object
+        // identity. And it matters: the caller's first result is destroyed by
+        // the caller's second call, which is what "outputs are owned by the
+        // caller" forbids.
+        const keypoints: Keypoint[] = [{ x: 1, y: 2, score: 1, angle: 0, level: 0 }];
+        const cv = { ...makeBackend(), detect: () => keypoints };
+
+        const { violations } = findPurityViolations(cv, IMAGE);
+        expect(violations.find((v) => v.method === "detect")?.detail).toMatch(/very same array/);
+    });
+
+    it("catches a backend that reuses one descriptor buffer", () => {
+        let calls = 0;
+        const data = new Uint8Array(4 * 32);
+        const cv = {
+            ...makeBackend(),
+            describe: (): Descriptors => {
+                calls += 1;
+                data.fill(calls);
+                return { data, count: 4, bytesPerDescriptor: 32, kind: "orb", norm: "hamming" };
+            },
+        };
+
+        const { violations } = findPurityViolations(cv, IMAGE);
+        expect(violations.find((v) => v.method === "describe")?.detail).toMatch(
+            /same descriptor buffer/,
+        );
+    });
+
+    it("catches reuse of the keypoint objects inside a fresh array", () => {
+        // The case that only the snapshot catches. The array is new each call,
+        // so identity says nothing — but the objects in it are shared and
+        // mutated, so comparing by reference after the intervening call would
+        // see the same final values on both sides and report nothing.
+        const shared: Keypoint[] = [{ x: 1, y: 2, score: 1, angle: 0, level: 0 }];
+        let calls = 0;
+        const cv = {
+            ...makeBackend(),
+            detect: (): Keypoint[] => {
+                calls += 1;
+                shared[0]!.x = calls;
+                return [...shared];
+            },
+        };
+
+        const { violations } = findPurityViolations(cv, IMAGE);
+        expect(violations.map((v) => v.method)).toContain("detect");
+    });
+
+    it("guarantees a different decoy even for an image that rotates onto itself", () => {
+        // A uniform image is unchanged by a row rotation, so without the
+        // fallback the decoy would BE the probe image and the intervening call
+        // would exercise nothing — the least visible vacuous pass there is.
+        const uniform: GrayImage = { data: new Uint8Array(16 * 16).fill(7), width: 16, height: 16 };
+        const { coverage } = findPurityViolations(makeBackend(), uniform);
+        expect(coverage.decoyDiffers).toBe(true);
+    });
+
+    it("passes MatchOptions through to every match call", () => {
+        // Ratio testing, cross-checking and a distance cap are separate paths;
+        // state confined to one of them would survive a probe that only ever
+        // used the defaults.
+        const seen: (MatchOptions | undefined)[] = [];
+        const cv = makeBackend();
+        const spy: CvBackend = {
+            ...cv,
+            match(query: Descriptors, train: Descriptors, options?: MatchOptions) {
+                seen.push(options);
+                return cv.match(query, train, options);
+            },
+        };
+
+        findPurityViolations(spy, IMAGE, { match: { ratio: 0.7, crossCheck: true } });
+        expect(seen).toHaveLength(3);
+        expect(seen.every((o) => o?.ratio === 0.7 && o.crossCheck === true)).toBe(true);
     });
 
     it("separates the repeated calls with work on a different image", () => {

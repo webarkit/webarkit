@@ -114,6 +114,41 @@ async function run(createBackend: () => Promise<CvBackend>) {
 }
 ```
 
+## Conformance: purity
+
+`detect`, `describe` and `match` are **pure functions of their arguments** —
+the same inputs give the same outputs on every call, whatever ran in between.
+That follows from "stateless", but a type signature cannot enforce it, and the
+way it breaks is quiet: a buffer pool that leaks on an error path, a scratch
+cell read before it is written, an output array handed back and then reused.
+
+Every backend should run the check. It ships as its own entry point, so
+importing the contract itself still pulls in no runtime code:
+
+```ts
+import { findPurityViolations } from "@webarkit/cv-backend-spec/purity";
+
+const { violations, coverage } = findPurityViolations(cv, probeImage);
+
+expect(violations).toEqual([]);
+// And refuse a vacuous pass: an image yielding no keypoints yields no
+// descriptors and no matches, and every comparison then trivially succeeds.
+expect(coverage.keypoints).toBeGreaterThan(0);
+expect(coverage.decoyDiffers).toBe(true);
+```
+
+It calls each of the three twice on identical inputs **with an unrelated call
+in between** — that separation is the point, since what breaks in practice is
+state carried across calls rather than within one. It returns findings instead
+of asserting, so this package needs no test runner; the caller asserts, in
+whichever one it uses. Pass `{ detect, describe, match }` options to probe a
+path other than the defaults.
+
+This is not hypothetical: `cv-backend-jsfeatnext`'s `detect` once returned
+different keypoints for the same image across calls, and it was found by a
+person noticing that a compiled target would not reproduce
+([#27](https://github.com/webarkit/webarkit/issues/27)).
+
 ## Status
 
 Draft — API surface may still change before `1.0.0`. See the root

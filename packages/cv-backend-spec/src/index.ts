@@ -39,4 +39,10 @@
 
 export * from "./cv_backend.js";
 export * from "./errors.js";
-export * from "./purity.js";
+
+// `purity.ts` is deliberately NOT re-exported here. It is the one file in this
+// package with a runtime body, and the barrel stays declarations-only so that
+// importing the contract pulls in no executable code at all. Conformance
+// checking is an explicit opt-in:
+//
+//     import { findPurityViolations } from "@webarkit/cv-backend-spec/purity";

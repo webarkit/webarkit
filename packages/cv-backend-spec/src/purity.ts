@@ -75,6 +75,7 @@ import type {
     GrayImage,
     Keypoint,
     Match,
+    MatchOptions,
 } from "./cv_backend.js";
 
 /** One way an implementation was observed not to be a pure function. */
@@ -97,6 +98,14 @@ export interface PurityCoverage {
     readonly keypoints: number;
     readonly descriptors: number;
     readonly matches: number;
+    /**
+     * Whether the intervening call really saw different pixels.
+     *
+     * If it did not, the probe degenerates into repeating a call back to back,
+     * and the history dependence this check exists for is not exercised at all
+     * — the most important kind of vacuous pass here, and the least visible.
+     */
+    readonly decoyDiffers: boolean;
 }
 
 /** The result of a purity probe. */
@@ -108,9 +117,37 @@ export interface PurityReport {
 export interface PurityProbeOptions {
     readonly detect?: DetectOptions;
     readonly describe?: DescribeOptions;
+    /**
+     * Matching is option-dependent: ratio testing, cross-checking and a
+     * distance cap are separate paths through an implementation, and state
+     * confined to one of them would pass a probe that only ever used the
+     * defaults.
+     */
+    readonly match?: MatchOptions;
 }
 
 const keypointKey = (k: Keypoint): string => `${k.x},${k.y},${k.score},${k.angle},${k.level}`;
+
+/**
+ * Detached copies, taken before anything else runs.
+ *
+ * Holding the first result by reference and comparing it after an intervening
+ * call is the one way this check can be blind to the defect it exists for: a
+ * backend that reuses an output array or a descriptor buffer would have both
+ * sides of the comparison observing the *same*, final contents. The comparison
+ * then always succeeds, and the aliasing it should have caught is exactly what
+ * every consumer above the contract would suffer.
+ */
+const copyKeypoints = (ks: readonly Keypoint[]): Keypoint[] => ks.map((k) => ({ ...k }));
+const copyDescriptors = (d: Descriptors): Descriptors => ({ ...d, data: Uint8Array.from(d.data) });
+const copyMatches = (ms: readonly Match[]): Match[] => ms.map((m) => ({ ...m }));
+
+/** Whether two images hold the same bytes. */
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
+    return true;
+}
 
 const matchKey = (m: Match): string => `${m.queryIdx},${m.trainIdx},${m.distance}`;
 
@@ -172,39 +209,70 @@ export function findPurityViolations(
     };
 
     // --- detect ------------------------------------------------------------
-    const kp1 = cv.detect(image, options.detect);
+    const kp1Live = cv.detect(image, options.detect);
+    const kp1 = copyKeypoints(kp1Live);
     cv.detect(decoy, options.detect); // the unrelated call
-    const kp2 = cv.detect(image, options.detect);
-    add("detect", firstDifference(kp1, kp2, keypointKey));
+    const kp2Live = cv.detect(image, options.detect);
+    if (kp2Live === kp1Live) {
+        add(
+            "detect",
+            "returned the very same array on both calls; outputs are owned by the caller",
+        );
+    }
+    add("detect", firstDifference(kp1, copyKeypoints(kp2Live), keypointKey));
 
     // --- describe ----------------------------------------------------------
-    // Described against kp1 both times: the input must be identical, so a
+    // Described against `kp1` both times: the input must be identical, so a
     // difference can only come from the implementation.
-    const d1 = cv.describe(image, kp1, options.describe);
+    const d1Live = cv.describe(image, kp1, options.describe);
+    const d1 = copyDescriptors(d1Live);
     cv.describe(decoy, cv.detect(decoy, options.detect), options.describe);
-    const d2 = cv.describe(image, kp1, options.describe);
-    add("describe", descriptorsDifference(d1, d2));
+    const d2Live = cv.describe(image, kp1, options.describe);
+    if (d2Live.data === d1Live.data || d2Live.data.buffer === d1Live.data.buffer) {
+        add("describe", "reused the same descriptor buffer; outputs are owned by the caller");
+    }
+    add("describe", descriptorsDifference(d1, copyDescriptors(d2Live)));
 
     // --- match -------------------------------------------------------------
     // A set against itself: every row has an exact counterpart, so the result
     // is well defined without depending on the probe image's content.
-    const m1 = cv.match(d1, d1);
-    cv.match(d1, cv.describe(decoy, cv.detect(decoy, options.detect), options.describe));
-    const m2 = cv.match(d1, d1);
-    add("match", firstDifference(m1, m2, matchKey));
+    const m1Live = cv.match(d1, d1, options.match);
+    const m1 = copyMatches(m1Live);
+    cv.match(
+        d1,
+        cv.describe(decoy, cv.detect(decoy, options.detect), options.describe),
+        options.match,
+    );
+    const m2Live = cv.match(d1, d1, options.match);
+    if (m2Live === m1Live) {
+        add("match", "returned the very same array on both calls; outputs are owned by the caller");
+    }
+    add("match", firstDifference(m1, copyMatches(m2Live), matchKey));
 
     return {
         violations,
-        coverage: { keypoints: kp1.length, descriptors: d1.count, matches: m1.length },
+        coverage: {
+            keypoints: kp1.length,
+            descriptors: d1.count,
+            matches: m1.length,
+            decoyDiffers: !sameBytes(decoy.data, image.data),
+        },
     };
 }
 
 /**
- * `image` with its rows rotated by a third of its height.
+ * `image` with its rows rotated by a third of its height — and guaranteed to
+ * differ from it.
  *
  * A cheap way to get a *different* image with the same dimensions and the same
  * statistics, so the unrelated call above exercises the implementation rather
  * than a degenerate uniform buffer.
+ *
+ * Rotation alone is not enough, which is easy to miss: a single-row image, a
+ * uniform one, or one whose rows repeat at this offset rotates onto itself.
+ * The decoy would then be the probe image, the intervening call would exercise
+ * nothing, and the whole check would quietly degenerate into repeating a call
+ * back to back. Inverting the bytes cannot coincide, so it is the fallback.
  */
 function shifted(image: GrayImage): GrayImage {
     const { width, height, data } = image;
@@ -213,6 +281,9 @@ function shifted(image: GrayImage): GrayImage {
     for (let y = 0; y < height; y += 1) {
         const from = ((y + by) % height) * width;
         out.set(data.subarray(from, from + width), y * width);
+    }
+    if (sameBytes(out, data)) {
+        for (let i = 0; i < out.length; i += 1) out[i] = data[i]! ^ 0xff;
     }
     return { data: out, width, height };
 }
