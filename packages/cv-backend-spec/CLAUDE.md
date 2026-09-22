@@ -16,7 +16,13 @@ repository-wide rules in the root `AGENTS.md` still apply on top of it.
 - Don't widen a type to make a caller compile. The caller is usually the thing
   that is wrong, and widening the contract to accommodate one backend is how a
   neutral interface quietly becomes a description of that backend.
-- If asked to "add support for X" here, the answer is almost always a change in
-  an implementing package, not in this one. This package gains a member only
-  when the contract genuinely needs a new vocabulary word — and then
-  `crates/wnft-format/src/known.rs` needs it too, in the same commit.
+- "Add support for X" splits two ways, and guessing wrong wastes a session.
+  A new *option, field or method* that backends negotiate through
+  `capabilities` belongs here, as an ordinary issue and PR — that is what
+  #24 and #39–#42 are. A new *implementation* of something the contract
+  already expresses belongs in a backend package. Only the first touches this
+  package at all.
+- A new member of `DescriptorKind` or `DescriptorNorm` is the one addition with
+  a second obligation: `crates/wnft-format/src/known.rs` transcribes both
+  unions by hand, so it moves in the same commit, and `npm run check:contract`
+  is what proves it did.

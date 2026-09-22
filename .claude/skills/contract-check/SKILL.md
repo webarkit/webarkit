@@ -70,7 +70,9 @@ that was applied to one file and not the other.
   contract says first.
 - Do not add a member to `known.rs` alone to silence a warning about a real
   file. If a `.wnft` in the wild carries a family the contract does not define,
-  the warning is correct and the fix is a contract change with its own ADR.
+  the warning is correct. The fix is an additive contract change — an ordinary
+  issue and PR adding the member to the union, with `known.ts` and `known.rs`
+  moving in the same commit — not a quiet edit to one list.
 - Do not delete the compile-time pin because this script now covers it. Build-
   time feedback beats CI feedback, and the script asserts the pin is present
   precisely so the two do not collapse into one.

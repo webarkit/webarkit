@@ -31,11 +31,33 @@ this package; this package must never import from it, or from `nft-tracker`,
 or from `examples/`.
 
 **The public surface is `detect`, `describe`, `match`, `estimateHomography`,
-`poseFromHomography`, and the optional `filterMatches`.** Do not change it
-unless the task explicitly says to, and unless the change lands in the
-implementing packages in the same PR. A change to the surface is an
-architectural decision: it needs a **new** ADR in [`docs/adr/`](../../docs/adr/),
-not an edit to an accepted one.
+`poseFromHomography`, and the optional `filterMatches`.** Two kinds of change
+to it, and they do not carry the same bar. The contract's own header draws the
+line: *"Omitting an option is always valid and selects the backend default, so
+a caller written against the unamended contract keeps working unchanged."*
+
+**Adding an optional field or method, negotiated through a capability, is an
+issue and a PR.** No ADR. That is how this contract has actually grown — the
+optional `filterMatches` arrived that way
+([webarkit/jsfeatNext#129](https://github.com/webarkit/jsfeatNext/issues/129)),
+and every open contract issue is additive in the same shape: an injectable RNG
+for RANSAC ([#24](https://github.com/webarkit/webarkit/issues/24)), the pyramid
+scale step as a capability ([#39](https://github.com/webarkit/webarkit/issues/39)),
+a guard on descriptor bit compatibility ([#40](https://github.com/webarkit/webarkit/issues/40)),
+`matchKnn` ([#41](https://github.com/webarkit/webarkit/issues/41)), and detector
+and estimator selectors ([#42](https://github.com/webarkit/webarkit/issues/42)).
+Two things make such a change complete rather than half-landed: the
+implementing packages move in the same commit, and the capability tells the
+truth — an optional member that no `capabilities` entry declares is a member no
+caller can reach.
+
+**Removing or changing an existing member, or changing a guarantee the contract
+makes, needs a new ADR** in [`docs/adr/`](../../docs/adr/) — a new one, never an
+edit to an accepted one. The guarantees are the ones its header states and
+callers build on: the surface is **stateless** (no per-frame state, all inputs
+passed explicitly), its calls are **synchronous**, and **outputs are owned by
+the caller**. Those cannot be walked back in an ordinary PR, because nothing in
+a changed type signature would show that they had been.
 
 ## The one drift the test suites cannot catch
 

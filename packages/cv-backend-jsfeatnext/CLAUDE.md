@@ -21,5 +21,8 @@ repository-wide rules in the root `AGENTS.md` still apply on top of it.
   empty list is worth more than an aspirational one, because nothing errors
   when the claim is false — results just get quietly worse.
 - Don't reach into jsfeatNext's internals to work around a contract limitation.
-  If the contract cannot express something, that is a `cv-backend-spec`
-  conversation (and a new ADR), not a local escape hatch here.
+  If the contract cannot express something, that is a `cv-backend-spec` issue —
+  usually an additive, capability-negotiated one that needs no ADR — not a
+  local escape hatch here. A workaround buried in this package is invisible to
+  every other backend, which is precisely the problem the contract exists to
+  solve.
