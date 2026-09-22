@@ -99,11 +99,7 @@ const inconsistent = (detail: string): Failure => fail("INCONSISTENT_DATA", deta
  * Its length is `L + 1`, which the schema has already checked, so this only
  * reads contents.
  */
-function checkClosedRange(
-    levelStart: Uint32Array,
-    total: number,
-    what: string,
-): Failure | null {
+function checkClosedRange(levelStart: Uint32Array, total: number, what: string): Failure | null {
     if (levelStart[0] !== 0) {
         return inconsistent(`${what}.levelStart[0] is ${levelStart[0]}, must be 0`);
     }
@@ -119,10 +115,7 @@ function checkClosedRange(
     return null;
 }
 
-export function checkConsistency(
-    spec: ManifestSpec,
-    arrays: TargetArrays,
-): Failure | null {
+export function checkConsistency(spec: ManifestSpec, arrays: TargetArrays): Failure | null {
     const levelSizes = spec.pyramid.levelSizes;
     const L = levelSizes.length;
     const N = spec.keypoints.count;
@@ -190,9 +183,7 @@ export function checkConsistency(
             for (let r = from; r < to; r += 1) {
                 const k = set.kpIndex[r]!;
                 if (k >= N) {
-                    return inconsistent(
-                        `${what}.kpIndex[${r}] is ${k}, past the ${N} keypoints`,
-                    );
+                    return inconsistent(`${what}.kpIndex[${r}] is ${k}, past the ${N} keypoints`);
                 }
                 if (kp.level[k] !== l) {
                     // Without this a row could be matched at one level and
@@ -240,9 +231,7 @@ export function checkConsistency(
         const { level, width, height } = spec.referenceImage;
         // Checked before levelSizes is indexed with it (§5.8).
         if (level >= L) {
-            return inconsistent(
-                `referenceImage.level is ${level}, past the ${L} levels`,
-            );
+            return inconsistent(`referenceImage.level is ${level}, past the ${L} levels`);
         }
         const size = levelSizes[level]!;
         if (width !== size[0] || height !== size[1]) {

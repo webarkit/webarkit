@@ -138,7 +138,9 @@ describe("compile-target", () => {
         expect(target.meta.physicalSizeMm).toEqual([210, 297]);
         // The seed is provenance: it is recorded so a file can be rebuilt, and
         // the next test is what shows the build honours it.
-        expect((target.info as { compiler?: { seed?: number; levels?: number } })?.compiler).toMatchObject({
+        expect(
+            (target.info as { compiler?: { seed?: number; levels?: number } })?.compiler,
+        ).toMatchObject({
             seed: 7,
             levels: 4,
         });
@@ -187,13 +189,17 @@ describe("compile-target", () => {
 
         it("resolves them against INIT_CWD, as npm sets it", () => {
             const relativeOut = ".tmp-compile-target/from-env.wnft";
-            execFileSync(process.execPath, [SCRIPT, RELATIVE_IMAGE, "-o", relativeOut, "--levels", "2"], {
-                encoding: "utf8",
-                stdio: ["ignore", "pipe", "pipe"],
-                // Exactly what npm hands a workspace script.
-                cwd: PACKAGE_DIR,
-                env: { ...process.env, INIT_CWD: REPO_ROOT },
-            });
+            execFileSync(
+                process.execPath,
+                [SCRIPT, RELATIVE_IMAGE, "-o", relativeOut, "--levels", "2"],
+                {
+                    encoding: "utf8",
+                    stdio: ["ignore", "pipe", "pipe"],
+                    // Exactly what npm hands a workspace script.
+                    cwd: PACKAGE_DIR,
+                    env: { ...process.env, INIT_CWD: REPO_ROOT },
+                },
+            );
 
             expect(existsSync(join(outDir, "from-env.wnft"))).toBe(true);
             // The bug this replaces was silent: it reported success while
@@ -205,8 +211,19 @@ describe("compile-target", () => {
             const relativeOut = ".tmp-compile-target/from-npm.wnft";
             execFileSync(
                 "npm",
-                ["run", "--silent", "compile-target", "-w", "@webarkit/nft-tracker", "--",
-                 RELATIVE_IMAGE, "-o", relativeOut, "--levels", "2"],
+                [
+                    "run",
+                    "--silent",
+                    "compile-target",
+                    "-w",
+                    "@webarkit/nft-tracker",
+                    "--",
+                    RELATIVE_IMAGE,
+                    "-o",
+                    relativeOut,
+                    "--levels",
+                    "2",
+                ],
                 {
                     encoding: "utf8",
                     stdio: ["ignore", "pipe", "pipe"],
@@ -217,7 +234,7 @@ describe("compile-target", () => {
                     // metacharacter, so this is a launcher detail and not an
                     // injection surface.
                     shell: process.platform === "win32",
-                }
+                },
             );
 
             expect(existsSync(join(outDir, "from-npm.wnft"))).toBe(true);

@@ -126,9 +126,7 @@ function probeWidth(cv, set) {
     for (let i = 0; i < data.length; i += 1) {
         data[i] = (i * 37 + (i % side) * 11) & 0xff;
     }
-    const keypoints = [
-        { x: side / 2, y: side / 2, score: 1, angle: 0, level: 0 },
-    ];
+    const keypoints = [{ x: side / 2, y: side / 2, score: 1, angle: 0, level: 0 }];
     try {
         const d = cv.describe({ data, width: side, height: side }, keypoints, {
             kind: set.kind,

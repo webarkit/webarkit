@@ -38,17 +38,13 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-    decodeManifest,
-    validateManifest,
-} from "../../../src/target/format/manifest.js";
+import { decodeManifest, validateManifest } from "../../../src/target/format/manifest.js";
 import { DEFAULT_LIMITS } from "../../../src/target/format/limits.js";
 
 const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
 const run = (s: string | Uint8Array, limits = DEFAULT_LIMITS) =>
     decodeManifest(typeof s === "string" ? utf8(s) : s, limits);
-const errorOf = (r: ReturnType<typeof run>): string | null =>
-    r.ok ? null : r.error;
+const errorOf = (r: ReturnType<typeof run>): string | null => (r.ok ? null : r.error);
 
 const MINIMAL = '{"format":{"version":"0.3"}}';
 
@@ -84,15 +80,11 @@ describe("decodeManifest — text (§6.1 step 4)", () => {
     });
 
     it("rejects each I-JSON violation as BAD_MANIFEST", () => {
-        expect(errorOf(run('{"format":{"version":"0.3"},"a":1,"a":2}'))).toBe(
-            "BAD_MANIFEST",
-        );
+        expect(errorOf(run('{"format":{"version":"0.3"},"a":1,"a":2}'))).toBe("BAD_MANIFEST");
         expect(errorOf(run('{"format":{"version":"0.3"},"a":9007199254740992}'))).toBe(
             "BAD_MANIFEST",
         );
-        expect(errorOf(run('{"format":{"version":"0.3"},"a":1e400}'))).toBe(
-            "BAD_MANIFEST",
-        );
+        expect(errorOf(run('{"format":{"version":"0.3"},"a":1e400}'))).toBe("BAD_MANIFEST");
     });
 
     it("names the offending path in the detail", () => {
@@ -149,9 +141,7 @@ describe("decodeManifest — version and extensions (§6.1 step 5)", () => {
     });
 
     it("rejects a generator that is not a string", () => {
-        expect(errorOf(run('{"format":{"version":"0.3","generator":1}}'))).toBe(
-            "BAD_MANIFEST",
-        );
+        expect(errorOf(run('{"format":{"version":"0.3","generator":1}}'))).toBe("BAD_MANIFEST");
     });
 
     it("rejects an unimplemented extension in extensionsRequired", () => {
@@ -177,9 +167,9 @@ describe("decodeManifest — version and extensions (§6.1 step 5)", () => {
         expect(errorOf(run('{"format":{"version":"0.3"},"extensionsUsed":null}'))).toBe(
             "BAD_MANIFEST",
         );
-        expect(
-            errorOf(run('{"format":{"version":"0.3"},"extensionsRequired":null}')),
-        ).toBe("BAD_MANIFEST");
+        expect(errorOf(run('{"format":{"version":"0.3"},"extensionsRequired":null}'))).toBe(
+            "BAD_MANIFEST",
+        );
     });
 
     it("treats absent extension arrays as empty", () => {
@@ -236,38 +226,61 @@ describe("decodeManifest — version and extensions (§6.1 step 5)", () => {
 const good = () => ({
     format: { version: "0.3" },
     meta: { widthPx: 8, heightPx: 4, physicalSizeMm: [80, 40] },
-    pyramid: { scaleStep: 2, levelSizes: [[8, 4], [4, 2]] },
+    pyramid: {
+        scaleStep: 2,
+        levelSizes: [
+            [8, 4],
+            [4, 2],
+        ],
+    },
     keypoints: {
         count: 3,
         detector: { kind: "fast", params: { threshold: 20 } },
-        levelStart: 0, x: 1, y: 2, angle: 3, score: 4, level: 5,
+        levelStart: 0,
+        x: 1,
+        y: 2,
+        angle: 3,
+        score: 4,
+        level: 5,
     },
     descriptorSets: [
         {
-            kind: "orb", norm: "hamming", elementType: "bits", dimensions: 32,
-            bytesPerDescriptor: 4, producer: "jsfeatnext", count: 3,
-            levelStart: 6, kpIndex: 7, data: 8,
+            kind: "orb",
+            norm: "hamming",
+            elementType: "bits",
+            dimensions: 32,
+            bytesPerDescriptor: 4,
+            producer: "jsfeatnext",
+            count: 3,
+            levelStart: 6,
+            kpIndex: 7,
+            data: 8,
         },
     ],
     patches: {
-        patchSize: 2, count: 1,
-        score: 9, left: 10, top: 11, level: 12, pixels: 13,
+        patchSize: 2,
+        count: 1,
+        score: 9,
+        left: 10,
+        top: 11,
+        level: 12,
+        pixels: 13,
     },
     accessors: [
-        { offset: 0, count: 3, type: "u32" },    //  0 keypoints.levelStart (L+1)
-        { offset: 16, count: 3, type: "f32" },   //  1 x
-        { offset: 32, count: 3, type: "f32" },   //  2 y
-        { offset: 48, count: 3, type: "f32" },   //  3 angle
-        { offset: 64, count: 3, type: "f32" },   //  4 score
-        { offset: 80, count: 3, type: "u8" },    //  5 level
-        { offset: 88, count: 3, type: "u32" },   //  6 set.levelStart
-        { offset: 104, count: 3, type: "u32" },  //  7 set.kpIndex
-        { offset: 120, count: 12, type: "u8" },  //  8 set.data (3 x 4 bytes)
-        { offset: 136, count: 1, type: "f32" },  //  9 patches.score
-        { offset: 144, count: 1, type: "u16" },  // 10 patches.left
-        { offset: 152, count: 1, type: "u16" },  // 11 patches.top
-        { offset: 160, count: 1, type: "u8" },   // 12 patches.level
-        { offset: 168, count: 4, type: "u8" },   // 13 patches.pixels (1 x 2 x 2)
+        { offset: 0, count: 3, type: "u32" }, //  0 keypoints.levelStart (L+1)
+        { offset: 16, count: 3, type: "f32" }, //  1 x
+        { offset: 32, count: 3, type: "f32" }, //  2 y
+        { offset: 48, count: 3, type: "f32" }, //  3 angle
+        { offset: 64, count: 3, type: "f32" }, //  4 score
+        { offset: 80, count: 3, type: "u8" }, //  5 level
+        { offset: 88, count: 3, type: "u32" }, //  6 set.levelStart
+        { offset: 104, count: 3, type: "u32" }, //  7 set.kpIndex
+        { offset: 120, count: 12, type: "u8" }, //  8 set.data (3 x 4 bytes)
+        { offset: 136, count: 1, type: "f32" }, //  9 patches.score
+        { offset: 144, count: 1, type: "u16" }, // 10 patches.left
+        { offset: 152, count: 1, type: "u16" }, // 11 patches.top
+        { offset: 160, count: 1, type: "u8" }, // 12 patches.level
+        { offset: 168, count: 4, type: "u8" }, // 13 patches.pixels (1 x 2 x 2)
     ],
 });
 
@@ -289,8 +302,7 @@ const validate = (
     }
     return validateManifest(head.value, binLength, limits);
 };
-const vErr = (r: ReturnType<typeof validate>): string | null =>
-    r.ok ? null : r.error;
+const vErr = (r: ReturnType<typeof validate>): string | null => (r.ok ? null : r.error);
 
 describe("validateManifest — the known-good manifest", () => {
     it("accepts it with no warnings", () => {
@@ -300,7 +312,11 @@ describe("validateManifest — the known-good manifest", () => {
     });
 
     it("accepts an absent patches section", () => {
-        expect(validate((m) => { delete (m as Mutable)["patches"]; }).ok).toBe(true);
+        expect(
+            validate((m) => {
+                delete (m as Mutable)["patches"];
+            }).ok,
+        ).toBe(true);
     });
 
     it("accepts an absent params, treating it as {} (§7.3)", () => {
@@ -314,7 +330,10 @@ describe("validateManifest — the known-good manifest", () => {
         const r = validate((m) => {
             m.accessors.push({ offset: 176, count: 32, type: "u8" });
             (m as Mutable)["referenceImage"] = {
-                level: 0, width: 8, height: 4, pixels: 14,
+                level: 0,
+                width: 8,
+                height: 4,
+                pixels: 14,
             };
         }, 208);
         expect(r.ok, r.ok ? "" : `${r.error}: ${r.detail}`).toBe(true);
@@ -331,63 +350,119 @@ describe("validateManifest — the known-good manifest", () => {
 describe("validateManifest — required keys and types (BAD_MANIFEST)", () => {
     for (const key of ["meta", "pyramid", "keypoints", "descriptorSets", "accessors"]) {
         it(`rejects a missing ${key}`, () => {
-            expect(vErr(validate((m) => { delete (m as Mutable)[key]; }))).toBe(
-                "BAD_MANIFEST",
-            );
+            expect(
+                vErr(
+                    validate((m) => {
+                        delete (m as Mutable)[key];
+                    }),
+                ),
+            ).toBe("BAD_MANIFEST");
         });
     }
 
     it("rejects an empty descriptorSets (§5.1 requires at least one entry)", () => {
-        expect(vErr(validate((m) => { m.descriptorSets = []; }))).toBe("BAD_MANIFEST");
+        expect(
+            vErr(
+                validate((m) => {
+                    m.descriptorSets = [];
+                }),
+            ),
+        ).toBe("BAD_MANIFEST");
     });
 
     it("rejects an info that is not an object", () => {
-        expect(vErr(validate((m) => { (m as Mutable)["info"] = 1; }))).toBe(
-            "BAD_MANIFEST",
-        );
+        expect(
+            vErr(
+                validate((m) => {
+                    (m as Mutable)["info"] = 1;
+                }),
+            ),
+        ).toBe("BAD_MANIFEST");
     });
 });
 
 describe("validateManifest — accessor domains (§5.2)", () => {
     it("rejects a fractional offset", () => {
-        expect(vErr(validate((m) => { m.accessors[0]!.offset = 0.5; }))).toBe(
-            "BAD_MANIFEST",
-        );
+        expect(
+            vErr(
+                validate((m) => {
+                    m.accessors[0]!.offset = 0.5;
+                }),
+            ),
+        ).toBe("BAD_MANIFEST");
     });
 
     it("rejects a negative count", () => {
-        expect(vErr(validate((m) => { m.accessors[0]!.count = -1; }))).toBe(
-            "BAD_MANIFEST",
-        );
+        expect(
+            vErr(
+                validate((m) => {
+                    m.accessors[0]!.count = -1;
+                }),
+            ),
+        ).toBe("BAD_MANIFEST");
     });
 
     it("rejects a count above 2^32 − 1", () => {
-        expect(vErr(validate((m) => { m.accessors[0]!.count = 4294967296; }))).toBe(
-            "BAD_MANIFEST",
-        );
+        expect(
+            vErr(
+                validate((m) => {
+                    m.accessors[0]!.count = 4294967296;
+                }),
+            ),
+        ).toBe("BAD_MANIFEST");
     });
 
     it("rejects an unknown accessor type", () => {
         expect(
-            vErr(validate((m) => { (m.accessors[0] as Mutable)["type"] = "i32"; })),
+            vErr(
+                validate((m) => {
+                    (m.accessors[0] as Mutable)["type"] = "i32";
+                }),
+            ),
         ).toBe("BAD_MANIFEST");
     });
 
     it("rejects an accessor reference that is not an index in range", () => {
-        expect(vErr(validate((m) => { m.keypoints.x = 99; }))).toBe("BAD_MANIFEST");
-        expect(vErr(validate((m) => { m.keypoints.x = -1; }))).toBe("BAD_MANIFEST");
-        expect(vErr(validate((m) => { m.keypoints.x = 1.5; }))).toBe("BAD_MANIFEST");
         expect(
-            vErr(validate((m) => { (m.keypoints as Mutable)["x"] = "1"; })),
+            vErr(
+                validate((m) => {
+                    m.keypoints.x = 99;
+                }),
+            ),
+        ).toBe("BAD_MANIFEST");
+        expect(
+            vErr(
+                validate((m) => {
+                    m.keypoints.x = -1;
+                }),
+            ),
+        ).toBe("BAD_MANIFEST");
+        expect(
+            vErr(
+                validate((m) => {
+                    m.keypoints.x = 1.5;
+                }),
+            ),
+        ).toBe("BAD_MANIFEST");
+        expect(
+            vErr(
+                validate((m) => {
+                    (m.keypoints as Mutable)["x"] = "1";
+                }),
+            ),
         ).toBe("BAD_MANIFEST");
     });
 });
 
 describe("validateManifest — accessor layout (BAD_LAYOUT)", () => {
     it("rejects an offset that is not a multiple of the element size", () => {
-        expect(vErr(validate((m) => { m.accessors[1]!.offset = 18; }))).toBe(
-            "BAD_LAYOUT",
-        );
+        expect(
+            vErr(
+                validate((m) => {
+                    m.accessors[1]!.offset = 18;
+                }),
+            ),
+        ).toBe("BAD_LAYOUT");
     });
 
     it("rejects an accessor running past the BIN chunk", () => {
@@ -395,9 +470,13 @@ describe("validateManifest — accessor layout (BAD_LAYOUT)", () => {
     });
 
     it("rejects overlapping accessors", () => {
-        expect(vErr(validate((m) => { m.accessors[2]!.offset = 16; }))).toBe(
-            "BAD_LAYOUT",
-        );
+        expect(
+            vErr(
+                validate((m) => {
+                    m.accessors[2]!.offset = 16;
+                }),
+            ),
+        ).toBe("BAD_LAYOUT");
     });
 
     it("allows two zero-length accessors to share an offset", () => {
@@ -410,12 +489,22 @@ describe("validateManifest — accessor layout (BAD_LAYOUT)", () => {
 
     it("rejects a field whose accessor has the wrong type", () => {
         expect(
-            vErr(validate((m) => { (m.accessors[1] as Mutable)["type"] = "u32"; })),
+            vErr(
+                validate((m) => {
+                    (m.accessors[1] as Mutable)["type"] = "u32";
+                }),
+            ),
         ).toBe("BAD_LAYOUT");
     });
 
     it("rejects a field whose accessor has the wrong count", () => {
-        expect(vErr(validate((m) => { m.accessors[1]!.count = 2; }))).toBe("BAD_LAYOUT");
+        expect(
+            vErr(
+                validate((m) => {
+                    m.accessors[1]!.count = 2;
+                }),
+            ),
+        ).toBe("BAD_LAYOUT");
     });
 
     it("rejects a manifest with accessors and no BIN chunk (§5.2, rev 2)", () => {
@@ -433,51 +522,86 @@ describe("validateManifest — accessor layout (BAD_LAYOUT)", () => {
     });
 
     it("rejects a count × size product that would exceed the chunk", () => {
-        expect(vErr(validate((m) => { m.accessors[8]!.count = 4294967295; }))).toBe(
-            "BAD_LAYOUT",
-        );
+        expect(
+            vErr(
+                validate((m) => {
+                    m.accessors[8]!.count = 4294967295;
+                }),
+            ),
+        ).toBe("BAD_LAYOUT");
     });
 });
 
 describe("validateManifest — pyramid and meta domains (§5.3, §5.4)", () => {
     it("rejects a level size of 0, above 2^16 − 1, or fractional", () => {
-        expect(vErr(validate((m) => { m.pyramid.levelSizes[1] = [0, 2]; }))).toBe(
-            "BAD_MANIFEST",
-        );
-        expect(vErr(validate((m) => { m.pyramid.levelSizes[1] = [65536, 2]; }))).toBe(
-            "BAD_MANIFEST",
-        );
-        expect(vErr(validate((m) => { m.pyramid.levelSizes[1] = [1.5, 2]; }))).toBe(
-            "BAD_MANIFEST",
-        );
+        expect(
+            vErr(
+                validate((m) => {
+                    m.pyramid.levelSizes[1] = [0, 2];
+                }),
+            ),
+        ).toBe("BAD_MANIFEST");
+        expect(
+            vErr(
+                validate((m) => {
+                    m.pyramid.levelSizes[1] = [65536, 2];
+                }),
+            ),
+        ).toBe("BAD_MANIFEST");
+        expect(
+            vErr(
+                validate((m) => {
+                    m.pyramid.levelSizes[1] = [1.5, 2];
+                }),
+            ),
+        ).toBe("BAD_MANIFEST");
     });
 
     it("rejects a scaleStep of 1 or less, or a non-finite one", () => {
         for (const s of [1, 0.5, 0, -2]) {
-            expect(vErr(validate((m) => { m.pyramid.scaleStep = s; })), String(s)).toBe(
-                "BAD_MANIFEST",
-            );
+            expect(
+                vErr(
+                    validate((m) => {
+                        m.pyramid.scaleStep = s;
+                    }),
+                ),
+                String(s),
+            ).toBe("BAD_MANIFEST");
         }
     });
 
     it("rejects zero levels", () => {
-        expect(vErr(validate((m) => { m.pyramid.levelSizes = []; }))).toBe(
-            "BAD_MANIFEST",
-        );
+        expect(
+            vErr(
+                validate((m) => {
+                    m.pyramid.levelSizes = [];
+                }),
+            ),
+        ).toBe("BAD_MANIFEST");
     });
 
     it("rejects a physicalSizeMm entry that is not > 0", () => {
-        expect(vErr(validate((m) => { m.meta.physicalSizeMm = [0, 40]; }))).toBe(
-            "BAD_MANIFEST",
-        );
-        expect(vErr(validate((m) => { m.meta.physicalSizeMm = [-1, 40]; }))).toBe(
-            "BAD_MANIFEST",
-        );
+        expect(
+            vErr(
+                validate((m) => {
+                    m.meta.physicalSizeMm = [0, 40];
+                }),
+            ),
+        ).toBe("BAD_MANIFEST");
+        expect(
+            vErr(
+                validate((m) => {
+                    m.meta.physicalSizeMm = [-1, 40];
+                }),
+            ),
+        ).toBe("BAD_MANIFEST");
     });
 
     it("accepts a null physicalSizeMm", () => {
         expect(
-            validate((m) => { (m.meta as Mutable)["physicalSizeMm"] = null; }).ok,
+            validate((m) => {
+                (m.meta as Mutable)["physicalSizeMm"] = null;
+            }).ok,
         ).toBe(true);
     });
 });
@@ -485,7 +609,11 @@ describe("validateManifest — pyramid and meta domains (§5.3, §5.4)", () => {
 describe("validateManifest — descriptor sets (§5.6)", () => {
     it("rejects a bytesPerDescriptor inconsistent with bits", () => {
         expect(
-            vErr(validate((m) => { m.descriptorSets[0]!.bytesPerDescriptor = 5; })),
+            vErr(
+                validate((m) => {
+                    m.descriptorSets[0]!.bytesPerDescriptor = 5;
+                }),
+            ),
         ).toBe("INCONSISTENT_DATA");
     });
 
@@ -502,7 +630,11 @@ describe("validateManifest — descriptor sets (§5.6)", () => {
 
     it("rejects two sets with the same (kind, norm, dimensions, producer)", () => {
         expect(
-            vErr(validate((m) => { m.descriptorSets.push({ ...m.descriptorSets[0]! }); })),
+            vErr(
+                validate((m) => {
+                    m.descriptorSets.push({ ...m.descriptorSets[0]! });
+                }),
+            ),
         ).toBe("INCONSISTENT_DATA");
     });
 
@@ -516,36 +648,38 @@ describe("validateManifest — descriptor sets (§5.6)", () => {
             m.descriptorSets.push({
                 ...m.descriptorSets[0]!,
                 producer: "purecv",
-                levelStart: 14, kpIndex: 15, data: 16,
+                levelStart: 14,
+                kpIndex: 15,
+                data: 16,
             });
         }, 224);
         expect(r.ok, r.ok ? "" : `${r.error}: ${r.detail}`).toBe(true);
     });
 
     it("keeps a set with an unknown kind and warns", () => {
-        const r = validate((m) => { m.descriptorSets[0]!.kind = "wombat"; });
+        const r = validate((m) => {
+            m.descriptorSets[0]!.kind = "wombat";
+        });
         expect(r.ok).toBe(true);
         expect(r.ok && r.value.descriptorSets).toHaveLength(1);
-        expect(r.ok && r.warnings.map((w) => w.code)).toEqual([
-            "UNSUPPORTED_DESCRIPTOR_SET",
-        ]);
+        expect(r.ok && r.warnings.map((w) => w.code)).toEqual(["UNSUPPORTED_DESCRIPTOR_SET"]);
     });
 
     it("keeps a set with an unknown norm and warns (hamming2 is not in the contract)", () => {
-        const r = validate((m) => { m.descriptorSets[0]!.norm = "hamming2"; });
+        const r = validate((m) => {
+            m.descriptorSets[0]!.norm = "hamming2";
+        });
         expect(r.ok && r.value.descriptorSets).toHaveLength(1);
-        expect(r.ok && r.warnings.map((w) => w.code)).toEqual([
-            "UNSUPPORTED_DESCRIPTOR_SET",
-        ]);
+        expect(r.ok && r.warnings.map((w) => w.code)).toEqual(["UNSUPPORTED_DESCRIPTOR_SET"]);
     });
 
     it("drops a set with an unknown elementType and warns (§5.6)", () => {
-        const r = validate((m) => { m.descriptorSets[0]!.elementType = "f16"; });
+        const r = validate((m) => {
+            m.descriptorSets[0]!.elementType = "f16";
+        });
         expect(r.ok, r.ok ? "" : `${r.error}: ${r.detail}`).toBe(true);
         expect(r.ok && r.value.descriptorSets).toEqual([]);
-        expect(r.ok && r.warnings.map((w) => w.code)).toEqual([
-            "UNSUPPORTED_DESCRIPTOR_SET",
-        ]);
+        expect(r.ok && r.warnings.map((w) => w.code)).toEqual(["UNSUPPORTED_DESCRIPTOR_SET"]);
     });
 
     it("does not validate a dropped set's accessors, so it stays a warning", () => {
@@ -559,46 +693,50 @@ describe("validateManifest — descriptor sets (§5.6)", () => {
 
 describe("validateManifest — resource limits (§6.4)", () => {
     it("rejects more levels than the limit", () => {
-        expect(
-            vErr(validate(() => {}, BIN_LENGTH, { ...DEFAULT_LIMITS, maxLevels: 1 })),
-        ).toBe("LIMIT_EXCEEDED");
+        expect(vErr(validate(() => {}, BIN_LENGTH, { ...DEFAULT_LIMITS, maxLevels: 1 }))).toBe(
+            "LIMIT_EXCEEDED",
+        );
     });
 
     it("rejects more keypoints than the limit", () => {
-        expect(
-            vErr(validate(() => {}, BIN_LENGTH, { ...DEFAULT_LIMITS, maxKeypoints: 2 })),
-        ).toBe("LIMIT_EXCEEDED");
+        expect(vErr(validate(() => {}, BIN_LENGTH, { ...DEFAULT_LIMITS, maxKeypoints: 2 }))).toBe(
+            "LIMIT_EXCEEDED",
+        );
     });
 
     it("rejects more descriptor sets than the limit", () => {
         expect(
-            vErr(
-                validate(() => {}, BIN_LENGTH, { ...DEFAULT_LIMITS, maxDescriptorSets: 0 }),
-            ),
+            vErr(validate(() => {}, BIN_LENGTH, { ...DEFAULT_LIMITS, maxDescriptorSets: 0 })),
         ).toBe("LIMIT_EXCEEDED");
     });
 
     it("rejects more patches than the limit (§6.4, rev 3)", () => {
-        expect(
-            vErr(validate(() => {}, BIN_LENGTH, { ...DEFAULT_LIMITS, maxPatches: 0 })),
-        ).toBe("LIMIT_EXCEEDED");
+        expect(vErr(validate(() => {}, BIN_LENGTH, { ...DEFAULT_LIMITS, maxPatches: 0 }))).toBe(
+            "LIMIT_EXCEEDED",
+        );
     });
 
     it("rejects a patch size above the limit", () => {
-        expect(
-            vErr(validate(() => {}, BIN_LENGTH, { ...DEFAULT_LIMITS, maxPatchSize: 1 })),
-        ).toBe("LIMIT_EXCEEDED");
+        expect(vErr(validate(() => {}, BIN_LENGTH, { ...DEFAULT_LIMITS, maxPatchSize: 1 }))).toBe(
+            "LIMIT_EXCEEDED",
+        );
     });
 });
 
 describe("validateManifest — unknown keys (§5.1)", () => {
     it("ignores an unknown key at the top level", () => {
-        expect(validate((m) => { (m as Mutable)["future"] = { a: 1 }; }).ok).toBe(true);
+        expect(
+            validate((m) => {
+                (m as Mutable)["future"] = { a: 1 };
+            }).ok,
+        ).toBe(true);
     });
 
     it("ignores an unknown key inside a descriptor set", () => {
         expect(
-            validate((m) => { (m.descriptorSets[0] as Mutable)["future"] = 1; }).ok,
+            validate((m) => {
+                (m.descriptorSets[0] as Mutable)["future"] = 1;
+            }).ok,
         ).toBe(true);
     });
 });

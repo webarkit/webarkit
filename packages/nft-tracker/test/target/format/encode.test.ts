@@ -132,9 +132,7 @@ describe("encode — the file it produces", () => {
     });
 
     it("puts the manifest keys in the specification's order (§7.3)", () => {
-        const order = [...manifestOf(good()).matchAll(/"([a-zA-Z]+)":/g)].map(
-            (m) => m[1],
-        );
+        const order = [...manifestOf(good()).matchAll(/"([a-zA-Z]+)":/g)].map((m) => m[1]);
         let at = -1;
         for (const key of [
             "format",
@@ -177,9 +175,7 @@ describe("encode — the file it produces", () => {
         const t = good();
         const text = manifestOf({
             ...t,
-            descriptorSets: [
-                { ...goodBitsSet(), params: { 9: 1, 10: 2, b: 3, a: 4 } },
-            ],
+            descriptorSets: [{ ...goodBitsSet(), params: { 9: 1, 10: 2, b: 3, a: 4 } }],
         });
         const params = text.slice(text.indexOf('"params":'));
         expect(params.indexOf('"10"')).toBeLessThan(params.indexOf('"9"'));

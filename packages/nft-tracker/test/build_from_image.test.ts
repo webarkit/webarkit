@@ -164,7 +164,9 @@ describe("buildTargetFromImage", () => {
         });
         // ...and the narrowing is not vacuous on this image: at least one
         // coordinate must actually lose precision, or "unrounded" is untested.
-        expect(received.some((k) => k.x !== Math.fround(k.x) || k.y !== Math.fround(k.y))).toBe(true);
+        expect(received.some((k) => k.x !== Math.fround(k.x) || k.y !== Math.fround(k.y))).toBe(
+            true,
+        );
 
         // The stored bytes are the buffer describe returned -- by reference,
         // not a copy and not a recomputation.
@@ -195,7 +197,9 @@ describe("buildTargetFromImage", () => {
 
     it("rejects a scale step that would make the level mapping meaningless", () => {
         expect(() => buildTargetFromImage(cv, image, { scaleStep: 1 })).toThrow(/scaleStep/);
-        expect(() => buildTargetFromImage(cv, image, { scaleStep: Number.NaN })).toThrow(/scaleStep/);
+        expect(() => buildTargetFromImage(cv, image, { scaleStep: Number.NaN })).toThrow(
+            /scaleStep/,
+        );
     });
 
     it("refuses an image with nothing to detect rather than returning an empty target", () => {
@@ -221,7 +225,7 @@ describe("buildTargetFromImage", () => {
         };
 
         expect(() => buildTargetFromImage(truncating, image, { levels: 4 })).toThrow(
-            /one row per keypoint/i
+            /one row per keypoint/i,
         );
     });
 

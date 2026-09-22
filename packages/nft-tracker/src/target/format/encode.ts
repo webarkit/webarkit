@@ -57,12 +57,7 @@
 
 import type { DescriptorSet, JsonValue, TargetDb } from "../types.js";
 import type { AccessorArray } from "./arrays.js";
-import {
-    canonicalJson,
-    compareByCodePoint,
-    jsonNumber,
-    jsonString,
-} from "./canonical-json.js";
+import { canonicalJson, compareByCodePoint, jsonNumber, jsonString } from "./canonical-json.js";
 import { align8, buildContainer } from "./container.js";
 import type { EncodeResult } from "./errors.js";
 import type { AccessorType } from "./manifest.js";
@@ -124,10 +119,7 @@ function accessorTypeOf(array: AccessorArray): AccessorType {
  * `buildContainer` adds the chunk padding itself (§4.2), so the length
  * returned here is the unpadded one.
  */
-function layOutAccessors(
-    target: TargetDb,
-    sets: readonly DescriptorSet[],
-): Layout {
+function layOutAccessors(target: TargetDb, sets: readonly DescriptorSet[]): Layout {
     const accessors: PlannedAccessor[] = [];
     let cursor = 0;
 
@@ -186,17 +178,10 @@ function layOutAccessors(
  * little-endian encoding the file requires — no per-element conversion, and
  * none that could disagree with what the reader views back.
  */
-function buildBin(
-    accessors: readonly PlannedAccessor[],
-    binBytes: number,
-): Uint8Array {
+function buildBin(accessors: readonly PlannedAccessor[], binBytes: number): Uint8Array {
     const out = new Uint8Array(binBytes);
     for (const a of accessors) {
-        const src = new Uint8Array(
-            a.source.buffer,
-            a.source.byteOffset,
-            a.source.byteLength,
-        );
+        const src = new Uint8Array(a.source.buffer, a.source.byteOffset, a.source.byteLength);
         out.set(src, a.offset);
     }
     return out;
@@ -213,8 +198,7 @@ function sortSets(sets: readonly DescriptorSet[]): readonly DescriptorSet[] {
     );
 }
 
-const member = (key: string, value: string): string =>
-    `${jsonString(key)}:${value}`;
+const member = (key: string, value: string): string => `${jsonString(key)}:${value}`;
 
 const object = (members: readonly (string | null)[]): string =>
     `{${members.filter((m): m is string => m !== null).join(",")}}`;
@@ -226,15 +210,9 @@ const array = (items: readonly string[]): string => `[${items.join(",")}]`;
  * its keys in code-point order.
  */
 const freeForm = (key: string, value: Record<string, JsonValue>): string | null =>
-    Object.keys(value).length === 0
-        ? null
-        : member(key, canonicalJson(value as JsonValue));
+    Object.keys(value).length === 0 ? null : member(key, canonicalJson(value as JsonValue));
 
-function emitManifest(
-    target: TargetDb,
-    sets: readonly DescriptorSet[],
-    layout: Layout,
-): string {
+function emitManifest(target: TargetDb, sets: readonly DescriptorSet[], layout: Layout): string {
     const p = layout.plan;
     const accessors = layout.accessors;
 
@@ -242,9 +220,7 @@ function emitManifest(
         [...names].sort(compareByCodePoint);
 
     const levelSizes = array(
-        target.pyramid.levelSizes.map((s) =>
-            array([jsonNumber(s[0]), jsonNumber(s[1])]),
-        ),
+        target.pyramid.levelSizes.map((s) => array([jsonNumber(s[0]), jsonNumber(s[1])])),
     );
 
     const physicalSizeMm =
@@ -267,10 +243,7 @@ function emitManifest(
         ),
         target.extensionsUsed.length === 0
             ? null
-            : member(
-                  "extensionsUsed",
-                  array(sortedNames(target.extensionsUsed).map(jsonString)),
-              ),
+            : member("extensionsUsed", array(sortedNames(target.extensionsUsed).map(jsonString))),
         target.extensionsRequired.length === 0
             ? null
             : member(
@@ -323,10 +296,7 @@ function emitManifest(
                         member("norm", jsonString(s.norm)),
                         member("elementType", jsonString(s.elementType)),
                         member("dimensions", jsonNumber(s.dimensions)),
-                        member(
-                            "bytesPerDescriptor",
-                            jsonNumber(s.bytesPerDescriptor),
-                        ),
+                        member("bytesPerDescriptor", jsonNumber(s.bytesPerDescriptor)),
                         member("producer", jsonString(s.producer)),
                         freeForm("params", s.params),
                         member("count", jsonNumber(s.count)),

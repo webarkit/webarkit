@@ -73,9 +73,16 @@ export class UnsupportedCapabilityError extends Error {
     /** The backend that refused, from `BackendCapabilities.name`. */
     readonly backend: string;
 
-    constructor(capability: CapabilityKind, requested: string, supported: readonly string[], backend: string) {
+    constructor(
+        capability: CapabilityKind,
+        requested: string,
+        supported: readonly string[],
+        backend: string,
+    ) {
         const list = supported.length ? supported.join(", ") : "none";
-        super(`Backend "${backend}" does not support ${capability} "${requested}". Supported: ${list}.`);
+        super(
+            `Backend "${backend}" does not support ${capability} "${requested}". Supported: ${list}.`,
+        );
         this.name = "UnsupportedCapabilityError";
         this.capability = capability;
         this.requested = requested;
@@ -104,7 +111,7 @@ export class DescriptorMismatchError extends Error {
     constructor(queryKind: string, queryNorm: string, trainKind: string, trainNorm: string) {
         super(
             `Cannot match descriptors: query is ${queryKind}/${queryNorm}, ` +
-                `train is ${trainKind}/${trainNorm}. Both the family and the norm must agree.`
+                `train is ${trainKind}/${trainNorm}. Both the family and the norm must agree.`,
         );
         this.name = "DescriptorMismatchError";
         this.queryKind = queryKind;

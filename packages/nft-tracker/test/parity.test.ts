@@ -71,14 +71,16 @@ import { withSeededRandom } from "./fixtures/seeded_rng.js";
 function sliceDescriptors(d: Descriptors, indices: number[]): Descriptors {
     const bytes = d.bytesPerDescriptor;
     const data = new Uint8Array(indices.length * bytes);
-    indices.forEach((src, i) => data.set(d.data.subarray(src * bytes, (src + 1) * bytes), i * bytes));
+    indices.forEach((src, i) =>
+        data.set(d.data.subarray(src * bytes, (src + 1) * bytes), i * bytes),
+    );
     return { ...d, data, count: indices.length };
 }
 
 /** Verbatim from the demo: groups a multi-scale target's rows by level. */
 function referenceLevelIndex(
     kTarget: Keypoint[],
-    dTarget: Descriptors
+    dTarget: Descriptors,
 ): { level: number; indices: number[]; descriptors: Descriptors }[] {
     const byLevel = new Map<number, number[]>();
     kTarget.forEach((k, i) => {
@@ -99,7 +101,7 @@ function referenceMatchPerLevel(
     cv: CvBackend,
     dQuery: Descriptors,
     levelIndex: ReturnType<typeof referenceLevelIndex>,
-    ratio: number
+    ratio: number,
 ): Match[] {
     const best = new Map<number, Match>();
     for (const { indices, descriptors } of levelIndex) {
@@ -146,11 +148,12 @@ function referencePipeline(cv: CvBackend, target: GrayImage, scene: GrayImage): 
         matches = cv.filterMatches(
             matches,
             { keypoints: kScene, width: scene.width, height: scene.height },
-            { keypoints: kTarget, width: target.width, height: target.height }
+            { keypoints: kTarget, width: target.width, height: target.height },
         );
     }
 
-    if (matches.length < 4) return { ok: false, numMatches: matches.length, numInliers: 0, H: null };
+    if (matches.length < 4)
+        return { ok: false, numMatches: matches.length, numInliers: 0, H: null };
 
     const src = new Float64Array(matches.length * 2);
     const dst = new Float64Array(matches.length * 2);
@@ -250,10 +253,12 @@ describe("NftTracker reproduces the demo pipeline", () => {
         // target is left outside the seeded region: it draws nothing, and
         // keeping the region down to the pipelines makes the symmetry visible.
         const targetDb = buildTargetFromImage(cv, target, { levels: 8 });
-        const { value: reference } = withSeededRandom(SEED, () => referencePipeline(cv, target, scene));
+        const { value: reference } = withSeededRandom(SEED, () =>
+            referencePipeline(cv, target, scene),
+        );
         const { value: tracked } = withSeededRandom(SEED, () =>
             // 900 is the STATIC demo's budget; the webcam demo's 300 is the default.
-            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0)
+            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0),
         );
 
         // Guard the fixture itself: if the reference pipeline no longer finds
@@ -270,15 +275,22 @@ describe("NftTracker reproduces the demo pipeline", () => {
 
     it("recovers the same homography, to within the f32 storage of the target's coordinates", () => {
         const targetDb = buildTargetFromImage(cv, target, { levels: 8 });
-        const { value: reference } = withSeededRandom(SEED, () => referencePipeline(cv, target, scene));
+        const { value: reference } = withSeededRandom(SEED, () =>
+            referencePipeline(cv, target, scene),
+        );
         const { value: tracked } = withSeededRandom(SEED, () =>
-            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0)
+            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0),
         );
 
         expect(reference.ok && tracked.ok).toBe(true);
         if (!reference.H || !tracked.ok) return;
 
-        const displacement = maxCornerDisplacement(tracked.H, reference.H, target.width, target.height);
+        const displacement = maxCornerDisplacement(
+            tracked.H,
+            reference.H,
+            target.width,
+            target.height,
+        );
         // Logged so a reviewer sees the headroom, not just the verdict.
         console.log(`parity: max corner displacement ${displacement.toExponential(2)} px`);
         expect(displacement).toBeLessThan(MAX_CORNER_DISPLACEMENT_PX);
@@ -297,12 +309,12 @@ describe("NftTracker reproduces the demo pipeline", () => {
         const expected = cv.detect(scene, { levels: 1, maxKeypoints: 900 });
         const targetDb = buildTargetFromImage(cv, target, { levels: 8 });
         const { value: tracked } = withSeededRandom(SEED, () =>
-            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0)
+            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0),
         );
 
         expect(tracked.sceneKeypoints.length).toBe(expected.length);
         expect(tracked.sceneKeypoints.map((k) => [k.x, k.y, k.level])).toEqual(
-            expected.map((k) => [k.x, k.y, k.level])
+            expected.map((k) => [k.x, k.y, k.level]),
         );
     });
 
@@ -323,7 +335,12 @@ describe("NftTracker reproduces the demo pipeline", () => {
             const kTarget = cv.detect(target, { levels: 8, maxKeypoints: 8 * 260 });
             const dScene = cv.describe(scene, kScene);
             const dTarget = cv.describe(target, kTarget);
-            const matches = referenceMatchPerLevel(cv, dScene, referenceLevelIndex(kTarget, dTarget), 0.8);
+            const matches = referenceMatchPerLevel(
+                cv,
+                dScene,
+                referenceLevelIndex(kTarget, dTarget),
+                0.8,
+            );
             return db.keypoints.count + matches.length;
         });
 
@@ -336,7 +353,7 @@ describe("NftTracker reproduces the demo pipeline", () => {
         const targetDb = buildTargetFromImage(cv, target, { levels: 8 });
         const reference = withSeededRandom(SEED, () => referencePipeline(cv, target, scene));
         const tracked = withSeededRandom(SEED, () =>
-            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0)
+            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0),
         );
 
         expect(reference.draws).toBeGreaterThan(0);
