@@ -302,7 +302,7 @@ export interface CvBackend {
     /** Convenience: detect + describe in one pass (may reuse the pyramid). */
     detectAndCompute?(
         image: GrayImage,
-        options?: DetectOptions & DescribeOptions
+        options?: DetectOptions & DescribeOptions,
     ): { keypoints: Keypoint[]; descriptors: Descriptors };
 
     /**
@@ -337,7 +337,12 @@ export interface CvBackend {
      * @throws {UnsupportedCapabilityError} if `options.kind` is given and is not
      *         in {@link BackendCapabilities.matchFilters}.
      */
-    filterMatches?(matches: Match[], query: FilterView, train: FilterView, options?: FilterOptions): Match[];
+    filterMatches?(
+        matches: Match[],
+        query: FilterView,
+        train: FilterView,
+        options?: FilterOptions,
+    ): Match[];
 
     /**
      * Estimate the planar homography mapping `src` points to `dst` points

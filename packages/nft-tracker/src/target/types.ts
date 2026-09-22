@@ -57,11 +57,7 @@
  * @see {@link https://github.com/webarkit/webarkit/blob/dev/docs/specs/nft-target-format.md}
  */
 
-import type {
-    DescriptorKind,
-    DescriptorNorm,
-    DetectorKind,
-} from "@webarkit/cv-backend-spec";
+import type { DescriptorKind, DescriptorNorm, DetectorKind } from "@webarkit/cv-backend-spec";
 
 /**
  * A value the contract enumerates, or any other string the file may carry.
@@ -275,10 +271,7 @@ export interface F32DescriptorSet extends DescriptorSetBase {
  *   is why a fourth, "unknown" variant would be unreachable rather than
  *   useful.
  */
-export type DescriptorSet =
-    | BitsDescriptorSet
-    | U8DescriptorSet
-    | F32DescriptorSet;
+export type DescriptorSet = BitsDescriptorSet | U8DescriptorSet | F32DescriptorSet;
 
 /**
  * Tracking patches (§5.7), `Q = count` entries.

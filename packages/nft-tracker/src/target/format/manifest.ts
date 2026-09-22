@@ -102,10 +102,7 @@ const isStringArray = (v: unknown): v is string[] =>
  * agree with `JSON.parse` on every malformed input, and pathological nesting
  * can raise a `RangeError` that step 4 makes `BAD_MANIFEST`.
  */
-export function decodeManifest(
-    bytes: Uint8Array,
-    limits: DecodeLimits,
-): ManifestResult {
+export function decodeManifest(bytes: Uint8Array, limits: DecodeLimits): ManifestResult {
     const no = (error: Parameters<typeof fail>[0], detail: string): ManifestResult => ({
         ok: false,
         ...fail(error, detail),
@@ -338,8 +335,7 @@ const isU32 = (v: unknown): v is number =>
 const isIntegerInRange = (v: unknown, lo: number, hi: number): v is number =>
     typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi;
 
-const isFiniteNumber = (v: unknown): v is number =>
-    typeof v === "number" && Number.isFinite(v);
+const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 /** An optional free-form object: absent means `{}` (§7.3). */
 const readParams = (v: unknown): Params | null => {
@@ -383,7 +379,8 @@ export function validateManifest(
 
     // --- accessors (§5.2) -------------------------------------------------
     const rawAccessors = doc["accessors"];
-    if (!Array.isArray(rawAccessors)) return { ok: false, ...fail("BAD_MANIFEST", "accessors must be an array") };
+    if (!Array.isArray(rawAccessors))
+        return { ok: false, ...fail("BAD_MANIFEST", "accessors must be an array") };
     const accessors: Accessor[] = [];
     for (let i = 0; i < rawAccessors.length; i += 1) {
         const a: unknown = rawAccessors[i];
@@ -400,10 +397,7 @@ export function validateManifest(
             break;
         }
         const type = a["type"];
-        if (
-            typeof type !== "string" ||
-            !(ACCESSOR_TYPES as readonly string[]).includes(type)
-        ) {
+        if (typeof type !== "string" || !(ACCESSOR_TYPES as readonly string[]).includes(type)) {
             bad(`accessors[${i}].type must be one of u8, u16, u32, f32`);
             break;
         }
@@ -418,7 +412,10 @@ export function validateManifest(
     // §5.2 rev 2: accessors with no BIN chunk is BAD_LAYOUT, including when
     // every count is 0 — a case the bound below would not catch.
     if (accessors.length > 0 && binLength === null) {
-        return { ok: false, ...fail("BAD_LAYOUT", "the manifest declares accessors but the file has no BIN chunk") };
+        return {
+            ok: false,
+            ...fail("BAD_LAYOUT", "the manifest declares accessors but the file has no BIN chunk"),
+        };
     }
     const binBytes = binLength ?? 0;
     for (let i = 0; i < accessors.length; i += 1) {
@@ -432,9 +429,7 @@ export function validateManifest(
         // comparison cannot be fooled by a wrap.
         const end = a.offset + a.count * size;
         if (end > binBytes) {
-            layout(
-                `accessors[${i}] ends at ${end}, past the BIN chunk's ${binBytes} bytes`,
-            );
+            layout(`accessors[${i}] ends at ${end}, past the BIN chunk's ${binBytes} bytes`);
             break;
         }
     }
@@ -452,21 +447,14 @@ export function validateManifest(
         .sort((p, q) => p.start - q.start);
     for (let k = 1; k < occupied.length; k += 1) {
         if (occupied[k]!.start < occupied[k - 1]!.end) {
-            layout(
-                `accessors[${occupied[k]!.i}] overlaps accessors[${occupied[k - 1]!.i}]`,
-            );
+            layout(`accessors[${occupied[k]!.i}] overlaps accessors[${occupied[k - 1]!.i}]`);
             break;
         }
     }
     if (failure !== null) return stop();
 
     /** Resolve an accessor reference, checking the type and count its field fixes. */
-    const ref = (
-        value: unknown,
-        path: string,
-        type: AccessorType,
-        count: number,
-    ): number => {
+    const ref = (value: unknown, path: string, type: AccessorType, count: number): number => {
         if (failure !== null) return 0;
         if (!isIntegerInRange(value, 0, accessors.length - 1)) {
             bad(`${path} must be an integer accessor index in [0, ${accessors.length})`);
@@ -486,13 +474,23 @@ export function validateManifest(
 
     // --- pyramid (§5.4) ---------------------------------------------------
     const pyramidRaw = doc["pyramid"];
-    if (!isObject(pyramidRaw)) return { ok: false, ...fail("BAD_MANIFEST", "pyramid must be an object") };
+    if (!isObject(pyramidRaw))
+        return { ok: false, ...fail("BAD_MANIFEST", "pyramid must be an object") };
     const levelSizesRaw = pyramidRaw["levelSizes"];
     if (!Array.isArray(levelSizesRaw) || levelSizesRaw.length === 0) {
-        return { ok: false, ...fail("BAD_MANIFEST", "pyramid.levelSizes must be a non-empty array") };
+        return {
+            ok: false,
+            ...fail("BAD_MANIFEST", "pyramid.levelSizes must be a non-empty array"),
+        };
     }
     if (levelSizesRaw.length > limits.maxLevels) {
-        return { ok: false, ...fail("LIMIT_EXCEEDED", `pyramid has ${levelSizesRaw.length} levels, limit ${limits.maxLevels}`) };
+        return {
+            ok: false,
+            ...fail(
+                "LIMIT_EXCEEDED",
+                `pyramid has ${levelSizesRaw.length} levels, limit ${limits.maxLevels}`,
+            ),
+        };
     }
     const levelSizes: [number, number][] = [];
     for (let l = 0; l < levelSizesRaw.length; l += 1) {
@@ -525,7 +523,13 @@ export function validateManifest(
         !isIntegerInRange(metaRaw["widthPx"], 1, U16_MAX) ||
         !isIntegerInRange(metaRaw["heightPx"], 1, U16_MAX)
     ) {
-        return { ok: false, ...fail("BAD_MANIFEST", "meta.widthPx and meta.heightPx must be integers in [1, 2^16 − 1]") };
+        return {
+            ok: false,
+            ...fail(
+                "BAD_MANIFEST",
+                "meta.widthPx and meta.heightPx must be integers in [1, 2^16 − 1]",
+            ),
+        };
     }
     const sizeMmRaw = metaRaw["physicalSizeMm"];
     let physicalSizeMm: readonly [number, number] | null = null;
@@ -538,26 +542,43 @@ export function validateManifest(
             sizeMmRaw[0] <= 0 ||
             sizeMmRaw[1] <= 0
         ) {
-            return { ok: false, ...fail("BAD_MANIFEST", "meta.physicalSizeMm must be null or two numbers > 0") };
+            return {
+                ok: false,
+                ...fail("BAD_MANIFEST", "meta.physicalSizeMm must be null or two numbers > 0"),
+            };
         }
         physicalSizeMm = [sizeMmRaw[0], sizeMmRaw[1]];
     }
 
     // --- keypoints (§5.5) -------------------------------------------------
     const kpRaw = doc["keypoints"];
-    if (!isObject(kpRaw)) return { ok: false, ...fail("BAD_MANIFEST", "keypoints must be an object") };
+    if (!isObject(kpRaw))
+        return { ok: false, ...fail("BAD_MANIFEST", "keypoints must be an object") };
     const N = kpRaw["count"];
-    if (!isU32(N)) return { ok: false, ...fail("BAD_MANIFEST", "keypoints.count must be an integer in [0, 2^32 − 1]") };
+    if (!isU32(N))
+        return {
+            ok: false,
+            ...fail("BAD_MANIFEST", "keypoints.count must be an integer in [0, 2^32 − 1]"),
+        };
     if (N > limits.maxKeypoints) {
-        return { ok: false, ...fail("LIMIT_EXCEEDED", `keypoints.count is ${N}, limit ${limits.maxKeypoints}`) };
+        return {
+            ok: false,
+            ...fail("LIMIT_EXCEEDED", `keypoints.count is ${N}, limit ${limits.maxKeypoints}`),
+        };
     }
     const detectorRaw = kpRaw["detector"];
     if (!isObject(detectorRaw) || typeof detectorRaw["kind"] !== "string") {
-        return { ok: false, ...fail("BAD_MANIFEST", "keypoints.detector must be an object with a string kind") };
+        return {
+            ok: false,
+            ...fail("BAD_MANIFEST", "keypoints.detector must be an object with a string kind"),
+        };
     }
     const detectorParams = readParams(detectorRaw["params"]);
     if (detectorParams === null) {
-        return { ok: false, ...fail("BAD_MANIFEST", "keypoints.detector.params must be an object when present") };
+        return {
+            ok: false,
+            ...fail("BAD_MANIFEST", "keypoints.detector.params must be an object when present"),
+        };
     }
     const keypoints = {
         count: N,
@@ -578,10 +599,19 @@ export function validateManifest(
     // --- descriptorSets (§5.6) --------------------------------------------
     const setsRaw = doc["descriptorSets"];
     if (!Array.isArray(setsRaw) || setsRaw.length === 0) {
-        return { ok: false, ...fail("BAD_MANIFEST", "descriptorSets must be an array with at least one entry") };
+        return {
+            ok: false,
+            ...fail("BAD_MANIFEST", "descriptorSets must be an array with at least one entry"),
+        };
     }
     if (setsRaw.length > limits.maxDescriptorSets) {
-        return { ok: false, ...fail("LIMIT_EXCEEDED", `${setsRaw.length} descriptor sets, limit ${limits.maxDescriptorSets}`) };
+        return {
+            ok: false,
+            ...fail(
+                "LIMIT_EXCEEDED",
+                `${setsRaw.length} descriptor sets, limit ${limits.maxDescriptorSets}`,
+            ),
+        };
     }
     const descriptorSets: SetSpec[] = [];
     const seenKeys = new Set<string>();
@@ -696,17 +726,33 @@ export function validateManifest(
     let patches: PatchSpec | undefined;
     const patchesRaw = doc["patches"];
     if (patchesRaw !== undefined) {
-        if (!isObject(patchesRaw)) return { ok: false, ...fail("BAD_MANIFEST", "patches must be an object when present") };
+        if (!isObject(patchesRaw))
+            return { ok: false, ...fail("BAD_MANIFEST", "patches must be an object when present") };
         const P = patchesRaw["patchSize"];
         const Q = patchesRaw["count"];
         if (!isU32(P) || P < 1 || !isU32(Q)) {
-            return { ok: false, ...fail("BAD_MANIFEST", "patches.patchSize must be a positive integer and patches.count a u32") };
+            return {
+                ok: false,
+                ...fail(
+                    "BAD_MANIFEST",
+                    "patches.patchSize must be a positive integer and patches.count a u32",
+                ),
+            };
         }
         if (P > limits.maxPatchSize) {
-            return { ok: false, ...fail("LIMIT_EXCEEDED", `patches.patchSize is ${P}, limit ${limits.maxPatchSize}`) };
+            return {
+                ok: false,
+                ...fail(
+                    "LIMIT_EXCEEDED",
+                    `patches.patchSize is ${P}, limit ${limits.maxPatchSize}`,
+                ),
+            };
         }
         if (Q > limits.maxPatches) {
-            return { ok: false, ...fail("LIMIT_EXCEEDED", `patches.count is ${Q}, limit ${limits.maxPatches}`) };
+            return {
+                ok: false,
+                ...fail("LIMIT_EXCEEDED", `patches.count is ${Q}, limit ${limits.maxPatches}`),
+            };
         }
         // Q and P are both checked u32s, so this product is exact.
         const pixelCount = Q * P * P;
@@ -726,7 +772,11 @@ export function validateManifest(
     let referenceImage: RefImageSpec | undefined;
     const refImageRaw = doc["referenceImage"];
     if (refImageRaw !== undefined) {
-        if (!isObject(refImageRaw)) return { ok: false, ...fail("BAD_MANIFEST", "referenceImage must be an object when present") };
+        if (!isObject(refImageRaw))
+            return {
+                ok: false,
+                ...fail("BAD_MANIFEST", "referenceImage must be an object when present"),
+            };
         const level = refImageRaw["level"];
         const width = refImageRaw["width"];
         const height = refImageRaw["height"];
@@ -735,7 +785,13 @@ export function validateManifest(
             !isIntegerInRange(width, 1, U16_MAX) ||
             !isIntegerInRange(height, 1, U16_MAX)
         ) {
-            return { ok: false, ...fail("BAD_MANIFEST", "referenceImage needs a u32 level and sizes in [1, 2^16 − 1]") };
+            return {
+                ok: false,
+                ...fail(
+                    "BAD_MANIFEST",
+                    "referenceImage needs a u32 level and sizes in [1, 2^16 − 1]",
+                ),
+            };
         }
         referenceImage = {
             level,

@@ -47,11 +47,7 @@
  * the assertions at the bottom keep them from drifting from the unions.
  */
 
-import type {
-    DescriptorKind,
-    DescriptorNorm,
-    DetectorKind,
-} from "@webarkit/cv-backend-spec";
+import type { DescriptorKind, DescriptorNorm, DetectorKind } from "@webarkit/cv-backend-spec";
 
 /** The only `format.version` this build reads or writes (§7.1). */
 export const SUPPORTED_FORMAT_VERSION = "0.3";
@@ -128,24 +124,15 @@ export const IMPLEMENTED_EXTENSIONS: readonly string[] = [];
 // "unknown", and every file carrying it would start warning instead of
 // working. `satisfies` above catches a value that is not in the union; this
 // catches a union member that is not in the value.
-type MissingKind = Exclude<
-    DescriptorKind,
-    (typeof KNOWN_DESCRIPTOR_KINDS)[number]
->;
-type MissingNorm = Exclude<
-    DescriptorNorm,
-    (typeof KNOWN_DESCRIPTOR_NORMS)[number]
->;
-type MissingDetector = Exclude<
-    DetectorKind,
-    (typeof KNOWN_DETECTOR_KINDS)[number]
->;
+type MissingKind = Exclude<DescriptorKind, (typeof KNOWN_DESCRIPTOR_KINDS)[number]>;
+type MissingNorm = Exclude<DescriptorNorm, (typeof KNOWN_DESCRIPTOR_NORMS)[number]>;
+type MissingDetector = Exclude<DetectorKind, (typeof KNOWN_DETECTOR_KINDS)[number]>;
 
-const KNOWN_LISTS_ARE_EXHAUSTIVE: [
-    MissingKind,
-    MissingNorm,
-    MissingDetector,
-] extends [never, never, never]
+const KNOWN_LISTS_ARE_EXHAUSTIVE: [MissingKind, MissingNorm, MissingDetector] extends [
+    never,
+    never,
+    never,
+]
     ? true
     : never = true;
 void KNOWN_LISTS_ARE_EXHAUSTIVE;

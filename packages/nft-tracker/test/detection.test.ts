@@ -49,10 +49,14 @@ const BPD = 4; // 32-bit descriptors: enough to be distinct, small enough to rea
  * A descriptor set with `rowsPerLevel` rows per level, one row per keypoint.
  * Row `i` is filled with the byte `i`, so a view's identity is visible by eye.
  */
-function makeSet(rowsPerLevel: readonly number[], overrides: Record<string, unknown> = {}): DescriptorSet {
+function makeSet(
+    rowsPerLevel: readonly number[],
+    overrides: Record<string, unknown> = {},
+): DescriptorSet {
     const total = rowsPerLevel.reduce((a, b) => a + b, 0);
     const levelStart = new Uint32Array(rowsPerLevel.length + 1);
-    for (let l = 0; l < rowsPerLevel.length; l++) levelStart[l + 1] = levelStart[l] + rowsPerLevel[l];
+    for (let l = 0; l < rowsPerLevel.length; l++)
+        levelStart[l + 1] = levelStart[l] + rowsPerLevel[l];
     const data = new Uint8Array(total * BPD);
     for (let i = 0; i < total; i++) data.fill(i, i * BPD, (i + 1) * BPD);
     return {
@@ -95,7 +99,7 @@ function makeTarget(sets: readonly DescriptorSet[]): TargetDb {
 /** A backend that implements only what these tests exercise. */
 function stubBackend(
     match: (q: Descriptors, t: Descriptors) => Match[],
-    descriptors: readonly DescriptorKind[] = ["orb"]
+    descriptors: readonly DescriptorKind[] = ["orb"],
 ): CvBackend {
     return {
         capabilities: {
@@ -106,14 +110,31 @@ function stubBackend(
             matchFilters: [],
         },
         detect: () => [],
-        describe: () => ({ data: new Uint8Array(0), count: 0, bytesPerDescriptor: BPD, kind: "orb", norm: "hamming" }),
+        describe: () => ({
+            data: new Uint8Array(0),
+            count: 0,
+            bytesPerDescriptor: BPD,
+            kind: "orb",
+            norm: "hamming",
+        }),
         match,
-        estimateHomography: () => ({ H: new Float64Array(9), inliers: new Uint8Array(0), numInliers: 0, ok: false }),
+        estimateHomography: () => ({
+            H: new Float64Array(9),
+            inliers: new Uint8Array(0),
+            numInliers: 0,
+            ok: false,
+        }),
         poseFromHomography: () => ({ R: new Float64Array(9), t: new Float64Array(3), good: false }),
     };
 }
 
-const query: Descriptors = { data: new Uint8Array(BPD), count: 1, bytesPerDescriptor: BPD, kind: "orb", norm: "hamming" };
+const query: Descriptors = {
+    data: new Uint8Array(BPD),
+    count: 1,
+    bytesPerDescriptor: BPD,
+    kind: "orb",
+    norm: "hamming",
+};
 
 describe("chooseDescriptorSet", () => {
     it("picks the first set the backend can actually consume", () => {
@@ -172,9 +193,13 @@ describe("matchPerLevel", () => {
         // Level 1 starts at row 3; kpIndex is identity, so row 3 is keypoint 3.
         const set = makeSet([3, 2]) as UsableDescriptorSet;
         const levels = buildLevelIndex(set);
-        const cv = stubBackend((_q, t) => (t.count === 2 ? [{ queryIdx: 0, trainIdx: 0, distance: 5 }] : []));
+        const cv = stubBackend((_q, t) =>
+            t.count === 2 ? [{ queryIdx: 0, trainIdx: 0, distance: 5 }] : [],
+        );
 
-        expect(matchPerLevel(cv, query, levels, 0.8)).toEqual([{ queryIdx: 0, trainIdx: 3, distance: 5 }]);
+        expect(matchPerLevel(cv, query, levels, 0.8)).toEqual([
+            { queryIdx: 0, trainIdx: 3, distance: 5 },
+        ]);
     });
 
     it("honours kpIndex rather than assuming rows and keypoints line up", () => {
@@ -192,10 +217,12 @@ describe("matchPerLevel", () => {
         const cv = stubBackend(() =>
             call++ === 0
                 ? [{ queryIdx: 0, trainIdx: 0, distance: 30 }]
-                : [{ queryIdx: 0, trainIdx: 1, distance: 12 }]
+                : [{ queryIdx: 0, trainIdx: 1, distance: 12 }],
         );
 
-        expect(matchPerLevel(cv, query, levels, 0.8)).toEqual([{ queryIdx: 0, trainIdx: 3, distance: 12 }]);
+        expect(matchPerLevel(cv, query, levels, 0.8)).toEqual([
+            { queryIdx: 0, trainIdx: 3, distance: 12 },
+        ]);
     });
 
     it("breaks an exact tie in favour of the level seen first, as the demo does", () => {
@@ -205,7 +232,7 @@ describe("matchPerLevel", () => {
         const cv = stubBackend(() =>
             call++ === 0
                 ? [{ queryIdx: 0, trainIdx: 0, distance: 20 }]
-                : [{ queryIdx: 0, trainIdx: 0, distance: 20 }]
+                : [{ queryIdx: 0, trainIdx: 0, distance: 20 }],
         );
 
         // Level 0's row 0 is keypoint 0; level 1's row 0 is keypoint 2.

@@ -38,6 +38,13 @@ jobs:
             - name: Install
               run: npm ci
 
+            # Before the build, so a formatting-only failure is reported in
+            # seconds rather than after the whole toolchain has run. Scope is
+            # src/, test/, bin/ and scripts/ - deliberately not Markdown or
+            # examples/, see the Conventions section of AGENTS.md.
+            - name: Format check
+              run: npm run format:check
+
             # Builds cv-backend-spec then cv-backend-jsfeatnext, in that order
             # (see the job comment above) - cv-backend-jsfeatnext's own build
             # step type-checks against the spec's freshly-built dist/, so this

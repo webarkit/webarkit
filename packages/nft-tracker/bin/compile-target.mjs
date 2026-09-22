@@ -179,7 +179,7 @@ function positiveNumber(text, flag, { integer = false } = {}) {
     const value = Number(text);
     if (!Number.isFinite(value) || value <= 0 || (integer && !Number.isInteger(value))) {
         throw new UsageError(
-            `${flag} expects a positive ${integer ? "integer" : "number"}, got "${text}"`
+            `${flag} expects a positive ${integer ? "integer" : "number"}, got "${text}"`,
         );
     }
     return value;
@@ -277,7 +277,7 @@ function parseArgs(argv) {
                     // check admits 0xffffffff, so a message saying "2^32"
                     // would name a value the CLI refuses.
                     throw new UsageError(
-                        `--seed expects an integer in [-4294967295, 4294967295], got "${text}"`
+                        `--seed expects an integer in [-4294967295, 4294967295], got "${text}"`,
                     );
                 }
                 i += 1;
@@ -291,7 +291,7 @@ function parseArgs(argv) {
                 if (arg.startsWith("-")) throw new UsageError(`unknown option "${arg}"`);
                 if (options.image !== null) {
                     throw new UsageError(
-                        `only one image at a time, got "${options.image}" and "${arg}"`
+                        `only one image at a time, got "${options.image}" and "${arg}"`,
                     );
                 }
                 options.image = arg;
@@ -327,7 +327,7 @@ async function main(argv) {
             scaleStep: options.scaleStep,
             physicalSizeMm: options.physicalSizeMm,
             name: options.name,
-        })
+        }),
     );
 
     // `buildTargetFromImage` writes `info.name` and nothing else, so the
@@ -354,7 +354,7 @@ async function main(argv) {
     const written = encode(target);
     if (!written.ok) {
         process.stderr.write(
-            `compile-target: encode refused this target: ${written.error} at ${written.detail}\n`
+            `compile-target: encode refused this target: ${written.error} at ${written.detail}\n`,
         );
         return 1;
     }
@@ -368,7 +368,7 @@ async function main(argv) {
         `${options.out}: ${image.width}x${image.height}, ` +
             `${target.keypoints.count} keypoints over ${levels} level${levels === 1 ? "" : "s"}, ` +
             `${written.bytes.length} bytes ` +
-            `(${built.draws} random draw${built.draws === 1 ? "" : "s"})\n`
+            `(${built.draws} random draw${built.draws === 1 ? "" : "s"})\n`,
     );
     return 0;
 }

@@ -57,8 +57,7 @@ import {
 const BS = String.fromCharCode(92);
 
 /** The JSON text `{"x":"<escapes>"}` carrying `\uXXXX` escapes. */
-const escaped = (...hex: string[]): string =>
-    `{"x":"${hex.map((h) => `${BS}u${h}`).join("")}"}`;
+const escaped = (...hex: string[]): string => `{"x":"${hex.map((h) => `${BS}u${h}`).join("")}"}`;
 
 /** The JSON text `{"x":"<raw code point>"}`. */
 const raw = (cp: number): string => `{"x":"${String.fromCodePoint(cp)}"}`;

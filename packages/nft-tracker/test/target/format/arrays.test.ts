@@ -107,9 +107,7 @@ describe("materialise", () => {
 
     it("produces an empty array for a zero-count accessor", () => {
         const { buffer, base } = at(8, []);
-        expect(
-            materialise(buffer, base, { offset: 0, count: 0, type: "f32" }).length,
-        ).toBe(0);
+        expect(materialise(buffer, base, { offset: 0, count: 0, type: "f32" }).length).toBe(0);
     });
 
     it("never lets a copy alias the source buffer", () => {
@@ -121,17 +119,17 @@ describe("materialise", () => {
 
     it("returns the typed array the accessor's type names", () => {
         const { buffer, base } = at(8, [1, 0, 0, 0]);
-        expect(
-            materialise(buffer, base, { offset: 0, count: 4, type: "u8" }),
-        ).toBeInstanceOf(Uint8Array);
-        expect(
-            materialise(buffer, base, { offset: 0, count: 2, type: "u16" }),
-        ).toBeInstanceOf(Uint16Array);
-        expect(
-            materialise(buffer, base, { offset: 0, count: 1, type: "u32" }),
-        ).toBeInstanceOf(Uint32Array);
-        expect(
-            materialise(buffer, base, { offset: 0, count: 1, type: "f32" }),
-        ).toBeInstanceOf(Float32Array);
+        expect(materialise(buffer, base, { offset: 0, count: 4, type: "u8" })).toBeInstanceOf(
+            Uint8Array,
+        );
+        expect(materialise(buffer, base, { offset: 0, count: 2, type: "u16" })).toBeInstanceOf(
+            Uint16Array,
+        );
+        expect(materialise(buffer, base, { offset: 0, count: 1, type: "u32" })).toBeInstanceOf(
+            Uint32Array,
+        );
+        expect(materialise(buffer, base, { offset: 0, count: 1, type: "f32" })).toBeInstanceOf(
+            Float32Array,
+        );
     });
 });

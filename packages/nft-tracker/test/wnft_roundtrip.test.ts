@@ -173,7 +173,8 @@ describe("image -> build -> encode -> decode -> track", () => {
         }
 
         const read = decode(written.bytes);
-        if (!read.ok) throw new Error(`decode rejected our own bytes: ${read.error} — ${read.detail}`);
+        if (!read.ok)
+            throw new Error(`decode rejected our own bytes: ${read.error} — ${read.detail}`);
         expect(read.warnings).toEqual([]);
         viaFile = read.target;
     });

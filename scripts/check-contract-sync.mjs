@@ -66,8 +66,7 @@ const RS_KNOWN = "crates/wnft-format/src/known.rs";
 const read = (relative) => readFileSync(join(ROOT, relative), "utf8");
 
 /** Every double-quoted string in a fragment of source, in order. */
-const quoted = (fragment) =>
-    [...fragment.matchAll(/"([^"\\]*)"/g)].map((m) => m[1]);
+const quoted = (fragment) => [...fragment.matchAll(/"([^"\\]*)"/g)].map((m) => m[1]);
 
 /** `export type NAME = "a" | "b";` — the contract's own union. */
 function tsUnion(source, name, where) {
@@ -78,9 +77,7 @@ function tsUnion(source, name, where) {
 
 /** `export const NAME = [...] as const;` */
 function tsList(source, name, where) {
-    const m = new RegExp(`export const ${name}[^=]*=\\s*\\[([^\\]]*)\\]`).exec(
-        source,
-    );
+    const m = new RegExp(`export const ${name}[^=]*=\\s*\\[([^\\]]*)\\]`).exec(source);
     if (m === null) fail(`${where}: no \`export const ${name} = [...]\` found`);
     return quoted(m[1]);
 }
@@ -94,9 +91,7 @@ function tsScalar(source, name, where) {
 
 /** `pub(crate) const NAME: &[&str] = &[...];` */
 function rsList(source, name, where) {
-    const m = new RegExp(
-        `const ${name}\\s*:\\s*&\\[&str\\]\\s*=\\s*&\\[([^\\]]*)\\]`,
-    ).exec(source);
+    const m = new RegExp(`const ${name}\\s*:\\s*&\\[&str\\]\\s*=\\s*&\\[([^\\]]*)\\]`).exec(source);
     if (m === null) fail(`${where}: no \`const ${name}: &[&str]\` found`);
     return quoted(m[1]);
 }
@@ -196,13 +191,7 @@ for (const name of [
     "KNOWN_ELEMENT_TYPES",
     "IMPLEMENTED_EXTENSIONS",
 ]) {
-    sameMembers(
-        name,
-        tsList(ts, name, TS_KNOWN),
-        TS_KNOWN,
-        rsList(rs, name, RS_KNOWN),
-        RS_KNOWN,
-    );
+    sameMembers(name, tsList(ts, name, TS_KNOWN), TS_KNOWN, rsList(rs, name, RS_KNOWN), RS_KNOWN);
 }
 
 // Two codecs claiming different versions of the same format would read each

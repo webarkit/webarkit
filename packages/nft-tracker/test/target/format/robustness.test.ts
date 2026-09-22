@@ -56,8 +56,7 @@ import { encode } from "../../../src/target/format/encode.js";
 import type { TargetDb } from "../../../src/index.js";
 import { FIXTURES_DIR } from "./fixtures-dir.js";
 
-const read = (rel: string): Uint8Array =>
-    new Uint8Array(readFileSync(join(FIXTURES_DIR, rel)));
+const read = (rel: string): Uint8Array => new Uint8Array(readFileSync(join(FIXTURES_DIR, rel)));
 
 interface Expectations {
     readonly valid: readonly { readonly file: string }[];
@@ -193,15 +192,12 @@ describe("§8.4 — property-based fuzzing", () => {
     it("never throws on a truncation at a random offset of a random fixture", () => {
         const files = expectations.valid.map((e) => read(e.file));
         fc.assert(
-            fc.property(
-                fc.nat({ max: files.length - 1 }),
-                fc.nat({ max: 20000 }),
-                (which, cut) => {
-                    const bytes = files[which]!;
-                    expect(typeof decode(bytes.subarray(0, cut % (bytes.length + 1))).ok)
-                        .toBe("boolean");
-                },
-            ),
+            fc.property(fc.nat({ max: files.length - 1 }), fc.nat({ max: 20000 }), (which, cut) => {
+                const bytes = files[which]!;
+                expect(typeof decode(bytes.subarray(0, cut % (bytes.length + 1))).ok).toBe(
+                    "boolean",
+                );
+            }),
             { numRuns: 1000 },
         );
     });
@@ -250,9 +246,7 @@ describe("§8.4 — manifest attacks", () => {
     const manifestBytes = new TextEncoder().encode(manifest).length;
 
     it("accepts a manifest exactly at the limit and rejects one byte more", () => {
-        expect(
-            decode(minimal, { limits: { maxManifestBytes: manifestBytes } }).ok,
-        ).toBe(true);
+        expect(decode(minimal, { limits: { maxManifestBytes: manifestBytes } }).ok).toBe(true);
         const r = decode(minimal, { limits: { maxManifestBytes: manifestBytes - 1 } });
         expect(!r.ok && r.error).toBe("MANIFEST_TOO_LARGE");
     });
@@ -314,80 +308,70 @@ describe("§8.4 — property-based round trip", () => {
                     fc.constant(null),
                 ),
             })
-            .map(
-                ({ perLevel, width, height, scaleStep, dimensions, physical, seedValue }) => {
-                    const L = perLevel.length;
-                    const N = perLevel.reduce((a, b) => a + b, 0);
+            .map(({ perLevel, width, height, scaleStep, dimensions, physical, seedValue }) => {
+                const L = perLevel.length;
+                const N = perLevel.reduce((a, b) => a + b, 0);
 
-                    const levelSizes: [number, number][] = [];
-                    let w = width;
-                    let h = height;
-                    for (let l = 0; l < L; l += 1) {
-                        levelSizes.push([w, h]);
-                        w = Math.max(1, Math.floor(w / scaleStep));
-                        h = Math.max(1, Math.floor(h / scaleStep));
-                    }
+                const levelSizes: [number, number][] = [];
+                let w = width;
+                let h = height;
+                for (let l = 0; l < L; l += 1) {
+                    levelSizes.push([w, h]);
+                    w = Math.max(1, Math.floor(w / scaleStep));
+                    h = Math.max(1, Math.floor(h / scaleStep));
+                }
 
-                    const levelStart = new Uint32Array(L + 1);
-                    const level = new Uint8Array(N);
-                    let at = 0;
-                    for (let l = 0; l < L; l += 1) {
-                        levelStart[l] = at;
-                        for (let k = 0; k < perLevel[l]!; k += 1) level[at + k] = l;
-                        at += perLevel[l]!;
-                    }
-                    levelStart[L] = N;
+                const levelStart = new Uint32Array(L + 1);
+                const level = new Uint8Array(N);
+                let at = 0;
+                for (let l = 0; l < L; l += 1) {
+                    levelStart[l] = at;
+                    for (let k = 0; k < perLevel[l]!; k += 1) level[at + k] = l;
+                    at += perLevel[l]!;
+                }
+                levelStart[L] = N;
 
-                    const bytesPerDescriptor = dimensions / 8;
-                    return {
-                        formatVersion: "0.3",
-                        extensionsUsed: [],
-                        extensionsRequired: [],
-                        meta: {
-                            widthPx: levelSizes[0]![0],
-                            heightPx: levelSizes[0]![1],
-                            physicalSizeMm: physical,
-                        },
-                        pyramid: { scaleStep, levelSizes },
-                        keypoints: {
+                const bytesPerDescriptor = dimensions / 8;
+                return {
+                    formatVersion: "0.3",
+                    extensionsUsed: [],
+                    extensionsRequired: [],
+                    meta: {
+                        widthPx: levelSizes[0]![0],
+                        heightPx: levelSizes[0]![1],
+                        physicalSizeMm: physical,
+                    },
+                    pyramid: { scaleStep, levelSizes },
+                    keypoints: {
+                        count: N,
+                        detector: { kind: "fast", params: {} },
+                        levelStart,
+                        x: Float32Array.from({ length: N }, (_, i) => Math.fround(i * 1.5)),
+                        y: Float32Array.from({ length: N }, (_, i) => Math.fround(i * 2.25)),
+                        angle: Float32Array.from({ length: N }, (_, i) => Math.fround(i * 0.125)),
+                        score: Float32Array.from({ length: N }, (_, i) => Math.fround(100 - i)),
+                        level,
+                    },
+                    descriptorSets: [
+                        {
+                            kind: "orb",
+                            norm: "hamming",
+                            elementType: "bits",
+                            dimensions,
+                            bytesPerDescriptor,
+                            producer: "jsfeatnext",
+                            params: { seed: seedValue },
                             count: N,
-                            detector: { kind: "fast", params: {} },
-                            levelStart,
-                            x: Float32Array.from({ length: N }, (_, i) =>
-                                Math.fround(i * 1.5),
+                            levelStart: levelStart.slice(),
+                            kpIndex: Uint32Array.from({ length: N }, (_, i) => i),
+                            data: Uint8Array.from(
+                                { length: N * bytesPerDescriptor },
+                                (_, i) => (i * 31 + 7) & 0xff,
                             ),
-                            y: Float32Array.from({ length: N }, (_, i) =>
-                                Math.fround(i * 2.25),
-                            ),
-                            angle: Float32Array.from({ length: N }, (_, i) =>
-                                Math.fround(i * 0.125),
-                            ),
-                            score: Float32Array.from({ length: N }, (_, i) =>
-                                Math.fround(100 - i),
-                            ),
-                            level,
                         },
-                        descriptorSets: [
-                            {
-                                kind: "orb",
-                                norm: "hamming",
-                                elementType: "bits",
-                                dimensions,
-                                bytesPerDescriptor,
-                                producer: "jsfeatnext",
-                                params: { seed: seedValue },
-                                count: N,
-                                levelStart: levelStart.slice(),
-                                kpIndex: Uint32Array.from({ length: N }, (_, i) => i),
-                                data: Uint8Array.from(
-                                    { length: N * bytesPerDescriptor },
-                                    (_, i) => (i * 31 + 7) & 0xff,
-                                ),
-                            },
-                        ],
-                    } satisfies TargetDb;
-                },
-            );
+                    ],
+                } satisfies TargetDb;
+            });
 
     it("round-trips a random valid target", () => {
         fc.assert(

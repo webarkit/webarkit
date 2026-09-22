@@ -60,9 +60,7 @@ describe("validateTarget — §8.2 item 7: the writer rejects what the reader wo
     });
 
     it("rejects the integer 2^53 in params (§5 check c)", () => {
-        expect(pathOf(withParam(9007199254740992))).toBe(
-            "descriptorSets[0].params.seed",
-        );
+        expect(pathOf(withParam(9007199254740992))).toBe("descriptorSets[0].params.seed");
     });
 
     it("accepts 2^53 − 1, the boundary that must encode", () => {
@@ -70,12 +68,8 @@ describe("validateTarget — §8.2 item 7: the writer rejects what the reader wo
     });
 
     it("rejects a value that would serialise to infinity (§5 check d)", () => {
-        expect(pathOf(withParam(Number.POSITIVE_INFINITY))).toBe(
-            "descriptorSets[0].params.seed",
-        );
-        expect(pathOf(withParam(Number.NEGATIVE_INFINITY))).toBe(
-            "descriptorSets[0].params.seed",
-        );
+        expect(pathOf(withParam(Number.POSITIVE_INFINITY))).toBe("descriptorSets[0].params.seed");
+        expect(pathOf(withParam(Number.NEGATIVE_INFINITY))).toBe("descriptorSets[0].params.seed");
     });
 
     it("rejects a Unicode noncharacter in params (§5 check e)", () => {
@@ -132,9 +126,7 @@ describe("validateTarget — §8.2 item 7: the writer rejects what the reader wo
     });
 
     it("accepts ordinary free-form content", () => {
-        expect(
-            validateTarget(withParam({ a: [1, "x", null, true], b: { c: 1.5 } })),
-        ).toBeNull();
+        expect(validateTarget(withParam({ a: [1, "x", null, true], b: { c: 1.5 } }))).toBeNull();
     });
 });
 
@@ -148,18 +140,18 @@ describe("validateTarget — structural rules mirroring the reader", () => {
     });
 
     it("rejects a scaleStep of 1 or less", () => {
-        expect(
-            pathOf({ ...good(), pyramid: { scaleStep: 1, levelSizes: [[8, 4]] } }),
-        ).toBe("pyramid.scaleStep");
+        expect(pathOf({ ...good(), pyramid: { scaleStep: 1, levelSizes: [[8, 4]] } })).toBe(
+            "pyramid.scaleStep",
+        );
     });
 
     it("rejects a level size outside [1, 2^16 − 1]", () => {
-        expect(
-            pathOf({ ...good(), pyramid: { scaleStep: 2, levelSizes: [[0, 4]] } }),
-        ).toMatch(/^pyramid\.levelSizes/);
-        expect(
-            pathOf({ ...good(), pyramid: { scaleStep: 2, levelSizes: [[65536, 4]] } }),
-        ).toMatch(/^pyramid\.levelSizes/);
+        expect(pathOf({ ...good(), pyramid: { scaleStep: 2, levelSizes: [[0, 4]] } })).toMatch(
+            /^pyramid\.levelSizes/,
+        );
+        expect(pathOf({ ...good(), pyramid: { scaleStep: 2, levelSizes: [[65536, 4]] } })).toMatch(
+            /^pyramid\.levelSizes/,
+        );
     });
 
     it("rejects a pyramid that grows between two levels", () => {
@@ -167,7 +159,13 @@ describe("validateTarget — structural rules mirroring the reader", () => {
         expect(
             pathOf({
                 ...t,
-                pyramid: { scaleStep: 2, levelSizes: [[8, 4], [9, 4]] },
+                pyramid: {
+                    scaleStep: 2,
+                    levelSizes: [
+                        [8, 4],
+                        [9, 4],
+                    ],
+                },
                 keypoints: { ...t.keypoints, levelStart: new Uint32Array([0, 1, 1]) },
                 descriptorSets: [
                     { ...t.descriptorSets[0]!, levelStart: new Uint32Array([0, 1, 1]) },
@@ -206,9 +204,9 @@ describe("validateTarget — structural rules mirroring the reader", () => {
 
     it("rejects an array whose length disagrees with its count", () => {
         const t = good();
-        expect(
-            pathOf({ ...t, keypoints: { ...t.keypoints, x: new Float32Array([1, 2]) } }),
-        ).toBe("keypoints.x");
+        expect(pathOf({ ...t, keypoints: { ...t.keypoints, x: new Float32Array([1, 2]) } })).toBe(
+            "keypoints.x",
+        );
     });
 
     it("rejects a levelStart that is not closed", () => {
@@ -293,9 +291,9 @@ describe("validateTarget — structural rules mirroring the reader", () => {
     });
 
     it("rejects a required extension that is not also used", () => {
-        expect(
-            pathOf({ ...good(), extensionsUsed: [], extensionsRequired: ["WKNF_x"] }),
-        ).toBe("extensionsRequired");
+        expect(pathOf({ ...good(), extensionsUsed: [], extensionsRequired: ["WKNF_x"] })).toBe(
+            "extensionsRequired",
+        );
     });
 });
 

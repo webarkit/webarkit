@@ -52,27 +52,14 @@
  * lets a caller treat a hostile file as data rather than as an incident.
  */
 
-import type {
-    DescriptorSet,
-    KeypointTable,
-    PatchTable,
-    TargetDb,
-} from "../types.js";
+import type { DescriptorSet, KeypointTable, PatchTable, TargetDb } from "../types.js";
 import { materialise, type AccessorArray } from "./arrays.js";
-import {
-    checkConsistency,
-    type SetArrays,
-    type TargetArrays,
-} from "./consistency.js";
+import { checkConsistency, type SetArrays, type TargetArrays } from "./consistency.js";
 import { parseContainer } from "./container.js";
 import type { DecodeResult, Warning } from "./errors.js";
 import { SUPPORTED_FORMAT_VERSION } from "./known.js";
 import { resolveLimits, type DecodeOptions } from "./limits.js";
-import {
-    decodeManifest,
-    validateManifest,
-    type ManifestSpec,
-} from "./manifest.js";
+import { decodeManifest, validateManifest, type ManifestSpec } from "./manifest.js";
 
 /** Materialise every array a validated manifest references. */
 function materialiseAll(
@@ -152,9 +139,7 @@ function buildTarget(spec: ManifestSpec, arrays: TargetArrays): TargetDb {
         y: arrays.keypoints.y,
         angle: arrays.keypoints.angle,
         score: arrays.keypoints.score,
-        ...(arrays.keypoints.size === undefined
-            ? {}
-            : { size: arrays.keypoints.size }),
+        ...(arrays.keypoints.size === undefined ? {} : { size: arrays.keypoints.size }),
         level: arrays.keypoints.level,
     };
 
@@ -193,9 +178,7 @@ function buildTarget(spec: ManifestSpec, arrays: TargetArrays): TargetDb {
 
     return {
         formatVersion: SUPPORTED_FORMAT_VERSION,
-        ...(spec.head.generator === undefined
-            ? {}
-            : { generator: spec.head.generator }),
+        ...(spec.head.generator === undefined ? {} : { generator: spec.head.generator }),
         extensionsUsed: spec.head.extensionsUsed,
         extensionsRequired: spec.head.extensionsRequired,
         meta: spec.meta,

@@ -62,13 +62,7 @@
  * as the backend's RANSAC is, and the tests are explicit about that.
  */
 
-import type {
-    CvBackend,
-    GrayImage,
-    Keypoint,
-    Mat3,
-    Pose,
-} from "@webarkit/cv-backend-spec";
+import type { CvBackend, GrayImage, Keypoint, Mat3, Pose } from "@webarkit/cv-backend-spec";
 import { buildLevelIndex, chooseDescriptorSet, matchPerLevel } from "./detection.js";
 import type { TargetLevelView } from "./detection.js";
 import type { TargetDb } from "./target/types.js";
@@ -165,7 +159,7 @@ export class NftTracker {
         private readonly cv: CvBackend,
         private readonly target: TargetDb,
         private readonly K: Mat3,
-        options?: NftTrackerOptions
+        options?: NftTrackerOptions,
     ) {
         // Both throw on a target this backend cannot read, in the constructor
         // rather than on the first frame: it is a mismatch between target and
@@ -195,7 +189,7 @@ export class NftTracker {
                     keypoints: this.targetKeypoints,
                     width: this.target.meta.widthPx,
                     height: this.target.meta.heightPx,
-                }
+                },
             );
         }
 
@@ -263,7 +257,13 @@ function toKeypointArray(target: TargetDb): Keypoint[] {
     const kp = target.keypoints;
     const out: Keypoint[] = new Array(kp.count);
     for (let i = 0; i < kp.count; i++) {
-        out[i] = { x: kp.x[i], y: kp.y[i], score: kp.score[i], angle: kp.angle[i], level: kp.level[i] };
+        out[i] = {
+            x: kp.x[i],
+            y: kp.y[i],
+            score: kp.score[i],
+            angle: kp.angle[i],
+            level: kp.level[i],
+        };
     }
     return out;
 }

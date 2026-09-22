@@ -176,7 +176,7 @@ function toMatrix(image: GrayImage): matrix_t {
     if (image.data.length < image.width * image.height) {
         throw new Error(
             `@webarkit/cv-backend-jsfeatnext: image data holds ${image.data.length} bytes, ` +
-                `but ${image.width}x${image.height} needs ${image.width * image.height}`
+                `but ${image.width}x${image.height} needs ${image.width * image.height}`,
         );
     }
     m.data.set(image.data.subarray(0, image.width * image.height));
@@ -186,7 +186,9 @@ function toMatrix(image: GrayImage): matrix_t {
 /** Row-major 3x3 `Float64Array` to a jsfeatNext F64 matrix. */
 function toMat3(m: Mat3, what: string): matrix_t {
     if (m.length !== 9) {
-        throw new Error(`@webarkit/cv-backend-jsfeatnext: ${what} must have 9 elements, got ${m.length}`);
+        throw new Error(
+            `@webarkit/cv-backend-jsfeatnext: ${what} must have 9 elements, got ${m.length}`,
+        );
     }
     const out = new jsfeatNext.matrix_t(3, 3, F64C1);
     out.data.set(m);
@@ -294,7 +296,9 @@ export class JsfeatNextBackend implements CvBackend {
         // across a scale change possible -- which is the whole reason for
         // searching a pyramid. jsfeatNext's own ORB sample caps per level too.
         const perLevel =
-            options?.maxKeypoints !== undefined ? Math.max(1, Math.ceil(options.maxKeypoints / pyr.length)) : Infinity;
+            options?.maxKeypoints !== undefined
+                ? Math.max(1, Math.ceil(options.maxKeypoints / pyr.length))
+                : Infinity;
 
         const byLevel: Keypoint[][] = [];
         for (let lev = 0; lev < pyr.length; lev++) {
@@ -331,7 +335,7 @@ export class JsfeatNextBackend implements CvBackend {
                         angle: jsfeatNext.orb.ic_angle(img, k.x, k.y),
                         level: lev,
                     };
-                })
+                }),
             );
         }
 
@@ -363,7 +367,7 @@ export class JsfeatNextBackend implements CvBackend {
                 "descriptor",
                 options.kind,
                 CAPABILITIES.descriptors,
-                CAPABILITIES.name
+                CAPABILITIES.name,
             );
         }
 
@@ -406,7 +410,10 @@ export class JsfeatNextBackend implements CvBackend {
             scratch.resize(ORB_BYTES, indices.length, 1);
             jsfeatNext.orb.describe(img, this.pool, indices.length, scratch);
             indices.forEach((srcIdx, j) => {
-                data.set(scratch.data.subarray(j * ORB_BYTES, (j + 1) * ORB_BYTES), srcIdx * ORB_BYTES);
+                data.set(
+                    scratch.data.subarray(j * ORB_BYTES, (j + 1) * ORB_BYTES),
+                    srcIdx * ORB_BYTES,
+                );
             });
         }
 
@@ -415,7 +422,7 @@ export class JsfeatNextBackend implements CvBackend {
 
     detectAndCompute(
         image: GrayImage,
-        options?: DetectOptions & DescribeOptions
+        options?: DetectOptions & DescribeOptions,
     ): { keypoints: Keypoint[]; descriptors: Descriptors } {
         const keypoints = this.detect(image, options);
         return { keypoints, descriptors: this.describe(image, keypoints, options) };
@@ -449,7 +456,11 @@ export class JsfeatNextBackend implements CvBackend {
             }
         }
 
-        return matches.map((m) => ({ queryIdx: m.queryIdx, trainIdx: m.trainIdx, distance: m.distance }));
+        return matches.map((m) => ({
+            queryIdx: m.queryIdx,
+            trainIdx: m.trainIdx,
+            distance: m.distance,
+        }));
     }
 
     private toDescriptorMatrix(d: Descriptors): matrix_t {
@@ -457,7 +468,7 @@ export class JsfeatNextBackend implements CvBackend {
         if (d.data.length < needed) {
             throw new Error(
                 `@webarkit/cv-backend-jsfeatnext: descriptor data holds ${d.data.length} bytes, ` +
-                    `but ${d.count} x ${d.bytesPerDescriptor} needs ${needed}`
+                    `but ${d.count} x ${d.bytesPerDescriptor} needs ${needed}`,
             );
         }
         const m = new jsfeatNext.matrix_t(d.bytesPerDescriptor, d.count, U8C1);
@@ -465,11 +476,15 @@ export class JsfeatNextBackend implements CvBackend {
         return m;
     }
 
-    estimateHomography(src: PointArray, dst: PointArray, options?: RansacOptions): HomographyResult {
+    estimateHomography(
+        src: PointArray,
+        dst: PointArray,
+        options?: RansacOptions,
+    ): HomographyResult {
         if (src.length !== dst.length) {
             throw new Error(
                 `@webarkit/cv-backend-jsfeatnext: src and dst must hold the same number of points, ` +
-                    `got ${src.length / 2} and ${dst.length / 2}`
+                    `got ${src.length / 2} and ${dst.length / 2}`,
             );
         }
         const count = src.length >> 1;
@@ -478,7 +493,12 @@ export class JsfeatNextBackend implements CvBackend {
         // A homography needs 4 correspondences; RANSAC below would sample from
         // an impossible set otherwise.
         if (count < 4) {
-            return { H: new Float64Array(9), inliers: new Uint8Array(count), numInliers: 0, ok: false };
+            return {
+                H: new Float64Array(9),
+                inliers: new Uint8Array(count),
+                numInliers: 0,
+                ok: false,
+            };
         }
 
         const from = [];
@@ -488,7 +508,12 @@ export class JsfeatNextBackend implements CvBackend {
             to.push({ x: dst[i * 2], y: dst[i * 2 + 1], score: 0, level: 0, angle: -1 });
         }
 
-        const params = new jsfeatNext.ransac_params_t(4, options?.threshold ?? 3, 0.5, options?.confidence ?? 0.99);
+        const params = new jsfeatNext.ransac_params_t(
+            4,
+            options?.threshold ?? 3,
+            0.5,
+            options?.confidence ?? 0.99,
+        );
         const maxIterations = options?.maxIterations ?? 1000;
 
         let bestOk = false;
@@ -513,7 +538,7 @@ export class JsfeatNextBackend implements CvBackend {
                 mask,
                 "ransac",
                 maxIterations,
-                0
+                0,
             );
             if (!ok) continue;
 
@@ -530,7 +555,12 @@ export class JsfeatNextBackend implements CvBackend {
         }
 
         if (!bestOk || !bestH || !bestMask || bestInliers < 4) {
-            return { H: new Float64Array(9), inliers: new Uint8Array(count), numInliers: 0, ok: false };
+            return {
+                H: new Float64Array(9),
+                inliers: new Uint8Array(count),
+                numInliers: 0,
+                ok: false,
+            };
         }
         return { H: bestH, inliers: bestMask, numInliers: bestInliers, ok: true };
     }

@@ -67,9 +67,7 @@ describe("BIN_TYPE", () => {
 
 describe("parseContainer", () => {
     it("frames a JSON + BIN file and reports unpadded lengths", () => {
-        const c = ok(
-            parseContainer(buildRaw({ chunks: [jsonChunk(MANIFEST), binChunk(BIN)] })),
-        );
+        const c = ok(parseContainer(buildRaw({ chunks: [jsonChunk(MANIFEST), binChunk(BIN)] })));
         expect(c.json.length).toBe(MANIFEST.length);
         expect(c.json.dataStart).toBe(32);
         expect(c.bin?.length).toBe(5);
@@ -79,9 +77,7 @@ describe("parseContainer", () => {
     });
 
     it("starts every chunk's data at an 8-aligned offset (§4.2)", () => {
-        const c = ok(
-            parseContainer(buildRaw({ chunks: [jsonChunk(MANIFEST), binChunk(BIN)] })),
-        );
+        const c = ok(parseContainer(buildRaw({ chunks: [jsonChunk(MANIFEST), binChunk(BIN)] })));
         expect(c.json.dataStart % 8).toBe(0);
         expect((c.bin?.dataStart ?? 1) % 8).toBe(0);
     });
@@ -98,21 +94,13 @@ describe("parseContainer", () => {
 
     it("rejects an unknown container major", () => {
         expect(
-            err(
-                parseContainer(
-                    buildRaw({ containerMajor: 2, chunks: [jsonChunk(MANIFEST)] }),
-                ),
-            ),
+            err(parseContainer(buildRaw({ containerMajor: 2, chunks: [jsonChunk(MANIFEST)] }))),
         ).toBe("UNSUPPORTED_CONTAINER");
     });
 
     it("accepts a newer container minor (§7.1)", () => {
         expect(
-            ok(
-                parseContainer(
-                    buildRaw({ containerMinor: 7, chunks: [jsonChunk(MANIFEST)] }),
-                ),
-            ),
+            ok(parseContainer(buildRaw({ containerMinor: 7, chunks: [jsonChunk(MANIFEST)] }))),
         ).toBeDefined();
     });
 
@@ -123,9 +111,9 @@ describe("parseContainer", () => {
     });
 
     it("rejects a non-zero flags field", () => {
-        expect(
-            err(parseContainer(buildRaw({ flags: 1, chunks: [jsonChunk(MANIFEST)] }))),
-        ).toBe("BAD_CONTAINER");
+        expect(err(parseContainer(buildRaw({ flags: 1, chunks: [jsonChunk(MANIFEST)] })))).toBe(
+            "BAD_CONTAINER",
+        );
     });
 
     it("rejects a non-zero reserved word in a chunk header", () => {
@@ -146,11 +134,7 @@ describe("parseContainer", () => {
 
     it("rejects a second JSON chunk", () => {
         expect(
-            err(
-                parseContainer(
-                    buildRaw({ chunks: [jsonChunk(MANIFEST), jsonChunk(MANIFEST)] }),
-                ),
-            ),
+            err(parseContainer(buildRaw({ chunks: [jsonChunk(MANIFEST), jsonChunk(MANIFEST)] }))),
         ).toBe("BAD_CONTAINER");
     });
 

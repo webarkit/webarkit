@@ -74,7 +74,11 @@ const CAPS: BackendCapabilities = {
     matchFilters: [],
 };
 
-function descriptors(count: number, kind: DescriptorKind = "orb", norm: "hamming" | "l2" = "hamming"): Descriptors {
+function descriptors(
+    count: number,
+    kind: DescriptorKind = "orb",
+    norm: "hamming" | "l2" = "hamming",
+): Descriptors {
     return { data: new Uint8Array(count * 32), count, bytesPerDescriptor: 32, kind, norm };
 }
 
@@ -89,7 +93,12 @@ function makeBackend(overrides: Partial<CvBackend> = {}): CvBackend {
 
         describe(_image: GrayImage, keypoints: Keypoint[], options?: DescribeOptions): Descriptors {
             if (options?.kind && !CAPS.descriptors.includes(options.kind)) {
-                throw new UnsupportedCapabilityError("descriptor", options.kind, CAPS.descriptors, CAPS.name);
+                throw new UnsupportedCapabilityError(
+                    "descriptor",
+                    options.kind,
+                    CAPS.descriptors,
+                    CAPS.name,
+                );
             }
             return descriptors(keypoints.length, options?.kind ?? CAPS.defaultDescriptor);
         },
@@ -141,7 +150,9 @@ describe("descriptor selection and capability declaration (#128)", () => {
         const cv = makeBackend();
         const preferred: DescriptorKind[] = ["teblid", "orb"];
 
-        const kind = preferred.find((k) => cv.capabilities.descriptors.includes(k)) ?? cv.capabilities.defaultDescriptor;
+        const kind =
+            preferred.find((k) => cv.capabilities.descriptors.includes(k)) ??
+            cv.capabilities.defaultDescriptor;
 
         expect(kind).toBe("orb");
         const d = cv.describe(IMAGE, cv.detect(IMAGE), { kind });
@@ -159,7 +170,9 @@ describe("descriptor selection and capability declaration (#128)", () => {
 
     it("refuses an unsupported explicit request instead of substituting", () => {
         const cv = makeBackend();
-        expect(() => cv.describe(IMAGE, cv.detect(IMAGE), { kind: "teblid" })).toThrow(UnsupportedCapabilityError);
+        expect(() => cv.describe(IMAGE, cv.detect(IMAGE), { kind: "teblid" })).toThrow(
+            UnsupportedCapabilityError,
+        );
     });
 
     it("names the requested kind AND the supported set in the error", () => {
@@ -193,14 +206,16 @@ describe("descriptor selection and capability declaration (#128)", () => {
 
     it("match rejects mismatched descriptor families", () => {
         const cv = makeBackend();
-        expect(() => cv.match(descriptors(4, "orb"), descriptors(4, "teblid"))).toThrow(DescriptorMismatchError);
+        expect(() => cv.match(descriptors(4, "orb"), descriptors(4, "teblid"))).toThrow(
+            DescriptorMismatchError,
+        );
     });
 
     it("match rejects mismatched norms even when the family agrees", () => {
         const cv = makeBackend();
-        expect(() => cv.match(descriptors(4, "akaze", "hamming"), descriptors(4, "akaze", "l2"))).toThrow(
-            DescriptorMismatchError
-        );
+        expect(() =>
+            cv.match(descriptors(4, "akaze", "hamming"), descriptors(4, "akaze", "l2")),
+        ).toThrow(DescriptorMismatchError);
     });
 
     it("match accepts an agreeing pair", () => {
@@ -257,7 +272,9 @@ describe("the filterMatches seam (#129)", () => {
         const h = cv.estimateHomography(src, dst);
         expect(h.ok).toBe(true);
         expect(h.H).toHaveLength(9);
-        expect(cv.poseFromHomography(h.H, new Float64Array([1, 0, 8, 0, 1, 8, 0, 0, 1])).good).toBe(true);
+        expect(cv.poseFromHomography(h.H, new Float64Array([1, 0, 8, 0, 1, 8, 0, 0, 1])).good).toBe(
+            true,
+        );
     });
 
     it("a filter that dropped matches still yields a strict subset", () => {
@@ -277,9 +294,19 @@ describe("the filterMatches seam (#129)", () => {
         const caps = { ...CAPS, matchFilters: ["gms"] as const };
         const cv = makeBackend({
             capabilities: caps,
-            filterMatches: (matches: Match[], _q: FilterView, _t: FilterView, options?: FilterOptions) => {
+            filterMatches: (
+                matches: Match[],
+                _q: FilterView,
+                _t: FilterView,
+                options?: FilterOptions,
+            ) => {
                 if (options?.kind && !caps.matchFilters.includes(options.kind)) {
-                    throw new UnsupportedCapabilityError("matchFilter", options.kind, caps.matchFilters, caps.name);
+                    throw new UnsupportedCapabilityError(
+                        "matchFilter",
+                        options.kind,
+                        caps.matchFilters,
+                        caps.name,
+                    );
                 }
                 return matches;
             },
@@ -312,7 +339,9 @@ describe("the full pipeline composes through the interface", () => {
         const dst = new Float64Array([0, 0, 2, 0, 2, 2, 0, 2]);
         const h = cv.estimateHomography(src, dst);
         expect(h.ok).toBe(true);
-        expect(cv.poseFromHomography(h.H, new Float64Array([1, 0, 8, 0, 1, 8, 0, 0, 1])).good).toBe(true);
+        expect(cv.poseFromHomography(h.H, new Float64Array([1, 0, 8, 0, 1, 8, 0, 0, 1])).good).toBe(
+            true,
+        );
         expect(matches.length).toBeGreaterThan(0);
     });
 });

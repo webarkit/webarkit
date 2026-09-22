@@ -78,7 +78,9 @@ describe("NftTracker.process", () => {
 
     it("echoes the timestamp it was handed, and keeps no clock of its own", () => {
         const tracker = new NftTracker(cv, target, K, { maxSceneKeypoints: 900 });
-        expect(withSeededRandom(1, () => tracker.process(scene, 1234.5)).value.timestampMs).toBe(1234.5);
+        expect(withSeededRandom(1, () => tracker.process(scene, 1234.5)).value.timestampMs).toBe(
+            1234.5,
+        );
     });
 
     it("exposes the frame's keypoints so an overlay can draw them", () => {
@@ -89,7 +91,11 @@ describe("NftTracker.process", () => {
     });
 
     it("reports too-few-matches on a frame with nothing in it", () => {
-        const blank: GrayImage = { data: new Uint8Array(320 * 240).fill(128), width: 320, height: 240 };
+        const blank: GrayImage = {
+            data: new Uint8Array(320 * 240).fill(128),
+            width: 320,
+            height: 240,
+        };
         const tracker = new NftTracker(cv, target, K);
         const { value: result } = withSeededRandom(1, () => tracker.process(blank, 0));
 
@@ -126,7 +132,7 @@ describe("NftTracker.process", () => {
 
     it("honours maxSceneKeypoints rather than a hard-coded budget", () => {
         const { value: few } = withSeededRandom(1, () =>
-            new NftTracker(cv, target, K, { maxSceneKeypoints: 50 }).process(scene, 0)
+            new NftTracker(cv, target, K, { maxSceneKeypoints: 50 }).process(scene, 0),
         );
         expect(few.sceneKeypoints.length).toBeLessThanOrEqual(50);
     });

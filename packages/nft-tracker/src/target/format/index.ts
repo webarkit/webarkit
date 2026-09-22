@@ -53,10 +53,4 @@ export { decode } from "./decode.js";
 export { encode } from "./encode.js";
 export { DEFAULT_LIMITS } from "./limits.js";
 export type { DecodeLimits, DecodeOptions } from "./limits.js";
-export type {
-    DecodeResult,
-    EncodeResult,
-    ErrorCode,
-    Warning,
-    WarningCode,
-} from "./errors.js";
+export type { DecodeResult, EncodeResult, ErrorCode, Warning, WarningCode } from "./errors.js";

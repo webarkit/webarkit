@@ -62,13 +62,26 @@ const manifestOf = (overrides: Record<string, unknown> = {}): string =>
         keypoints: {
             count: 1,
             detector: { kind: "fast", params: {} },
-            levelStart: 0, x: 1, y: 2, angle: 3, score: 4, level: 5,
+            levelStart: 0,
+            x: 1,
+            y: 2,
+            angle: 3,
+            score: 4,
+            level: 5,
         },
         descriptorSets: [
             {
-                kind: "orb", norm: "hamming", elementType: "bits", dimensions: 32,
-                bytesPerDescriptor: 4, producer: "jsfeatnext", params: {},
-                count: 1, levelStart: 6, kpIndex: 7, data: 8,
+                kind: "orb",
+                norm: "hamming",
+                elementType: "bits",
+                dimensions: 32,
+                bytesPerDescriptor: 4,
+                producer: "jsfeatnext",
+                params: {},
+                count: 1,
+                levelStart: 6,
+                kpIndex: 7,
+                data: 8,
             },
         ],
         accessors: [
@@ -107,11 +120,7 @@ const validBytes = (
     extraChunks: { type: string; data: Uint8Array }[] = [],
 ): Uint8Array =>
     buildRaw({
-        chunks: [
-            jsonChunk(manifest),
-            { type: BIN_TYPE, data: binPayload() },
-            ...extraChunks,
-        ],
+        chunks: [jsonChunk(manifest), { type: BIN_TYPE, data: binPayload() }, ...extraChunks],
     });
 
 describe("decode — one accessor materialised once (§6.1)", () => {
@@ -128,7 +137,12 @@ describe("decode — one accessor materialised once (§6.1)", () => {
         keypoints: {
             count: 1,
             detector: { kind: "fast", params: {} },
-            levelStart: 0, x: 1, y: 1, angle: 1, score: 1, level: 5,
+            levelStart: 0,
+            x: 1,
+            y: 1,
+            angle: 1,
+            score: 1,
+            level: 5,
         },
     });
 
@@ -228,9 +242,7 @@ describe("decode — a valid file", () => {
         const b = decode(shifted.subarray(3));
         expect(a.ok && b.ok).toBe(true);
         if (!a.ok || !b.ok) return;
-        expect([...b.target.keypoints.levelStart]).toEqual([
-            ...a.target.keypoints.levelStart,
-        ]);
+        expect([...b.target.keypoints.levelStart]).toEqual([...a.target.keypoints.levelStart]);
         expect([...b.target.keypoints.x]).toEqual([...a.target.keypoints.x]);
         expect([...b.target.descriptorSets[0]!.kpIndex]).toEqual([
             ...a.target.descriptorSets[0]!.kpIndex,
@@ -263,9 +275,7 @@ describe("decode — the order of the gates (§6.1)", () => {
     });
 
     it("checks the checksum before the manifest's content (step 2 before 4)", () => {
-        const r = decode(
-            buildRaw({ chunks: [{ ...jsonChunk("not json at all"), crc: 0 }] }),
-        );
+        const r = decode(buildRaw({ chunks: [{ ...jsonChunk("not json at all"), crc: 0 }] }));
         expect(!r.ok && r.error).toBe("CHECKSUM_MISMATCH");
     });
 
@@ -292,9 +302,7 @@ describe("decode — warnings", () => {
     });
 
     it("warns about an unknown extension and prunes it (§7.3)", () => {
-        const r = decode(
-            validBytes(manifestOf({ extensionsUsed: ["WKNF_future"] })),
-        );
+        const r = decode(validBytes(manifestOf({ extensionsUsed: ["WKNF_future"] })));
         expect(r.ok).toBe(true);
         if (!r.ok) return;
         expect(r.warnings.map((w) => w.code)).toEqual(["UNKNOWN_EXTENSION_IGNORED"]);

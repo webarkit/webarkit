@@ -65,8 +65,7 @@ import { compareByCodePoint } from "../../../src/target/format/canonical-json.js
 import { SUPPORTED_FORMAT_VERSION } from "../../../src/target/format/known.js";
 import { CORPUS_ROOT, FIXTURES_DIR, FROZEN_VERSIONS } from "./fixtures-dir.js";
 
-const read = (rel: string): Uint8Array =>
-    new Uint8Array(readFileSync(join(FIXTURES_DIR, rel)));
+const read = (rel: string): Uint8Array => new Uint8Array(readFileSync(join(FIXTURES_DIR, rel)));
 
 interface Expectations {
     readonly formatVersion: string;
@@ -242,9 +241,7 @@ describe("§8.2 item 4 — cross-implementation conformance", () => {
     // in order: a reader who finds items 3 and 5 here and no item 4 has to go
     // and find out whether it was forgotten.
     it.skip("BIN chunks byte-identical and manifests equal after parsing", () => {
-        expect.unreachable(
-            "covered by wnft-format's tests/writer.rs — see the comment above",
-        );
+        expect.unreachable("covered by wnft-format's tests/writer.rs — see the comment above");
     });
 });
 
@@ -253,8 +250,7 @@ describe("§8.2 item 5 — every invalid file yields exactly its error code", ()
         "%s -> %s",
         (file, error) => {
             const entry = expectations.invalid.find((e) => e.file === file)!;
-            const options =
-                entry.limits === undefined ? undefined : { limits: entry.limits };
+            const options = entry.limits === undefined ? undefined : { limits: entry.limits };
             const r = decode(read(file), options);
             expect(r.ok).toBe(false);
             if (r.ok) return;
@@ -276,9 +272,7 @@ describe("§8.2 item 5 — every warning file decodes with exactly its warnings"
         const r = decode(read(file));
         expect(r.ok, r.ok ? "" : `${r.error}: ${r.detail}`).toBe(true);
         if (!r.ok) return;
-        expect([...r.warnings.map((w) => w.code)].sort()).toEqual(
-            [...entry.warnings].sort(),
-        );
+        expect([...r.warnings.map((w) => w.code)].sort()).toEqual([...entry.warnings].sort());
     });
 });
 
@@ -307,9 +301,7 @@ describe("§8.2 item 7 — the writer rejects what the reader would", () => {
         const target = base();
         const r = encode({
             ...target,
-            descriptorSets: [
-                { ...target.descriptorSets[0]!, params: { seed: value } },
-            ],
+            descriptorSets: [{ ...target.descriptorSets[0]!, params: { seed: value } }],
         });
         expect(r.ok).toBe(false);
         if (r.ok) return;
@@ -338,9 +330,7 @@ describe("§8.1 — the corpus is what its generator produces", () => {
         const built = buildFixtures() as Map<string, Uint8Array>;
         expect(built.size).toBeGreaterThan(0);
         for (const [path, bytes] of built) {
-            expect(new Uint8Array(readFileSync(join(FIXTURES_DIR, path))), path).toEqual(
-                bytes,
-            );
+            expect(new Uint8Array(readFileSync(join(FIXTURES_DIR, path))), path).toEqual(bytes);
         }
     });
 

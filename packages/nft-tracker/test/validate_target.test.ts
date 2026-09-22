@@ -49,9 +49,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { decode, encode } from "../src/target/format/index.js";
 import { FIXTURES_DIR } from "./target/format/fixtures-dir.js";
 
-const SCRIPT = fileURLToPath(
-    new URL("../bin/validate-target.mjs", import.meta.url),
-);
+const SCRIPT = fileURLToPath(new URL("../bin/validate-target.mjs", import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const PINBALL = join(REPO_ROOT, "examples/targets/pinball.wnft");
 
@@ -85,9 +83,7 @@ beforeAll(() => {
     // A target that decodes perfectly and that jsfeatNext cannot use: `teblid`
     // is a family the contract defines and this backend does not compute, so
     // §6.3 selects nothing while §5 and §6.1 are entirely satisfied.
-    const source = new Uint8Array(
-        readFileSync(join(FIXTURES_DIR, "valid/minimal.wnft")),
-    );
+    const source = new Uint8Array(readFileSync(join(FIXTURES_DIR, "valid/minimal.wnft")));
     const decoded = decode(source);
     if (!decoded.ok) throw new Error(`minimal.wnft must decode: ${decoded.error}`);
     const target = structuredClone(decoded.target);

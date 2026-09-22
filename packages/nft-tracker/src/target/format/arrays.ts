@@ -60,11 +60,7 @@ import { ELEMENT_SIZE, type Accessor, type AccessorType } from "./manifest.js";
 export type AccessorArray = Uint8Array | Uint16Array | Uint32Array | Float32Array;
 
 interface AccessorArrayConstructor {
-    new (
-        buffer: ArrayBufferLike,
-        byteOffset: number,
-        length: number,
-    ): AccessorArray;
+    new (buffer: ArrayBufferLike, byteOffset: number, length: number): AccessorArray;
 }
 
 const CONSTRUCTOR: Readonly<Record<AccessorType, AccessorArrayConstructor>> = {
