@@ -50,8 +50,12 @@
  *    syntactically invalid halfway through a multi-edit change must not block
  *    the next edit, and a contributor without a Rust toolchain — or before
  *    `npm install` — must not see errors.
- * 2. **It touches nothing outside the repository.** A path resolving outside
- *    it is ignored.
+ * 2. **It touches nothing outside the repository** — checked on the paths the
+ *    filesystem resolves to, not on the strings. `resolve` and `relative` do
+ *    arithmetic on text: a symlink *inside* the repository that points outside
+ *    it satisfies both, and then `writeFileSync` follows it and rewrites the
+ *    target. `realpathSync` on the file and on the root is what makes this
+ *    rule true rather than merely stated.
  * 3. **It reads its settings from the repository**: the Rust edition from the
  *    workspace `Cargo.toml`, the prettier options from `.prettierrc.json`.
  *    `rustfmt` defaults to edition 2015 and would silently format 2024 code by
@@ -60,8 +64,8 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(join(dirname(fileURLToPath(import.meta.url)), "..", ".."));
@@ -116,24 +120,34 @@ async function formatWithPrettier(absolute, shown) {
         done(); // Not installed yet. Not an error.
     }
 
-    // Ask prettier itself whether this path is in scope, so `.prettierignore`
-    // governs the hook exactly as it governs `npm run format`.
-    const info = await prettier.getFileInfo(absolute, {
-        ignorePath: join(ROOT, ".prettierignore"),
-    });
-    if (info.ignored || info.inferredParser === null) done();
-
-    const before = readFileSync(absolute, "utf8");
+    // Everything below touches the filesystem, and rule 1 says none of it may
+    // fail the tool call: a file deleted mid-edit, a permission error, a path
+    // that has become a directory, a write racing another writer. Unparseable
+    // source lands here too, which is normal halfway through a multi-edit
+    // change.
     let after;
+    let before;
     try {
+        // Ask prettier itself whether this path is in scope, so
+        // `.prettierignore` governs the hook exactly as it governs
+        // `npm run format`.
+        const info = await prettier.getFileInfo(absolute, {
+            ignorePath: join(ROOT, ".prettierignore"),
+        });
+        if (info.ignored || info.inferredParser === null) done();
+
+        before = readFileSync(absolute, "utf8");
         const options = await prettier.resolveConfig(absolute);
         after = await prettier.format(before, { ...options, filepath: absolute });
     } catch {
-        // Unparseable mid-edit source, same as the Rust case.
         done();
     }
     if (after === before) done();
-    writeFileSync(absolute, after);
+    try {
+        writeFileSync(absolute, after);
+    } catch {
+        done();
+    }
     done(`prettier: formatted ${shown}`);
 }
 
@@ -149,10 +163,23 @@ async function main() {
     }
     if (typeof filePath !== "string" || filePath === "") done();
 
-    // Rule 2.
+    // Rule 2, on resolved paths. Both sides go through realpathSync: the root
+    // too, because a checkout that is itself reached through a symlink would
+    // otherwise make every file look external.
     const absolute = resolve(ROOT, filePath);
-    const within = relative(ROOT, absolute);
-    if (within.startsWith("..")) done();
+    let real;
+    let root;
+    try {
+        real = realpathSync(absolute);
+        root = realpathSync(ROOT);
+    } catch {
+        // The file is gone, or unreadable. Nothing to format, nothing to say.
+        done();
+    }
+    const within = relative(root, real);
+    // `isAbsolute` is not redundant on Windows: for a path on another drive,
+    // `relative` returns an absolute path rather than one starting with "..".
+    if (within === "" || within.startsWith("..") || isAbsolute(within)) done();
     const shown = within.split(sep).join("/");
 
     if (absolute.endsWith(".rs")) {
@@ -167,4 +194,8 @@ async function main() {
     done();
 }
 
-await main();
+// `done()` exits 0 on every path main() takes deliberately. This catch is for
+// the paths it does not: rule 1 is a promise about the process's exit status,
+// and an unhandled rejection here would break it however careful the code above
+// is.
+await main().catch(() => process.exit(0));
