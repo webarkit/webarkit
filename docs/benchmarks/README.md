@@ -204,11 +204,13 @@ move the on-device number is not the improvement it appears to be. Treat
 "laptop" as a fast, convenient smoke-test tier, and `Tab_9_WiFi`, run
 on-device, as the only one item 5's thresholds can ever be evaluated against.
 
-## Planned — `maxKeypoints` sweep (M2: patch tracking)
+## 2026-09-24 — `maxKeypoints` sweep (M2: patch tracking)
 
 A measurement plan, written down **before** any of its runs, so the result
 can be read against what was predicted rather than explained after the
-fact. No numbers below are measurements unless they say so.
+fact. The plan below is left as it was written. The runs were made the same
+day, and their results are in [Results](#results) at the end of this section.
+No numbers in the plan itself are measurements unless they say so.
 
 ### The hypothesis
 
@@ -350,3 +352,114 @@ p50. The static clip is expected to lock at every budget and so says little
 about this. The table clip is the harder scene and the one where a lower
 budget could start costing locks. That trade-off is an M2 design question,
 and this sweep only supplies its inputs.
+
+### Results
+
+Run on 2026-09-24 on `Tab_9_WiFi`, in the tablet's own Chrome (`userAgent`:
+`Mozilla/5.0 (Linux; Android 10; K) ... Chrome/153.0.0.0`), over USB. The
+page was served from a desktop PC and reached through `adb reverse`.
+
+**How the runs were made.** A script started the nine sweep runs through the
+DevTools protocol, which the tablet's Chrome exposes over USB on
+`localabstract:chrome_devtools_remote`. For each run the script:
+
+- loaded the page fresh with `?maxKeypoints=N`;
+- set the controls exactly as "The runs" lists them and pressed Start;
+- stopped the run once the 120-frame window was full;
+- saved the page's own export unchanged, i.e. the file "Download JSON" would
+  have produced.
+
+While a run was going, the script read one text field from the page every
+2 s. Between runs the tab sat on an idle page for 120 s. That page held a
+screen wake lock, because the tablet's screen turns off after 30 s and
+Chrome pauses video when it does.
+
+**One deviation from the plan:** the static-150 run failed twice at page
+start-up, before any timed code ran. It was retried at the end of the session
+(after the repeat), not in its planned slot.
+
+**The manual runs.** Five runs were started by hand before the sweep:
+`...-static-mk300-manual-1.json` to `...-manual-5.json`. They were all made
+in one page load (Start/Stop repeated without a reload), with the device label
+typed as `Tab9 wifi`. They are the evidence for repeatability, and the check
+that starting runs by script doesn't change the numbers:
+
+- The manual runs' `match` p50 is 64.8, 64.1, 63.3, 63.4 and 63.4 ms.
+- The script's static-300 runs gave 63.9 ms and 64.3 ms.
+- `manual-1` is the only run stopped early (73 frames), and it holds the
+  largest single `match` time in the set (171.0 ms).
+
+The server used for the manual runs did not support HTTP range requests, so
+the video stalled briefly at every loop. A stall makes a window take longer
+to fill, but it adds no frames:
+`requestVideoFrameCallback` only fires on a frame actually presented. The
+sweep was served with range support.
+
+**Validity checks: all pass.**
+
+- All nine sweep runs report an Android `userAgent`, `stateless` mode, start
+  at 0 and 120 frames.
+- `numSceneKeypoints === maxKeypoints` on **100%** of frames in every run,
+  not just the required 95%.
+- The repeat static-300 run's `match` p50 is 64.3 ms against 63.9 ms, a drift
+  of **+0.6%**. The limit was ±10%.
+
+| clip | `maxKeypoints` | match p50 (p95) | describe | detect | acquire | total | locked |
+|---|---|---|---|---|---|---|---|
+| static | 300 | **63.9** (68.6) | 10.1 | 7.2 | 35.9 | 120.2 | 120/120 |
+| static | 200 | **43.1** (47.5) | 6.9 | 6.8 | 36.4 | 95.8 | 120/120 |
+| static | 150 | **32.3** (37.2) | 5.2 | 6.6 | 36.0 | 82.6 | 120/120 |
+| static | 100 | **21.8** (27.2) | 3.6 | 6.4 | 36.2 | 70.4 | 120/120 |
+| static | 300 (repeat) | 64.3 (68.5) | 10.1 | 7.2 | 36.2 | 120.7 | 120/120 |
+| table | 300 | **63.9** (68.7) | 10.1 | 4.7 | 40.1 | 122.5 | 113/120 |
+| table | 200 | **43.0** (47.7) | 6.8 | 4.3 | 40.0 | 97.0 | 108/120 |
+| table | 150 | **32.6** (38.1) | 5.2 | 4.0 | 39.9 | 85.3 | 97/120 |
+| table | 100 | **21.8** (27.3) | 3.6 | 3.9 | 39.1 | 71.4 | 96/120 |
+
+All timings are p50 in ms unless marked. Raw files:
+`2026-09-24-tab9-ondevice-stateless-<static|table>-mk<N>.json`,
+`...-static-mk300-repeat.json`, and `...-static-mk300-manual-<1-5>.json`.
+
+**Against the plan's criteria, the hypothesis holds:**
+
+- **Proportional.** `match` p50 ÷ `maxKeypoints` is 0.2130–0.2180 ms on
+  both clips. That is within **±1.3%** of its mean, against the ±15%
+  threshold. Fitting a straight line through the four points gives
+  `match ≈ 0.8 ms + 0.211 ms × N` (static) and `0.9 ms + 0.210 ms × N`
+  (table). The fixed part is under 1 ms.
+- **Content-independent.** At every value, the static and table clips'
+  `match` p50 agree within **0.9%** (threshold ±10%). This holds even though
+  their `detect` differs by 2–3 ms: the static clip has more than twice as
+  many corners to find.
+- **The falsification test.** `match` at 100 is **34.1%** of its value at
+  300 on both clips. Proportional scaling predicted 33%; the plan counted
+  ≥ 50% as falsifying.
+- **The predicted values.** The plan predicted about 64 / 43 / 32 / 21 ms for
+  `match` and 10.1 / 6.7 / 5.1 / 3.4 ms for `describe`. Every measured value
+  is within about 1 ms of those.
+- **Against the 2026-09-19 baseline.** The table clip at 300 gave 63.9 ms
+  here and 64.1 ms five days earlier.
+
+**What the numbers show beyond the hypothesis.** These are facts for M2 to
+design from, not decisions:
+
+- On this device, `match` costs about **0.21 ms per scene keypoint**. The
+  scene doesn't matter, and there is no meaningful fixed cost. The budget is a
+  linear dial on the largest stage.
+- **Lowering the budget alone does not reach the 33 ms frame budget.** At 100,
+  `total` is still 70–71 ms. `acquire` (36–40 ms) does not move with the
+  budget, and below about 170 keypoints it is larger than `match`. Past that
+  point, the next saving is in acquisition, not matching (see the
+  `acquire` bullet under "What this implies for M2").
+- **Tracking pays for a lower budget on the hard scene:**
+  - The table clip locks on 113 → 108 → 97 → 96 frames out of 120 for
+    300 → 200 → 150 → 100. The losses are almost all `too-few-matches`, and
+    inliers p50 falls from 34 to 17.
+  - The static clip locks on every frame at every value, while its inliers
+    fall from 93 to 34.
+
+  Halving `match` time from 300 to 150 costs the oblique scene about one lock
+  in seven.
+
+**Limits of this result:** one run per value (the manual runs and the repeat
+put run-to-run noise at about ±1–2%), and one device.
