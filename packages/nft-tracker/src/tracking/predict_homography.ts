@@ -38,16 +38,46 @@
  */
 
 import type { Mat3 } from "@webarkit/cv-backend-spec";
-import type { PredictHomography, Stub } from "./types.js";
+import { adjugate3, mul3 } from "./mat3.js";
+import type { PredictHomography } from "./types.js";
 
 /**
- * Stub — see {@link PredictHomography}. Branch C implements it here and changes
- * the annotation from `Stub<PredictHomography>` to `PredictHomography`; nothing else in the
- * package needs to change.
+ * Constant-velocity prediction of the next frame's H — see
+ * {@link PredictHomography} for the contract.
+ *
+ * **What "velocity" is for a homography.** The motion between the last two
+ * frames as a homography of its own, `V = current · previous⁻¹` (frame t−1 →
+ * frame t), and the prediction applies it once more: `V · current`. Velocity
+ * lives in the group of homographies, composed by multiplication, rather than
+ * in the nine entries, because:
+ *
+ * - **It does not depend on the arbitrary scale of a homography.** `λH` is the
+ *   same homography as `H`. Scaling `previous` by `β` and `current` by `α`
+ *   scales `V · current` by `α²/β`, which the rescale to `H[8] = 1` removes.
+ *   The additive extrapolation `2·current − previous` changes with `α/β`, so
+ *   it would predict a different pose for the same two poses.
+ * - **It is exact for the motion a hand-held camera makes most: rotating
+ *   about its own centre.** A camera rotation `R` per frame moves every image
+ *   point by the same homography `K R K⁻¹`, whatever the scene, so `V` is
+ *   constant and `V · current` is the next pose exactly. The additive form
+ *   adds a spurious zoom of order `θ²` to every rotation by `θ` it predicts.
+ * - **It is the constant-velocity model of a Lie group, without the
+ *   logarithm.** For steps of one frame, `exp(ξ) · current` with
+ *   `exp(ξ) = V` is `V · current`. `log`/`exp` would only be needed to scale
+ *   the velocity by a ratio of frame intervals, which this model, being
+ *   frame-indexed, does not do (see {@link PredictHomography}).
+ *
+ * Measuring the velocity on the target side instead, `U = previous⁻¹ ·
+ * current`, predicts the same thing: `current · U` and `V · current` are both
+ * `current · previous⁻¹ · current`.
+ *
+ * `previous⁻¹` is computed as the adjugate: the two differ only by the scalar
+ * `det(previous)`, which the final rescale removes.
  */
-export const predictHomography: Stub<PredictHomography> = (previous, current) => {
+export const predictHomography: PredictHomography = (previous, current) => {
     if (previous === null) return { ok: true, H: scaledToUnitCorner(current) };
-    return { ok: false, reason: "not-implemented" };
+    const velocity = mul3(current, adjugate3(previous));
+    return { ok: true, H: scaledToUnitCorner(mul3(velocity, current)) };
 };
 
 /** A new array: `m` scaled so that `m[8] = 1`. */
