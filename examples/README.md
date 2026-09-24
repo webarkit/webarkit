@@ -138,8 +138,8 @@ parameters got — tracked informally against this file for now, no issue yet.
 ## `bench-nft.html`
 
 Measures the pipeline frame-by-frame on whatever device opens it, against a
-live webcam, a user-chosen video file, or one of two bundled reference clips
-(`videos/pinball-bench*.mp4`) — the two video sources loop, so a short clip
+live webcam, a user-chosen video file, or one of three bundled reference clips
+(`videos/pinball-*.mp4`) — the two video sources loop, so a short clip
 still fills the measurement window and a run can be repeated; a webcam is
 already live and has no clip to loop. It changes nothing
 about how the pipeline runs — it only times it, in eight stages per frame:
@@ -160,6 +160,20 @@ Two modes, selected before pressing Start:
   `@webarkit/nft-tracker`'s own `DEFAULT_SCENE_LEVELS` /
   `DEFAULT_MAX_SCENE_KEYPOINTS` / `DEFAULT_RATIO` / `DEFAULT_RANSAC_THRESHOLD`.
 - **NftTracker** — `tracker.process(frame, timestampMs)`, once per tick.
+
+One of those defaults can be overridden per run: **max keypoints (scene)**,
+the `maxKeypoints` budget passed to the scene-side `detect` (the stateless
+pipeline passes it directly, `NftTracker` receives it as
+`maxSceneKeypoints`). It defaults to `DEFAULT_MAX_SCENE_KEYPOINTS`, so a run
+that leaves it alone is the same run this page measured before the control
+existed. It can also be set from the URL —
+`bench-nft.html?maxKeypoints=150` — which is quicker than a number field on a
+phone reached over `adb reverse`; a missing, non-numeric or non-positive
+value falls back to the default. The export records the budget a run used as
+`maxKeypoints` (an export without that field predates the control and ran at
+the default), and every frame records `numSceneKeypoints`, what `detect`
+actually returned. The two differ whenever a frame has fewer corners than the
+budget, and a timing taken on such a frame says nothing about the budget.
 
 Both modes are timed by wrapping the `CvBackend` instance passed to whichever
 one is active, so the stage split is available for `NftTracker` even though
@@ -198,7 +212,7 @@ from an identical `startAt`. Each frame's own `mediaTimeSeconds` (from
 fallback) is recorded for exactly this reason: **compare two exports by
 `mediaTimeSeconds`, not by array index or position in `frames`.**
 
-## The bundled reference clips: `videos/pinball-bench*.mp4`
+## The bundled reference clips: `videos/pinball-*.mp4`
 
 A "user-chosen video file" is reproducible only as long as whoever reruns the
 benchmark still has the exact same file — which nobody but the original tester
@@ -218,8 +232,20 @@ the same reason `startAtSeconds` does.
   much harder shot for a single-scale scene detector (see the webcam demo's
   own "known limitation" section above) than the frontal wall clip, and
   useful for exactly that reason.
+- **`pinball-static.mp4`** — 12.17s, 720×1280 (portrait), 30 fps, ~920 KB.
+  The printed target on a wall again, but with the camera held **fixed**: the
+  framing does not change over the clip, so every frame shows the same scene.
+  That makes it the clip for measuring a parameter rather than a scene. Any
+  change in a stage's timing between two runs on it comes from the parameter,
+  not from what the camera was pointed at. It also fills a scene `detect`
+  budget on every frame: at this page's processing size (203×360) FAST finds
+  roughly 1,200–1,300 corners per frame, well above any budget below 1,000.
+  Committed as delivered: already H.264 (`libx264`), no audio track, no
+  rotation tag (the frame is stored portrait, so the rotation pitfall below
+  does not apply), and `moov` ahead of `mdat` (the `+faststart` layout). The
+  command that produced it was not recorded.
 
-Both are re-encoded from a phone-captured original with `-an` (audio dropped;
+The first two are re-encoded from a phone-captured original with `-an` (audio dropped;
 nothing here reads it) and `-crf 28` (visually lossless at this content and
 resolution, a large size cut from the source's typical ~15 Mbps phone
 bitrate). Beyond that the two commands differ, and the difference matters:

@@ -280,6 +280,7 @@
               <select id="bundledClip" disabled>
                 <option value="pinball-bench.mp4" selected>wall, frontal (pinball-bench.mp4)</option>
                 <option value="pinball-bench-table.mp4">table, oblique (pinball-bench-table.mp4)</option>
+                <option value="pinball-static.mp4">wall, fixed camera (pinball-static.mp4)</option>
               </select>
             </div>
             <div class="row">
@@ -303,6 +304,10 @@
               <label
                 >window (frames)
                 <input type="number" id="windowSize" value="120" min="10" max="2000" step="10" />
+              </label>
+              <label
+                >max keypoints (scene)
+                <input type="number" id="maxKeypoints" min="1" max="5000" step="10" />
               </label>
             </div>
             <label
@@ -405,6 +410,7 @@
       const fileInput = $("fileInput");
       const bundledClipSelect = $("bundledClip");
       const startAtInput = $("startAt");
+      const maxKeypointsInput = $("maxKeypoints");
       const startButton = $("start");
       const stopButton = $("stop");
       const downloadButton = $("download");
@@ -464,6 +470,14 @@
        * set the same way both times.
        */
       let lastStartAtSeconds = null;
+      /**
+       * The scene-side `detect` budget the last run actually used -- live UI
+       * state like `lastMode`, so snapshotted at Start for the same reason.
+       * This is a cap, not a count: `detect` returns fewer keypoints when
+       * the frame has fewer corners, which is why every frame also records
+       * `numSceneKeypoints`.
+       */
+      let lastMaxKeypoints = null;
       /**
        * The actual `GrayImage` size fed to `detect` every tick -- `toGray`
        * fits the source inside `PROC_WIDTH` x `PROC_HEIGHT` while PRESERVING
@@ -563,12 +577,14 @@
        * inline against the same instrumented backend and the same defaults,
        * so this page's "stateless pipeline" mode and its "NftTracker" mode
        * measure the same work through the same calls -- the parity M1 claims,
-       * made checkable rather than assumed.
+       * made checkable rather than assumed. `maxKeypoints` is the one
+       * default this page lets a run override (see `readMaxKeypoints`); the
+       * NftTracker mode receives the same value as `maxSceneKeypoints`.
        */
-      function runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, timestampMs) {
+      function runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, timestampMs, maxKeypoints) {
         const sceneKeypoints = icv.detect(frame, {
           levels: DEFAULT_SCENE_LEVELS,
-          maxKeypoints: DEFAULT_MAX_SCENE_KEYPOINTS,
+          maxKeypoints,
         });
         const sceneDescriptors = icv.describe(frame, sceneKeypoints);
         let matches = matchPerLevel(icv, sceneDescriptors, targetLevels, DEFAULT_RATIO);
@@ -786,6 +802,34 @@
         return actualStartAt;
       }
 
+      /**
+       * A positive integer from `raw`, or `null` for anything else (empty,
+       * `abc`, `0`, `-5`, `1e999`) -- so a malformed `?maxKeypoints=` or an
+       * emptied field falls back to the default rather than reaching
+       * `detect` as `NaN` or `0`.
+       */
+      function parseMaxKeypoints(raw) {
+        if (raw === null || String(raw).trim() === "") return null;
+        const n = Math.floor(Number(raw));
+        return Number.isFinite(n) && n >= 1 ? n : null;
+      }
+
+      /**
+       * `?maxKeypoints=N` pre-fills the control, so a run on a phone reached
+       * over `adb reverse` can be set from the address bar instead of by
+       * tapping a number field. With no parameter the control shows
+       * `DEFAULT_MAX_SCENE_KEYPOINTS`, and a run is the same one this page
+       * measured before the control existed.
+       */
+      function initMaxKeypointsInput() {
+        const fromUrl = parseMaxKeypoints(new URLSearchParams(location.search).get("maxKeypoints"));
+        maxKeypointsInput.value = String(fromUrl ?? DEFAULT_MAX_SCENE_KEYPOINTS);
+      }
+
+      function readMaxKeypoints() {
+        return parseMaxKeypoints(maxKeypointsInput.value) ?? DEFAULT_MAX_SCENE_KEYPOINTS;
+      }
+
       function currentSource() {
         return document.querySelector('input[name="source"]:checked').value;
       }
@@ -874,7 +918,7 @@
         }
       }
 
-      function runBenchmark(cv, targetDb, mode, windowSize) {
+      function runBenchmark(cv, targetDb, mode, windowSize, maxKeypoints) {
         lastRafFrameTime = -1;
         lastPercentileRenderAt = 0;
         filterMatchesSupported = !!cv.filterMatches;
@@ -902,7 +946,8 @@
         const probe = toGrayTimed(video, video.videoWidth, video.videoHeight, PROC_WIDTH, PROC_HEIGHT, resetTimings({}));
         lastProcessingResolution = { width: probe.width, height: probe.height };
         const K = intrinsics(probe.width, probe.height);
-        const tracker = mode === "tracker" ? new NftTracker(icv, targetDb, K) : null;
+        const tracker =
+          mode === "tracker" ? new NftTracker(icv, targetDb, K, { maxSceneKeypoints: maxKeypoints }) : null;
 
         overlay.width = probe.width;
         overlay.height = probe.height;
@@ -918,7 +963,7 @@
           const frame = toGrayTimed(video, video.videoWidth, video.videoHeight, PROC_WIDTH, PROC_HEIGHT, timings);
           const result = tracker
             ? tracker.process(frame, t0)
-            : runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, t0);
+            : runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, t0, maxKeypoints);
 
           timings.total = performance.now() - t0;
 
@@ -949,6 +994,12 @@
             timings: { ...timings },
             ok: result.ok,
             reason: result.ok ? null : result.reason,
+            // What `detect` actually returned, which is at most the run's
+            // `maxKeypoints` and less on a frame with fewer corners than
+            // that. `match` is a brute-force search over these, so without
+            // this count a `match` timing cannot be told apart as "the budget
+            // was spent" or "the frame did not fill it".
+            numSceneKeypoints: result.sceneKeypoints.length,
             numMatches: result.numMatches,
             numInliers: result.numInliers,
           });
@@ -968,7 +1019,7 @@
             ["status", statusText],
             ["mode", mode],
             ["fps", fps.toFixed(1)],
-            ["keypoints (scene)", result.sceneKeypoints.length],
+            ["keypoints (scene)", `${result.sceneKeypoints.length} / ${maxKeypoints}`],
             ["matches", result.numMatches],
             ["inliers", result.numMatches >= 4 ? `${result.numInliers} / ${result.numMatches}` : "—"],
             ["pose", result.ok ? (result.pose.good ? "recovered" : "degenerate") : "—"],
@@ -1014,6 +1065,10 @@
           // stateless-pipeline export and an NftTracker export checkable as
           // having compared the same footage, not just assumed to have.
           startAtSeconds: lastStartAtSeconds,
+          // The scene `detect` budget the run used -- `DEFAULT_MAX_SCENE_KEYPOINTS`
+          // unless overridden by the control or `?maxKeypoints=`. An export
+          // without this field predates the control and ran at the default.
+          maxKeypoints: lastMaxKeypoints,
           processingResolution: lastProcessingResolution,
           windowSize: history.length,
           summaryMs: summary,
@@ -1052,6 +1107,7 @@
           radio.addEventListener("change", updateSourceInputs);
         }
         updateSourceInputs();
+        initMaxKeypointsInput();
 
         startButton.addEventListener("click", async () => {
           clearError();
@@ -1085,15 +1141,21 @@
 
             const mode = $("mode").value;
             const windowSize = Math.max(1, Math.floor(Number($("windowSize").value) || 120));
+            const maxKeypoints = readMaxKeypoints();
+            // Shows the value actually used when a malformed entry fell back
+            // to the default, instead of leaving the field disagreeing with
+            // the run.
+            maxKeypointsInput.value = String(maxKeypoints);
 
             lastSource = source;
             lastMode = mode;
             lastStartAtSeconds = startAtSeconds;
             lastBundledClip = bundledClip;
+            lastMaxKeypoints = maxKeypoints;
             history = [];
             running = true;
             stopButton.disabled = false;
-            runBenchmark(cv, targetDb, mode, windowSize);
+            runBenchmark(cv, targetDb, mode, windowSize, maxKeypoints);
           } catch (e) {
             const src = currentSource();
             const hint =
