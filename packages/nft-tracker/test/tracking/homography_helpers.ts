@@ -177,3 +177,48 @@ export function gaussian(seed: number): () => number {
         return radius * Math.cos(angle);
     };
 }
+
+export interface Contamination {
+    /** Seeds the choice of outliers, their displacement and the noise. */
+    readonly seed: number;
+    /** How many correspondences become outliers. */
+    readonly outliers: number;
+    /** Gaussian noise on every coordinate, px (one standard deviation). */
+    readonly sigma: number;
+    /** An outlier moves this far from its true position at least, px… */
+    readonly minPx: number;
+    /** …and at most, in a uniformly random direction. */
+    readonly maxPx: number;
+}
+
+/**
+ * Where the patches `src` land under `H`, as a tracker would observe them:
+ * every coordinate with Gaussian noise, and `outliers` of the patches, chosen
+ * at random, moved `minPx`–`maxPx` from their true position — a patch aligned
+ * on the wrong structure. Seeded, so the same arguments give the same data.
+ */
+export function contaminate(
+    H: Mat3,
+    src: PointArray,
+    c: Contamination,
+): { dst: PointArray; isOutlier: boolean[] } {
+    const uniform = mulberry32(c.seed);
+    const noise = gaussian(c.seed ^ 0x5bd1e995);
+    const n = src.length / 2;
+    const order = Array.from({ length: n }, (_, i) => i);
+    for (let i = n - 1; i > 0; i--) {
+        const j = Math.floor(uniform() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+    }
+    const isOutlier = new Array<boolean>(n).fill(false);
+    for (let i = 0; i < c.outliers; i++) isOutlier[order[i]] = true;
+    const dst = projectAll(H, src).map((v) => v + c.sigma * noise());
+    for (let i = 0; i < n; i++) {
+        if (!isOutlier[i]) continue;
+        const angle = 2 * Math.PI * uniform();
+        const distance = c.minPx + (c.maxPx - c.minPx) * uniform();
+        dst[2 * i] += distance * Math.cos(angle);
+        dst[2 * i + 1] += distance * Math.sin(angle);
+    }
+    return { dst, isOutlier };
+}
