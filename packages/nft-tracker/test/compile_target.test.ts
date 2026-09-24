@@ -316,6 +316,7 @@ describe("compile-target", () => {
             patchMinScore?: number;
             patchSpacing?: number;
             patchPyramid?: string;
+            patchScore?: string;
         }
         const compilerInfo = (info: unknown) =>
             (info as { compiler?: CompilerInfo } | undefined)?.compiler ?? {};
@@ -347,6 +348,8 @@ describe("compile-target", () => {
                 // 0.75 * sqrt(512 * 640 / 64), rounded.
                 patchSpacing: 54,
                 patchPyramid: expect.stringContaining("stand-in"),
+                // §5.7 leaves the score's units open; the file says which.
+                patchScore: expect.stringContaining("level-0 px"),
             });
 
             // The pixels a reader decodes are the pixels of the level the
@@ -415,6 +418,18 @@ describe("compile-target", () => {
             });
         });
 
+        it("records the levels it used, not more than the target has", () => {
+            const out = join(work, "patches-few-levels.wnft");
+            compile([IMAGE, "-o", out, "--levels", "2", "--patch-levels", "9"]);
+
+            const { target } = decodeFile(out);
+            expect(target.pyramid.levelSizes.length).toBeLessThanOrEqual(2);
+            expect(compilerInfo(target.info).patchLevels).toBe(target.pyramid.levelSizes.length);
+            expect(Math.max(...target.patches!.level)).toBeLessThan(
+                target.pyramid.levelSizes.length,
+            );
+        });
+
         it("--patches 0 compiles a detection-only target, with no patches section", () => {
             const out = join(work, "patches-none.wnft");
             expect(compile([IMAGE, "-o", out, "--levels", "3", "--patches", "0"])).toContain(
@@ -454,6 +469,10 @@ describe("compile-target", () => {
             ["--patch-levels", "0"],
             ["--patch-min-score", "-1"],
             ["--patch-spacing", "nope"],
+            // §6.4's default decoder limits: past them, compile-target would
+            // write a file its own decoder refuses with LIMIT_EXCEEDED.
+            ["--patch-size", "65"],
+            ["--patches", "65537"],
         ])("refuses %s %s", (flag, value) => {
             const failure = compileExpectingFailure([
                 IMAGE,

@@ -98,7 +98,10 @@ const MAX_SIDE = 0xffff;
  *
  * Cost: `O(pixels)` for the integral images and scores, a sort of the
  * candidates, and `O(candidates · Q)` distance checks — an offline cost,
- * paid once per compiled target.
+ * paid once per compiled target, and small at the compiler's default
+ * `Q = 64`. A budget in the thousands with a non-zero spacing would want a
+ * spatial grid of `minSpacing` cells, which gives the same result in linear
+ * time; not needed yet.
  */
 export const selectPatches: SelectPatches = (target, options) => {
     if (!validOptions(options)) return { ok: false, reason: "invalid-options" };
@@ -168,6 +171,13 @@ export const selectPatches: SelectPatches = (target, options) => {
         const s = scales[candLevel[i]];
         const x = (candLeft[i] + offset) / s;
         const y = (candTop[i] + offset) / s;
+        // A hand-built pyramid whose sizes disagree with its step can have a
+        // subnormal s_l, and then a centre overflows to Infinity. Such a
+        // candidate has no position a distance can be measured from — the
+        // spacing check would compare NaN and wave it through — so it is
+        // skipped. A pyramid whose level sizes follow its step never gets
+        // here: a level at least P wide has s_l ≥ P / w0.
+        if (!(Number.isFinite(x) && Number.isFinite(y))) continue;
         // With no spacing nothing can be too close, and skipping the scan
         // keeps a large budget from costing candidates × Q comparisons.
         let clear = true;

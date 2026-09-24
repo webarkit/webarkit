@@ -137,7 +137,7 @@ Preparing this target costs roughly **200× more than loading it**. Measured on
 one development machine (Node as pinned in [`.nvmrc`](./.nvmrc), jsfeatNext
 backend, `examples/images/pinball.jpg` at 512×640 → 2062 keypoints over 8 levels,
 a 110,600-byte file), median of 30 runs after warm-up. That file predates the
-tracking patches; the committed one now also carries 64 of them and is 128,016
+tracking patches; the committed one now also carries 64 of them and is 128,144
 bytes, and has not been re-measured:
 
 | | median | min–max |
