@@ -43,6 +43,7 @@ import { robustHomography } from "../../src/index.js";
 import type { RobustHomographyOptions } from "../../src/index.js";
 import {
     chain,
+    contaminate,
     corners,
     gaussian,
     maxTransferGap,
@@ -437,6 +438,63 @@ describe("robustHomography with noise", () => {
             const expected = sigma * Math.sqrt(2 - 8 / 40);
             expect(r.rmsError, `seed ${seed}`).toBeGreaterThan(0.5 * expected);
             expect(r.rmsError, `seed ${seed}`).toBeLessThan(1.5 * expected);
+        }
+    });
+});
+
+describe("robustHomography outlier rejection", () => {
+    // The model, and what it measured before this test was written: 40
+    // patches with σ = 0.25 px on every coordinate (a converged sub-pixel
+    // alignment), a prediction 3 px off, tukeyC = 4 px, and outliers moved
+    // 5–16 px from their true position in a random direction — a patch
+    // aligned on the wrong structure, within the alignment's reach. The
+    // prediction error is what makes this a test of the reweighting: about 3%
+    // of the outliers start inside tukeyC, some nearer the prediction than
+    // the inliers (which start 3 px off, at weight 0.19).
+    //
+    // Over 2000 seeds per fraction, every outlier ended at weight 0 and every
+    // inlier above it at every fraction up to 45%. Failures begin at 50% (1 in
+    // 2000), then 55%: 2, 60%: 11, 65%: 12, 70%: 48, 75%: 115, 80%: 334. A
+    // single fit without reweighting fails 60 in 2000 already at 20%, and 196
+    // at 45%.
+    //
+    // With a prediction 2 px off and σ = 0.5 px, outliers 6–16 px away can
+    // never start inside tukeyC (6 − 2 = 4): the fixed cutoff rejects them
+    // alone, and every seed passes up to 50%. That model measures the cutoff,
+    // not the estimator, so it is not the one tested.
+    const SIGMA = 0.25;
+    const OUTLIERS = 18; // of 40: 45%
+
+    it("rejects every outlier at 45% contamination, and fits the inliers alone", () => {
+        const src = targetGrid();
+        const exact = projectAll(H_TRUE, src);
+        const prediction = chain(translation(3, 0), H_TRUE);
+        const n = src.length / 2;
+        for (let seed = 1; seed <= 2000; seed++) {
+            const { dst, isOutlier } = contaminate(H_TRUE, src, {
+                seed,
+                outliers: OUTLIERS,
+                sigma: SIGMA,
+                minPx: 5,
+                maxPx: 16,
+            });
+            const r = robustHomography(src, dst, prediction, OPTIONS);
+            expect(r.ok, `seed ${seed}`).toBe(true);
+            if (!r.ok) continue;
+            let separated = true;
+            let sq = 0;
+            for (let i = 0; i < n; i++) {
+                if (isOutlier[i] ? r.weights[i] !== 0 : !(r.weights[i] > 0)) separated = false;
+                if (isOutlier[i]) continue;
+                const [x, y] = project(r.H, src[2 * i], src[2 * i + 1]);
+                sq += (x - exact[2 * i]) ** 2 + (y - exact[2 * i + 1]) ** 2;
+            }
+            expect(separated, `seed ${seed}`).toBe(true);
+            expect(r.numInliers, `seed ${seed}`).toBe(n - OUTLIERS);
+            // Separated exactly, the fit is the least-squares fit of the 22
+            // inliers: an error RMS at them near σ·√(8/22) ≈ 0.15 px, above
+            // 2σ with probability P(χ²₈ > 88) ≈ 1e-15.
+            expect(Math.sqrt(sq / (n - OUTLIERS)), `seed ${seed}`).toBeLessThan(2 * SIGMA);
         }
     });
 });
