@@ -59,6 +59,19 @@ export function mul3(a: Mat3, b: Mat3): Mat3 {
 }
 
 /**
+ * `m` divided by its entry of largest magnitude, as a new array: the same
+ * homography, with every entry in `[−1, 1]`. Taken before a product so that a
+ * homography handed over at an extreme scale cannot overflow or underflow it.
+ */
+export function scaledToUnitMax(m: Mat3): Mat3 {
+    let max = 0;
+    for (let i = 0; i < 9; i++) max = Math.max(max, Math.abs(m[i]));
+    const out = new Float64Array(9);
+    for (let i = 0; i < 9; i++) out[i] = m[i] / max;
+    return out;
+}
+
+/**
  * The adjugate, `det(m) · m⁻¹`, as a new array. For a homography it stands in
  * for the inverse: the two differ by a scalar, and a homography is defined
  * only up to one — without the division that makes `m⁻¹` blow up as `m`
