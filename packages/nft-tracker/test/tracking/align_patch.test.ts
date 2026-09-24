@@ -151,7 +151,7 @@ describe("alignPatch: input validation", () => {
         }
     });
 
-    it("rejects an invalid patch: index, size, pixel count, target step, table shape", () => {
+    it("rejects an invalid patch: index, size, pixel count, target step, position, table shape", () => {
         const cases: [PatchTable, number, number][] = [
             [table, -1, STEP],
             [table, 1, STEP],
@@ -165,6 +165,14 @@ describe("alignPatch: input validation", () => {
             [table, 0, Number.POSITIVE_INFINITY],
             // Level 2 of a 2^538 step underflows to 0: levelScale would throw.
             [{ ...table, level: Uint8Array.from([2]) }, 0, 2 ** 538],
+            // The scale does not underflow, but the position overflows: level
+            // 252 of a step-16 target has scale 2^-1008, so a patch at column
+            // 65530 has its centre at 65533.5 · 2^1008 target level-0 px, just
+            // below the largest double, and its last column at 65537 · 2^1008,
+            // past it. At level 255 (2^-1020) the centre is past it too.
+            [{ ...table, left: Uint16Array.from([65530]), level: Uint8Array.from([252]) }, 0, 16],
+            [{ ...table, top: Uint16Array.from([65530]), level: Uint8Array.from([252]) }, 0, 16],
+            [{ ...table, level: Uint8Array.from([255]) }, 0, 16],
             [{ ...table, left: new Uint16Array(0) }, 0, STEP],
             [{ ...table, top: new Uint16Array(0) }, 0, STEP],
             [{ ...table, level: new Uint8Array(0) }, 0, STEP],

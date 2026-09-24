@@ -696,7 +696,15 @@ interface Patch {
 /**
  * `null` unless `q` indexes a patch of a well-formed table: `P ≥ 3`, `Q · P²`
  * pixels, `left`/`top`/`level` of `Q` entries each, and a target step whose
- * scale at the patch's level is finite and non-zero.
+ * scale at the patch's level is finite and non-zero, and small enough that
+ * every pixel of the patch has a finite position in target level-0 px.
+ *
+ * The last condition is types.ts's "a step so large that the patch's level
+ * scale underflows", caught just short of the underflow: a scale of
+ * `2^-1008` is representable, but a patch at column 65530 of that level
+ * reaches `65537 · 2^1008` px by its last column, past the largest double.
+ * Such a patch has no position a prediction could map, so it is the patch,
+ * not the prediction or the frame, that is reported.
  */
 function validPatch(patches: PatchTable, q: number, targetScaleStep: number): Patch | null {
     const { patchSize: P, count: Q } = patches;
@@ -712,6 +720,11 @@ function validPatch(patches: PatchTable, q: number, targetScaleStep: number): Pa
     const scale = scales[level];
     const left = patches.left[q];
     const top = patches.top[q];
+    // The last column and row are the furthest from the origin (left and top
+    // are unsigned), so every pixel's position is finite if theirs is.
+    if (!(Number.isFinite((left + P - 1) / scale) && Number.isFinite((top + P - 1) / scale))) {
+        return null;
+    }
     return {
         P,
         left,
