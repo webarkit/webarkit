@@ -121,8 +121,9 @@ export type TrackResult =
           /**
            * Share of the frame's correspondences the final estimate kept, in
            * `[0, 1]`. `"DETECT"`: `numInliers / numMatches`. `"TRACK"`: the sum
-           * of the robust fit's weights divided by the patches the frame
-           * attempted.
+           * of the robust fit's weights divided by the number of patches
+           * passed to `alignPatch` this frame (patches culled before alignment
+           * do not count).
            */
           readonly quality: number;
           /** Echoed back from `process`; the tracker reads no clock. */

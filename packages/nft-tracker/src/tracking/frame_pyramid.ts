@@ -37,13 +37,14 @@
  *
  */
 
-import type { BuildFramePyramid } from "./types.js";
+import type { BuildFramePyramid, Stub } from "./types.js";
 
 /**
- * Stub — see {@link BuildFramePyramid}. Branch B replaces this body and removes
- * `"not-implemented"` from `FramePyramidFailure`.
+ * Stub — see {@link BuildFramePyramid}. Branch B implements it here and changes
+ * the annotation from `Stub<BuildFramePyramid>` to `BuildFramePyramid`; nothing else in the
+ * package needs to change.
  */
-export const buildFramePyramid: BuildFramePyramid = () => ({
+export const buildFramePyramid: Stub<BuildFramePyramid> = () => ({
     ok: false,
     reason: "not-implemented",
 });
