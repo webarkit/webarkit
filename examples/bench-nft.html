@@ -310,6 +310,16 @@
                 <input type="number" id="maxKeypoints" min="1" max="5000" step="10" />
               </label>
             </div>
+            <div class="row">
+              <label
+                >processing box, width
+                <input type="number" id="procWidth" min="1" max="4096" step="1" />
+              </label>
+              <label
+                >height
+                <input type="number" id="procHeight" min="1" max="4096" step="1" />
+              </label>
+            </div>
             <label
               >device label (for the export, typed by hand)
               <input type="text" id="deviceLabel" placeholder="e.g. Pixel 7, Chrome 129" />
@@ -372,9 +382,10 @@
 
       const TARGET = "./images/pinball.jpg";
       const TARGET_LEVELS = 8;
-      // The processing box the live/looped frame is downscaled into, same
-      // budget as the webcam demo -- this page compares two ways of running
-      // the SAME pipeline, not a different one, so it keeps the same knobs.
+      // The default processing box the live/looped frame is downscaled
+      // into, same budget as the webcam demo -- this page compares two ways
+      // of running the SAME pipeline, not a different one, so it keeps the
+      // same knobs. A run can override it (see `readProcessingBox`).
       const PROC_WIDTH = 480;
       const PROC_HEIGHT = 360;
 
@@ -411,6 +422,8 @@
       const bundledClipSelect = $("bundledClip");
       const startAtInput = $("startAt");
       const maxKeypointsInput = $("maxKeypoints");
+      const procWidthInput = $("procWidth");
+      const procHeightInput = $("procHeight");
       const startButton = $("start");
       const stopButton = $("stop");
       const downloadButton = $("download");
@@ -479,8 +492,14 @@
        */
       let lastMaxKeypoints = null;
       /**
+       * The processing box the last run was configured with -- the box, not
+       * the frame: see `lastProcessingResolution` for what the source was
+       * actually fitted to inside it.
+       */
+      let lastProcessingBox = null;
+      /**
        * The actual `GrayImage` size fed to `detect` every tick -- `toGray`
-       * fits the source inside `PROC_WIDTH` x `PROC_HEIGHT` while PRESERVING
+       * fits the source inside the processing box while PRESERVING
        * aspect ratio, so a 16:9 source (the bundled clip, most cameras) is
        * processed at e.g. 480x270, not 480x360. Exporting the configured box
        * instead of this would describe pixels the benchmark never actually
@@ -725,9 +744,9 @@
         }
       }
 
-      async function startWebcam() {
+      async function startWebcam(box) {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: PROC_WIDTH }, height: { ideal: PROC_HEIGHT } },
+          video: { width: { ideal: box.width }, height: { ideal: box.height } },
           audio: false,
         });
         currentStream = stream;
@@ -804,30 +823,45 @@
 
       /**
        * A positive integer from `raw`, or `null` for anything else (empty,
-       * `abc`, `0`, `-5`, `1e999`) -- so a malformed `?maxKeypoints=` or an
+       * `abc`, `0`, `-5`, `1e999`) -- so a malformed URL parameter or an
        * emptied field falls back to the default rather than reaching
-       * `detect` as `NaN` or `0`.
+       * `detect` or the canvas as `NaN` or `0`.
        */
-      function parseMaxKeypoints(raw) {
+      function parsePositiveInt(raw) {
         if (raw === null || String(raw).trim() === "") return null;
         const n = Math.floor(Number(raw));
         return Number.isFinite(n) && n >= 1 ? n : null;
       }
 
       /**
-       * `?maxKeypoints=N` pre-fills the control, so a run on a phone reached
-       * over `adb reverse` can be set from the address bar instead of by
-       * tapping a number field. With no parameter the control shows
-       * `DEFAULT_MAX_SCENE_KEYPOINTS`, and a run is the same one this page
-       * measured before the control existed.
+       * `?maxKeypoints=N`, `?procWidth=W` and `?procHeight=H` pre-fill their
+       * controls, so a run on a phone reached over `adb reverse` can be set
+       * from the address bar instead of by tapping number fields. With no
+       * parameters the controls show `DEFAULT_MAX_SCENE_KEYPOINTS` and
+       * `PROC_WIDTH` x `PROC_HEIGHT`, and a run is the same one this page
+       * measured before the controls existed.
        */
-      function initMaxKeypointsInput() {
-        const fromUrl = parseMaxKeypoints(new URLSearchParams(location.search).get("maxKeypoints"));
-        maxKeypointsInput.value = String(fromUrl ?? DEFAULT_MAX_SCENE_KEYPOINTS);
+      function initRunInputs() {
+        const params = new URLSearchParams(location.search);
+        maxKeypointsInput.value = String(parsePositiveInt(params.get("maxKeypoints")) ?? DEFAULT_MAX_SCENE_KEYPOINTS);
+        procWidthInput.value = String(parsePositiveInt(params.get("procWidth")) ?? PROC_WIDTH);
+        procHeightInput.value = String(parsePositiveInt(params.get("procHeight")) ?? PROC_HEIGHT);
       }
 
       function readMaxKeypoints() {
-        return parseMaxKeypoints(maxKeypointsInput.value) ?? DEFAULT_MAX_SCENE_KEYPOINTS;
+        return parsePositiveInt(maxKeypointsInput.value) ?? DEFAULT_MAX_SCENE_KEYPOINTS;
+      }
+
+      /**
+       * The box every frame is fitted into, aspect preserved -- what decides
+       * how many pixels `drawImage` writes and `getImageData` reads back in
+       * the `acquire` stage, and how many `detect` then searches.
+       */
+      function readProcessingBox() {
+        return {
+          width: parsePositiveInt(procWidthInput.value) ?? PROC_WIDTH,
+          height: parsePositiveInt(procHeightInput.value) ?? PROC_HEIGHT,
+        };
       }
 
       function currentSource() {
@@ -918,7 +952,7 @@
         }
       }
 
-      function runBenchmark(cv, targetDb, mode, windowSize, maxKeypoints) {
+      function runBenchmark(cv, targetDb, mode, windowSize, maxKeypoints, box) {
         lastRafFrameTime = -1;
         lastPercentileRenderAt = 0;
         filterMatchesSupported = !!cv.filterMatches;
@@ -943,7 +977,7 @@
         // land in a coordinate space nothing else uses. Probed once, the same
         // way the webcam demo derives it, because every later frame downscales
         // to this exact size for the lifetime of the stream.
-        const probe = toGrayTimed(video, video.videoWidth, video.videoHeight, PROC_WIDTH, PROC_HEIGHT, resetTimings({}));
+        const probe = toGrayTimed(video, video.videoWidth, video.videoHeight, box.width, box.height, resetTimings({}));
         lastProcessingResolution = { width: probe.width, height: probe.height };
         const K = intrinsics(probe.width, probe.height);
         const tracker =
@@ -960,7 +994,7 @@
           resetTimings(timings);
           const t0 = performance.now();
 
-          const frame = toGrayTimed(video, video.videoWidth, video.videoHeight, PROC_WIDTH, PROC_HEIGHT, timings);
+          const frame = toGrayTimed(video, video.videoWidth, video.videoHeight, box.width, box.height, timings);
           const result = tracker
             ? tracker.process(frame, t0)
             : runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, t0, maxKeypoints);
@@ -1069,6 +1103,11 @@
           // unless overridden by the control or `?maxKeypoints=`. An export
           // without this field predates the control and ran at the default.
           maxKeypoints: lastMaxKeypoints,
+          // The box the run was configured with (480x360 unless overridden;
+          // an export without this field predates the control and used
+          // that default). `processingResolution` is what the source was
+          // actually fitted to inside it.
+          processingBox: lastProcessingBox,
           processingResolution: lastProcessingResolution,
           windowSize: history.length,
           summaryMs: summary,
@@ -1107,7 +1146,7 @@
           radio.addEventListener("change", updateSourceInputs);
         }
         updateSourceInputs();
-        initMaxKeypointsInput();
+        initRunInputs();
 
         startButton.addEventListener("click", async () => {
           clearError();
@@ -1121,10 +1160,13 @@
             // yet the old history exporting as having come from the new
             // source.
             const source = currentSource();
+            // Read before the source starts: a webcam asks for its ideal
+            // resolution from this box.
+            const box = readProcessingBox();
             let startAtSeconds = null;
             let bundledClip = null;
             if (source === "webcam") {
-              await startWebcam();
+              await startWebcam(box);
             } else {
               const requestedStartAt = Math.max(0, Number(startAtInput.value) || 0);
               if (source === "bundled") {
@@ -1146,16 +1188,19 @@
             // to the default, instead of leaving the field disagreeing with
             // the run.
             maxKeypointsInput.value = String(maxKeypoints);
+            procWidthInput.value = String(box.width);
+            procHeightInput.value = String(box.height);
 
             lastSource = source;
             lastMode = mode;
             lastStartAtSeconds = startAtSeconds;
             lastBundledClip = bundledClip;
             lastMaxKeypoints = maxKeypoints;
+            lastProcessingBox = box;
             history = [];
             running = true;
             stopButton.disabled = false;
-            runBenchmark(cv, targetDb, mode, windowSize, maxKeypoints);
+            runBenchmark(cv, targetDb, mode, windowSize, maxKeypoints, box);
           } catch (e) {
             const src = currentSource();
             const hint =
