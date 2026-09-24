@@ -133,6 +133,24 @@ describe("predictHomography", () => {
     });
 });
 
+describe("predictHomography purity", () => {
+    it("gives a bit-identical result on a repeat call and shares no array with it", () => {
+        const H1 = mul(V, H0);
+        const H2 = mul(V, H1);
+        const first = predictHomography(H1, H2);
+        expect(first.ok).toBe(true);
+        if (!first.ok) return;
+        const snapshot = Array.from(first.H);
+        expect(first.H).not.toBe(H2);
+        first.H.fill(Number.NaN);
+        const second = predictHomography(H1, H2);
+        expect(second.ok).toBe(true);
+        if (!second.ok) return;
+        // toEqual compares numbers with Object.is: bit for bit.
+        expect(Array.from(second.H)).toEqual(snapshot);
+    });
+});
+
 describe("predictHomography failures", () => {
     const H1 = mul(V, H0);
     const H2 = mul(V, H1);
