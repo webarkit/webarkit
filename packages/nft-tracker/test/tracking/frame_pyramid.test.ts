@@ -170,6 +170,111 @@ describe("buildFramePyramid: frame", () => {
     });
 });
 
+describe("buildFramePyramid: the filter", () => {
+    function build(frame: GrayImage, levels: number, scaleStep: number): GrayImage[] {
+        const r = buildFramePyramid(frame, { levels, scaleStep });
+        if (!r.ok) throw new Error(r.reason);
+        return [...r.pyramid.levels];
+    }
+
+    /** `f(x, y)` sampled on a `width × height` grid. */
+    function sampled(width: number, height: number, f: (x: number, y: number) => number) {
+        const img = image(width, height);
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) img.data[y * width + x] = f(x, y);
+        }
+        return img;
+    }
+
+    it("keeps a constant image constant at every level", () => {
+        for (const step of [CBRT2, 2, 1.5]) {
+            for (const level of build(image(97, 61, 173), 5, step)) {
+                expect(level.data.every((v) => v === 173)).toBe(true);
+            }
+        }
+    });
+
+    it("centres level l's pixel x_l on level 0's x_l / s_l (D2): a ramp keeps its value, where a cell-aligned filter would be off by up to 1.09 grey levels at level 5", () => {
+        // v = x + 20. Each level is rounded to u8 before the next is built from
+        // it, so a pixel may be off by up to 0.5 per level; averaged over a
+        // row those errors cancel. A filter centred on its cell,
+        // (x_l + 0.5) / s_l − 0.5, instead shifts every pixel by
+        // 0.5 · (1 / s_l − 1) px: 0.29 grey levels at level 2, 1.09 at level 5.
+        for (const transpose of [false, true]) {
+            const [w, h] = transpose ? [40, 216] : [216, 40];
+            const ramp = sampled(w, h, (x, y) => (transpose ? y : x) + 20);
+            const levels = build(ramp, 6, CBRT2);
+            for (let l = 1; l < levels.length; l++) {
+                const s = levelScale(CBRT2, l);
+                const { data, width, height } = levels[l];
+                let sum = 0;
+                let n = 0;
+                let worst = 0;
+                const margin = 4; // the edge-extended border breaks linearity
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const along = transpose ? y : x;
+                        const extent = transpose ? height : width;
+                        if (along < margin || along >= extent - margin) continue;
+                        const e = data[y * width + x] - (along / s + 20);
+                        sum += e;
+                        n++;
+                        worst = Math.max(worst, Math.abs(e));
+                    }
+                }
+                expect(Math.abs(sum / n)).toBeLessThan(0.15);
+                expect(worst).toBeLessThanOrEqual(0.5 * l + 1e-9);
+            }
+        }
+    });
+
+    it("reproduces a steep ramp at level 1 to within its rounding: no phase-dependent wobble", () => {
+        // v = 3x + 10. A kernel whose discrete centroid drifts with the sample
+        // phase (a triangle of half-width r, sampled at x_l · r) moves some
+        // pixels by ~0.07 px, i.e. 0.2 grey levels here, past this bound.
+        const ramp = sampled(81, 8, (x) => 3 * x + 10);
+        const [, level1] = build(ramp, 2, CBRT2);
+        const s = levelScale(CBRT2, 1);
+        for (let x = 3; x < level1.width - 3; x++) {
+            expect(Math.abs(level1.data[x] - (3 * (x / s) + 10))).toBeLessThanOrEqual(0.5 + 1e-9);
+        }
+    });
+
+    it("attenuates 1-px stripes: to 0 at step 2, and to the 38% (96 of 255) its kernel predicts at step ∛2", () => {
+        const stripes = sampled(120, 16, (x) => (x % 2 === 0 ? 0 : 255));
+        const swing = (img: GrayImage) => {
+            const row = (img.height >> 1) * img.width;
+            let lo = 255;
+            let hi = 0;
+            for (let x = 3; x < img.width - 3; x++) {
+                lo = Math.min(lo, img.data[row + x]);
+                hi = Math.max(hi, img.data[row + x]);
+            }
+            return hi - lo;
+        };
+        // Step 2 is the [1, 2, 1] / 4 decimation, whose response at the source
+        // Nyquist frequency is exactly 0.
+        expect(swing(build(stripes, 2, 2)[1])).toBe(0);
+        // Step ∛2. The triangle reconstruction of 1-px stripes is a triangle
+        // wave whose fundamental swings 2 · sinc²(1/2) of the stripes' 255
+        // (the two spectral replicas coincide exactly at Nyquist), and a box
+        // of width r = ∛2 passes sinc(r/2) of it: 255 · 2 · sinc(r/2) ·
+        // sinc²(1/2) = 95.9. The swing across every sampling phase lands there.
+        const sinc = (x: number) => Math.sin(Math.PI * x) / (Math.PI * x);
+        const predicted = 255 * 2 * sinc(CBRT2 / 2) * sinc(0.5) ** 2;
+        expect(Math.abs(swing(build(stripes, 2, CBRT2)[1]) - predicted)).toBeLessThan(3);
+    });
+
+    it("is deterministic and leaves the frame untouched", () => {
+        const frame = sampled(64, 48, (x, y) => (x * 7 + y * 13 + ((x * y) % 17)) & 255);
+        const before = Uint8Array.from(frame.data);
+        const a = build(frame, 5, CBRT2);
+        const b = build(frame, 5, CBRT2);
+        expect(frame.data).toEqual(before);
+        for (let l = 0; l < a.length; l++) expect(a[l].data).toEqual(b[l].data);
+    });
+});
+
 describe("buildFramePyramid: geometry", () => {
     let target: TargetDb;
     let pinball: GrayImage;

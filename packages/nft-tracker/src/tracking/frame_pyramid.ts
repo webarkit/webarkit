@@ -83,6 +83,47 @@ export function pyramidScales(scaleStep: number, count: number): Float64Array | 
  * `s_l = levelScale(scaleStep, l)` — the rule `buildTargetFromImage` records
  * as `levelSizes` (§5.4), so a target pyramid built here has exactly its
  * file's sizes. Level 0 is the frame itself, by reference.
+ *
+ * **Filter.** Each level is resampled from the one before it, separably in
+ * x and y. Level `l`'s pixel `x_l` stands for level 0's `x_l / s_l` (§3,
+ * decision D2: no half-pixel correction), which is level `l − 1`'s
+ * `c = x_l · r` with `r = s_{l−1} / s_l`. Its value is the previous level,
+ * reconstructed bilinearly, averaged over a box of width `r` centred on `c`:
+ * the weight of source pixel `k` is `(1/r) ∫ tri(x − k) dx` over
+ * `[c − r/2, c + r/2]`, `tri` being the unit triangle. Edge pixels are
+ * extended; values are rounded to the nearest integer. Why this filter:
+ *
+ * - **It reproduces linear intensity exactly** — constant and first moment —
+ *   at every sampling phase, because it integrates an exact linear
+ *   reconstruction. So level content sits exactly where D2 says it does,
+ *   which sub-pixel patch alignment depends on. A triangle of half-width `r`
+ *   sampled at `c` (the common "bilinear" downscale) does not: its discrete
+ *   centroid drifts with the phase of `c` (at `r = ∛2`, `c = 0.3`, the taps'
+ *   centroid is 0.368), shifting content by a varying fraction of a pixel.
+ * - **It is the textbook filter at step 2**: there it reduces to the
+ *   `[1, 2, 1] / 4` decimation, whose response at the source's Nyquist
+ *   frequency is 0. At `∛2` its anti-aliasing is modest: 1-px stripes keep
+ *   38% of their swing (`2 · sinc(r/2) · sinc²(1/2)`) at the first step.
+ *   Blur accumulates down the cascade: each step adds the kernel's variance,
+ *   `r²/12 + 1/6` source px², which in a level's own pixels settles at
+ *   `(r²/12 + 1/6) / (r² − 1)` — σ ≈ 0.71 px at `∛2` — so it is the first
+ *   step, from an unfiltered level 0, that aliases most. Both pyramids alias
+ *   alike, since one function builds both (Q11, below).
+ * - **It is small**: support `r + 2`, so three or four taps per axis at `∛2`,
+ *   and each level costs a pass over the level before it, not over level 0.
+ *
+ * Every weight comes from `+ − × ÷` on the level scales, so the output is
+ * bit-identical for the same input on any engine.
+ *
+ * **Open question Q11.** Format spec §5.7 does not say which filter produced
+ * a target's level images. The tracker needs its stored patches and the
+ * frame's levels to be filtered alike, and today guarantees it by building
+ * both with this function (types.ts). The assumption made here, and relied on
+ * by `alignPatch`, is exactly that: **a patch's pixels were cut from a level
+ * this function built, with the target's `scaleStep`.** A target compiled by
+ * another implementation, or with another filter, still aligns — but with a
+ * blur mismatch this code cannot see, whose cost is unmeasured until Q11 is
+ * settled.
  */
 export const buildFramePyramid: BuildFramePyramid = (frame, options) => {
     const { levels, scaleStep } = options;
@@ -108,11 +149,107 @@ export const buildFramePyramid: BuildFramePyramid = (frame, options) => {
     }
 
     const out: GrayImage[] = [frame];
-    for (const [w, h] of sizes) {
-        out.push({ data: new Uint8Array(w * h), width: w, height: h });
+    for (let l = 1; l < levels; l++) {
+        const [w, h] = sizes[l - 1];
+        const level = { data: new Uint8Array(w * h), width: w, height: h };
+        downsample(out[l - 1], level, scales[l - 1] / scales[l]);
+        out.push(level);
     }
     return { ok: true, pyramid: { scaleStep, levels: out } };
 };
+
+/**
+ * One pyramid step: `dst` from `src`, with `dst`'s pixel `i` centred on
+ * `src`'s `i · r` along each axis. See the filter notes on
+ * {@link buildFramePyramid}.
+ */
+function downsample(src: GrayImage, dst: GrayImage, r: number): void {
+    const sw = src.width;
+    const sh = src.height;
+    const dw = dst.width;
+    const dh = dst.height;
+    const cols = taps(dw, sw, r);
+    const rows = taps(dh, sh, r);
+
+    // Horizontal pass: every source row, filtered to the destination width.
+    const tmp = new Float32Array(sh * dw);
+    const s = src.data;
+    for (let y = 0; y < sh; y++) {
+        const srcRow = y * sw;
+        const tmpRow = y * dw;
+        for (let x = 0; x < dw; x++) {
+            let acc = 0;
+            for (let t = cols.start[x]; t < cols.start[x + 1]; t++) {
+                acc += cols.weight[t] * s[srcRow + cols.index[t]];
+            }
+            tmp[tmpRow + x] = acc;
+        }
+    }
+
+    // Vertical pass, a whole row of taps at a time.
+    const acc = new Float64Array(dw);
+    const d = dst.data;
+    for (let y = 0; y < dh; y++) {
+        acc.fill(0);
+        for (let t = rows.start[y]; t < rows.start[y + 1]; t++) {
+            const w = rows.weight[t];
+            const tmpRow = rows.index[t] * dw;
+            for (let x = 0; x < dw; x++) acc[x] += w * tmp[tmpRow + x];
+        }
+        const dstRow = y * dw;
+        // Weights are non-negative and sum to 1, so `acc` is in [0, 255]
+        // up to rounding: `+ 0.5` then truncation rounds to nearest.
+        for (let x = 0; x < dw; x++) d[dstRow + x] = (acc[x] + 0.5) | 0;
+    }
+}
+
+/** The taps of each of `count` outputs along one axis: CSR-style, `start` has `count + 1` entries. */
+interface Taps {
+    readonly start: Int32Array;
+    readonly index: Int32Array;
+    readonly weight: Float64Array;
+}
+
+/**
+ * Weights of the box-of-width-`r` average over the triangle (bilinear)
+ * reconstruction, for outputs `0 … count − 1` centred at `i · r` on an axis
+ * of `length` source pixels, indices clamped to it (edge extension).
+ * Normalised to sum to 1 per output.
+ */
+function taps(count: number, length: number, r: number): Taps {
+    const half = r / 2;
+    const perOutput = Math.ceil(r + 2) + 1;
+    const start = new Int32Array(count + 1);
+    const index = new Int32Array(count * perOutput);
+    const weight = new Float64Array(count * perOutput);
+    let n = 0;
+    for (let i = 0; i < count; i++) {
+        start[i] = n;
+        const c = i * r;
+        const first = Math.floor(c - half - 1) + 1;
+        const last = Math.ceil(c + half + 1) - 1;
+        let sum = 0;
+        for (let k = first; k <= last; k++) {
+            const w = triangleIntegral(c + half - k) - triangleIntegral(c - half - k);
+            if (!(w > 0)) continue;
+            index[n] = Math.min(length - 1, Math.max(0, k));
+            weight[n] = w;
+            sum += w;
+            n++;
+        }
+        for (let t = start[i]; t < n; t++) weight[t] /= sum;
+    }
+    start[count] = n;
+    return { start, index, weight };
+}
+
+/** `∫ tri(t) dt` from −∞ to `u`, `tri` the unit triangle on `[−1, 1]`. */
+function triangleIntegral(u: number): number {
+    if (u <= -1) return 0;
+    if (u <= 0) return ((u + 1) * (u + 1)) / 2;
+    if (u < 1) return 1 - ((1 - u) * (1 - u)) / 2;
+    return 1;
+}
 
 function isPositiveInteger(n: number): boolean {
     return Number.isInteger(n) && n > 0;
