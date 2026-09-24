@@ -231,3 +231,61 @@ describe("robustHomography on exact correspondences", () => {
         });
     }
 });
+
+describe("robustHomography iteration", () => {
+    const src = targetGrid();
+    const exact = projectAll(H_TRUE, src);
+    // The prediction is off by a 2 px pan: every inlier starts 2 px from
+    // where the prediction puts it, inside tukeyC = 4 px.
+    const PREDICTION: Mat3 = chain(translation(2, 0), H_TRUE);
+    // One correspondence 4.5 px off in x: 2.5 px from the prediction, so it
+    // starts with a weight of 0.37 and pulls the first fit, but it is 4.5 px
+    // from the truth, beyond tukeyC.
+    const OUTLIER = 17;
+    const withOutlier = exact.slice();
+    withOutlier[2 * OUTLIER] += 4.5;
+
+    it("refits until the RMS settles: exact data from an inexact prediction takes two fits", () => {
+        // Fit 1 is already exact, but its RMS moved 2 px from the
+        // prediction's; fit 2 confirms it.
+        const r = robustHomography(src, exact, PREDICTION, OPTIONS);
+        expect(r.ok).toBe(true);
+        if (!r.ok) return;
+        expect(maxTransferGap(r.H, H_TRUE, src)).toBeLessThan(EXACT_PX);
+        expect(r.iterations).toBe(2);
+        expect(r.converged).toBe(true);
+        expectSelfConsistent(r, src, exact, OPTIONS.tukeyC);
+    });
+
+    it("reweights an outlier that started inside tukeyC down to 0, leaving H exact", () => {
+        const r = robustHomography(src, withOutlier, PREDICTION, OPTIONS);
+        expect(r.ok).toBe(true);
+        if (!r.ok) return;
+        expect(r.weights[OUTLIER]).toBe(0);
+        expect(r.numInliers).toBe(39);
+        expect(maxTransferGap(r.H, H_TRUE, src)).toBeLessThan(EXACT_PX);
+        expect(r.converged).toBe(true);
+        expectSelfConsistent(r, src, withOutlier, OPTIONS.tukeyC);
+    });
+
+    it("reports reaching maxIterations as converged: false, with the last fit and its weights", () => {
+        const r = robustHomography(src, withOutlier, PREDICTION, { ...OPTIONS, maxIterations: 1 });
+        expect(r.ok).toBe(true);
+        if (!r.ok) return;
+        expect(r.iterations).toBe(1);
+        expect(r.converged).toBe(false);
+        // One fit is not enough: the outlier still pulls it.
+        expect(maxTransferGap(r.H, H_TRUE, src)).toBeGreaterThan(EXACT_PX);
+        expectSelfConsistent(r, src, withOutlier, OPTIONS.tukeyC);
+    });
+
+    it("stops as soon as the weighted RMS changes by less than epsilon", () => {
+        // Epsilon is a change of RMS in px: at 10 px, the first fit's change
+        // (about 2 px) already counts as converged.
+        const r = robustHomography(src, withOutlier, PREDICTION, { ...OPTIONS, epsilon: 10 });
+        expect(r.ok).toBe(true);
+        if (!r.ok) return;
+        expect(r.iterations).toBe(1);
+        expect(r.converged).toBe(true);
+    });
+});

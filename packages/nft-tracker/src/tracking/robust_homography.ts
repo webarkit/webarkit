@@ -61,20 +61,29 @@ export const robustHomography: RobustHomography = (src, dst, initial, options) =
     const weights = new Float64Array(n);
     transferErrors(scaledToUnitMax(initial), src, dst, residuals);
     tukeyWeights(residuals, c, weights);
-    const rmsInitial = weightedRms(residuals, weights);
+    let rms = weightedRms(residuals, weights);
 
-    const H = weightedDlt(src, dst, weights);
-    transferErrors(H, src, dst, residuals);
-    tukeyWeights(residuals, c, weights);
-    const rmsError = weightedRms(residuals, weights);
+    // Each iteration fits H to the current weights, then reweights at that H.
+    let H: Mat3;
+    let iterations = 0;
+    let converged = false;
+    do {
+        H = weightedDlt(src, dst, weights);
+        iterations++;
+        transferErrors(H, src, dst, residuals);
+        tukeyWeights(residuals, c, weights);
+        const next = weightedRms(residuals, weights);
+        converged = Math.abs(next - rms) < options.epsilon;
+        rms = next;
+    } while (!converged && iterations < options.maxIterations);
     return {
         ok: true,
         H,
         weights,
         numInliers: countPositive(weights),
-        rmsError,
-        iterations: 1,
-        converged: Math.abs(rmsError - rmsInitial) < options.epsilon,
+        rmsError: rms,
+        iterations,
+        converged,
     };
 };
 
