@@ -87,6 +87,7 @@ import {
     buildTargetFromImage,
     DEFAULT_KEYPOINTS_PER_LEVEL,
     DEFAULT_SCALE_STEP,
+    DEFAULT_LIMITS,
     DEFAULT_TARGET_LEVELS,
     encode,
     selectPatches,
@@ -134,7 +135,7 @@ const DEFAULT_MAX_PATCHES = 64;
  * pinball target, 63 of the 64 patches come from level 0 and one from level
  * 1, and allowing six or all eight levels instead of three selects exactly
  * the same 64. Three levels span a factor `2^(2/3)` ≈ 1.6 at the default
- * step, and keep a patch's footprint local (at most 25 level-0 px for P=16);
+ * step, and keep a patch's footprint local (under 26 level-0 px for P=16);
  * the limit is there for the images where coarse texture would win.
  */
 const DEFAULT_PATCH_LEVELS = 3;
@@ -143,8 +144,9 @@ const DEFAULT_PATCH_LEVELS = 3;
  * Minimum score, (grey levels / level-0 px)²: a mean squared gradient of 25,
  * so an RMS of 5 grey levels per pixel even in the patch's *weakest*
  * direction — several times the gradient that sensor and JPEG noise produce
- * on a flat surface. On pinball this rejects the least-textured half of all
- * windows (the median P=16 window scores 17; a quarter score under 2).
+ * on a flat surface. On pinball this rejects 57% of all level-0 windows, the
+ * least-textured ones (the median P=16 window scores 17; a quarter score
+ * under 2).
  */
 const DEFAULT_PATCH_MIN_SCORE = 25;
 
@@ -154,8 +156,8 @@ const DEFAULT_PATCH_MIN_SCORE = 25;
  * image exactly; three quarters of it leaves room for about twice the budget
  * in a hexagonal packing, so the budget still fills when parts of the target
  * are flat, while forbidding the clusters a bare score ranking produces. On
- * pinball it is 54 px; at 1.0 × only 47 of 64 patches fit, at 0.5 × the
- * patches cover 36 rather than 52 cells of an 8 × 8 grid.
+ * pinball it is 54 px; at 1.0 × (72 px) only 42 of 64 patches fit, at 0.5 ×
+ * (27 px) the patches cover 32 rather than 52 cells of an 8 × 8 grid.
  */
 function defaultPatchSpacing(width, height, maxPatches) {
     return Math.round(0.75 * Math.sqrt((width * height) / maxPatches));
@@ -163,6 +165,18 @@ function defaultPatchSpacing(width, height, maxPatches) {
 
 /** What `info.compiler.patchPyramid` records while `target-pyramid.mjs` stands in. */
 const PATCH_PYRAMID = "stand-in: bin/target-pyramid.mjs, area-weighted box";
+
+/**
+ * What `info.compiler.patchScore` records: which quantity `patches.score`
+ * holds, in which units. §5.7 fixes the quantity (Shi–Tomasi's minimum
+ * eigenvalue) but not its normalisation, so without this a score — and
+ * `patchMinScore` beside it — cannot be read by anyone who did not also read
+ * `select_patches.ts`, and a compiler that normalised differently would
+ * write numbers on another scale into the same field unnoticed.
+ */
+const PATCH_SCORE =
+    "lambda-min of the mean structure tensor over the window interior, " +
+    "central differences, (grey levels / level-0 px)^2";
 
 /**
  * The directory the command was typed in, which is not always the cwd.
@@ -427,6 +441,21 @@ function parseArgs(argv) {
     if (options.patchSize < 3) {
         throw new UsageError(`--patch-size must be at least 3, got ${options.patchSize}`);
     }
+    // §6.4's default resource limits. `encode` does not enforce them, so
+    // without these checks the compiler would write a file that its own
+    // `decode` — and validate-target — refuse with LIMIT_EXCEEDED.
+    if (options.maxPatches > DEFAULT_LIMITS.maxPatches) {
+        throw new UsageError(
+            `--patches must be at most ${DEFAULT_LIMITS.maxPatches}, the default decoder ` +
+                `limit (§6.4), got ${options.maxPatches}`,
+        );
+    }
+    if (options.patchSize > DEFAULT_LIMITS.maxPatchSize) {
+        throw new UsageError(
+            `--patch-size must be at most ${DEFAULT_LIMITS.maxPatchSize}, the default decoder ` +
+                `limit (§6.4), got ${options.patchSize}`,
+        );
+    }
 
     options.maxKeypoints ??= options.levels * DEFAULT_KEYPOINTS_PER_LEVEL;
     options.name ??= basename(options.image, extname(options.image));
@@ -461,11 +490,18 @@ async function main(argv) {
         });
         if (options.maxPatches === 0) return { db, patches: null };
 
-        // A prefix of the target's own levels, with the file's own sizes: a
-        // patch can then only name a level the file has, and is bounds-checked
-        // against exactly the size the file records for it (§5.7). The prefix
-        // is how --patch-levels limits the levels; the options selectPatches
-        // takes have no such knob.
+        // A PREFIX of the target's levels — the first --patch-levels, each at
+        // the size the file records for it. `SelectPatches` in
+        // src/tracking/types.ts asks for "exactly the target's
+        // levelSizes.length levels", so this departs from its wording, on
+        // purpose. The reason it gives for that rule is that a patch must not
+        // name a level the file lacks and must be bounds-checked against the
+        // file's own sizes (§5.7, INCONSISTENT_DATA); a prefix at the file's
+        // sizes guarantees both. It is also the only way to limit the levels:
+        // SelectPatchesOptions has no such knob, and types.ts is fixed for
+        // this branch. Aligning the wording ("the first k ≤ L levels, each of
+        // exactly the file's size") is a coordinated change to types.ts
+        // across the three #48 branches, not one to make here.
         const { scaleStep, levelSizes } = db.pyramid;
         const pyramid = buildTargetPyramid(
             image,
@@ -516,10 +552,17 @@ async function main(argv) {
                     ? {}
                     : {
                           patchSize: options.patchSize,
-                          patchLevels: options.patchLevels,
+                          // What was used, not what was asked for: a target
+                          // with fewer levels than --patch-levels offers only
+                          // the levels it has.
+                          patchLevels: Math.min(
+                              options.patchLevels,
+                              built.value.db.pyramid.levelSizes.length,
+                          ),
                           patchMinScore: options.patchMinScore,
                           patchSpacing,
                           patchPyramid: PATCH_PYRAMID,
+                          patchScore: PATCH_SCORE,
                       }),
             },
         },

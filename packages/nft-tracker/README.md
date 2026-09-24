@@ -16,8 +16,9 @@ state carried between frames. Repeated detection is not yet tracking; the
 patch tracker and the state machine that make it tracking are M2
 ([ADR-0001](../../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md),
 [#48](https://github.com/webarkit/webarkit/issues/48)). M2's types and
-function signatures are in place, but its functions are **stubs** for now —
-see [The tracker](#the-tracker).
+function signatures are in place; `selectPatches` is implemented and
+`compile-target` writes its patches, and the rest are **stubs** for now — see
+[The tracker](#the-tracker).
 
 ## The `.wnft` codec
 
@@ -293,7 +294,7 @@ when not `ok`, a `reason`, every result carries:
 
 Today every frame runs detection, so a result is only ever `DETECT` or `LOST`.
 
-### The M2 tracking state: stubs for now
+### The M2 tracking state: all but `selectPatches` are stubs for now
 
 The functions a tracking-state frame will be built from are defined in
 [`src/tracking/types.ts`](./src/tracking/types.ts) and exported, so that the

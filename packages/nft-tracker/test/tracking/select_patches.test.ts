@@ -242,6 +242,28 @@ describe("selectPatches — domain", () => {
         });
     });
 
+    it("refuses underflow exactly where levelScale starts to throw", () => {
+        // s_2 = 2^-1074, the smallest subnormal, is still > 0; one more
+        // doubling of the step underflows it. The pre-check must agree with
+        // levelScale to the bit, or one of these either throws or refuses a
+        // pyramid levelScale would accept.
+        const lv = noise(16, 16, 10);
+        // A budget large enough that the greedy pass reaches level 2, whose
+        // scores (scaled by s_2²) round to 0 and rank last.
+        const options = { patchSize: 5, maxPatches: 1000, minScore: 0, minSpacing: 3 };
+        expect(levelScale(2 ** 537, 2)).toBe(2 ** -1074);
+        expect(() => levelScale(2 ** 538, 2)).toThrow(RangeError);
+
+        const t = ok(selectPatches({ scaleStep: 2 ** 537, levels: [lv, lv, lv] }, options));
+        // Level 2's centres overflow to Infinity at that scale: no distance
+        // can be measured from them, so none is chosen. Only finite numbers.
+        expect(Array.from(t.level).every((l) => l < 2)).toBe(true);
+        expect(selectPatches({ scaleStep: 2 ** 538, levels: [lv, lv, lv] }, options)).toEqual({
+            ok: false,
+            reason: "invalid-pyramid",
+        });
+    });
+
     it("accepts the limits of the domain", () => {
         const r = selectPatches(pyramidOf(noise(40, 30, 3), 2, 1), {
             patchSize: 3,

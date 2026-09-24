@@ -235,6 +235,17 @@ fn decodes_the_compiled_pinball_target() {
         "patchPyramid was {:?}",
         compiler.get("patchPyramid")
     );
+    // §5.7 names the score's quantity but not its units, so the `>= 25.0`
+    // above means something only together with the definition the compiler
+    // recorded beside it.
+    assert!(
+        compiler
+            .get("patchScore")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| s.contains("level-0 px")),
+        "patchScore was {:?}",
+        compiler.get("patchScore")
+    );
 }
 
 #[test]
