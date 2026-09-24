@@ -14,7 +14,10 @@ target, the codec for the `.wnft` files that store one, and
 `detect → describe → match → estimateHomography → poseFromHomography` with no
 state carried between frames. Repeated detection is not yet tracking; the
 patch tracker and the state machine that make it tracking are M2
-([ADR-0001](../../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md)).
+([ADR-0001](../../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md),
+[#48](https://github.com/webarkit/webarkit/issues/48)). M2's types and
+function signatures are in place, but its functions are **stubs** for now —
+see [The tracker](#the-tracker).
 
 ## The `.wnft` codec
 
@@ -240,6 +243,56 @@ Three things in the output are worth knowing:
   probe checks descriptor *shape*; two backends can agree on shape and still
   compute different bits, and this is the only signal that they might (§6.3,
   ADR-0001's contract gaps).
+
+## The tracker
+
+```ts
+import { NftTracker } from "@webarkit/nft-tracker";
+
+const tracker = new NftTracker(cv, target, K); // backend injected, K = intrinsics
+const result = tracker.process(frame, timestampMs); // frame: GrayImage
+console.log(result.state, result.quality);
+if (result.ok) {
+    // result.H maps target level-0 pixels into the frame, row-major 3×3.
+}
+```
+
+`process` does not throw on a frame it cannot use; `result.ok` narrows the
+union. Besides `H`, `pose`, `numMatches`, `numInliers`, `sceneKeypoints` and,
+when not `ok`, a `reason`, every result carries:
+
+| `state` | Meaning | `quality`, in `[0, 1]` |
+|---|---|---|
+| `"DETECT"` | Pose from the detection pipeline (`detect`/`describe`/`match`) | `numInliers / numMatches` |
+| `"TRACK"` | Pose from patch tracking. **Not produced yet**: it comes with M2's state machine | Sum of the robust fit's weights ÷ patches passed to `alignPatch` this frame |
+| `"LOST"` | No pose (`ok: false`; `reason` says why) | `0` |
+
+Today every frame runs detection, so a result is only ever `DETECT` or `LOST`.
+
+### The M2 tracking state: stubs for now
+
+The functions a tracking-state frame will be built from are defined in
+[`src/tracking/types.ts`](./src/tracking/types.ts) and exported, so that the
+three M2 implementation branches of
+[#48](https://github.com/webarkit/webarkit/issues/48) work against one fixed
+contract. **They are stubs:** each returns
+`{ ok: false, reason: "not-implemented" }` until its branch lands. Nothing
+should be built on them yet.
+
+| Export | What it will do | Status |
+|---|---|---|
+| `selectPatches` | Compile time: the target's pyramid → the §5.7 `patches` table | stub |
+| `buildFramePyramid` | A grey pyramid of the frame (and of the target, at compile time) | stub |
+| `alignPatch` | Aligns one patch in the frame by IC-LK → a `PatchObservation` | stub |
+| `robustHomography` | IRLS with Tukey's biweight over the patch correspondences → `H` and per-patch weights | stub |
+| `predictHomography` | Constant-velocity prediction of the next frame's `H` | stub |
+| `levelScale` | `s_l`, a pyramid level's scale, computed the way the backend computes it | **implemented** |
+
+The rules every implementation keeps are stated once, in that file's header:
+§3 coordinates, pure and deterministic with no RNG, explicit failures instead
+of `NaN`, and a cap on every loop that iterates to convergence. The types
+themselves (`FramePyramid`, `PatchObservation`, `TrackingState`, and each
+function's options, result and failure union) are exported alongside.
 
 ## Conformance
 
