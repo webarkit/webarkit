@@ -127,14 +127,17 @@ export interface ImagePyramid {
 export type FramePyramid = ImagePyramid;
 
 export interface FramePyramidOptions {
-    /** Number of levels, integer `≥ 1`. */
+    /** Number of levels, an integer in `[1, 256]` (level indices stop at `MAX_LEVEL`, 255). */
     readonly levels: number;
     /** See {@link ImagePyramid.scaleStep}. */
     readonly scaleStep: number;
 }
 
 export type FramePyramidFailure =
-    /** `levels` not an integer `≥ 1`, or `scaleStep` non-finite or `≤ 1`. */
+    /**
+     * `levels` not an integer in `[1, 256]`, or `scaleStep` non-finite or
+     * `≤ 1`, or so large that a requested level's scale underflows to 0.
+     */
     | "invalid-options"
     /** Width or height not a positive integer, or `data.length ≠ w · h`. */
     | "invalid-frame"
@@ -154,8 +157,8 @@ export type FramePyramidResult =
  *
  * The downsampling filter is the implementation's choice, but it must be
  * deterministic and documented where it is implemented. Format spec §5.7
- * does not say which filter produced a level's image; that gap is recorded
- * as an open question, not settled here.
+ * does not say which filter produced a level's image; that gap is the spec's
+ * open question Q11, not settled here.
  */
 export type BuildFramePyramid = (
     frame: GrayImage,
@@ -181,8 +184,9 @@ export type PatchSelectionFailure =
     | "invalid-options"
     /**
      * Not a valid {@link ImagePyramid}, or one no `.wnft` can hold: more than
-     * 256 levels (`level` is `u8`) or a level-0 side above 65535 (`left`/`top`
-     * are `u16`, §5.4). A level smaller than `patchSize` is skipped, not an
+     * 256 levels (`level` is `u8`, §5.7) or a level-0 side above 65535 (the
+     * `[1, 2^16 − 1]` range of §5.4, which also keeps `left`/`top` within
+     * their `u16`, §5.7). A level smaller than `patchSize` is skipped, not an
      * error.
      */
     | "invalid-pyramid"
@@ -256,9 +260,17 @@ export type PatchAlignmentFailure =
     /** An option out of the domain stated on {@link AlignPatchOptions}. */
     | "invalid-options"
     /**
-     * `q` not an integer in `[0, count)`; `targetScaleStep` non-finite or
-     * `≤ 1`; `patchSize < 3` (§5.7 allows 1 and 2, but alignment needs a
-     * gradient border); or `pixels.length ≠ count · P²`.
+     * `frame` is not a valid {@link ImagePyramid}: no levels, more than 256,
+     * a `scaleStep` non-finite or `≤ 1`, or a level whose `data.length` is
+     * not `width · height`. Checked before any level is read, so a hand-built
+     * pyramid fails here instead of reaching `levelScale`'s contract check.
+     */
+    | "invalid-pyramid"
+    /**
+     * `q` not an integer in `[0, count)`; `targetScaleStep` non-finite,
+     * `≤ 1`, or so large that the patch's level scale underflows to 0;
+     * `patchSize < 3` (§5.7 allows 1 and 2, but alignment needs a gradient
+     * border); or `pixels.length ≠ count · P²`.
      */
     | "invalid-patch"
     /** The prediction has a non-finite entry, or maps the patch centre to infinity. */

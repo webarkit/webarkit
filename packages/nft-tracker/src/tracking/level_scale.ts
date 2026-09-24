@@ -49,21 +49,38 @@
  * helper rather than its own arithmetic, so patch centres, frame levels and
  * target levels agree exactly.
  *
- * Its inputs have already been validated by its callers, so an argument out
- * of its domain is a contract violation and throws a `RangeError`, rather
- * than returning `NaN` into the geometry.
+ * Every tracking function validates its inputs before calling this, and
+ * returns an explicit failure for a bad step or level. Reaching an
+ * out-of-domain argument here is therefore a contract violation, and throws
+ * a `RangeError` rather than returning `NaN`, `0` or a runaway loop into the
+ * geometry.
  *
  * @param scaleStep Size ratio between consecutive levels; finite and `> 1`.
- * @param level Pyramid level; an integer `≥ 0`.
+ * @param level Pyramid level; an integer in `[0, MAX_LEVEL]`.
+ * @returns `s_l`, finite and `> 0`. A step so large that `s_l` underflows to
+ *          0 throws, since `x_l / s_l` would then be infinite.
  */
 export function levelScale(scaleStep: number, level: number): number {
     if (!(Number.isFinite(scaleStep) && scaleStep > 1)) {
         throw new RangeError(`levelScale: scaleStep must be finite and > 1, got ${scaleStep}`);
     }
-    if (!(Number.isInteger(level) && level >= 0)) {
-        throw new RangeError(`levelScale: level must be an integer >= 0, got ${level}`);
+    if (!(Number.isInteger(level) && level >= 0 && level <= MAX_LEVEL)) {
+        throw new RangeError(
+            `levelScale: level must be an integer in [0, ${MAX_LEVEL}], got ${level}`,
+        );
     }
     let scale = 1;
     for (let l = 0; l < level; l++) scale /= scaleStep;
+    if (!(scale > 0)) {
+        throw new RangeError(
+            `levelScale: level ${level} of scaleStep ${scaleStep} underflows to 0`,
+        );
+    }
     return scale;
 }
+
+/**
+ * The deepest pyramid level: a `.wnft` stores a patch's or keypoint's level
+ * as `u8` (§5.5, §5.7), so no level beyond 255 can be named.
+ */
+export const MAX_LEVEL = 255;

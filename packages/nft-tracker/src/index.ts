@@ -88,7 +88,6 @@ export type {
     RobustHomographyResult,
     SelectPatches,
     SelectPatchesOptions,
-    Stub,
     TrackingState,
 } from "./tracking/types.js";
 
