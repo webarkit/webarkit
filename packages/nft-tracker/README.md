@@ -17,9 +17,9 @@ patch tracker and the state machine that make it tracking are M2
 ([ADR-0001](../../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md),
 [#48](https://github.com/webarkit/webarkit/issues/48)). M2's types and
 function signatures are in place; `selectPatches` is implemented and
-`compile-target` writes its patches, `robustHomography` and
-`predictHomography` are implemented too, and the rest are **stubs** for now —
-see [The tracker](#the-tracker).
+`compile-target` writes its patches, `levelScale`, `robustHomography` and
+`predictHomography` are implemented too, and `buildFramePyramid` and
+`alignPatch` are **stubs** for now — see [The tracker](#the-tracker).
 
 ## The `.wnft` codec
 

@@ -318,14 +318,16 @@ function accumulate(
  * system and the span of the columns before it, so it reads directly as
  * "how nearly dependent". Measured on the normalised DLT: exactly degenerate
  * sets — collinear points, three distinct points among six, three collinear
- * among four — give 3e-17 or less (rounding); eight points within 1e-4 px of
- * a line give 2.7e-15; the 40-point grid under six views up to 85° of tilt
- * gives 0.43–0.61; and the worst of ~120 000 random 4- to 10-point sets with
- * no three points within 20 px of a line gives 5.9e-7. The threshold sits
- * 4½ orders above rounding and nearly 4 below that worst valid set. In
- * pixels: eight points spread along a line measure `3.2e-6 · b²` when they
- * stray up to `b/2` px from it, so they are singular below `b ≈ 0.006 px` —
- * within a few thousandths of a pixel of the line — and fitted above.
+ * among four, a target sent to one point — first fail on a pivot of at most
+ * 3.2e-16 in magnitude, some of them negative: rounding. The 40-point grid
+ * under six views up to 85° of tilt gives 0.43–0.61, and the worst of
+ * ~120 000 random 4- to 10-point sets with no three points within 20 px of a
+ * line gives 5.9e-7. The threshold sits 5½ orders above rounding and nearly 4
+ * below that worst valid set. In pixels: for points spread over `L` px of a
+ * line and straying up to `b/2` px from it, the smallest pivot ratio scales
+ * as `(b / L)²` — eight points over ~700 px measure `3.2e-6 · b²`, so they
+ * are singular below `b ≈ 0.006 px`, within a few thousandths of a pixel of
+ * the line, and fitted above.
  */
 const SINGULAR_PIVOT_RATIO = 1e-10;
 
