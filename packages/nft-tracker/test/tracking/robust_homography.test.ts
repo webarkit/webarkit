@@ -289,3 +289,118 @@ describe("robustHomography iteration", () => {
         expect(r.converged).toBe(true);
     });
 });
+
+describe("robustHomography degenerate input", () => {
+    const SINGULAR = { ok: false, reason: "singular" };
+    const TOO_FEW_INLIERS = { ok: false, reason: "too-few-inliers" };
+    const IDENTITY: Mat3 = Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+
+    it("fails on collinear points instead of returning garbage", () => {
+        // Ten patch centres along one line of the target.
+        const pts: number[] = [];
+        for (let i = 0; i < 10; i++) {
+            const x = 13.7 + i * 61.3;
+            pts.push(x, 0.37 * x + 21.9);
+        }
+        const src = Float64Array.from(pts);
+        expect(robustHomography(src, projectAll(H_TRUE, src), H_TRUE, OPTIONS)).toEqual(SINGULAR);
+    });
+
+    it("fails on a singular normal system: six correspondences at three distinct points", () => {
+        const three = [100, 100, 500, 120, 300, 400];
+        const src = Float64Array.from([...three, ...three]);
+        expect(robustHomography(src, projectAll(H_TRUE, src), H_TRUE, OPTIONS)).toEqual(SINGULAR);
+    });
+
+    it("fails on four points with three collinear, exact or not", () => {
+        const src = Float64Array.from([100, 100, 300, 200, 500, 300, 150, 400]);
+        const dst = projectAll(H_TRUE, src);
+        // Exact: a one-parameter family of H fits, so the normal system is singular.
+        expect(robustHomography(src, dst, H_TRUE, OPTIONS)).toEqual(SINGULAR);
+        // One of the three moved 0.5 px off its line: no homography keeps
+        // three collinear points off a line, so the DLT's only exact solution
+        // is the rank-1 matrix that sends those three to 0. The normal system
+        // is regular; the fit is what is singular.
+        const off = dst.slice();
+        off[3] += 0.5;
+        expect(robustHomography(src, off, H_TRUE, OPTIONS)).toEqual(SINGULAR);
+    });
+
+    it("counts a set within a thousandth of a pixel of a line as singular, not one within a tenth", () => {
+        // Pins the normal system's threshold rather than only exact
+        // degeneracy, which any pivot test catches. Eight points along a line,
+        // each moved off it by ±band/2 at most: the smallest Cholesky pivot
+        // ratio measures 3.2e-6 · band² (band in px).
+        const alongALine = (band: number): PointArray => {
+            const off = [0.5, -0.5, 0.3, -0.2, 0.4, -0.4, 0.1, -0.3];
+            const pts: number[] = [];
+            for (let i = 0; i < 8; i++)
+                pts.push(20 + 85 * i, 0.6 * (20 + 85 * i) + 40 + band * off[i]);
+            return Float64Array.from(pts);
+        };
+        const thin = alongALine(0.001); // pivot ratio 3.2e-12
+        expect(robustHomography(thin, projectAll(H_TRUE, thin), H_TRUE, OPTIONS)).toEqual(SINGULAR);
+        const narrow = alongALine(0.1); // pivot ratio 3.2e-8
+        const r = robustHomography(narrow, projectAll(H_TRUE, narrow), H_TRUE, OPTIONS);
+        expect(r.ok).toBe(true);
+        if (!r.ok) return;
+        // A condition number near 1/3.2e-8 lets rounding move a point by
+        // ~3e7 · 2.2e-16 · 300 px ≈ 2e-6 px at worst.
+        expect(maxTransferGap(r.H, H_TRUE, narrow)).toBeLessThan(1e-4);
+    });
+
+    it("fails on a fit that maps the target onto a line", () => {
+        // Eight correspondences in general position on the target, all landing
+        // on the line v = u/2 + 10: an edge-on view, fitted only by a rank-2 H.
+        // A tukeyC wider than the frame gives every one of them weight.
+        const src = Float64Array.from([
+            50, 60, 400, 70, 600, 450, 120, 380, 330, 250, 560, 120, 80, 200, 250, 420,
+        ]);
+        const dst = src.map((v, i) => (i % 2 === 0 ? v : 0.5 * src[i - 1] + 10));
+        expect(robustHomography(src, dst, H_TRUE, { ...OPTIONS, tukeyC: 1000 })).toEqual(SINGULAR);
+    });
+
+    it("fails on coincident points", () => {
+        const src = Float64Array.from([320, 240, 320, 240, 320, 240, 320, 240, 320, 240]);
+        expect(robustHomography(src, projectAll(H_TRUE, src), H_TRUE, OPTIONS)).toEqual(SINGULAR);
+        // Or the whole target sent to a single frame point.
+        const grid = targetGrid();
+        const onePoint = grid.map((_, i) => (i % 2 === 0 ? 320 : 240));
+        expect(robustHomography(grid, onePoint, H_TRUE, { ...OPTIONS, tukeyC: 1000 })).toEqual(
+            SINGULAR,
+        );
+    });
+
+    it("fails when fewer than four correspondences start inside tukeyC", () => {
+        const src = targetGrid();
+        const dst = projectAll(H_TRUE, src);
+        // A prediction 50 px off leaves every correspondence outside 4 px.
+        expect(robustHomography(src, dst, chain(translation(50, 0), H_TRUE), OPTIONS)).toEqual(
+            TOO_FEW_INLIERS,
+        );
+        // Three correspondences exact, the other 37 ≈ 14 px off.
+        const three = dst.map((v, i) => (i < 6 ? v : v + 10));
+        expect(robustHomography(src, three, H_TRUE, OPTIONS)).toEqual(TOO_FEW_INLIERS);
+    });
+
+    it("fails when a fit leaves fewer than four inliers", () => {
+        // Three heavy correspondences in a 20 px triangle, each 1 px off the
+        // prediction in a rotational pattern about the triangle's centroid
+        // (weight 0.88), and two light ones 500 px away, 3.99 px off (weight
+        // 6e-6). The first fit follows the triangle's local roll; carried
+        // 500 px, that roll leaves both far points beyond tukeyC.
+        const src = Float64Array.from([100, 100, 120, 100, 100, 120, 600, 400, 600, 100]);
+        const dst = src.slice();
+        const c = 320 / 3;
+        for (let i = 0; i < 3; i++) {
+            const dx = src[2 * i] - c;
+            const dy = src[2 * i + 1] - c;
+            const r = Math.hypot(dx, dy);
+            dst[2 * i] -= dy / r;
+            dst[2 * i + 1] += dx / r;
+        }
+        dst[6] += 3.99;
+        dst[8] += 3.99;
+        expect(robustHomography(src, dst, IDENTITY, OPTIONS)).toEqual(TOO_FEW_INLIERS);
+    });
+});
