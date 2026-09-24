@@ -578,9 +578,9 @@ boxes. Run in this order, with 120 s idle between runs:
 2. `pinball-bench.mp4` (bundled), default box: the session control, against
    the 2026-09-19 value of 18.9 ms.
 3. `static-portrait`, default box: the re-encode control, against run 1.
-4. `static-landscape`, default box (480×270).
-5. `static-portrait`, box 480×480 (270×480).
-6. `static-landscape`, box 360×360 (360×203).
+4. `static-landscape`, default box (480×360), processed at 480×270.
+5. `static-portrait`, box 480×480, processed at 270×480.
+6. `static-landscape`, box 360×360, processed at 360×203.
 7. `wall-native-fps`, default box.
 8. `wall-30fps`, default box.
 9. `pinball-static.mp4` (bundled), default box: the drift check, against
