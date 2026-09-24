@@ -88,9 +88,10 @@ const MIN_EIGENVALUE = 1;
  *    algorithm of the same series' Part 3, which for a translation keeps a
  *    once-built Hessian too ({@link alignmentSystem}).
  * 4. **Coarse to fine.** Start on the level where one patch pixel is one
- *    level pixel; then refine on the finest usable level, read through
- *    footprints that blur it as the pyramid would down to the patch's scale
- *    ({@link startLevel}, {@link footprint}).
+ *    level pixel; then refine on the finest level usable at the estimate
+ *    that start reached, read through footprints that blur it as the pyramid
+ *    would down to the patch's scale ({@link startLevel},
+ *    {@link finestUsable}, {@link footprint}).
  * 5. **The convergence test and the cap.** A level ends when a translation
  *    step is below `epsilon` in that level's px, or after `maxIterations`
  *    steps. `converged` is the finest level's, since the result is that
@@ -100,12 +101,18 @@ const MIN_EIGENVALUE = 1;
  *    alignments from 2 px off converged within a cap of 30, at `σ` 1 and 2.
  *    `epsilon` is in the finest level's px, so for a magnified patch it is a
  *    finer tolerance in patch px (0.01 frame px is 0.005 patch px at
- *    `σ = 2`) — tight, but met. A step that moves the window out of the
- *    level being aligned fails `outside-frame`: the alignment's own estimate
- *    then puts the patch where that level cannot evaluate it.
+ *    `σ = 2`) — tight, but met. A step that would take the window out of the
+ *    level being aligned is halved until it stays in, and the level ends,
+ *    unconverged, when not even 1/1024 of it does. Convergence is still
+ *    judged on the full step: against an edge the truth lies beyond, the full
+ *    step keeps pointing out and the result says `converged: false`, where
+ *    judging the shortened step reported a window stopped 2 px short of the
+ *    truth as converged (align_patch.test.ts).
  * 6. **Failures**, checked in the order the union declares them, every one
- *    before the iteration starts except `outside-frame` from a step and
- *    `singular` from a gain collapsing to 0. No input reaches `levelScale`'s
+ *    before the iteration starts except `singular` from a gain collapsing to
+ *    0. `outside-frame` is exactly types.ts's "no frame level is usable", at
+ *    the prediction: an estimate that later reaches an edge shortens its
+ *    steps (point 5) instead of failing. No input reaches `levelScale`'s
  *    throw ({@link validPatch}, {@link validPyramid}). With gain and bias
  *    estimated, `singular` is therefore also how an alignment that *loses*
  *    its patch ends: drifted onto content without the patch's contrast, the
@@ -158,7 +165,8 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
     // which image is sampled.
     //
     // Coarse to fine is two levels: the start level (startLevel), then the
-    // finest usable one, read through footprints when it is finer than the
+    // finest one usable at the estimate the start level reached
+    // (finestUsable), read through footprints when it is finer than the
     // patch (footprint). The levels in between are skipped: the footprint
     // already makes the finest level look like the start level, so visiting
     // them changed neither accuracy nor the basin, and cost iterations
@@ -174,11 +182,21 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
     let iterations = 0;
     let converged = false;
     let level = start;
-    for (const l of start === usable[0] ? [start] : [start, usable[0]]) {
+    for (let pass = 0; pass < 2; pass++) {
+        // Pass 0 aligns on the start level, which holds the window at the
+        // prediction (it is usable). Pass 1 refines on the finest level that
+        // holds it at the estimate pass 0 reached. Near a frame edge there
+        // may be none finer than the start level, since a finer level is read
+        // through footprints that reach further than points; the result is
+        // then the start level's.
+        let l = start;
+        if (pass === 1) {
+            l = finestUsable(frame, frameScales, window, dx, dy, start);
+            if (l < 0) break;
+        }
         level = l;
         const fp = footprint(frame, frameScales, l, window);
         const reach = fp === null ? 0 : fp.halfWidth;
-        if (!inside(frame, frameScales, l, window, dx, dy, reach)) return fail("outside-frame");
         const img = frame.levels[l];
         const s = frameScales[l];
         converged = false;
@@ -200,20 +218,34 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
             // (see alignmentSystem), so its step is H₀'s divided by it.
             const stepX = b[0] / gain;
             const stepY = b[1] / gain;
-            dx -= stepX;
-            dy -= stepY;
             iterations++;
-            if (system.size === 4) {
-                gain += b[2];
-                bias += b[3];
-                // The information left for the translation is gain² times
-                // the patch's own: a frame region with no contrast drives the
-                // gain to 0 and the system singular.
-                if (!(gain > 0 && gain * gain * information >= MIN_EIGENVALUE)) {
-                    return fail("singular");
-                }
+            // A step that would take the window out of this level is
+            // shortened, halving, until it stays in: "outside-frame" means no
+            // level can hold the window (types.ts), and the level still holds
+            // it here. If not even 1/1024 of the step fits, the estimate is on
+            // the level's edge already: the level ends there, unconverged.
+            let f = 1;
+            while (!inside(frame, frameScales, l, window, dx - f * stepX, dy - f * stepY, reach)) {
+                f /= 2;
+                if (f < 1 / 1024) break;
             }
-            if (!inside(frame, frameScales, l, window, dx, dy, reach)) return fail("outside-frame");
+            if (f < 1 / 1024) break;
+            const nextGain = system.size === 4 ? gain + f * b[2] : gain;
+            const nextBias = system.size === 4 ? bias + f * b[3] : bias;
+            // The information left for the translation is gain² times the
+            // patch's own: a frame region with no contrast drives the gain to
+            // 0 and the system singular.
+            if (!(nextGain > 0 && nextGain * nextGain * information >= MIN_EIGENVALUE)) {
+                return fail("singular");
+            }
+            dx -= f * stepX;
+            dy -= f * stepY;
+            gain = nextGain;
+            bias = nextBias;
+            // Judged on the full step, as the contract words it: shortening
+            // cannot fake convergence at an edge the truth lies beyond, where
+            // the full step keeps pointing out; a truth on the edge itself
+            // still converges, its full steps shrinking to nothing.
             if (s * Math.sqrt(stepX * stepX + stepY * stepY) < options.epsilon) {
                 converged = true;
                 break;
@@ -442,6 +474,28 @@ function startLevel(usable: number[], scales: Float64Array, scaleAtCentre: numbe
         }
     }
     return best;
+}
+
+/**
+ * The finest level below `below` that holds everything the window reads
+ * once moved by `(dx, dy)` level-0 px, or −1 if none does.
+ */
+function finestUsable(
+    frame: FramePyramid,
+    scales: Float64Array,
+    window: Window,
+    dx: number,
+    dy: number,
+    below: number,
+): number {
+    for (let l = 0; l < below; l++) {
+        if (
+            inside(frame, scales, l, window, dx, dy, footprintHalfWidth(frame, scales, l, window))
+        ) {
+            return l;
+        }
+    }
+    return -1;
 }
 
 /**

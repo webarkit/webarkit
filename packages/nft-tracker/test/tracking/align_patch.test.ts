@@ -231,6 +231,49 @@ describe("alignPatch: a window outside the frame", () => {
             "outside-frame",
         );
     });
+
+    it("fails only when no level can hold the window: a patch on a coarse level's edge still aligns there", () => {
+        // A level-3 patch flush with level 3's right edge (columns 87..94 of
+        // 95), seen at twice its scale, so coarse to fine starts on level 3.
+        // From 1–3 px left of the truth, level 0 can hold the window at the
+        // prediction; once level 3 has brought it back to the edge, level
+        // 0's footprints would reach past the frame. Level 3 still holds it,
+        // so that is not "no frame level is usable": the result is level 3's,
+        // converged (measured: within 0.02 px, in 6 or 7 iterations).
+        const wide = pyramidOf(textured(192, 144), 6);
+        expect(wide.levels[3].width).toBe(95);
+        const flush = cutPatches(wide, P, [{ level: 3, left: 87, top: 30 }]);
+        const exact = alignPatch(wide, flush, 0, STEP, IDENTITY, OPTIONS);
+        expect(exact.ok && exact.observation.frameLevel).toBe(3);
+        for (const d of [1, 2, 3]) {
+            const r = alignPatch(wide, flush, 0, STEP, translation(-d, 0), OPTIONS);
+            if (!r.ok) throw new Error(`${d} px off: ${r.reason}`);
+            const [x, y] = [(87 + 3.5) / 0.5, (30 + 3.5) / 0.5];
+            expect(Math.hypot(r.observation.x - x, r.observation.y - y)).toBeLessThan(0.5);
+            expect(r.observation.converged).toBe(true);
+            expect(r.observation.frameLevel).toBe(3);
+        }
+    });
+
+    it("does not report convergence against an edge the truth lies beyond (2–4 px short)", () => {
+        // The frame is the left 192 columns of a wider copy of the texture, and
+        // the patch's true window (columns 186..193 of the copy) reaches two
+        // columns past it. Predicted 2 to 4 px short of the truth, the window
+        // fits; the alignment pulls it out towards the truth, steps are cut
+        // short at the edge, and the full step never falls below epsilon.
+        // Judging convergence on the step actually taken instead would
+        // report 4 px short as converged, at the edge (x = 187.50).
+        const wide = pyramidOf(textured(192, 144), 6);
+        const wider = pyramidOf(textured(200, 144), 6);
+        const beyond = cutPatches(wider, P, [{ level: 0, left: 186, top: 30 }]);
+        for (const short of [2, 2.5, 3, 4]) {
+            const r = alignPatch(wide, beyond, 0, STEP, translation(-short, 0), OPTIONS);
+            if (!r.ok) throw new Error(`${short} px short: ${r.reason}`);
+            expect(r.observation.converged).toBe(false);
+            // The window stopped at the edge, or before it.
+            expect(r.observation.x + 3.5).toBeLessThanOrEqual(191 + 1e-9);
+        }
+    });
 });
 
 describe("alignPatch: a singular system", () => {
