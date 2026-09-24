@@ -138,6 +138,14 @@ design decision (that planning belongs to M2 itself, not here):
   it is downscaled to — so it is addressed by downscaling *before*
   acquisition (constraining what the camera or decoder delivers), not after
   it the way this benchmark's own `PROC_WIDTH`/`PROC_HEIGHT` box does today.
+- *Added 2026-09-24, from the rear-camera runs ("Webcam: `acquire` without a
+  video decoder" below):* on the real camera path, `acquire` is **23 ms p50**.
+  Once tracking removes `match`, `describe` and `detect` from tracking-state
+  frames, 23 ms of the 33 ms budget is already spent acquiring the frame.
+  That leaves **about 10 ms** for the tracker itself. It is tighter than the
+  roughly 14 ms that this baseline's wall-clip `acquire` (18.9 ms) appeared
+  to leave. And it means ADR-0001 point 5's 8 ms p95 threshold for
+  tracker-side compute is close to all the room there is.
 
 ### A second on-device sample: Oppo A72
 
@@ -529,6 +537,12 @@ to be worth keeping (see AGENTS.md's "Test assets").
 
 ## 2026-09-24 — Separating the portrait `acquire` gap
 
+> **Lower priority since the webcam runs** (next section): the footage
+> question this section ends on is still open. But it only matters on the
+> file path. The camera path decodes no video, and it is the path a tracker
+> actually runs on. Don't spend another session on it before the
+> camera-path work.
+
 These runs address the open question above: why a portrait source costs about
 twice as much to acquire. The plan and its decision rules were written
 **before** any of the runs. Results follow at the end of this section.
@@ -720,3 +734,78 @@ duplicated frames.
   here). Until the tension above is resolved, that is a lead, not a
   mechanism. The `acquire` bullet under "What this implies for M2" suggests
   lowering decode resolution on other grounds.
+
+## 2026-09-24 — Webcam: `acquire` without a video decoder
+
+Two runs on the tablet's **rear camera**, the first runs in this directory
+whose source is a camera rather than a file. Both are from `Tab_9_WiFi`, in
+the same session, seven minutes apart (exported 15:39:50 and 15:47:39 UTC).
+They were started by hand on the tablet, not by the automated driver.
+
+**Device label correction.** `...-webcam-1.json` has an empty `deviceLabel`,
+because the field had not been filled in yet. `...-webcam-2.json` reads
+`Tab9 wifi`. Both are `Tab_9_WiFi`: the `userAgent` is the tablet's
+(`Android 10; K ... Chrome/153.0.0.0`), and so is the camera, recorded by
+the page as `"camera 0, facing back"`. As with the relabelled laptop exports
+above, the raw files are left as exported and the correction lives here.
+
+**What makes these different from every run so far:** no video decoder is
+involved. The camera opened the stream at **360×480**, which was downscaled
+into the 480×360 processing box to **270×360**. It ran at 30 fps
+(`frameRate` in the export's new `camera` field, and `facingMode`
+`environment` confirms the rear camera). The runs used `maxKeypoints` 300,
+`stateless` mode and 120 frames.
+
+| stage (p50, ms) | webcam 1 | webcam 2 |
+|---|---|---|
+| acquire | **23.0** (p95 28.0) | **23.0** (p95 28.3) |
+| gray | 1.2 | 1.2 |
+| detect | 7.1 | 7.6 |
+| describe | 10.3 | 10.3 |
+| match | 64.0 | 64.0 |
+| estimateHomography | 1.8 | 2.0 |
+| **total** | **109.0** | **109.7** |
+
+Both runs locked on 120/120 frames, with `numSceneKeypoints` at 300 on every
+frame. `acquire` shows no warm-up drift: its p50 over the first and last 30
+frames is 23.1 vs 23.0 ms (run 1) and 23.0 vs 23.0 ms (run 2). `match` and
+`describe` land on the sweep's 300-keypoint values (63.9 and 10.1 ms), as
+the sweep's result predicts for any scene that fills the budget.
+
+Raw files: `2026-09-24-tab9-ondevice-stateless-webcam-1.json` and `-2.json`.
+
+**What they answer:**
+
+- **Roughly 13 ms of the static clip's `acquire` was the file path.** The
+  static clip measured 35.8 ms; the camera measures 23.0 ms. The file path
+  means decoding, plus drawing from a larger source frame (921,600 against
+  172,800 pixels). The acquire-gap runs make the source size the weaker of
+  the two: at an identical 1280×720 format, the two footages still differed
+  by 2×.
+- **The remaining 23 ms is real.** It is paid on a source that is already
+  small, with no decoder in the path, and while *writing more* output pixels
+  than the static clip (97,200 against 73,080). That points at the
+  `getImageData` readback rather than the `drawImage` downscale. **This has
+  not been tested**; it is where to look first.
+- **The footage question from the acquire-gap runs stays open, but is now
+  low value.** The camera path does not decode video at all, so whatever
+  makes one file's frames dearer to decode than another's does not reach a
+  tracker running on a camera. Don't spend another session on it before the
+  camera-path work.
+
+**Their limit.** Unlike the bundled clips, these runs cannot be reproduced.
+Framing, exposure and focus differ from one session to the next, and the
+scene is whatever was in front of the camera. They estimate the real cost of
+acquisition on this device, and they must **not** be used to compare
+tracker versions. That comparison belongs on the bundled clips.
+
+**Their consequence for M2**, also recorded under "What this implies for
+M2" above:
+
+- Once tracking removes `match`, `describe` and `detect` from tracking-state
+  frames, 23 ms of the 33 ms budget is already spent on acquisition.
+- That leaves about **10 ms** for the tracker itself, tighter than the
+  roughly 14 ms the 2026-09-19 wall-clip `acquire` (18.9 ms) appeared to
+  leave.
+- ADR-0001 point 5's **8 ms p95** threshold for tracker-side compute is
+  therefore close to all the room there is.
