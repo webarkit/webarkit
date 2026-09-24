@@ -203,3 +203,322 @@ future change that looks like an improvement on a desktop run but doesn't
 move the on-device number is not the improvement it appears to be. Treat
 "laptop" as a fast, convenient smoke-test tier, and `Tab_9_WiFi`, run
 on-device, as the only one item 5's thresholds can ever be evaluated against.
+
+## 2026-09-24 — `maxKeypoints` sweep (M2: patch tracking)
+
+A measurement plan, written down **before** any of its runs, so the result
+can be read against what was predicted rather than explained after the
+fact. The plan below is left as it was written. The runs were made the same
+day, and their results are in [Results](#results) at the end of this section.
+No numbers in the plan itself are measurements unless they say so.
+
+### The hypothesis
+
+From "What this implies for M2" above: `match` cost tracks the scene
+keypoint budget (`maxKeypoints`, 300 today), not scene content. The
+mechanism behind it is the backend's `match`, a brute-force k=2 nearest-neighbour
+search followed by Lowe's ratio test. `matchPerLevel` runs it once per target
+level, so a frame costs about (scene keypoints) × (target descriptors)
+Hamming distances, and the target side is fixed for the whole run. If the
+hypothesis holds, `match` p50 is close to proportional to the number of scene
+keypoints and nearly independent of what the frame shows.
+
+The precise form is that `match` tracks `numSceneKeypoints`, what `detect`
+returned. The budget only controls that when it *binds*, i.e. when the frame
+has more corners than the budget. `bench-nft.html` now records both (the
+run's `maxKeypoints` and each frame's `numSceneKeypoints`), because without
+the second one a slow frame on a corner-poor scene cannot be told apart from
+a slow frame on a full budget.
+
+**A caveat on the evidence the hypothesis came from.** The wall and table
+clips' near-identical `match` (62.7 vs 64.1 ms) was read as "the budget
+dominates". A corner count taken since then (below) shows that on the wall
+clip a budget of 300 binds on only about half the frames. That run's median
+frame had around 280 scene keypoints, not 300. That is still consistent with
+the hypothesis, but the comparison could not have separated "tracks the
+budget" from "tracks whatever `detect` returned". The sweep below can.
+
+### Pre-flight: where the budget binds, per clip
+
+This is a count, not a timing: `maxKeypoints=100000` (so effectively no cap),
+`stateless`, a 400-frame window covering each clip's full loop, headless
+desktop Chrome on a Windows desktop PC — **not** on `Tab_9_WiFi`. `detect` is
+deterministic on identical pixels, but the tablet's `drawImage` downscale can
+differ from the desktop's by a pixel's worth of filtering, so treat these as
+approximate. The on-device export's `numSceneKeypoints` is the authority. No
+timing from that desktop run is quoted anywhere in this plan.
+
+| clip | processed at | corners found per frame (min / p5 / p50 / max) | frames where 300 binds |
+|---|---|---|---|
+| `pinball-bench.mp4` (wall, moving) | 480×270 | 134 / 144 / 282 / 951 | 46% |
+| `pinball-bench-table.mp4` (table, oblique) | 203×360 | 355 / 371 / 548 / 1217 | 100% |
+| `pinball-static.mp4` (wall, fixed camera) | 203×360 | 1210 / 1231 / 1262 / 1313 | 100% |
+
+### The runs
+
+- **Device:** `Tab_9_WiFi`, the ADR-0001 reference device, run **on the
+  device's own Chrome** over `adb reverse`, exactly as the 2026-09-19
+  baseline was. Check `userAgent` in each export for `Android`: the laptop
+  mix-up recorded above is the failure this guards against. Device label
+  `Tab_9_WiFi`.
+- **Mode:** `stateless` (same as the baseline). **Window:** 120 frames.
+  **start at:** 0.
+- **Clips:**
+  - `pinball-static.mp4` is the primary. The content is identical on every
+    frame and the budget binds on every frame at every value below, so the
+    budget is the only thing that varies.
+  - `pinball-bench-table.mp4` is the content control. It is processed at the
+    same 203×360, and the budget also binds on every frame (≥355 corners),
+    but the scene is different.
+  - Not the wall clip: it does not fill a 300 or 200 budget on about half of
+    its frames, and not a 150 budget on about one in ten.
+- **Values:** `maxKeypoints` = 300 (default and anchor), 200, 150, 100.
+- **Order:** static 300 → 100 → 200 → 150, then table 300 → 100 → 200 → 150,
+  then **static 300 again**. Nine runs. The order is shuffled so that thermal
+  drift over the session doesn't line up with the budget. The final repeat
+  is the check for drift.
+- **Between runs:** load the page fresh with the value in the URL
+  (`bench-nft.html?maxKeypoints=150`), so every run starts from a cold page
+  the way the baseline did. Leave about two minutes idle between runs, with
+  the same charging state throughout.
+- **Raw files:**
+  `YYYY-MM-DD-tab9-ondevice-stateless-<static|table>-mk<N>.json`, and the
+  repeat as `...-static-mk300-repeat.json`.
+
+### Validity checks (before reading any timing)
+
+1. `numSceneKeypoints === maxKeypoints` on at least 95% of a run's frames. A
+   run that fails this is not evidence either way: the budget did not bind.
+2. The repeat static-300 run's `match` p50 is within ±10% of the first
+   static-300 run. Otherwise the session drifted (thermal throttling or
+   background load) and the sweep is **inconclusive**, not falsified. Rerun
+   with longer idle gaps.
+
+### What each run should show if the hypothesis holds
+
+The prediction is proportional, anchored on the one on-device run where 300
+is known to have bound on every frame: the table clip's `match` p50 of
+64.1 ms, which is ≈ 0.214 ms per scene keypoint. `describe` computes one
+descriptor per keypoint, so it should scale the same way, from its 10.1 ms
+anchor.
+
+| `maxKeypoints` | `match` p50, predicted (both clips) | `describe` p50, predicted |
+|---|---|---|
+| 300 | ≈ 64 ms | ≈ 10.1 ms |
+| 200 | ≈ 43 ms | ≈ 6.7 ms |
+| 150 | ≈ 32 ms | ≈ 5.1 ms |
+| 100 | ≈ 21 ms | ≈ 3.4 ms |
+
+In concrete terms, the hypothesis **holds** if both of these do:
+
+- **Proportional:** on each clip, `match` p50 ÷ `maxKeypoints` stays within
+  ±15% of its mean across the four values. A straight-line fit through the
+  four points then has an intercept of a few ms, not tens of ms.
+- **Content-independent:** at the same budget, the static and table clips'
+  `match` p50 are within ±10% of each other. This holds even though their
+  scenes differ, and even though `detect` does not match between them (the
+  static clip has more than twice as many corners to find and sort, so its
+  `detect` should cost more; the hypothesis says nothing about `detect`).
+
+`acquire` and `gray` should not move with the budget. `detect` should move
+only slightly: FAST and the score sort run over every corner found, whatever
+the budget. Only the orientation computed for each *kept* keypoint scales
+with the budget.
+
+### What would falsify it
+
+- **A large fixed cost:** `match` p50 at 100 is **≥ 50%** of its value at 300
+  on either clip. Proportional scaling predicts 33%. Reaching 50% needs a
+  fixed component of at least about a quarter of the 300-keypoint cost, which
+  is per-call or per-level overhead that no budget reduces. The budget would
+  then be a weaker lever than it looks.
+- **A content effect:** at the same binding budget, the static and table
+  clips' `match` p50 differ by **more than 20%**. Something other than the
+  keypoint count would then be driving the cost. The candidates are the
+  ratio-test and per-level merge work, which scale with how many matches
+  survive rather than with how many keypoints were searched.
+- **Non-monotonic results:** a lower budget costs more than a higher one on
+  the same clip, beyond the drift the repeat run shows.
+
+Results between the "holds" and "falsified" thresholds (for example, a 12–20%
+difference between clips) are to be reported as inconclusive, not rounded
+toward either side.
+
+### Recorded alongside, not part of the test
+
+Lowering the budget is only useful if tracking survives it. For each run,
+also note the lock rate (`ok` frames out of all frames) and the `numInliers`
+p50. The static clip is expected to lock at every budget and so says little
+about this. The table clip is the harder scene and the one where a lower
+budget could start costing locks. That trade-off is an M2 design question,
+and this sweep only supplies its inputs.
+
+### Results
+
+Run on 2026-09-24 on `Tab_9_WiFi`, in the tablet's own Chrome (`userAgent`:
+`Mozilla/5.0 (Linux; Android 10; K) ... Chrome/153.0.0.0`), over USB. The
+page was served from a desktop PC and reached through `adb reverse`.
+
+**How the runs were made.** A script started the nine sweep runs through the
+DevTools protocol, which the tablet's Chrome exposes over USB on
+`localabstract:chrome_devtools_remote`. For each run the script:
+
+- loaded the page fresh with `?maxKeypoints=N`;
+- set the controls exactly as "The runs" lists them and pressed Start;
+- stopped the run once the 120-frame window was full;
+- saved the page's own export unchanged, i.e. the file "Download JSON" would
+  have produced.
+
+While a run was going, the script read one text field from the page every
+2 s. Between runs the tab sat on an idle page for 120 s. That page held a
+screen wake lock, because the tablet's screen turns off after 30 s and
+Chrome pauses video when it does.
+
+**One deviation from the plan:** the static-150 run failed twice at page
+start-up, before any timed code ran. It was retried at the end of the session
+(after the repeat), not in its planned slot.
+
+**The manual runs.** Five runs were started by hand before the sweep:
+`...-static-mk300-manual-1.json` to `...-manual-5.json`. They were all made
+in one page load (Start/Stop repeated without a reload), with the device label
+typed as `Tab9 wifi`. They are the evidence for repeatability, and the check
+that starting runs by script doesn't change the numbers:
+
+- The manual runs' `match` p50 is 64.8, 64.1, 63.3, 63.4 and 63.4 ms.
+- The script's static-300 runs gave 63.9 ms and 64.3 ms.
+- `manual-1` is the only run stopped early (73 frames), and it holds the
+  largest single `match` time in the set (171.0 ms).
+
+The server used for the manual runs did not support HTTP range requests, so
+the video stalled briefly at every loop. A stall makes a window take longer
+to fill, but it adds no frames:
+`requestVideoFrameCallback` only fires on a frame actually presented. The
+sweep was served with range support.
+
+**Validity checks: all pass.**
+
+- All nine sweep runs report an Android `userAgent`, `stateless` mode, start
+  at 0 and 120 frames.
+- `numSceneKeypoints === maxKeypoints` on **100%** of frames in every run,
+  not just the required 95%.
+- The repeat static-300 run's `match` p50 is 64.3 ms against 63.9 ms, a drift
+  of **+0.6%**. The limit was ±10%.
+
+| clip | `maxKeypoints` | match p50 (p95) | describe | detect | acquire | total | locked |
+|---|---|---|---|---|---|---|---|
+| static | 300 | **63.9** (68.6) | 10.1 | 7.2 | 35.9 | 120.2 | 120/120 |
+| static | 200 | **43.1** (47.5) | 6.9 | 6.8 | 36.4 | 95.8 | 120/120 |
+| static | 150 | **32.3** (37.2) | 5.2 | 6.6 | 36.0 | 82.6 | 120/120 |
+| static | 100 | **21.8** (27.2) | 3.6 | 6.4 | 36.2 | 70.4 | 120/120 |
+| static | 300 (repeat) | 64.3 (68.5) | 10.1 | 7.2 | 36.2 | 120.7 | 120/120 |
+| table | 300 | **63.9** (68.7) | 10.1 | 4.7 | 40.1 | 122.5 | 113/120 |
+| table | 200 | **43.0** (47.7) | 6.8 | 4.3 | 40.0 | 97.0 | 108/120 |
+| table | 150 | **32.6** (38.1) | 5.2 | 4.0 | 39.9 | 85.3 | 97/120 |
+| table | 100 | **21.8** (27.3) | 3.6 | 3.9 | 39.1 | 71.4 | 96/120 |
+
+All timings are p50 in ms unless marked. Raw files:
+`2026-09-24-tab9-ondevice-stateless-<static|table>-mk<N>.json`,
+`...-static-mk300-repeat.json`, and `...-static-mk300-manual-<1-5>.json`.
+
+**Against the plan's criteria, the hypothesis holds:**
+
+- **Proportional.** `match` p50 ÷ `maxKeypoints` is 0.2130–0.2180 ms on
+  both clips. That is within **±1.3%** of its mean, against the ±15%
+  threshold. Fitting a straight line through the four points gives
+  `match ≈ 0.8 ms + 0.211 ms × N` (static) and `0.9 ms + 0.210 ms × N`
+  (table). The fixed part is under 1 ms.
+- **Content-independent.** At every value, the static and table clips'
+  `match` p50 agree within **0.9%** (threshold ±10%). This holds even though
+  their `detect` differs by 2–3 ms: the static clip has more than twice as
+  many corners to find.
+- **The falsification test.** `match` at 100 is **34.1%** of its value at
+  300 on both clips. Proportional scaling predicted 33%; the plan counted
+  ≥ 50% as falsifying.
+- **The predicted values.** The plan predicted about 64 / 43 / 32 / 21 ms for
+  `match` and 10.1 / 6.7 / 5.1 / 3.4 ms for `describe`. Every measured value
+  is within about 1 ms of those.
+- **Against the 2026-09-19 baseline.** The table clip at 300 gave 63.9 ms
+  here and 64.1 ms five days earlier.
+
+**What the numbers show beyond the hypothesis.** These are facts for M2 to
+design from, not decisions:
+
+- On this device, `match` costs about **0.21 ms per scene keypoint**. The
+  scene doesn't matter, and there is no meaningful fixed cost. The budget is a
+  linear dial on the largest stage.
+- **Lowering the budget alone does not reach the 33 ms frame budget.** At 100,
+  `total` is still 70–71 ms. `acquire` (36–40 ms) does not move with the
+  budget, and below about 170 keypoints it is larger than `match`. Past that
+  point, the next saving is in acquisition, not matching (see the
+  `acquire` bullet under "What this implies for M2").
+- **Tracking pays for a lower budget on the hard scene:**
+  - The table clip locks on 113 → 108 → 97 → 96 frames out of 120 for
+    300 → 200 → 150 → 100. The losses are almost all `too-few-matches`, and
+    inliers p50 falls from 34 to 17.
+  - The static clip locks on every frame at every value, while its inliers
+    fall from 93 to 34.
+
+  Halving `match` time from 300 to 150 costs the oblique scene about one lock
+  in seven.
+
+**Limits of this result:** one run per value (the manual runs and the repeat
+put run-to-run noise at about ±1–2%), and one device.
+
+### Open question: why does a portrait source cost twice as much to acquire?
+
+This is recorded as a question, not a finding. It matters because `acquire`
+is now the largest stage below about 170 keypoints (see Results). The
+answer decides the fix: a different acquisition path, or a different
+processing box.
+
+**The observation.** `acquire` times `new OffscreenCanvas`, `getContext`,
+`drawImage(video)` (the downscale) and `getImageData` (the readback), in
+`examples/js/pinball-shared.mjs`'s `toGrayTimed`. On `Tab_9_WiFi` its p50 is:
+
+| clip | native frame | pixels | fps | processing box | `acquire` p50 | `gray` p50 |
+|---|---|---|---|---|---|---|
+| wall, `pinball-bench.mp4` (2026-09-19) | 1280×720, landscape | 921,600 | 24.9 | 480×270 (129,600 px) | 18.9 | 1.5 |
+| static, `pinball-static.mp4` (sweep) | 720×1280, portrait | 921,600 | 30 | 203×360 (73,080 px) | 35.9–36.4 | 0.9 |
+| table, `pinball-bench-table.mp4` (sweep) | 1080×1920, portrait | 2,073,600 | 30 | 203×360 (73,080 px) | 39.1–40.1 | 0.9 |
+
+The wall and static clips have the same pixel count, yet the static one costs
+about twice as much to acquire. It also produces *fewer* output pixels, so
+it should be cheaper to read back, not dearer. Earlier sections explain
+`acquire` as tracking native frame size (the table-clip section, and the
+`acquire` bullet under "What this implies for M2"). That explains neither
+this 2× gap nor the table clip: it has 2.25× the static clip's pixels and
+costs only about 10% more.
+
+The stage after the readback behaves as expected. `gray` runs on the output
+pixels and scales with the processing box (0.9 ÷ 1.5 ≈ 0.56 ÷ 1), so the gap
+is inside `acquire`.
+
+**What differs between the wall and static clips, none of it tested yet:**
+
+- **Orientation:** portrait versus landscape frame layout, through the
+  decoder and `drawImage`.
+- **Frame rate:** 30 fps versus 24.9 fps. That is more decoding per second
+  competing with the main thread, and a different
+  `requestVideoFrameCallback` cadence.
+- **Downscale ratio:** 0.28 versus 0.375, which may take a different scaling
+  path.
+- **Session:** the two were measured five days apart. On its own this seems
+  an unlikely explanation for 2×, because the table clip measured 37.0 ms on
+  2026-09-19 and 39.1–40.1 ms here (a 6–8% drift). It is still a confound.
+
+The manual static-300 runs are left out of this comparison. Their `acquire`
+is much noisier (30.8–47.1 ms p50), and they were served without HTTP range
+support, which stalled the video at every loop.
+
+**What would separate these.** Each is a single run on `Tab_9_WiFi`, none
+of them made yet:
+
+1. The static footage re-encoded as a landscape frame: the same pixels,
+   frame rate and content, only the orientation changed.
+2. The wall footage re-encoded at 30 fps: the same orientation, only the
+   frame rate changed.
+3. The wall clip rerun in the same session as (1) and (2), to remove the
+   five-day gap.
+
+The first two would be test media, not bundled clips, unless they turn out
+to be worth keeping (see AGENTS.md's "Test assets").
