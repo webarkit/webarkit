@@ -103,6 +103,18 @@ const MAX_SIDE = 0xffff;
  * only at chosen centres in the neighbouring cells of a grid of
  * `minSpacing`-sized cells, so a large budget stays linear. An offline
  * cost, paid once per compiled target.
+ *
+ * **No bound here, on purpose.** On a fully textured level every window can
+ * clear `minScore`, so candidate memory is bounded only by the window count,
+ * and nothing here refuses a large one. The bound lives in the caller:
+ * selection runs at compile time, on an image the developer chose, and
+ * `compile-target` knows the image size and options, so it refuses an
+ * oversized combination before calling (`MAX_PATCH_WINDOWS` in
+ * `bin/compile-target.mjs`). Refusing here would need a new
+ * `PatchSelectionFailure` reason, a change to the contract the #48 branches
+ * share. **Reopen when** the compiler runs in the browser on arbitrary user
+ * images (M5): this function then receives uncontrolled input, and an
+ * explicit failure reason for an oversized pyramid is justified.
  */
 export const selectPatches: SelectPatches = (target, options) => {
     if (!validOptions(options)) return { ok: false, reason: "invalid-options" };

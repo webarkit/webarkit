@@ -90,6 +90,7 @@ import {
     DEFAULT_LIMITS,
     DEFAULT_TARGET_LEVELS,
     encode,
+    levelScale,
     selectPatches,
 } from "../dist/index.js";
 import { grayFromJpegFile } from "./image.mjs";
@@ -174,6 +175,44 @@ const PATCH_PYRAMID = "stand-in: bin/target-pyramid.mjs, area-weighted box";
  * `select_patches.ts`, and a compiler that normalised differently would
  * write numbers on another scale into the same field unnoticed.
  */
+/**
+ * The most patch windows `compile-target` lets `selectPatches` score: 2^23.
+ *
+ * `selectPatches` keeps every window scoring at least `--patch-min-score`
+ * as a candidate, and on a fully textured image that can be every window,
+ * whatever the threshold. Measured on noise at `--patch-min-score 0` (the
+ * worst case, and the one a threshold cannot be relied on to avoid): about
+ * 30 bytes and 0.55 s per million windows, so this cap is roughly 250 MB and
+ * 5 s. The default 640-px cap at three levels is about 0.63 M windows.
+ *
+ * The bound lives here, not in `selectPatches`: see the note on its cost in
+ * `src/tracking/select_patches.ts` for why, and for when that changes.
+ */
+const MAX_PATCH_WINDOWS = 2 ** 23;
+
+/**
+ * How many `P × P` windows `selectPatches` will score on the first
+ * `patchLevels` levels of a `width × height` target: each level at the size
+ * `ImagePyramid` defines, `(w · s_l) | 0` × `(h · s_l) | 0`. An upper bound,
+ * since the target may end up with fewer levels than asked for.
+ *
+ * The loop stops at the first level smaller than 1 × 1, which comes long
+ * before `s_l` could underflow, and at level 255, the last a `.wnft` can
+ * name (`level` is `u8`, §5.7), so `levelScale` is never handed an argument
+ * it throws on.
+ */
+function patchWindows(width, height, scaleStep, patchLevels, P) {
+    let windows = 0;
+    for (let l = 0; l < Math.min(patchLevels, 256); l++) {
+        const s = levelScale(scaleStep, l);
+        const w = (width * s) | 0;
+        const h = (height * s) | 0;
+        if (w < 1 || h < 1) break;
+        if (w >= P && h >= P) windows += (w - P + 1) * (h - P + 1);
+    }
+    return windows;
+}
+
 const PATCH_SCORE =
     "lambda-min of the mean structure tensor over the window interior, " +
     "central differences, (grey levels / level-0 px)^2";
@@ -470,6 +509,31 @@ async function main(argv) {
     }
 
     const image = grayFromJpegFile(fromInvocation(options.image), options.maxSide);
+
+    // Refused before the backend runs, so an oversized compile fails in the
+    // time it takes to decode the image rather than after detection.
+    if (options.maxPatches !== 0) {
+        const patchLevels = Math.min(options.patchLevels, options.levels);
+        const windows = patchWindows(
+            image.width,
+            image.height,
+            options.scaleStep,
+            patchLevels,
+            options.patchSize,
+        );
+        if (windows > MAX_PATCH_WINDOWS) {
+            throw new UsageError(
+                `tracking patches would score ${windows} windows on a ` +
+                    `${image.width}x${image.height} image at --patch-levels ${patchLevels} ` +
+                    `and --patch-size ${options.patchSize}, over the limit of ` +
+                    `${MAX_PATCH_WINDOWS}. Use a smaller --max-side or fewer --patch-levels ` +
+                    `(or --patches 0 for a detection-only target). A higher ` +
+                    `--patch-min-score keeps fewer candidates on most images, but cannot ` +
+                    `lift this limit: on a fully textured image every window can qualify.`,
+            );
+        }
+    }
+
     const cv = await createJsfeatNextBackend();
 
     const patchSpacing =

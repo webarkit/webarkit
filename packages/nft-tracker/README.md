@@ -199,6 +199,16 @@ level-0 units so patches from different levels compete fairly. Fewer than four
 qualifying patches is an error that names `--patches 0` as the way out, not a
 target silently compiled without tracking.
 
+**Selection scores every window, so the compiler caps them.** A combination of
+image size, `--patch-levels` and `--patch-size` that would score more than
+2^23 windows (about 250 MB and 5 s at worst) is refused before detection runs,
+with the numbers and what to change: a smaller `--max-side` or fewer
+`--patch-levels`. The default 640-px cap at three levels is about 0.63 M
+windows. The bound is the compiler's, not `selectPatches`', because selection
+runs offline on an image the developer chose; that changes when targets are
+compiled in the browser from arbitrary images (M5), and the function's own
+comment records it.
+
 The level images patches are cut from come from a **stand-in**,
 `bin/target-pyramid.mjs` (an area-weighted box filter), until
 `buildFramePyramid` exists: stored patches must be filtered the way the live
