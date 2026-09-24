@@ -57,6 +57,39 @@ export {
 } from "./tracker.js";
 export type { NftTrackerOptions, TrackFailure, TrackResult } from "./tracker.js";
 
+// The tracking state (M2). Every function is exported here up front, stub or
+// not, so the branches implementing them never need to touch this file.
+export { selectPatches } from "./tracking/select_patches.js";
+export { buildFramePyramid } from "./tracking/frame_pyramid.js";
+export { alignPatch } from "./tracking/align_patch.js";
+export { robustHomography } from "./tracking/robust_homography.js";
+export { predictHomography } from "./tracking/predict_homography.js";
+export type {
+    AlignPatch,
+    AlignPatchOptions,
+    BuildFramePyramid,
+    FramePyramid,
+    FramePyramidFailure,
+    FramePyramidOptions,
+    FramePyramidResult,
+    HomographyPrediction,
+    HomographyPredictionFailure,
+    ImagePyramid,
+    PatchAlignment,
+    PatchAlignmentFailure,
+    PatchObservation,
+    PatchSelection,
+    PatchSelectionFailure,
+    PredictHomography,
+    RobustHomography,
+    RobustHomographyFailure,
+    RobustHomographyOptions,
+    RobustHomographyResult,
+    SelectPatches,
+    SelectPatchesOptions,
+    TrackingState,
+} from "./tracking/types.js";
+
 export { DEFAULT_LIMITS, decode, encode } from "./target/format/index.js";
 export type {
     DecodeLimits,
