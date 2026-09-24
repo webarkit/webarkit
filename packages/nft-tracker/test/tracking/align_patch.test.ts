@@ -216,6 +216,32 @@ describe("alignPatch: input validation", () => {
         expect(a.ok && b.ok).toBe(true);
         expect(b).toEqual(a);
     });
+
+    it("aligns alike at every scale of the prediction: bit for bit at 2^±1000 and 2^-1070, within 1e-9 px at 1e307 and 1e-300", () => {
+        // A prediction ¾ px off, so the alignment iterates. Every entry of
+        // c · H stays finite for these c, but at 1e307 the products of the
+        // projection would not, unless the scale is taken out first. At
+        // 2^-1070 every entry is subnormal (and still exact: the entries are
+        // multiples of 2^-1074), and the power of two that restores them is
+        // itself past the largest double.
+        const H = translation(0.75, -0.5);
+        const a = alignPatch(frame, table, 0, STEP, H, OPTIONS);
+        if (!a.ok) throw new Error(a.reason);
+        expect(a.observation.iterations).toBeGreaterThan(1);
+        const times = (c: number) => Float64Array.from(H, (v) => c * v);
+        for (const c of [2 ** 1000, 2 ** -1000, -(2 ** 600), 2 ** -1070]) {
+            expect(alignPatch(frame, table, 0, STEP, times(c), OPTIONS)).toEqual(a);
+        }
+        // Not powers of two, so c · H is rounded entry by entry: the same map
+        // to within a relative 2^-53, and the same alignment to within that.
+        for (const c of [1e307, -1e307, 1e-300]) {
+            const b = alignPatch(frame, table, 0, STEP, times(c), OPTIONS);
+            if (!b.ok) throw new Error(`${c}: ${b.reason}`);
+            expect(Math.abs(b.observation.x - a.observation.x)).toBeLessThan(1e-9);
+            expect(Math.abs(b.observation.y - a.observation.y)).toBeLessThan(1e-9);
+            expect(b.observation.converged).toBe(a.observation.converged);
+        }
+    });
 });
 
 describe("alignPatch: a window outside the frame", () => {

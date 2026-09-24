@@ -138,7 +138,7 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
     if (frameScales === null) return fail("invalid-pyramid");
     const patch = validPatch(patches, q, targetScaleStep);
     if (patch === null) return fail("invalid-patch");
-    const H = frontFacing(prediction);
+    const H = normalised(prediction);
     if (H === null) return fail("non-finite-prediction");
     const centre = project(H, patch.centreX, patch.centreY);
     if (centre === null) return fail("non-finite-prediction");
@@ -738,26 +738,77 @@ function validPatch(patches: PatchTable, q: number, targetScaleStep: number): Pa
 }
 
 /**
- * The prediction, sign-normalised so that `H[8] > 0`, or `null` if an entry
- * is not finite or `H[8] = 0`.
+ * A homography, row-major, as the alignment holds it: a plain array, since a
+ * `Float64Array` of nine entries is too large for V8 to allocate on its heap,
+ * and costs about 2 µs to create in Node here (see warpWindow).
+ */
+type Homography = readonly number[];
+
+/**
+ * The prediction, multiplied by the power of two that brings its largest
+ * entry into `[1, 2)`, and by −1 if that makes `H[8] > 0`; or `null` if an
+ * entry is not finite or `H[8] = 0`.
  *
  * A homography and any non-zero multiple of it are the same map, so the
- * scale is free (types.ts rule 1) — but the sign of `w` is what says which
- * side of the horizon a point is on, and it flips with the scale. `H[8]` is
- * `w` at the target's origin; normalising its sign to positive makes
- * `w > 0` mean "on the origin's side", the side a camera looking at the
- * target sees. `H[8] = 0` puts the origin itself at infinity, outside the
- * contract, and leaves no side to call "front".
+ * scale is free (types.ts rule 1), and nothing downstream may depend on it.
+ * Two things would, left alone:
+ *
+ * - **The sign of `w`**, which says which side of the horizon a point is on,
+ *   and flips with the scale. `H[8]` is `w` at the target's origin; making
+ *   it positive makes `w > 0` mean "on the origin's side", the side a camera
+ *   looking at the target sees. `H[8] = 0` puts the origin itself at
+ *   infinity, outside the contract, and leaves no side to call "front".
+ * - **The magnitude**, through overflow: at `1e307 · H`, every entry finite,
+ *   the projection's products are not. Multiplying by a power of two rounds
+ *   nothing, so every `2^k · H` becomes the same matrix, bit for bit, and
+ *   aligns identically; and with its largest entry in `[1, 2)`, only the
+ *   patch's own coordinates set the range of the projection's products.
+ *
+ * The power is found by exact halvings and doublings rather than
+ * `Math.log2`, whose rounding the language leaves to the implementation. It
+ * is kept as two factors because when every entry is subnormal, the one
+ * power that lifts the largest into `[1, 2)` is past the largest double.
  */
-function frontFacing(prediction: Mat3): Mat3 | null {
-    for (let i = 0; i < 9; i++) if (!Number.isFinite(prediction[i])) return null;
+function normalised(prediction: Mat3): Homography | null {
+    let largest = 0;
+    for (let i = 0; i < 9; i++) {
+        if (!Number.isFinite(prediction[i])) return null;
+        largest = Math.max(largest, Math.abs(prediction[i]));
+    }
     const h8 = prediction[8];
     if (h8 === 0) return null;
-    return h8 > 0 ? prediction : Float64Array.from(prediction, (v) => -v);
+    let m = largest;
+    let f = 1;
+    let g = 1;
+    while (m >= 2) {
+        m /= 2;
+        f /= 2;
+    }
+    while (m < 1) {
+        m *= 2;
+        // 2 ** 512 is only compared against, so its rounding cannot matter.
+        if (f < 2 ** 512) f *= 2;
+        else g *= 2;
+    }
+    if (h8 < 0) f = -f;
+    const p = prediction;
+    // Written out: measured in Node here, 50 ns, against 1 µs for Array.from
+    // with a callback and 2 µs for Float64Array.from.
+    return [
+        p[0] * f * g,
+        p[1] * f * g,
+        p[2] * f * g,
+        p[3] * f * g,
+        p[4] * f * g,
+        p[5] * f * g,
+        p[6] * f * g,
+        p[7] * f * g,
+        p[8] * f * g,
+    ];
 }
 
 /** `H · (X, Y)` after the perspective division, or `null` at or beyond the horizon. */
-function project(H: Mat3, X: number, Y: number): [number, number] | null {
+function project(H: Homography, X: number, Y: number): [number, number] | null {
     const w = H[6] * X + H[7] * Y + H[8];
     if (!(w > 0)) return null;
     const x = (H[0] * X + H[1] * Y + H[2]) / w;
@@ -814,7 +865,7 @@ interface Window {
  * Every sample's frame position, or `null` if one lies at or beyond the
  * horizon: a window reaching infinity cannot lie inside any level.
  */
-function warpWindow(H: Mat3, patch: Patch): Window | null {
+function warpWindow(H: Homography, patch: Patch): Window | null {
     const { P, left, top, scale } = patch;
     const n = P * P;
     // One allocation for all ten per-sample arrays: a typed array's backing
@@ -902,7 +953,7 @@ function warpWindow(H: Mat3, patch: Patch): Window | null {
  * row-major: `[∂x/∂X, ∂x/∂Y, ∂y/∂X, ∂y/∂Y]`.
  */
 function jacobian(
-    H: Mat3,
+    H: Homography,
     X: number,
     Y: number,
     x: number,
