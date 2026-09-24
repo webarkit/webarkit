@@ -73,7 +73,7 @@ const MIN_EIGENVALUE = 1;
  *    them is placed where the prediction puts it — the full homography per
  *    pixel, not its affine approximation at the centre — and it is the
  *    *frame* that is sampled there, bilinearly. The template is never
- *    resampled: it is exactly the stored data ({@link warpWindow}).
+ *    resampled: it is exactly the stored data ({@link warpPatch}).
  * 2. **What is estimated.** A translation `d` of the whole warped window, in
  *    frame level-0 px; with `photometric`, also a gain and a bias, the frame
  *    being `gain · T + bias`. Rotation, scale and perspective come from the
@@ -155,16 +155,16 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
     if (H === null) return fail("non-finite-prediction");
     const centre = project(H, patch.centreX, patch.centreY);
     if (centre === null) return fail("non-finite-prediction");
-    const window = warpWindow(H, patch);
-    if (window === null) return fail("outside-frame");
+    const warped = warpPatch(H, patch);
+    if (warped === null) return fail("outside-frame");
 
-    const usable = usableLevels(frame, frameScales, window);
+    const usable = usableLevels(frame, frameScales, warped);
     if (usable.length === 0) return fail("outside-frame");
 
     const information = translationInformation(patch, options.photometric);
-    if (!window.invertible || !(information >= MIN_EIGENVALUE)) return fail("singular");
+    if (!warped.invertible || !(information >= MIN_EIGENVALUE)) return fail("singular");
 
-    const system = alignmentSystem(window, patch, options.photometric);
+    const system = alignmentSystem(warped, patch, options.photometric);
     if (system === null) return fail("singular");
 
     // Inverse compositional Lucas–Kanade on a translation d (level-0 px) of
@@ -185,7 +185,7 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
     // them changed neither accuracy nor the basin, and cost iterations
     // (measured at σ = 2: median 8 iterations through every level, 5 with
     // the jump, errors and convergence rates equal to within 1%).
-    const start = startLevel(usable, frameScales, window.scaleAtCentre);
+    const start = startLevel(usable, frameScales, warped.scaleAtCentre);
     const values = new Float64Array(system.n);
     const b = new Float64Array(system.size);
     let dx = 0;
@@ -208,17 +208,17 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
         // then the start level's.
         let l = start;
         if (pass === 1) {
-            l = finestUsable(frame, frameScales, window, dx, dy, start);
+            l = finestUsable(frame, frameScales, warped, dx, dy, start);
             if (l < 0) break;
         }
         level = l;
-        const fp = footprint(frame, frameScales, l, window);
+        const fp = footprint(frame, frameScales, l, warped);
         const reach = fp === null ? 0 : fp.halfWidth;
         const img = frame.levels[l];
         const s = frameScales[l];
         converged = false;
         for (let it = 0; it < options.maxIterations; it++) {
-            sampleFrame(img, s, window, dx, dy, fp, values);
+            sampleFrame(img, s, warped, dx, dy, fp, values);
             if (matching) {
                 // The gain and bias that give the template the window's mean
                 // and spread. templateSpread > 0: a patch without spread has
@@ -265,7 +265,7 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
             // it here. If not even 1/1024 of the step fits, the estimate is on
             // the level's edge already: the level ends there, unconverged.
             let f = 1;
-            while (!inside(frame, frameScales, l, window, dx - f * stepX, dy - f * stepY, reach)) {
+            while (!inside(frame, frameScales, l, warped, dx - f * stepX, dy - f * stepY, reach)) {
                 f /= 2;
                 if (f < 1 / 1024) break;
             }
@@ -298,7 +298,7 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
             }
         }
     }
-    return observation(q, centre, dx, dy, frame, frameScales, level, window, patch, values, {
+    return observation(q, centre, dx, dy, frame, frameScales, level, warped, patch, values, {
         converged,
         iterations,
         gain,
@@ -364,11 +364,11 @@ function footprint(
     frame: FramePyramid,
     scales: Float64Array,
     l: number,
-    window: Window,
+    warped: Warped,
 ): Footprint | null {
-    const halfWidth = footprintHalfWidth(frame, scales, l, window);
+    const halfWidth = footprintHalfWidth(frame, scales, l, warped);
     if (halfWidth === 0) return null;
-    const sigma = window.scaleAtCentre * scales[l];
+    const sigma = warped.scaleAtCentre * scales[l];
     const m = Math.min(MAX_FOOTPRINT_POINTS, Math.ceil(2 * halfWidth * sigma));
     const grid = new Float64Array(2 * m);
     const offsets = grid.subarray(0, m);
@@ -393,9 +393,9 @@ function footprintHalfWidth(
     frame: FramePyramid,
     scales: Float64Array,
     l: number,
-    window: Window,
+    warped: Warped,
 ): number {
-    const sigma = window.scaleAtCentre * scales[l];
+    const sigma = warped.scaleAtCentre * scales[l];
     const r = frame.scaleStep;
     if (!(sigma > Math.sqrt(r))) return 0;
     const variance = (stepVariance(r) * (1 - 1 / (sigma * sigma))) / (r * r - 1);
@@ -410,7 +410,7 @@ function footprintHalfWidth(
 function sampleFrame(
     img: GrayImage,
     s: number,
-    window: Window,
+    warped: Warped,
     dx: number,
     dy: number,
     fp: Footprint | null,
@@ -420,23 +420,23 @@ function sampleFrame(
     const n = out.length;
     if (fp === null) {
         for (let i = 0; i < n; i++) {
-            out[i] = bilinear(data, width, height, s * (window.x[i] + dx), s * (window.y[i] + dy));
+            out[i] = bilinear(data, width, height, s * (warped.x[i] + dx), s * (warped.y[i] + dy));
         }
         return;
     }
     const { offsets, weights } = fp;
     const m = offsets.length;
     for (let i = 0; i < n; i++) {
-        const x = window.x[i] + dx;
-        const y = window.y[i] + dy;
+        const x = warped.x[i] + dx;
+        const y = warped.y[i] + dy;
         let sum = 0;
         for (let b = 0; b < m; b++) {
-            const bx = x + window.vx[i] * offsets[b];
-            const by = y + window.vy[i] * offsets[b];
+            const bx = x + warped.vx[i] * offsets[b];
+            const by = y + warped.vy[i] * offsets[b];
             let row = 0;
             for (let a = 0; a < m; a++) {
-                const px = bx + window.ux[i] * offsets[a];
-                const py = by + window.uy[i] * offsets[a];
+                const px = bx + warped.ux[i] * offsets[a];
+                const py = by + warped.uy[i] * offsets[a];
                 row += weights[a] * bilinear(data, width, height, s * px, s * py);
             }
             sum += weights[b] * row;
@@ -459,7 +459,7 @@ function observation(
     frame: FramePyramid,
     scales: Float64Array,
     level: number,
-    window: Window,
+    warped: Warped,
     patch: Patch,
     values: Float64Array,
     run: { converged: boolean; iterations: number; gain: number; bias: number },
@@ -467,7 +467,7 @@ function observation(
     const x = centre[0] + dx;
     const y = centre[1] + dy;
     const { gain, bias } = run;
-    const residual = residualAt(frame, scales, level, window, patch, dx, dy, gain, bias, values);
+    const residual = residualAt(frame, scales, level, warped, patch, dx, dy, gain, bias, values);
     const numbers = [x, y, residual, gain, bias];
     if (!numbers.every((v) => Number.isFinite(v))) return fail("singular");
     return {
@@ -529,14 +529,14 @@ function startLevel(usable: number[], scales: Float64Array, scaleAtCentre: numbe
 function finestUsable(
     frame: FramePyramid,
     scales: Float64Array,
-    window: Window,
+    warped: Warped,
     dx: number,
     dy: number,
     below: number,
 ): number {
     for (let l = 0; l < below; l++) {
         if (
-            inside(frame, scales, l, window, dx, dy, footprintHalfWidth(frame, scales, l, window))
+            inside(frame, scales, l, warped, dx, dy, footprintHalfWidth(frame, scales, l, warped))
         ) {
             return l;
         }
@@ -598,7 +598,7 @@ interface AlignmentSystem {
  * sinusoid, some alignments from 1.8 px off took up to 51 iterations.
  */
 function alignmentSystem(
-    window: Window,
+    warped: Warped,
     patch: Patch,
     photometric: boolean,
 ): AlignmentSystem | null {
@@ -625,10 +625,10 @@ function alignmentSystem(
             const gx = gradientX(pixels, offset, P, i, j);
             const gy = gradientY(pixels, offset, P, i, j);
             // J = J_H / scale, so J⁻¹ = scale · J_H⁻¹.
-            const a = window.ja[k];
-            const b = window.jb[k];
-            const c = window.jc[k];
-            const d = window.jd[k];
+            const a = warped.ja[k];
+            const b = warped.jb[k];
+            const c = warped.jc[k];
+            const d = warped.jd[k];
             const f = scale / (a * d - b * c);
             const sxk = f * (gx * d - gy * c);
             const syk = f * (gy * a - gx * b);
@@ -810,7 +810,7 @@ function validPatch(patches: PatchTable, q: number, targetScaleStep: number): Pa
 /**
  * A homography, row-major, as the alignment holds it: a plain array, since a
  * `Float64Array` of nine entries is too large for V8 to allocate on its heap,
- * and costs about 2 µs to create in Node here (see warpWindow).
+ * and costs about 2 µs to create in Node here (see warpPatch).
  */
 type Homography = readonly number[];
 
@@ -890,7 +890,7 @@ function project(H: Homography, X: number, Y: number): [number, number] | null {
  * The patch's P × P pixels, each placed where the prediction puts it in
  * frame level-0 coordinates.
  */
-interface Window {
+interface Warped {
     /** Frame level-0 position of each sample, row-major like the patch. */
     readonly x: Float64Array;
     readonly y: Float64Array;
@@ -935,7 +935,7 @@ interface Window {
  * Every sample's frame position, or `null` if one lies at or beyond the
  * horizon: a window reaching infinity cannot lie inside any level.
  */
-function warpWindow(H: Homography, patch: Patch): Window | null {
+function warpPatch(H: Homography, patch: Patch): Warped | null {
     const { P, left, top, scale } = patch;
     const n = P * P;
     // One allocation for all ten per-sample arrays: a typed array's backing
@@ -1049,10 +1049,10 @@ function jacobian(
  * everything those reach. The alignment is inverse compositional, so it reads no frame
  * gradients and needs no other border.
  */
-function usableLevels(frame: FramePyramid, scales: Float64Array, window: Window): number[] {
+function usableLevels(frame: FramePyramid, scales: Float64Array, warped: Warped): number[] {
     const out: number[] = [];
     for (let l = 0; l < frame.levels.length; l++) {
-        if (inside(frame, scales, l, window, 0, 0, footprintHalfWidth(frame, scales, l, window))) {
+        if (inside(frame, scales, l, warped, 0, 0, footprintHalfWidth(frame, scales, l, warped))) {
             out.push(l);
         }
     }
@@ -1068,7 +1068,7 @@ function inside(
     frame: FramePyramid,
     scales: Float64Array,
     l: number,
-    window: Window,
+    warped: Warped,
     dx: number,
     dy: number,
     halfWidth: number,
@@ -1076,13 +1076,13 @@ function inside(
     const { width, height } = frame.levels[l];
     if (width < 2 || height < 2) return false;
     const s = scales[l];
-    const rx = halfWidth === 0 ? 0 : halfWidth * window.spanX;
-    const ry = halfWidth === 0 ? 0 : halfWidth * window.spanY;
+    const rx = halfWidth === 0 ? 0 : halfWidth * warped.spanX;
+    const ry = halfWidth === 0 ? 0 : halfWidth * warped.spanY;
     return (
-        s * (window.minX + dx - rx) >= 0 &&
-        s * (window.maxX + dx + rx) <= width - 1 &&
-        s * (window.minY + dy - ry) >= 0 &&
-        s * (window.maxY + dy + ry) <= height - 1
+        s * (warped.minX + dx - rx) >= 0 &&
+        s * (warped.maxX + dx + rx) <= width - 1 &&
+        s * (warped.minY + dy - ry) >= 0 &&
+        s * (warped.maxY + dy + ry) <= height - 1
     );
 }
 
@@ -1184,7 +1184,7 @@ function residualAt(
     frame: FramePyramid,
     scales: Float64Array,
     l: number,
-    window: Window,
+    warped: Warped,
     patch: Patch,
     dx: number,
     dy: number,
@@ -1193,8 +1193,8 @@ function residualAt(
     values: Float64Array,
 ): number {
     const n = patch.P * patch.P;
-    const fp = footprint(frame, scales, l, window);
-    sampleFrame(frame.levels[l], scales[l], window, dx, dy, fp, values);
+    const fp = footprint(frame, scales, l, warped);
+    sampleFrame(frame.levels[l], scales[l], warped, dx, dy, fp, values);
     let sum = 0;
     for (let i = 0; i < n; i++) {
         const r = values[i] - gain * patch.pixels[patch.offset + i] - bias;
