@@ -86,8 +86,9 @@ import type { RobustHomography, RobustHomographyOptions } from "./types.js";
  * **Failures,** in the order checked: `invalid-options` (`tukeyC` and
  * `epsilon` must also be finite); `invalid-input` (`initial` must also be nine
  * numbers); `too-few-points`; then, at the prediction or after any fit,
- * `too-few-inliers` when fewer than four weights are positive, and `singular`
- * when a fit is — see {@link weightedDlt} for what counts, and
+ * `too-few-inliers` when fewer than four weights are positive (an `initial`
+ * that sends every point to infinity, or nowhere at all like the zero matrix,
+ * leaves every weight at 0), and `singular` when a fit is — see {@link weightedDlt} for what counts, and
  * {@link SINGULAR_PIVOT_RATIO} and `SINGULAR_RELATIVE_DET` (`mat3.ts`) for
  * the measurements behind each threshold.
  *
@@ -171,7 +172,10 @@ function tukeyWeights(residuals: Float64Array, c: number, out: Float64Array): vo
     }
 }
 
-/** `√(Σ w_i · r_i² / Σ w_i)` over the points with `w_i > 0`, px. */
+/**
+ * `√(Σ w_i · r_i² / Σ w_i)` over the points with `w_i > 0`, px. Its callers
+ * have checked that at least four weights are positive, so `Σ w_i > 0`.
+ */
 function weightedRms(residuals: Float64Array, weights: Float64Array): number {
     let sw = 0;
     let swr2 = 0;

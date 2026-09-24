@@ -383,6 +383,9 @@ describe("robustHomography degenerate input", () => {
         // Three correspondences exact, the other 37 ≈ 14 px off.
         const three = dst.map((v, i) => (i < 6 ? v : v + 10));
         expect(robustHomography(src, three, H_TRUE, OPTIONS)).toEqual(TOO_FEW_INLIERS);
+        // A prediction that sends every point nowhere at all: 0 / 0 residuals,
+        // weight 0 each.
+        expect(robustHomography(src, dst, new Float64Array(9), OPTIONS)).toEqual(TOO_FEW_INLIERS);
     });
 
     it("fails when a fit leaves fewer than four inliers", () => {
