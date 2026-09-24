@@ -43,7 +43,58 @@ import type { RobustHomography, RobustHomographyOptions } from "./types.js";
 
 /**
  * IRLS with Tukey's biweight over patch correspondences — see
- * {@link RobustHomography} for the contract.
+ * {@link RobustHomography} for the contract. Deterministic: no RANSAC, no
+ * sampling, no random draw anywhere, so nothing here waits on an injectable
+ * RNG (webarkit/webarkit#24).
+ *
+ * **Initialisation.** The first weights are Tukey's at the transfer errors of
+ * `initial`, the prediction. No unweighted least-squares fit comes first and
+ * nothing is sampled. A correspondence the prediction puts `tukeyC` or more
+ * from its observation starts at weight 0. It is not dropped: every iteration
+ * reweights every correspondence, so it comes back as soon as a fit brings it
+ * inside `tukeyC`. The prediction must therefore put at least four
+ * well-spread inliers inside `tukeyC`, and a caller sizes `tukeyC` for the
+ * prediction's error as well as for the alignment noise. Started from the
+ * prediction, this is a local estimator: a coherent group of outliers inside
+ * `tukeyC`, with the inliers outside it, would be fitted instead.
+ *
+ * **Scale.** None is estimated from the data. The cutoff is `c = tukeyC`, a
+ * fixed distance in frame level-0 px, as types.ts pins it. TRACK quality is
+ * built from these weights, so a weight must mean the same thing on every
+ * frame — agreement within `c` px — and a data-driven scale cannot promise
+ * that: a MAD scale rescales to each frame's own spread (a frame whose
+ * patches are all 3 px off would score like one where they are exact), breaks
+ * down at 50% outliers, and collapses to 0 on noise-free data.
+ *
+ * **Each iteration** fits H to the current weights by a weighted DLT
+ * ({@link weightedDlt}), then reweights at that H. The DLT minimises the
+ * weighted algebraic error, which is the transfer error times the point's
+ * projective depth — the same for every point of an affine H, so under strong
+ * perspective the fixed point weighs near and far patches slightly unlike a
+ * geometric M-estimator would. The residuals and weights, and so the result,
+ * are always the geometric ones.
+ *
+ * **Cap.** At most `maxIterations` fits. Reaching it returns the last fit and
+ * its weights, with `converged: false`.
+ *
+ * **Convergence test.** Converged when the weighted RMS residual — the
+ * `rmsError` formula — changes by less than `epsilon` px from one fit to the
+ * next. The first change is measured from the RMS at `initial`, so an exact
+ * prediction converges in one fit, and exact data from an inexact prediction
+ * in two.
+ *
+ * **Failures,** in the order checked: `invalid-options` (`tukeyC` and
+ * `epsilon` must also be finite); `invalid-input` (`initial` must also be nine
+ * numbers); `too-few-points`; then, at the prediction or after any fit,
+ * `too-few-inliers` when fewer than four weights are positive, and `singular`
+ * when a fit is — see {@link weightedDlt} for what counts, and
+ * {@link SINGULAR_PIVOT_RATIO} and `SINGULAR_RELATIVE_DET` (`mat3.ts`) for
+ * the measurements behind each threshold.
+ *
+ * **Measured outlier breakdown** (the test file has the model and every
+ * number): 40 patches, σ = 0.25 px, a prediction 3 px off, `tukeyC` = 4 px,
+ * outliers 5–16 px from their true position. Every outlier is rejected in
+ * 2000 seeds out of 2000 up to 45% contamination; failures begin at 50%.
  */
 export const robustHomography: RobustHomography = (src, dst, initial, options) => {
     if (!validOptions(options)) return { ok: false, reason: "invalid-options" };
