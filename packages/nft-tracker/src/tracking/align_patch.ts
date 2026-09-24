@@ -106,9 +106,10 @@ const MIN_EIGENVALUE = 1;
  *    step is below `epsilon` in that level's px, or after `maxIterations`
  *    steps. `converged` is the finest level's, since the result is that
  *    level's estimate; `iterations` sums both levels. Measured on the clean
- *    suites at `epsilon` 0.01 px: a median of 4 iterations (95th percentile
- *    6) for matched patches, 5 (6) for magnified ones, and every one of 1152
- *    alignments from 2 px off converged within a cap of 30, at `σ` 1 and 2.
+ *    suites at `epsilon` 0.01 px, from 1 px off: a median of 4 iterations
+ *    (95th percentile 6) for matched patches, 5 (6) for magnified ones; and
+ *    every one of 1152 alignments from 2 px off converged within a cap of
+ *    30, at `σ` 1 and 2 (align_patch_basin.test.ts).
  *    With gain and bias, a level converges twice, under matched moments and
  *    then jointly: a median of 5 iterations (95th percentile 6) from 1 px
  *    off (align_patch_photometric.test.ts).
@@ -138,12 +139,18 @@ const MIN_EIGENVALUE = 1;
  *    6.1 (align_patch_photometric.test.ts).
  *
  * **Assumptions** (format spec Q11, frame_pyramid.ts): the patch was cut
- * from a level `buildFramePyramid` built with `targetScaleStep`, and the
- * frame's pyramid comes from the same function, ideally with the same step,
- * so a patch and the frame level matching its scale are filtered alike. A
- * target compiled with another filter still aligns, with a blur mismatch
- * that biases the gain (align_patch_photometric.test.ts) and whose effect on
- * position is unmeasured.
+ * from a level `buildFramePyramid` built with `targetScaleStep` — not yet
+ * true of `compile-target`'s coarser levels, which come from a stand-in —
+ * and the frame's pyramid comes from the same function, ideally with the
+ * same step, so a patch and a frame level equally deep are filtered alike.
+ * They are rarely read at equal depth: a patch is aligned on the frame
+ * level nearest its scale, usually a shallower one, and the frame carries
+ * the camera's blur besides. That difference biases the gain and the
+ * residual, and the position little: a median error of 0.016 to 0.042 px
+ * across patch levels 0 to 5 (align_patch_accuracy.test.ts). A footprint at
+ * `σ ≈ 1` could take the pyramid's share of it out, at a footprint's cost
+ * in samples, and is not used. A target compiled with another filter adds
+ * to the difference, unseen.
  */
 export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, prediction, options) => {
     if (!validOptions(options)) return fail("invalid-options");
@@ -344,7 +351,9 @@ interface Footprint {
  * px²; in patch px² those steps sum to
  * `stepVariance(r) · (1 − 1/σ²) / (r² − 1)`, and the footprint is a triangle
  * of that variance (half-width `√(6 · variance)`), sampled at most one level
- * pixel apart. Level `l` read this way looks like the matched level, at
+ * pixel apart up to {@link MAX_FOOTPRINT_POINTS} points per axis — a cap that
+ * binds above `σ ≈ 4.7` at a `∛2` step, spreading the points to 1.7 level px
+ * at `σ = 8`. Level `l` read this way looks like the matched level, at
  * level `l`'s resolution and without the cascade's rounding — so refining
  * there gains precision instead of losing it. Measured on the same patches:
  * median 0.010 px, worst 0.026 px, none failing from 2 px off — better
@@ -354,11 +363,14 @@ interface Footprint {
  * fixed half-width 1 and 1.5 each did best at the `σ` whose variance above
  * they match (1.26 and 2), which is what chose this rule over a constant.
  *
- * **When.** Only where `σ > √r`. The start level is the one where `σ` is
- * closest to 1, within `√r` of it, so it is always point-sampled: a patch
- * whose level matches the frame's pays nothing, and a magnified one pays
- * `m²` samples per pixel, `m = ⌈2 · half-width · σ⌉` (at most
- * {@link MAX_FOOTPRINT_POINTS}), on the finest level only.
+ * **When.** Only where `σ > √r`. The start level is the usable one where
+ * `σ` is closest to 1, which is within `√r` of it when the pyramid is deep
+ * enough and that level can hold the window; then it is point-sampled, a
+ * patch whose level matches the frame's pays nothing, and a magnified one
+ * pays `m²` samples per pixel, `m = ⌈2 · half-width · σ⌉` (at most
+ * {@link MAX_FOOTPRINT_POINTS}), on the refinement level only. In a pyramid
+ * too shallow for the patch's scale, or near an edge that rules that level
+ * out, the start level is read through footprints too.
  */
 function footprint(
     frame: FramePyramid,
@@ -491,16 +503,18 @@ function observation(
  * closest to one level pixel (`σ` nearest 1 by ratio), ties going to the
  * coarser level.
  *
- * That is the level whose blur and resolution match the patch's (Q11): the
- * patch's basin is fixed in patch pixels there, and so in frame pixels it
- * grows with how magnified the patch is. Measured against the alternatives
+ * That is the level whose resolution matches the patch's (and its blur, when
+ * the two are equally deep: Q11, frame_pyramid.ts): the patch's basin is
+ * fixed in patch pixels there, and so in frame pixels it grows with how
+ * magnified the patch is. Measured against the alternatives
  * (24 pinball patches, 3 views):
  *
  * - **The coarsest usable level** wrecked the basin of matched patches (69%
  *   converging from 1 px off, errors past 100 px): a sharp patch against a
- *   much blurrier level has no basin at all. Levels coarser than the patch's
- *   scale are never visited for that reason; a single patch holds no
- *   coarser content to align them with.
+ *   much blurrier level has no basin at all. So coarse to fine never goes
+ *   above the start level, which is coarser than the patch's scale by at
+ *   most `√r` unless even level 0 is (a patch seen smaller than its scale):
+ *   a single patch holds no coarser content to align with.
  * - **Level 0**, read through footprints ({@link footprint}) from the first
  *   iteration, is nearly as good for a patch seen at twice its scale — the
  *   footprint does the real work — but slightly narrower (61% vs 65%

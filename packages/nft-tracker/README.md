@@ -210,12 +210,14 @@ compiled in the browser from arbitrary images (M5), and the function's own
 comment records it.
 
 The level images patches are cut from come from a **stand-in**,
-`bin/target-pyramid.mjs` (an area-weighted box filter), until
-`buildFramePyramid` exists: stored patches must be filtered the way the live
-frame's pyramid will be (format spec §11, Q11). Every file it produced says so
-in `info.compiler.patchPyramid`. When `buildFramePyramid` lands, the compiler
-switches to it and `examples/targets/pinball.wnft` is recompiled; level 0's
-patches are the image itself and do not move, coarser levels' do.
+`bin/target-pyramid.mjs` (an area-weighted box filter), until the compiler is
+switched to `buildFramePyramid`: stored patches must be filtered the way the
+live frame's pyramid will be (format spec §11, Q11). Every file it produced
+says so in `info.compiler.patchPyramid`. `buildFramePyramid` now exists; the
+switch is a change of its own, because it recompiles
+`examples/targets/pinball.wnft`, and so updates
+`crates/wnft-format/tests/real_target.rs` in the same commit. Level 0's
+patches are the image itself and do not move; coarser levels' do.
 
 [`examples/targets/pinball.wnft`](../../examples/targets) is one such target,
 committed, and the static demo can load it instead of building its own.
@@ -335,7 +337,11 @@ decision D2 puts a level's pixels, so linear intensity is reproduced exactly
 and no level's content is shifted. At step 2 that is the `[1, 2, 1] / 4`
 decimation. The format does not say which filter produced a target's level
 images (open question Q11); the tracker assumes a target's patches were cut
-from levels this same function built, and the reasoning is in
+from levels this same function built, which `compile-target` does not do yet
+(above). Even then, a patch is usually read on a shallower frame level than
+its own, so the two differ in blur: that shows in the estimated gain and the
+residual, hardly in position (a median of 0.016–0.042 px across patch levels
+0 to 5). The reasoning is in
 [`frame_pyramid.ts`](./src/tracking/frame_pyramid.ts).
 
 **`alignPatch`** places the patch's stored pixels where the prediction puts

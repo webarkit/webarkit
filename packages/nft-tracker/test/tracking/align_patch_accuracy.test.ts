@@ -47,8 +47,8 @@ import { mat3Mul, project, renderWarp, translation, view } from "../fixtures/war
 
 // Accuracy on clean warps: the pinball target rendered through a known
 // homography with no noise, blur or photometric change, so the only error
-// left is the alignment's own (plus the unavoidable mismatch between the
-// renderer's area sampling and the pyramid's filter).
+// left is the alignment's own, plus the blur difference between a patch and
+// the frame level it is read on (the last test here measures it).
 
 const STEP = Math.cbrt(2);
 const P = 8;
@@ -91,8 +91,9 @@ for (let k = 0; k < 8; k++) {
 describe("alignPatch: accuracy", () => {
     // Measured: median 0.022 px, 95th percentile 0.045 px, worst 0.063 px;
     // a median of 4 iterations (95th percentile 6) at epsilon = 0.01 px;
-    // median residual 4.1 grey levels, which is the blur mismatch between
-    // the renderer's area sampling and the pyramid's filter.
+    // median residual 4.1 grey levels: a level-3 patch has been through
+    // three pyramid steps, the frame level 0 it is read on through none, and
+    // the renderer's resampling makes up only part of the difference.
     it("is sub-pixel: median error below 0.05 px, worst below 0.25 px, over 24 patches × 3 views × 9 predictions", () => {
         const errors: number[] = [];
         const results: PatchObservation[] = [];
@@ -156,4 +157,59 @@ describe("alignPatch: accuracy", () => {
             expect(median(errors)).toBeLessThan(bound);
         }
     });
+    it("stays sub-pixel whatever the patch's depth: levels 0 to 5, median error 0.016–0.042 px, while the blur difference moves gain from 0.86 to 1.10", () => {
+        // Each level's patches in views at that level's scale, so every patch
+        // is read on frame level 0 (σ = 1). A level-l patch has been through
+        // l pyramid steps; frame level 0 through none, but the renderer's
+        // resampling blurs it about as much as two ∛2 steps would. So the
+        // patch is the sharper one below level 2, the blurrier above, and
+        // gain reads the difference (align_patch.ts, Assumptions). Measured,
+        // levels 0 to 5: median error 0.042, 0.030, 0.016, 0.022, 0.024,
+        // 0.028 px; gain 0.86, 0.93, 1.005, 1.03, 1.07, 1.10. Level 0, the
+        // sharpest, has the longest tail (95th percentile 0.28 px, worst
+        // 0.54): an unfiltered patch holds detail the frame has lost.
+        const gains: number[] = [];
+        for (let level = 0; level <= 5; level++) {
+            const scale = levelScale(STEP, level);
+            const levelSites = texturedSites(targetPyramid, P, level, 24, {
+                minSpacing: 12,
+                margin: 4,
+            });
+            const levelPatches = cutPatches(targetPyramid, P, levelSites);
+            const errors: number[] = [];
+            const levelGains: number[] = [];
+            // Large enough to hold the whole target in all three views.
+            const side = Math.ceil(900 * scale);
+            const big = { width: side, height: side };
+            for (const H of [
+                view({ target, frame: big, scale }),
+                view({ target, frame: big, scale, angle: Math.PI / 6 }),
+                view({ target, frame: big, scale, perspective: [0.0004, -0.0006] }),
+            ]) {
+                const frame = pyramidOf(renderWarp(target, H, big), 5);
+                levelSites.forEach((site, q) => {
+                    const [X, Y] = patchCentre(site, P, STEP);
+                    const [tx, ty] = project(H, X, Y);
+                    for (const [dx, dy] of OFFSETS) {
+                        const prediction = mat3Mul(translation(dx, dy), H);
+                        const r = alignPatch(frame, levelPatches, q, STEP, prediction, OPTIONS);
+                        if (!r.ok) throw new Error(`level ${level}, patch ${q}: ${r.reason}`);
+                        expect(r.observation.frameLevel).toBe(0);
+                        errors.push(Math.hypot(r.observation.x - tx, r.observation.y - ty));
+                        const g = alignPatch(frame, levelPatches, q, STEP, prediction, {
+                            ...OPTIONS,
+                            photometric: true,
+                        });
+                        if (!g.ok) throw new Error(`level ${level}, patch ${q}: ${g.reason}`);
+                        levelGains.push(g.observation.gain);
+                    }
+                });
+            }
+            expect(median(errors)).toBeLessThan(0.05);
+            gains.push(median(levelGains));
+        }
+        for (let l = 1; l < gains.length; l++) expect(gains[l]).toBeGreaterThan(gains[l - 1]);
+        expect(gains[0]).toBeLessThan(1);
+        expect(gains[5]).toBeGreaterThan(1);
+    }, 60_000);
 });

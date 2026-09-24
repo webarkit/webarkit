@@ -76,8 +76,8 @@ export function pyramidScales(scaleStep: number, count: number): Float64Array | 
  * **Validation**, in this order: the options (`invalid-options`, including a
  * step whose deepest requested level's scale underflows — see
  * {@link pyramidScales}), then the frame (`invalid-frame`), then every level's
- * size (`level-too-small`). No pixel is read and nothing is allocated before
- * all three pass.
+ * size (`level-too-small`). No pixel is read, and nothing proportional to the
+ * frame is allocated, before all three pass.
  *
  * **Sizes.** Level `l` is `(w0 · s_l) | 0` × `(h0 · s_l) | 0` with
  * `s_l = levelScale(scaleStep, l)` — the rule `buildTargetFromImage` records
@@ -107,8 +107,9 @@ export function pyramidScales(scaleStep: number, count: number): Float64Array | 
  *   Blur accumulates down the cascade: each step adds the kernel's variance,
  *   `r²/12 + 1/6` source px², which in a level's own pixels settles at
  *   `(r²/12 + 1/6) / (r² − 1)` — σ ≈ 0.71 px at `∛2` — so it is the first
- *   step, from an unfiltered level 0, that aliases most. Both pyramids alias
- *   alike, since one function builds both (Q11, below).
+ *   step, from an unfiltered level 0, that aliases most. A target's pyramid
+ *   and the frame's alias alike, step for step, since one function builds
+ *   both (Q11, below).
  * - **It is small**: support `r + 2`, so three or four taps per axis at `∛2`,
  *   and each level costs a pass over the level before it, not over level 0.
  *
@@ -116,14 +117,28 @@ export function pyramidScales(scaleStep: number, count: number): Float64Array | 
  * bit-identical for the same input on any engine.
  *
  * **Open question Q11.** Format spec §5.7 does not say which filter produced
- * a target's level images. The tracker needs its stored patches and the
- * frame's levels to be filtered alike, and today guarantees it by building
- * both with this function (types.ts). The assumption made here, and relied on
- * by `alignPatch`, is exactly that: **a patch's pixels were cut from a level
- * this function built, with the target's `scaleStep`.** A target compiled by
- * another implementation, or with another filter, still aligns — but with a
- * blur mismatch this code cannot see, whose cost is unmeasured until Q11 is
- * settled.
+ * a target's level images. The assumption made here, and relied on by
+ * `alignPatch`, is: **a patch's pixels were cut from a level this function
+ * built, with the target's `scaleStep`**, so that a patch and a frame level
+ * the same number of steps below their level 0 have been filtered alike. Two
+ * things qualify it:
+ *
+ * - **`compile-target` does not do this yet.** It cuts patches from a
+ *   stand-in, an area-weighted box pyramid (`bin/target-pyramid.mjs`), until
+ *   it is switched to this function, and every file it produced names that
+ *   filter in `info.compiler.patchPyramid`. Level-0 patches, which no filter
+ *   touches, are unaffected: 63 of `examples/targets/pinball.wnft`'s 64.
+ * - **Filtered alike is not blurred alike.** Alignment reads a patch on the
+ *   frame level nearest its scale, usually a shallower one — a level-3 patch
+ *   on frame level 0 — and the frame carries its camera's blur besides,
+ *   which no pyramid step accounts for. The difference reads as gain and
+ *   residual, and little as position: with the tests' renderer, whose
+ *   resampling blurs about as much as two `∛2` steps, patches of levels 0 to
+ *   5 read at their own scale give a gain of 0.86 to 1.10 and a median error
+ *   of 0.016 to 0.042 px (align_patch_accuracy.test.ts).
+ *
+ * A target whose levels another filter built adds its own difference to the
+ * second, by an amount this code cannot see.
  */
 export const buildFramePyramid: BuildFramePyramid = (frame, options) => {
     const { levels, scaleStep } = options;

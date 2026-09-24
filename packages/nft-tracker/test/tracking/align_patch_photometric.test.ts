@@ -69,13 +69,16 @@ import {
 //   (64..192), with room on both sides; the first test checks that every
 //   change keeps it inside [0, 255] rather than assuming it.
 // - Even on an unchanged frame the estimate is not (1, 0): measured gain
-//   1.04, bias −4.5 on the full-contrast image. The renderer's frame is
-//   sharper than the level-3 patch, so its texture has a few percent more
-//   contrast, and an affine intensity model reads part of a blur difference
-//   as gain (blurring the frame past the patch turns it below 1; see the
-//   last test). What gain and bias guarantee is therefore relative: a frame
+//   1.04, bias −4.9. These level-3 patches have been through three pyramid
+//   steps and are read on frame level 0, which has been through none — the
+//   renderer's resampling blurs it only about as much as two steps would —
+//   so the frame's texture has a few percent more contrast than the
+//   patch's, and an affine intensity model reads the blur difference as
+//   gain (blurring the frame past the patch turns it below 1; see below).
+//   So for these patches what gain and bias guarantee is relative: a frame
 //   changed by (g, b) must give g · gain₀ and g · bias₀ + b, where (gain₀,
-//   bias₀) is what the unchanged frame gives.
+//   bias₀) is what the unchanged frame gives. Where the patch and the frame
+//   are filtered alike, the estimate is absolute (the level-0 test).
 
 const STEP = Math.cbrt(2);
 const P = 8;
@@ -261,8 +264,10 @@ describe("alignPatch: gain and bias", () => {
     });
 
     it("reads a blur mismatch as contrast: a frame sharper than the patch gives gain > 1, a blurrier one gain < 1", () => {
-        // Q11 in one number: gain drifts from 1 when the frame and the patch
-        // are not filtered alike, even with no photometric change at all.
+        // The blur difference in one number: gain drifts from 1 when the patch
+        // and the frame level it is read on are not equally blurred, even with
+        // no photometric change at all. This is not Q11's question — one
+        // function built both pyramids here — but what Q11's answer adds to.
         expect(unchanged.gain).toBeGreaterThan(1);
         expect(alignAll({ blurPasses: 1 }, ON).gain).toBeLessThan(1);
     });
