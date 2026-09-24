@@ -108,6 +108,9 @@ type Fit = Extract<ReturnType<typeof robustHomography>, { ok: true }>;
 function expectSelfConsistent(fit: Fit, src: PointArray, dst: PointArray, c: number): void {
     const r = transferErrors(fit.H, src, dst);
     expect(fit.weights.length).toBe(r.length);
+    // 12 digits: this side takes the residual with Math.hypot, the
+    // implementation with √(dx² + dy²), and the two differ by rounding
+    // (~1e-16 relative), which moves a weight or the RMS by far less.
     r.forEach((ri, i) => expect(fit.weights[i], `w[${i}]`).toBeCloseTo(tukey(ri, c), 12));
     expect(fit.numInliers).toBe(fit.weights.filter((w) => w > 0).length);
     let sw = 0;
@@ -224,6 +227,7 @@ describe("robustHomography on exact correspondences", () => {
             expect(maxTransferGap(r.H, H, checkPoints)).toBeLessThan(EXACT_PX);
             expect(r.numInliers).toBe(40);
             expect(r.rmsError).toBeLessThan(EXACT_PX);
+            // Below EXACT_PX, (r/c)² < 6.3e-14, so every weight is above 1 − 1.3e-13.
             for (const w of r.weights) expect(w).toBeGreaterThan(1 - 1e-12);
             expectSelfConsistent(r, src, dst, OPTIONS.tukeyC);
             // The prediction was already exact, so the first fit changes the
@@ -332,7 +336,8 @@ describe("robustHomography degenerate input", () => {
         // Pins the normal system's threshold rather than only exact
         // degeneracy, which any pivot test catches. Eight points along a line,
         // each moved off it by ±band/2 at most: the smallest Cholesky pivot
-        // ratio measures 3.2e-6 · band² (band in px).
+        // ratio measures 3.2e-6 · band² (band in px); the factorisation stops
+        // at the first pivot below the threshold, which can be a larger one.
         const alongALine = (band: number): PointArray => {
             const off = [0.5, -0.5, 0.3, -0.2, 0.4, -0.4, 0.1, -0.3];
             const pts: number[] = [];
@@ -340,9 +345,9 @@ describe("robustHomography degenerate input", () => {
                 pts.push(20 + 85 * i, 0.6 * (20 + 85 * i) + 40 + band * off[i]);
             return Float64Array.from(pts);
         };
-        const thin = alongALine(0.001); // pivot ratio 3.2e-12
+        const thin = alongALine(0.001); // smallest pivot ratio 3.2e-12, first failing 8.7e-12
         expect(robustHomography(thin, projectAll(H_TRUE, thin), H_TRUE, OPTIONS)).toEqual(SINGULAR);
-        const narrow = alongALine(0.1); // pivot ratio 3.2e-8
+        const narrow = alongALine(0.1); // smallest pivot ratio 3.2e-8
         const r = robustHomography(narrow, projectAll(H_TRUE, narrow), H_TRUE, OPTIONS);
         expect(r.ok).toBe(true);
         if (!r.ok) return;
@@ -392,7 +397,7 @@ describe("robustHomography degenerate input", () => {
         // Three heavy correspondences in a 20 px triangle, each 1 px off the
         // prediction in a rotational pattern about the triangle's centroid
         // (weight 0.88), and two light ones 500 px away, 3.99 px off (weight
-        // 6e-6). The first fit follows the triangle's local roll; carried
+        // 2.5e-5). The first fit follows the triangle's local roll; carried
         // 500 px, that roll leaves both far points beyond tukeyC.
         const src = Float64Array.from([100, 100, 120, 100, 100, 120, 600, 400, 600, 100]);
         const dst = src.slice();
