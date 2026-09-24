@@ -203,6 +203,18 @@ function downsample(src: GrayImage, dst: GrayImage, r: number): void {
     }
 }
 
+/**
+ * The variance, in source px², that one pyramid step of ratio `r` adds along
+ * each axis: `r²/12` from the box of width `r`, plus `1/6` from the triangle
+ * reconstruction (its variance averaged over the sampling phase).
+ *
+ * `alignPatch` uses it to blur a finer frame level the way this pyramid
+ * would have on its way down to a patch's scale.
+ */
+export function stepVariance(r: number): number {
+    return (r * r) / 12 + 1 / 6;
+}
+
 /** The taps of each of `count` outputs along one axis: CSR-style, `start` has `count + 1` entries. */
 interface Taps {
     readonly start: Int32Array;

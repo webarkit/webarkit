@@ -42,7 +42,7 @@ import type { GrayImage } from "@webarkit/cv-backend-spec";
 import { createJsfeatNextBackend } from "@webarkit/cv-backend-jsfeatnext";
 import { buildFramePyramid, buildTargetFromImage, levelScale } from "../../src/index.js";
 import type { FramePyramidResult, TargetDb } from "../../src/index.js";
-import { pyramidScales } from "../../src/tracking/frame_pyramid.js";
+import { pyramidScales, stepVariance } from "../../src/tracking/frame_pyramid.js";
 import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
 
 const CBRT2 = Math.cbrt(2);
@@ -263,6 +263,40 @@ describe("buildFramePyramid: the filter", () => {
         const sinc = (x: number) => Math.sin(Math.PI * x) / (Math.PI * x);
         const predicted = 255 * 2 * sinc(CBRT2 / 2) * sinc(0.5) ** 2;
         expect(Math.abs(swing(build(stripes, 2, CBRT2)[1]) - predicted)).toBeLessThan(3);
+    });
+
+    it("adds, per step, the variance stepVariance states: 0.299 px² at ∛2 and 0.5 at 2", () => {
+        // A kernel with an exact first moment turns a parabola (x − c0)² into
+        // (x − c0)² + variance, and leaves a linear term alone.
+        const c0 = 10;
+        const v = (x: number, y: number) => (x - c0) ** 2 + y;
+        const surface = sampled(21, 151, v);
+
+        // Step 2: the [1, 2, 1] / 4 kernel adds exactly 0.5 to an integer
+        // parabola at every (integer) sample, and the half rounds up.
+        const [, half] = build(surface, 2, 2);
+        for (let y = 1; y < half.height - 1; y++) {
+            for (let x = 2; x < half.width - 2; x++) {
+                expect(half.data[y * half.width + x]).toBe(v(2 * x, 2 * y) + stepVariance(2) + 0.5);
+            }
+        }
+
+        // Step ∛2: no pixel is exact, but rounding errors cancel on average
+        // once the true values' fractions differ — which the ramp in y, at
+        // y / s, guarantees from row to row. Over the sampling phases the
+        // triangle's share of the variance averages to 1/6.
+        const [, level1] = build(surface, 2, CBRT2);
+        const s = levelScale(CBRT2, 1);
+        let sum = 0;
+        let n = 0;
+        for (let y = 2; y < level1.height - 2; y++) {
+            for (let x = 2; x < level1.width - 2; x++) {
+                sum += level1.data[y * level1.width + x] - v(x / s, y / s);
+                n++;
+            }
+        }
+        expect(Math.abs(sum / n - stepVariance(CBRT2))).toBeLessThan(0.02);
+        expect(stepVariance(CBRT2)).toBeCloseTo(0.299, 3);
     });
 
     it("is deterministic and leaves the frame untouched", () => {

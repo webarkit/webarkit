@@ -37,9 +37,9 @@
  *
  */
 
-import type { Mat3 } from "@webarkit/cv-backend-spec";
+import type { GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
 import type { PatchTable } from "../target/types.js";
-import { pyramidScales } from "./frame_pyramid.js";
+import { pyramidScales, stepVariance } from "./frame_pyramid.js";
 import type {
     AlignPatch,
     AlignPatchOptions,
@@ -102,39 +102,43 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
     // d ← d − Δd. The step is computed in level-0 px on every level — the
     // level's px scale cancels between SD and H — so a level only changes
     // which image is sampled.
+    //
+    // Coarse to fine is two levels: the start level (startLevel), then the
+    // finest usable one, read through footprints when it is finer than the
+    // patch (footprint). The levels in between are skipped: the footprint
+    // already makes the finest level look like the start level, so visiting
+    // them changed neither accuracy nor the basin, and cost iterations
+    // (measured at σ = 2: median 8 iterations through every level, 5 with
+    // the jump, errors and convergence rates equal to within 1%).
     const start = startLevel(usable, frameScales, window.scaleAtCentre);
+    const values = new Float64Array(system.n);
     let dx = 0;
     let dy = 0;
     let iterations = 0;
     let converged = false;
     let level = start;
-    for (const l of usable.filter((u) => u <= start).reverse()) {
+    for (const l of start === usable[0] ? [start] : [start, usable[0]]) {
         level = l;
-        if (!inside(frame, frameScales, l, window, dx, dy)) return fail("outside-frame");
+        const fp = footprint(frame, frameScales, l, window);
+        if (!inside(frame, frameScales, l, window, dx, dy, fp)) return fail("outside-frame");
         const img = frame.levels[l];
         const s = frameScales[l];
         converged = false;
         for (let it = 0; it < options.maxIterations; it++) {
+            sampleFrame(img, s, window, dx, dy, fp, values);
             let b0 = 0;
             let b1 = 0;
-            for (let k = 0; k < system.n; k++) {
-                const v = bilinear(
-                    img.data,
-                    img.width,
-                    img.height,
-                    s * (window.x[k] + dx),
-                    s * (window.y[k] + dy),
-                );
-                const e = v - patch.pixels[patch.offset + k];
-                b0 += system.sx[k] * e;
-                b1 += system.sy[k] * e;
+            for (let i = 0; i < system.n; i++) {
+                const e = values[i] - patch.pixels[patch.offset + i];
+                b0 += system.sx[i] * e;
+                b1 += system.sy[i] * e;
             }
             const stepX = system.i00 * b0 + system.i01 * b1;
             const stepY = system.i01 * b0 + system.i11 * b1;
             dx -= stepX;
             dy -= stepY;
             iterations++;
-            if (!inside(frame, frameScales, l, window, dx, dy)) return fail("outside-frame");
+            if (!inside(frame, frameScales, l, window, dx, dy, fp)) return fail("outside-frame");
             if (s * Math.sqrt(stepX * stepX + stepY * stepY) < options.epsilon) {
                 converged = true;
                 break;
@@ -146,6 +150,127 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
         iterations,
     });
 };
+
+/** The most points per axis a footprint is read with. */
+const MAX_FOOTPRINT_POINTS = 16;
+
+/**
+ * How each patch pixel reads a level finer than the patch's own scale: a
+ * separable, triangle-weighted grid of points around the pixel's predicted
+ * position, in patch px along the patch's own axes.
+ */
+interface Footprint {
+    readonly offsets: Float64Array;
+    /** Sum to 1. */
+    readonly weights: Float64Array;
+    /** The triangle's half-width, patch px: how far a footprint reaches. */
+    readonly halfWidth: number;
+}
+
+/**
+ * How level `l` is read: `null` for one bilinear sample per patch pixel, or
+ * a {@link Footprint} blurring the level to the patch's own scale.
+ *
+ * **Why levels finer than the patch need it.** The refinement goes down to
+ * the finest usable level (types.ts), and for a patch seen larger than its
+ * own scale, those levels are sharper than the patch: one patch pixel covers
+ * `σ > 1` level pixels. Sampled one point per patch pixel, such a level is
+ * aliased — the points are further apart than its pixels — and it holds
+ * detail the patch lacks. Measured on 24 level-5 pinball patches seen at
+ * twice their scale (`σ = 2` at level 0): point-sampled refinement from the
+ * matched level down to level 0 left a median error of 0.12 px, a 95th
+ * percentile of 0.82 px, and 18% of alignments failing from only 2 px off,
+ * where stopping at the matched level gave 0.042 / 0.10 px and none.
+ *
+ * **What it emulates.** The patch was cut from a level this package's
+ * pyramid built (Q11, frame_pyramid.ts), and the level of the frame's pyramid
+ * matching it would have been built the same way, by the steps between
+ * level `l` and the patch's scale. Each step adds `stepVariance(r)` source
+ * px²; in patch px² those steps sum to
+ * `stepVariance(r) · (1 − 1/σ²) / (r² − 1)`, and the footprint is a triangle
+ * of that variance (half-width `√(6 · variance)`), sampled at most one level
+ * pixel apart. Level `l` read this way looks like the matched level, at
+ * level `l`'s resolution and without the cascade's rounding — so refining
+ * there gains precision instead of losing it. Measured on the same patches:
+ * median 0.010 px, worst 0.026 px, none failing from 2 px off — better
+ * than stopping at the matched level (0.042 px); at `σ = 1.26`, a median of
+ * 0.015 px against 0.043 point-sampled. A fixed one-pixel box footprint,
+ * tried first, reached only 0.085 px at `σ = 2`: too sharp. Triangles of
+ * fixed half-width 1 and 1.5 each did best at the `σ` whose variance above
+ * they match (1.26 and 2), which is what chose this rule over a constant.
+ *
+ * **When.** Only where `σ > √r`. The start level is the one where `σ` is
+ * closest to 1, within `√r` of it, so it is always point-sampled: a patch
+ * whose level matches the frame's pays nothing, and a magnified one pays
+ * `m²` samples per pixel, `m = ⌈2 · half-width · σ⌉` (at most
+ * {@link MAX_FOOTPRINT_POINTS}), on the finest level only.
+ */
+function footprint(
+    frame: FramePyramid,
+    scales: Float64Array,
+    l: number,
+    window: Window,
+): Footprint | null {
+    const sigma = window.scaleAtCentre * scales[l];
+    const r = frame.scaleStep;
+    if (!(sigma > Math.sqrt(r))) return null;
+    const variance = (stepVariance(r) * (1 - 1 / (sigma * sigma))) / (r * r - 1);
+    const halfWidth = Math.sqrt(6 * variance);
+    const m = Math.min(MAX_FOOTPRINT_POINTS, Math.ceil(2 * halfWidth * sigma));
+    const offsets = new Float64Array(m);
+    const weights = new Float64Array(m);
+    let sum = 0;
+    for (let a = 0; a < m; a++) {
+        offsets[a] = -halfWidth + ((a + 0.5) * 2 * halfWidth) / m;
+        weights[a] = 1 - Math.abs(offsets[a]) / halfWidth;
+        sum += weights[a];
+    }
+    for (let a = 0; a < m; a++) weights[a] /= sum;
+    return { offsets, weights, halfWidth };
+}
+
+/**
+ * Level `l`'s value for every patch pixel, the window moved by `(dx, dy)`
+ * level-0 px, into `out`: one bilinear sample at the pixel's predicted
+ * position, or its {@link Footprint}, taken as affine across the footprint.
+ */
+function sampleFrame(
+    img: GrayImage,
+    s: number,
+    window: Window,
+    dx: number,
+    dy: number,
+    fp: Footprint | null,
+    out: Float64Array,
+): void {
+    const { data, width, height } = img;
+    const n = out.length;
+    if (fp === null) {
+        for (let i = 0; i < n; i++) {
+            out[i] = bilinear(data, width, height, s * (window.x[i] + dx), s * (window.y[i] + dy));
+        }
+        return;
+    }
+    const { offsets, weights } = fp;
+    const m = offsets.length;
+    for (let i = 0; i < n; i++) {
+        const x = window.x[i] + dx;
+        const y = window.y[i] + dy;
+        let sum = 0;
+        for (let b = 0; b < m; b++) {
+            const bx = x + window.vx[i] * offsets[b];
+            const by = y + window.vy[i] * offsets[b];
+            let row = 0;
+            for (let a = 0; a < m; a++) {
+                const px = bx + window.ux[i] * offsets[a];
+                const py = by + window.uy[i] * offsets[a];
+                row += weights[a] * bilinear(data, width, height, s * px, s * py);
+            }
+            sum += weights[b] * row;
+        }
+        out[i] = sum;
+    }
+}
 
 /**
  * The result for the window moved by `(dx, dy)`, its residual measured on
@@ -189,7 +314,25 @@ function observation(
 
 /**
  * Where coarse-to-fine starts: the usable level on which one patch pixel is
- * closest to one level pixel, ties going to the coarser level.
+ * closest to one level pixel (`σ` nearest 1 by ratio), ties going to the
+ * coarser level.
+ *
+ * That is the level whose blur and resolution match the patch's (Q11): the
+ * patch's basin is fixed in patch pixels there, and so in frame pixels it
+ * grows with how magnified the patch is. Measured against the alternatives
+ * (24 pinball patches, 3 views):
+ *
+ * - **The coarsest usable level** wrecked the basin of matched patches (69%
+ *   converging from 1 px off, errors past 100 px): a sharp patch against a
+ *   much blurrier level has no basin at all. Levels coarser than the patch's
+ *   scale are never visited for that reason; a single patch holds no
+ *   coarser content to align them with.
+ * - **Level 0**, read through footprints ({@link footprint}) from the first
+ *   iteration, is nearly as good for a patch seen at twice its scale — the
+ *   footprint does the real work — but slightly narrower (61% vs 65%
+ *   converging from 12 px off, 35% vs 40% from 16 px), and every iteration
+ *   pays the footprint's `m²` samples per pixel, where starting here the
+ *   first iterations take one.
  */
 function startLevel(usable: number[], scales: Float64Array, scaleAtCentre: number): number {
     let best = usable[0];
@@ -376,6 +519,21 @@ interface Window {
     readonly jc: Float64Array;
     readonly jd: Float64Array;
     /**
+     * The footprint of each patch pixel: frame level-0 px per patch px along
+     * the patch's columns (`u`) and rows (`v`), i.e. `J` divided by the
+     * patch's level scale.
+     */
+    readonly ux: Float64Array;
+    readonly uy: Float64Array;
+    readonly vx: Float64Array;
+    readonly vy: Float64Array;
+    /**
+     * How far one patch px of footprint reaches, at most, level-0 px:
+     * `max |ux| + |vx|` and `max |uy| + |vy|` over the samples.
+     */
+    readonly spanX: number;
+    readonly spanY: number;
+    /**
      * Whether the warp's Jacobian is invertible at every sample. A prediction
      * that collapses the window onto a line or a point leaves nothing to
      * align, and makes the system singular.
@@ -398,6 +556,12 @@ function warpWindow(H: Mat3, patch: Patch): Window | null {
     const jb = new Float64Array(n);
     const jc = new Float64Array(n);
     const jd = new Float64Array(n);
+    const ux = new Float64Array(n);
+    const uy = new Float64Array(n);
+    const vx = new Float64Array(n);
+    const vy = new Float64Array(n);
+    let spanX = 0;
+    let spanY = 0;
     let minX = Infinity;
     let maxX = -Infinity;
     let minY = Infinity;
@@ -418,6 +582,12 @@ function warpWindow(H: Mat3, patch: Patch): Window | null {
             maxY = Math.max(maxY, p[1]);
             const J = jacobian(H, X, Y, p[0], p[1]);
             [ja[k], jb[k], jc[k], jd[k]] = J;
+            ux[k] = J[0] / scale;
+            uy[k] = J[2] / scale;
+            vx[k] = J[1] / scale;
+            vy[k] = J[3] / scale;
+            spanX = Math.max(spanX, Math.abs(ux[k]) + Math.abs(vx[k]));
+            spanY = Math.max(spanY, Math.abs(uy[k]) + Math.abs(vy[k]));
             const det = J[0] * J[3] - J[1] * J[2];
             if (!(Number.isFinite(det) && det !== 0)) invertible = false;
         }
@@ -430,7 +600,26 @@ function warpWindow(H: Mat3, patch: Patch): Window | null {
     }
     // J is per target level-0 px; one patch px is 1 / scale of those.
     const scaleAtCentre = Math.sqrt(Math.abs(centreDet)) / scale;
-    return { x, y, minX, maxX, minY, maxY, ja, jb, jc, jd, invertible, scaleAtCentre };
+    return {
+        x,
+        y,
+        minX,
+        maxX,
+        minY,
+        maxY,
+        ja,
+        jb,
+        jc,
+        jd,
+        ux,
+        uy,
+        vx,
+        vy,
+        spanX,
+        spanY,
+        invertible,
+        scaleAtCentre,
+    };
 }
 
 /**
@@ -456,21 +645,28 @@ function jacobian(
 /**
  * The levels on which the whole window can be sampled, finest first.
  *
- * A level is usable when every sample of the warped P × P window lies in
+ * A level is usable when every point the warped P × P window reads lies in
  * `[0, w − 1] × [0, h − 1]` of that level: bilinear interpolation reads the
- * pixel to the right of and below each sample, so a sample on the last
- * column or row is allowed and nothing beyond. The alignment is inverse
- * compositional, so it reads no frame gradients, and needs no other border.
+ * pixel to the right of and below each point, so a point on the last column
+ * or row is allowed and nothing beyond. The points are the samples
+ * themselves, or on a level read through footprints ({@link footprint})
+ * everything those reach. The alignment is inverse compositional, so it reads no frame
+ * gradients and needs no other border.
  */
 function usableLevels(frame: FramePyramid, scales: Float64Array, window: Window): number[] {
     const out: number[] = [];
     for (let l = 0; l < frame.levels.length; l++) {
-        if (inside(frame, scales, l, window, 0, 0)) out.push(l);
+        if (inside(frame, scales, l, window, 0, 0, footprint(frame, scales, l, window))) {
+            out.push(l);
+        }
     }
     return out;
 }
 
-/** Whether the window, moved by `(dx, dy)` level-0 px, lies inside level `l`. */
+/**
+ * Whether everything the window reads, moved by `(dx, dy)` level-0 px, lies
+ * inside level `l` when each patch pixel is read through `fp`.
+ */
 function inside(
     frame: FramePyramid,
     scales: Float64Array,
@@ -478,15 +674,18 @@ function inside(
     window: Window,
     dx: number,
     dy: number,
+    fp: Footprint | null,
 ): boolean {
     const { width, height } = frame.levels[l];
     if (width < 2 || height < 2) return false;
     const s = scales[l];
+    const rx = fp === null ? 0 : fp.halfWidth * window.spanX;
+    const ry = fp === null ? 0 : fp.halfWidth * window.spanY;
     return (
-        s * (window.minX + dx) >= 0 &&
-        s * (window.maxX + dx) <= width - 1 &&
-        s * (window.minY + dy) >= 0 &&
-        s * (window.maxY + dy) <= height - 1
+        s * (window.minX + dx - rx) >= 0 &&
+        s * (window.maxX + dx + rx) <= width - 1 &&
+        s * (window.minY + dy - ry) >= 0 &&
+        s * (window.maxY + dy + ry) <= height - 1
     );
 }
 
@@ -583,7 +782,10 @@ function minEigenvalue(a: number, b: number, c: number): number {
     return mean - Math.sqrt(d * d + b * b);
 }
 
-/** RMS intensity difference between the patch and level `l` over the window. */
+/**
+ * RMS intensity difference between the patch and level `l` over the P × P
+ * window, the level read the way the alignment reads it there.
+ */
 function residualAt(
     frame: FramePyramid,
     scales: Float64Array,
@@ -593,15 +795,13 @@ function residualAt(
     dx: number,
     dy: number,
 ): number {
-    const img = frame.levels[l];
-    const s = scales[l];
     const n = patch.P * patch.P;
+    const values = new Float64Array(n);
+    const fp = footprint(frame, scales, l, window);
+    sampleFrame(frame.levels[l], scales[l], window, dx, dy, fp, values);
     let sum = 0;
-    for (let k = 0; k < n; k++) {
-        const x = s * (window.x[k] + dx);
-        const y = s * (window.y[k] + dy);
-        const e = bilinear(img.data, img.width, img.height, x, y);
-        const r = e - patch.pixels[patch.offset + k];
+    for (let i = 0; i < n; i++) {
+        const r = values[i] - patch.pixels[patch.offset + i];
         sum += r * r;
     }
     return Math.sqrt(sum / n);
