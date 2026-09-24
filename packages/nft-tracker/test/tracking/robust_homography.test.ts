@@ -43,7 +43,11 @@ import { robustHomography } from "../../src/index.js";
 import type { RobustHomographyOptions } from "../../src/index.js";
 import {
     chain,
+    corners,
+    maxTransferGap,
     perspective,
+    planeView,
+    project,
     projectAll,
     rotationAbout,
     scaling,
@@ -70,6 +74,50 @@ const H_TRUE: Mat3 = chain(
     scaling(0.85),
     perspective(1.5e-4, -2e-4),
 );
+
+// Transfer error that still counts as exact recovery. One weighted DLT in
+// Hartley-normalised coordinates: an 8×8 normal system whose condition number
+// is at most ~1e4 here, so rounding moves a point by ~1e4 · 2.2e-16 · 640 px
+// ≈ 1e-9 px at worst.
+const EXACT_PX = 1e-6;
+
+/** Tukey's biweight exactly as types.ts states it, written out independently. */
+function tukey(r: number, c: number): number {
+    return r < c ? (1 - (r / c) ** 2) ** 2 : 0;
+}
+
+/** The forward transfer error `‖π(H · src_i) − dst_i‖₂` of every correspondence, px. */
+function transferErrors(H: Mat3, src: PointArray, dst: PointArray): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < src.length; i += 2) {
+        const [x, y] = project(H, src[i], src[i + 1]);
+        out.push(Math.hypot(x - dst[i], y - dst[i + 1]));
+    }
+    return out;
+}
+
+type Fit = Extract<ReturnType<typeof robustHomography>, { ok: true }>;
+
+/**
+ * The result's weights, inlier count and RMS are what its own H gives under
+ * types.ts's residual and weight — recomputed here from H alone, so a result
+ * whose weights belong to some other H (the previous iterate, say) fails.
+ */
+function expectSelfConsistent(fit: Fit, src: PointArray, dst: PointArray, c: number): void {
+    const r = transferErrors(fit.H, src, dst);
+    expect(fit.weights.length).toBe(r.length);
+    r.forEach((ri, i) => expect(fit.weights[i], `w[${i}]`).toBeCloseTo(tukey(ri, c), 12));
+    expect(fit.numInliers).toBe(fit.weights.filter((w) => w > 0).length);
+    let sw = 0;
+    let swr2 = 0;
+    r.forEach((ri, i) => {
+        if (fit.weights[i] > 0) {
+            sw += fit.weights[i];
+            swr2 += fit.weights[i] * ri * ri;
+        }
+    });
+    expect(fit.rmsError).toBeCloseTo(Math.sqrt(swr2 / sw), 12);
+}
 
 describe("robustHomography input validation", () => {
     const src = targetGrid();
@@ -151,4 +199,35 @@ describe("robustHomography input validation", () => {
         robustHomography(src.subarray(0, 6), dst.subarray(0, 6), H_TRUE, OPTIONS);
         expect([Array.from(src), Array.from(dst), Array.from(H_TRUE)]).toEqual(before);
     });
+});
+
+describe("robustHomography on exact correspondences", () => {
+    const src = targetGrid();
+    const checkPoints = Float64Array.from([...src, ...corners(640, 480)]);
+    const views: [string, Mat3][] = [
+        ["moderate perspective", H_TRUE],
+        ["60° tilt, 15° yaw", planeView(60, 15, 1000)],
+        [
+            "small, far and rolled 100°",
+            chain(translation(300, 200), rotationAbout(1.745, 0, 0), scaling(0.2)),
+        ],
+    ];
+    for (const [name, H] of views) {
+        it(`recovers H to rounding from a perfect prediction: ${name}`, () => {
+            const dst = projectAll(H, src);
+            const r = robustHomography(src, dst, H, OPTIONS);
+            expect(r.ok).toBe(true);
+            if (!r.ok) return;
+            expect(r.H[8]).toBe(1);
+            expect(maxTransferGap(r.H, H, checkPoints)).toBeLessThan(EXACT_PX);
+            expect(r.numInliers).toBe(40);
+            expect(r.rmsError).toBeLessThan(EXACT_PX);
+            for (const w of r.weights) expect(w).toBeGreaterThan(1 - 1e-12);
+            expectSelfConsistent(r, src, dst, OPTIONS.tukeyC);
+            // The prediction was already exact, so the first fit changes the
+            // RMS by rounding only: converged after one fit.
+            expect(r.iterations).toBe(1);
+            expect(r.converged).toBe(true);
+        });
+    }
 });

@@ -37,8 +37,14 @@
  *
  */
 
-import type { Mat3 } from "@webarkit/cv-backend-spec";
-import { adjugate3, isFiniteMat3, isInvertible, mul3, scaledToUnitMax } from "./mat3.js";
+import {
+    adjugate3,
+    isFiniteMat3,
+    isInvertible,
+    mul3,
+    scaledToUnitCorner,
+    scaledToUnitMax,
+} from "./mat3.js";
 import type { PredictHomography } from "./types.js";
 
 /**
@@ -110,10 +116,3 @@ export const predictHomography: PredictHomography = (previous, current) => {
     if (!isFiniteMat3(H)) return { ok: false, reason: "non-finite" };
     return { ok: true, H };
 };
-
-/** A new array: `m` scaled so that `m[8] = 1`. */
-function scaledToUnitCorner(m: Mat3): Mat3 {
-    const out = new Float64Array(9);
-    for (let i = 0; i < 9; i++) out[i] = m[i] / m[8];
-    return out;
-}

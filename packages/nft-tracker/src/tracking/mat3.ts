@@ -122,6 +122,13 @@ export function scaledToUnitMax(m: Mat3): Mat3 {
     return out;
 }
 
+/** `m` rescaled so that `m[8] = 1`, as a new array — how a homography is returned. */
+export function scaledToUnitCorner(m: Mat3): Mat3 {
+    const out = new Float64Array(9);
+    for (let i = 0; i < 9; i++) out[i] = m[i] / m[8];
+    return out;
+}
+
 /**
  * The adjugate, `det(m) · m⁻¹`, as a new array. For a homography it stands in
  * for the inverse: the two differ by a scalar, and a homography is defined
