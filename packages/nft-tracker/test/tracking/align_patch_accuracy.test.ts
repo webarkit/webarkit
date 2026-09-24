@@ -88,7 +88,7 @@ for (let k = 0; k < 8; k++) {
     OFFSETS.push([Math.cos((k * Math.PI) / 4), Math.sin((k * Math.PI) / 4)]);
 }
 
-describe("alignPatch: accuracy on clean warps", () => {
+describe("alignPatch: accuracy", () => {
     // Measured: median 0.022 px, 95th percentile 0.045 px, worst 0.063 px;
     // a median of 4 iterations (95th percentile 6) at epsilon = 0.01 px;
     // median residual 4.1 grey levels, which is the blur mismatch between
@@ -115,5 +115,42 @@ describe("alignPatch: accuracy on clean warps", () => {
         expect(results.every((o) => o.gain === 1 && o.bias === 0)).toBe(true);
         expect(median(errors)).toBeLessThan(0.05);
         expect(Math.max(...errors)).toBeLessThan(0.25);
+    });
+
+    it("degrades gracefully with sensor noise: median error below 0.1 px at σ = 4 grey levels, below 0.2 px at σ = 8, blur included", () => {
+        // One blur pass (σ² = 0.5 px²) and seeded noise on the frontal view;
+        // predictions exact or 1 px off, as above. Measured: median 0.070 px
+        // (worst 0.17) at σ = 4, 0.082 px (worst 0.23) at σ = 8.
+        const [, H] = VIEWS[0];
+        for (const [sigma, bound] of [
+            [4, 0.1],
+            [8, 0.2],
+        ]) {
+            const rendered = renderWarp(target, H, {
+                ...FRAME,
+                blurPasses: 1,
+                noiseSigma: sigma,
+                seed: 48,
+            });
+            const frame = pyramidOf(rendered, 5);
+            const errors: number[] = [];
+            sites.forEach((site, q) => {
+                const [X, Y] = patchCentre(site, P, STEP);
+                const [tx, ty] = project(H, X, Y);
+                for (const [dx, dy] of OFFSETS) {
+                    const r = alignPatch(
+                        frame,
+                        patches,
+                        q,
+                        STEP,
+                        mat3Mul(translation(dx, dy), H),
+                        OPTIONS,
+                    );
+                    if (!r.ok) throw new Error(`patch ${q}: ${r.reason}`);
+                    errors.push(Math.hypot(r.observation.x - tx, r.observation.y - ty));
+                }
+            });
+            expect(median(errors)).toBeLessThan(bound);
+        }
     });
 });
