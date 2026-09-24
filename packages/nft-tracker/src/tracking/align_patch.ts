@@ -61,7 +61,62 @@ import type {
  */
 const MIN_EIGENVALUE = 1;
 
-/** See {@link AlignPatch}; the design notes are on the individual steps below. */
+/**
+ * See {@link AlignPatch}. The design, one choice per point; the measurements
+ * behind each are in the notes of the function it points to, and in the
+ * `align_patch_*.test.ts` suites, which re-measure them.
+ *
+ * 1. **The warp of the patch by the prediction.** Wagner et al.'s
+ *    PatchTracker (IEEE TVCG 2010) matches reference patches warped by the
+ *    predicted pose, so that a template already looks as it will in the
+ *    frame. Here a patch is only its stored P × P pixels (§5.7), so each of
+ *    them is placed where the prediction puts it — the full homography per
+ *    pixel, not its affine approximation at the centre — and it is the
+ *    *frame* that is sampled there, bilinearly. The template is never
+ *    resampled: it is exactly the stored data ({@link warpWindow}).
+ * 2. **What is estimated.** A translation `d` of the whole warped window, in
+ *    frame level-0 px; with `photometric`, also a gain and a bias, the frame
+ *    being `gain · T + bias`. Rotation, scale and perspective come from the
+ *    prediction and are not re-estimated: one small patch pins them down
+ *    poorly, and the robust fit over every patch's translation does it
+ *    (branch C). So the prediction must be close in rotation and scale:
+ *    about 10° and 10% (align_patch_basin.test.ts).
+ * 3. **How.** Inverse compositional Lucas–Kanade (Baker & Matthews, "Lucas-
+ *    Kanade 20 Years On"): the template's steepest-descent images and the
+ *    Hessian are built once per patch, and an iteration only samples the
+ *    frame. Gain and bias by the simultaneous inverse compositional
+ *    algorithm of the same series' Part 3, which for a translation keeps a
+ *    once-built Hessian too ({@link alignmentSystem}).
+ * 4. **Coarse to fine.** Start on the level where one patch pixel is one
+ *    level pixel; then refine on the finest usable level, read through
+ *    footprints that blur it as the pyramid would down to the patch's scale
+ *    ({@link startLevel}, {@link footprint}).
+ * 5. **The convergence test and the cap.** A level ends when a translation
+ *    step is below `epsilon` in that level's px, or after `maxIterations`
+ *    steps. `converged` is the finest level's, since the result is that
+ *    level's estimate; `iterations` sums both levels. Measured on the clean
+ *    suites at `epsilon` 0.01 px: a median of 4 iterations (95th percentile
+ *    6) for matched patches, 5 (6) for magnified ones, and every one of 1152
+ *    alignments from 2 px off converged within a cap of 30, at `σ` 1 and 2.
+ *    `epsilon` is in the finest level's px, so for a magnified patch it is a
+ *    finer tolerance in patch px (0.01 frame px is 0.005 patch px at
+ *    `σ = 2`) — tight, but met. A step that moves the window out of the
+ *    level being aligned fails `outside-frame`: the alignment's own estimate
+ *    then puts the patch where that level cannot evaluate it.
+ * 6. **Failures**, checked in the order the union declares them, every one
+ *    before the iteration starts except `outside-frame` from a step and
+ *    `singular` from a gain collapsing to 0 (a frame region with no
+ *    contrast). No input reaches `levelScale`'s throw ({@link validPatch},
+ *    {@link validPyramid}).
+ *
+ * **Assumptions** (format spec Q11, frame_pyramid.ts): the patch was cut
+ * from a level `buildFramePyramid` built with `targetScaleStep`, and the
+ * frame's pyramid comes from the same function, ideally with the same step,
+ * so a patch and the frame level matching its scale are filtered alike. A
+ * target compiled with another filter still aligns, with a blur mismatch
+ * that biases the gain (align_patch_photometric.test.ts) and whose effect on
+ * position is unmeasured.
+ */
 export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, prediction, options) => {
     if (!validOptions(options)) return fail("invalid-options");
     const frameScales = validPyramid(frame);
@@ -78,19 +133,10 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
     const usable = usableLevels(frame, frameScales, window);
     if (usable.length === 0) return fail("outside-frame");
 
-    if (!window.invertible || !textured(patch, options.photometric)) return fail("singular");
+    const information = translationInformation(patch, options.photometric);
+    if (!window.invertible || !(information >= MIN_EIGENVALUE)) return fail("singular");
 
-    const finest = usable[0];
-    if (options.photometric) {
-        // Gain and bias are not estimated yet: the prediction itself,
-        // reported as unconverged.
-        return observation(q, centre, 0, 0, frame, frameScales, finest, window, patch, {
-            converged: false,
-            iterations: 0,
-        });
-    }
-
-    const system = translationSystem(window, patch);
+    const system = alignmentSystem(window, patch, options.photometric);
     if (system === null) return fail("singular");
 
     // Inverse compositional Lucas–Kanade on a translation d (level-0 px) of
@@ -112,8 +158,11 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
     // the jump, errors and convergence rates equal to within 1%).
     const start = startLevel(usable, frameScales, window.scaleAtCentre);
     const values = new Float64Array(system.n);
+    const b = new Float64Array(system.size);
     let dx = 0;
     let dy = 0;
+    let gain = 1;
+    let bias = 0;
     let iterations = 0;
     let converged = false;
     let level = start;
@@ -126,18 +175,35 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
         converged = false;
         for (let it = 0; it < options.maxIterations; it++) {
             sampleFrame(img, s, window, dx, dy, fp, values);
-            let b0 = 0;
-            let b1 = 0;
+            b.fill(0);
             for (let i = 0; i < system.n; i++) {
-                const e = values[i] - patch.pixels[patch.offset + i];
-                b0 += system.sx[i] * e;
-                b1 += system.sy[i] * e;
+                const t = patch.pixels[patch.offset + i];
+                const e = values[i] - gain * t - bias;
+                b[0] += system.sx[i] * e;
+                b[1] += system.sy[i] * e;
+                if (system.size === 4) {
+                    b[2] += t * e;
+                    b[3] += e;
+                }
             }
-            const stepX = system.i00 * b0 + system.i01 * b1;
-            const stepY = system.i01 * b0 + system.i11 * b1;
+            solve(system, b);
+            // The translation's steepest-descent images scale with the gain
+            // (see alignmentSystem), so its step is H₀'s divided by it.
+            const stepX = b[0] / gain;
+            const stepY = b[1] / gain;
             dx -= stepX;
             dy -= stepY;
             iterations++;
+            if (system.size === 4) {
+                gain += b[2];
+                bias += b[3];
+                // The information left for the translation is gain² times
+                // the patch's own: a frame region with no contrast drives the
+                // gain to 0 and the system singular.
+                if (!(gain > 0 && gain * gain * information >= MIN_EIGENVALUE)) {
+                    return fail("singular");
+                }
+            }
             if (!inside(frame, frameScales, l, window, dx, dy, fp)) return fail("outside-frame");
             if (s * Math.sqrt(stepX * stepX + stepY * stepY) < options.epsilon) {
                 converged = true;
@@ -148,6 +214,8 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
     return observation(q, centre, dx, dy, frame, frameScales, level, window, patch, {
         converged,
         iterations,
+        gain,
+        bias,
     });
 };
 
@@ -288,14 +356,14 @@ function observation(
     level: number,
     window: Window,
     patch: Patch,
-    run: { converged: boolean; iterations: number },
+    run: { converged: boolean; iterations: number; gain: number; bias: number },
 ): PatchAlignment {
     const x = centre[0] + dx;
     const y = centre[1] + dy;
-    const residual = residualAt(frame, scales, level, window, patch, dx, dy);
-    if (!(Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(residual))) {
-        return fail("singular");
-    }
+    const { gain, bias } = run;
+    const residual = residualAt(frame, scales, level, window, patch, dx, dy, gain, bias);
+    const numbers = [x, y, residual, gain, bias];
+    if (!numbers.every((v) => Number.isFinite(v))) return fail("singular");
     return {
         ok: true,
         observation: {
@@ -306,8 +374,8 @@ function observation(
             converged: run.converged,
             iterations: run.iterations,
             frameLevel: level,
-            gain: 1,
-            bias: 0,
+            gain,
+            bias,
         },
     };
 }
@@ -348,32 +416,55 @@ function startLevel(usable: number[], scales: Float64Array, scaleAtCentre: numbe
     return best;
 }
 
-/** The inverse-compositional translation system, in frame level-0 px. */
-interface TranslationSystem {
+/**
+ * The inverse-compositional system, in frame level-0 px: the translation's
+ * steepest-descent images and the Gauss–Newton Hessian's inverse, 2 × 2, or
+ * 4 × 4 with gain and bias.
+ */
+interface AlignmentSystem {
     readonly n: number;
-    /** Steepest-descent images: the template gradient per frame level-0 px. */
+    /** 2, or 4 with gain and bias. */
+    readonly size: 2 | 4;
+    /** Steepest-descent images of the translation: the template gradient per frame level-0 px. */
     readonly sx: Float64Array;
     readonly sy: Float64Array;
-    /** `H⁻¹`, symmetric. */
-    readonly i00: number;
-    readonly i01: number;
-    readonly i11: number;
+    /** `H₀⁻¹` for size 2, row-major; `H₀`'s Cholesky factor `L` for size 4. */
+    readonly factor: Float64Array;
 }
 
 /**
- * The template gradient carried into frame coordinates: `SD = g · J⁻¹` per
- * sample, `g` the patch gradient (grey levels per patch px) and `J` the
- * prediction's Jacobian from patch px to frame level-0 px at that sample.
- * `null` if the Hessian `Σ SDᵀ SD` is not invertible.
+ * The template gradient carried into frame coordinates, `SD = g · J⁻¹` per
+ * sample (`g` the patch gradient, grey levels per patch px; `J` the
+ * prediction's Jacobian from patch px to frame level-0 px there), and the
+ * Hessian `H₀ = Σ cᵀ c` over the columns `c = [SDx, SDy]`, or
+ * `[SDx, SDy, T, 1]` with gain and bias. `null` if `H₀` is not positive
+ * definite.
+ *
+ * **Gain and bias** follow the simultaneous inverse compositional
+ * algorithm of Baker, Gross and Matthews ("Lucas-Kanade 20 Years On",
+ * Part 3, linear appearance variation) with the appearance basis `{T, 1}`:
+ * the model is `I(x + d) ≈ gain · T(x) + bias`, and each iteration solves
+ * for `(Δd, Δgain, Δbias)` together, then updates `d ← d − Δd` (inverse
+ * composition) and gain and bias additively. In general that algorithm's
+ * Hessian depends on the appearance parameters and must be rebuilt every
+ * iteration — its cost. Here the only dependence is that the translation's
+ * steepest-descent images are `gain · SD` (the basis image `T` shares `T`'s
+ * gradient, and `1` has none), so the Hessian is `D · H₀ · D` with
+ * `D = diag(gain, gain, 1, 1)`: `H₀` is factored once, and the translation's
+ * step is `H₀`'s divided by the gain. The inverse compositional property —
+ * no per-iteration Hessian — survives the photometric extension.
  */
-function translationSystem(window: Window, patch: Patch): TranslationSystem | null {
+function alignmentSystem(
+    window: Window,
+    patch: Patch,
+    photometric: boolean,
+): AlignmentSystem | null {
     const { P, pixels, offset, scale } = patch;
     const n = P * P;
+    const size = photometric ? 4 : 2;
     const sx = new Float64Array(n);
     const sy = new Float64Array(n);
-    let h00 = 0;
-    let h01 = 0;
-    let h11 = 0;
+    const H = new Float64Array(size * size);
     for (let i = 0; i < P; i++) {
         for (let j = 0; j < P; j++) {
             const k = i * P + j;
@@ -386,14 +477,71 @@ function translationSystem(window: Window, patch: Patch): TranslationSystem | nu
             const f = scale / (a * d - b * c);
             sx[k] = f * (gx * d - gy * c);
             sy[k] = f * (gy * a - gx * b);
-            h00 += sx[k] * sx[k];
-            h01 += sx[k] * sy[k];
-            h11 += sy[k] * sy[k];
+            const col = photometric ? [sx[k], sy[k], pixels[offset + k], 1] : [sx[k], sy[k]];
+            for (let r = 0; r < size; r++) {
+                for (let q = 0; q <= r; q++) H[r * size + q] += col[r] * col[q];
+            }
         }
     }
-    const det = h00 * h11 - h01 * h01;
-    if (!(Number.isFinite(det) && det > 0)) return null;
-    return { n, sx, sy, i00: h11 / det, i01: -h01 / det, i11: h00 / det };
+    if (size === 2) {
+        const [h00, , h01, h11] = H;
+        const det = h00 * h11 - h01 * h01;
+        if (!(Number.isFinite(det) && det > 0)) return null;
+        return {
+            n,
+            size,
+            sx,
+            sy,
+            factor: Float64Array.from([h11 / det, -h01 / det, -h01 / det, h00 / det]),
+        };
+    }
+    const L = cholesky(H, size);
+    return L === null ? null : { n, size, sx, sy, factor: L };
+}
+
+/** `b ← H₀⁻¹ b`, in place. */
+function solve(system: AlignmentSystem, b: Float64Array): void {
+    const f = system.factor;
+    if (system.size === 2) {
+        const b0 = b[0];
+        const b1 = b[1];
+        b[0] = f[0] * b0 + f[1] * b1;
+        b[1] = f[2] * b0 + f[3] * b1;
+        return;
+    }
+    const n = system.size;
+    for (let r = 0; r < n; r++) {
+        let v = b[r];
+        for (let q = 0; q < r; q++) v -= f[r * n + q] * b[q];
+        b[r] = v / f[r * n + r];
+    }
+    for (let r = n - 1; r >= 0; r--) {
+        let v = b[r];
+        for (let q = r + 1; q < n; q++) v -= f[q * n + r] * b[q];
+        b[r] = v / f[r * n + r];
+    }
+}
+
+/**
+ * The lower Cholesky factor of the symmetric `n × n` matrix whose lower
+ * triangle `A` holds (row-major), or `null` unless it is positive definite
+ * with finite entries.
+ */
+function cholesky(A: Float64Array, n: number): Float64Array | null {
+    const L = new Float64Array(n * n);
+    for (let r = 0; r < n; r++) {
+        for (let q = 0; q <= r; q++) {
+            let v = A[r * n + q];
+            for (let k = 0; k < q; k++) v -= L[r * n + k] * L[q * n + k];
+            if (r === q) {
+                if (!(Number.isFinite(v) && v > 0)) return null;
+                L[r * n + r] = Math.sqrt(v);
+            } else {
+                L[r * n + q] = v / L[q * n + q];
+            }
+        }
+    }
+    return L;
 }
 
 function validOptions(o: AlignPatchOptions): boolean {
@@ -690,12 +838,14 @@ function inside(
 }
 
 /**
- * Whether the patch has enough texture for its system to be solvable: the
- * smallest eigenvalue of the gradient structure tensor `Σ g gᵀ` (patch px),
- * and with photometric compensation that of its Schur complement once gain
- * and bias are projected out, at least {@link MIN_EIGENVALUE}.
+ * How well the patch pins down a translation: the smallest eigenvalue of
+ * the gradient structure tensor `Σ g gᵀ` (patch px, gain 1), and with
+ * photometric compensation that of its Schur complement once gain and bias
+ * are projected out — the information left for the translation when they
+ * are estimated too. 0 when the patch's intensities are too uniform for a
+ * gain and a bias to be told apart.
  */
-function textured(patch: Patch, photometric: boolean): boolean {
+function translationInformation(patch: Patch, photometric: boolean): number {
     const { P, pixels, offset } = patch;
     let gxx = 0;
     let gxy = 0;
@@ -721,11 +871,11 @@ function textured(patch: Patch, photometric: boolean): boolean {
             sTT += t * t;
         }
     }
-    if (!photometric) return minEigenvalue(gxx, gxy, gyy) >= MIN_EIGENVALUE;
+    if (!photometric) return minEigenvalue(gxx, gxy, gyy);
     const n = P * P;
     // M_aa = [[ΣT², ΣT], [ΣT, n]]; its determinant is n · Σ(T − T̄)².
     const det = n * sTT - sT * sT;
-    if (!(det / n >= MIN_EIGENVALUE)) return false;
+    if (!(det / n >= MIN_EIGENVALUE)) return 0;
     // S = M_pp − M_pa · M_aa⁻¹ · M_ap, with M_pa = [[ΣgxT, Σgx], [ΣgyT, Σgy]].
     const i00 = n / det;
     const i01 = -sT / det;
@@ -735,7 +885,7 @@ function textured(patch: Patch, photometric: boolean): boolean {
     const sxx = gxx - qf(gxT, gx1, gxT, gx1);
     const sxy = gxy - qf(gxT, gx1, gyT, gy1);
     const syy = gyy - qf(gyT, gy1, gyT, gy1);
-    return minEigenvalue(sxx, sxy, syy) >= MIN_EIGENVALUE;
+    return minEigenvalue(sxx, sxy, syy);
 }
 
 /**
@@ -747,9 +897,9 @@ function textured(patch: Patch, photometric: boolean): boolean {
  * alternative to one-sided border gradients is to align on the interior
  * alone. Measured on the clean-warp suite (24 level-3 pinball patches,
  * 3 views, matched at frame level 0): with `P = 8`, all 64 pixels give a
- * median error of 0.023 px (worst 0.090) and converge from 4 px off 89% of
- * the time; the 36-pixel interior gives 0.031 px (worst 0.117) and 81%. The
- * ordering holds at `P = 12` (0.016 vs 0.021 px; 91% vs 89%). The border's
+ * median error of 0.022 px (worst 0.063) and converge from 4 px off 89% of
+ * the time; the 36-pixel interior gives 0.029 px (worst 0.108) and 81%. The
+ * ordering holds at `P = 12` (0.014 vs 0.020 px; 91% vs 89%). The border's
  * cruder gradient costs less than the information it adds.
  */
 function gradient(
@@ -783,8 +933,9 @@ function minEigenvalue(a: number, b: number, c: number): number {
 }
 
 /**
- * RMS intensity difference between the patch and level `l` over the P × P
- * window, the level read the way the alignment reads it there.
+ * RMS intensity difference between the patch, after gain and bias, and
+ * level `l` over the P × P window, the level read the way the alignment
+ * reads it there.
  */
 function residualAt(
     frame: FramePyramid,
@@ -794,6 +945,8 @@ function residualAt(
     patch: Patch,
     dx: number,
     dy: number,
+    gain: number,
+    bias: number,
 ): number {
     const n = patch.P * patch.P;
     const values = new Float64Array(n);
@@ -801,7 +954,7 @@ function residualAt(
     sampleFrame(frame.levels[l], scales[l], window, dx, dy, fp, values);
     let sum = 0;
     for (let i = 0; i < n; i++) {
-        const r = values[i] - patch.pixels[patch.offset + i];
+        const r = values[i] - gain * patch.pixels[patch.offset + i] - bias;
         sum += r * r;
     }
     return Math.sqrt(sum / n);

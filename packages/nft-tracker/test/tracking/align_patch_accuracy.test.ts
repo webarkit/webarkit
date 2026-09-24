@@ -89,10 +89,10 @@ for (let k = 0; k < 8; k++) {
 }
 
 describe("alignPatch: accuracy on clean warps", () => {
-    // Measured when written: median 0.023 px, 95th percentile 0.049 px,
-    // worst 0.090 px; a median of 4 iterations (95th percentile 7) at
-    // epsilon = 0.01 px; median residual 4.4 grey levels, which is the blur
-    // mismatch between the renderer's area sampling and the pyramid's filter.
+    // Measured: median 0.022 px, 95th percentile 0.045 px, worst 0.063 px;
+    // a median of 4 iterations (95th percentile 6) at epsilon = 0.01 px;
+    // median residual 4.1 grey levels, which is the blur mismatch between
+    // the renderer's area sampling and the pyramid's filter.
     it("is sub-pixel: median error below 0.05 px, worst below 0.25 px, over 24 patches × 3 views × 9 predictions", () => {
         const errors: number[] = [];
         const results: PatchObservation[] = [];
