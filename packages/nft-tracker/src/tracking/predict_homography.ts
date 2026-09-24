@@ -38,7 +38,7 @@
  */
 
 import type { Mat3 } from "@webarkit/cv-backend-spec";
-import { adjugate3, mul3, scaledToUnitMax } from "./mat3.js";
+import { adjugate3, isFiniteMat3, isInvertible, mul3, scaledToUnitMax } from "./mat3.js";
 import type { PredictHomography } from "./types.js";
 
 /**
@@ -71,16 +71,44 @@ import type { PredictHomography } from "./types.js";
  * current`, predicts the same thing: `current · U` and `V · current` are both
  * `current · previous⁻¹ · current`.
  *
- * `previous⁻¹` is computed as the adjugate: the two differ only by the scalar
- * `det(previous)`, which the final rescale removes. Both inputs are first
- * rescaled to unit max-norm, since the contract accepts them at any scale and
- * a triple product of homographies at `1e200` would overflow.
+ * **The first frames after a lock.** There is one pose and no motion yet:
+ * the caller passes `previous = null`, and the prediction is `current` itself
+ * — zero velocity. The caller does this on the first frame after every
+ * detection, so a velocity measured before the target was lost never
+ * carries over into the new lock. From the second frame on, `previous` is the
+ * detection's H, so the first velocity also carries that estimate's error
+ * into the prediction.
+ *
+ * **Arithmetic.** `previous⁻¹` is taken as the adjugate: the two differ only
+ * by the scalar `det(previous)`, which the final rescale removes. Both inputs
+ * are first rescaled to unit max-norm, since the contract accepts them at any
+ * scale and a triple product of homographies at `1e200` would overflow.
+ *
+ * **Failures.** `"non-finite"`: an input that is not nine finite numbers
+ * (the union has no other name for a wrong length), or a prediction beyond
+ * the float range once rescaled to `H[8] = 1`. `"singular"`: `previous` is
+ * not invertible; or the prediction is not — which is what a singular
+ * `current` produces; or the prediction has `H[8] = 0`, so it cannot be
+ * rescaled. "Not invertible" is `isInvertible` in `mat3.ts`: a relative
+ * determinant at or below `SINGULAR_RELATIVE_DET` (1e-10), whose measured
+ * margins are documented there.
  */
 export const predictHomography: PredictHomography = (previous, current) => {
-    if (previous === null) return { ok: true, H: scaledToUnitCorner(current) };
-    const cur = scaledToUnitMax(current);
-    const velocity = mul3(cur, adjugate3(scaledToUnitMax(previous)));
-    return { ok: true, H: scaledToUnitCorner(mul3(velocity, cur)) };
+    if (!isFiniteMat3(current) || (previous !== null && !isFiniteMat3(previous))) {
+        return { ok: false, reason: "non-finite" };
+    }
+    if (previous !== null && !isInvertible(previous)) return { ok: false, reason: "singular" };
+    let prediction = current;
+    if (previous !== null) {
+        const cur = scaledToUnitMax(current);
+        prediction = mul3(mul3(cur, adjugate3(scaledToUnitMax(previous))), cur);
+    }
+    if (!isInvertible(prediction) || prediction[8] === 0) {
+        return { ok: false, reason: "singular" };
+    }
+    const H = scaledToUnitCorner(prediction);
+    if (!isFiniteMat3(H)) return { ok: false, reason: "non-finite" };
+    return { ok: true, H };
 };
 
 /** A new array: `m` scaled so that `m[8] = 1`. */
