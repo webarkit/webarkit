@@ -43,6 +43,7 @@ import { createJsfeatNextBackend } from "@webarkit/cv-backend-jsfeatnext";
 import { buildFramePyramid, buildTargetFromImage, levelScale } from "../../src/index.js";
 import type { FramePyramidResult, TargetDb } from "../../src/index.js";
 import { pyramidScales, stepVariance } from "../../src/tracking/frame_pyramid.js";
+import { crc32 } from "../../src/target/format/crc32.js";
 import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
 
 const CBRT2 = Math.cbrt(2);
@@ -326,6 +327,39 @@ describe("buildFramePyramid: the filter", () => {
         const b = build(frame, 5, CBRT2);
         expect(frame.data).toEqual(before);
         for (let l = 0; l < a.length; l++) expect(a[l].data).toEqual(b[l].data);
+    });
+
+    it("is pinned bit for bit on the pinball image: CRC-32 per level at ∛2 (8 levels, the four-tap path) and at 3 (6 levels, the general path)", () => {
+        // The tests above pin what the filter is; these pin what it outputs,
+        // so that a change to a single byte — an optimisation, or the move
+        // into a backend that ADR-0001 point 3 names — shows up here, to be
+        // explained, instead of as a shifted accuracy figure. Level 0 is the
+        // input itself. The filter uses only +, −, ×, /, comparisons, floor,
+        // ceil and truncation, all exactly specified, so the pins hold on any
+        // conforming engine given the same step: Math.cbrt, which is not
+        // exactly specified, returns 1.2599210498948732 for 2 here.
+        const pinball = readPgm(TARGET_FIXTURE);
+        const crcs = (step: number, levels: number) =>
+            build(pinball, levels, step).map((l) => [l.width, l.height, crc32(l.data)]);
+        expect(CBRT2).toBe(1.2599210498948732);
+        expect(crcs(CBRT2, 8)).toEqual([
+            [512, 640, 0xc0e8ca67],
+            [406, 507, 0xcc853b54],
+            [322, 403, 0xec1d2c49],
+            [255, 319, 0xbca33721],
+            [203, 253, 0x4f59048b],
+            [161, 201, 0x8c1ab3ca],
+            [127, 159, 0x9fb55efa],
+            [101, 126, 0xb687395b],
+        ]);
+        expect(crcs(3, 6)).toEqual([
+            [512, 640, 0xc0e8ca67],
+            [170, 213, 0x8cc583c4],
+            [56, 71, 0x2566dd81],
+            [18, 23, 0x0d3ec9ae],
+            [6, 7, 0xba28319f],
+            [2, 2, 0xbefff670],
+        ]);
     });
 });
 
