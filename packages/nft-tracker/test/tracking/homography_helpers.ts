@@ -81,6 +81,44 @@ export function perspective(g: number, h: number): Mat3 {
     return Float64Array.from([1, 0, 0, 0, 1, 0, g, h, 1]);
 }
 
+/**
+ * The homography of a camera looking at a 640×480 target: `K [r1 r2 t]`, with
+ * an 800 px focal length and the principal point at the centre of a 640×480
+ * frame. The target is centred on the optical axis `distance` px away, tilted
+ * by `tiltDeg` about its horizontal axis, then turned by `yawDeg`.
+ */
+export function planeView(tiltDeg: number, yawDeg: number, distance: number): Mat3 {
+    const t = (tiltDeg * Math.PI) / 180;
+    const y = (yawDeg * Math.PI) / 180;
+    const tilt = Float64Array.from([
+        1,
+        0,
+        0,
+        0,
+        Math.cos(t),
+        -Math.sin(t),
+        0,
+        Math.sin(t),
+        Math.cos(t),
+    ]);
+    const yaw = Float64Array.from([
+        Math.cos(y),
+        0,
+        Math.sin(y),
+        0,
+        1,
+        0,
+        -Math.sin(y),
+        0,
+        Math.cos(y),
+    ]);
+    const R = mul(tilt, yaw);
+    // [r1 r2 t]: the plane z = 0 drops the third column of R.
+    const Rt = Float64Array.from([R[0], R[1], 0, R[3], R[4], 0, R[6], R[7], distance]);
+    const K = Float64Array.from([800, 0, 320, 0, 800, 240, 0, 0, 1]);
+    return chain(K, Rt, translation(-320, -240));
+}
+
 /** `π(H · (x, y, 1))`, the perspective division included. */
 export function project(H: Mat3, x: number, y: number): [number, number] {
     const w = H[6] * x + H[7] * y + H[8];
