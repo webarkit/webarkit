@@ -1,5 +1,5 @@
 /*
- *  select_patches.ts
+ *  align_patch.test.ts
  *  nft-tracker
  *
  *  This file is part of nft-tracker - WebARKit.
@@ -37,11 +37,37 @@
  *
  */
 
-import type { SelectPatches, Stub } from "./types.js";
+import { describe, it, expect } from "vitest";
+import type { Mat3 } from "@webarkit/cv-backend-spec";
+import { alignPatch } from "../../src/index.js";
+import type { FramePyramid, PatchTable } from "../../src/index.js";
 
-/**
- * Stub — see {@link SelectPatches}. Branch A implements it here and changes
- * the annotation from `Stub<SelectPatches>` to `SelectPatches`; nothing else in the
- * package needs to change.
- */
-export const selectPatches: Stub<SelectPatches> = () => ({ ok: false, reason: "not-implemented" });
+// Stub test: this function is not implemented yet, and must say so with an
+// explicit failure rather than a wrong answer. The branch that implements it
+// replaces this file with the real tests.
+
+describe("alignPatch (stub)", () => {
+    it("fails explicitly", () => {
+        const frame: FramePyramid = {
+            scaleStep: 2,
+            levels: [{ data: new Uint8Array(16 * 12), width: 16, height: 12 }],
+        };
+        const P = 4;
+        const patches: PatchTable = {
+            patchSize: P,
+            count: 1,
+            score: Float32Array.from([1]),
+            left: Uint16Array.from([2]),
+            top: Uint16Array.from([3]),
+            level: Uint8Array.from([0]),
+            pixels: new Uint8Array(P * P),
+        };
+        const identity: Mat3 = Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+        const r = alignPatch(frame, patches, 0, 2, identity, {
+            maxIterations: 10,
+            epsilon: 0.01,
+            photometric: true,
+        });
+        expect(r).toEqual({ ok: false, reason: "not-implemented" });
+    });
+});

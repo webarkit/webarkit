@@ -1,5 +1,5 @@
 /*
- *  select_patches.ts
+ *  types.test.ts
  *  nft-tracker
  *
  *  This file is part of nft-tracker - WebARKit.
@@ -37,11 +37,28 @@
  *
  */
 
-import type { SelectPatches, Stub } from "./types.js";
+import { describe, it, expect } from "vitest";
+import type { PatchObservation, TrackingState } from "../../src/index.js";
 
-/**
- * Stub — see {@link SelectPatches}. Branch A implements it here and changes
- * the annotation from `Stub<SelectPatches>` to `SelectPatches`; nothing else in the
- * package needs to change.
- */
-export const selectPatches: Stub<SelectPatches> = () => ({ ok: false, reason: "not-implemented" });
+// The tracking types are shared by every branch, so this file is not one
+// branch's to replace. It pins that the types can express what a branch will
+// return; `npm run typecheck` is the real assertion, the runtime checks only
+// keep the literals honest.
+describe("tracking types", () => {
+    it("express an observation and every tracking state", () => {
+        const obs: PatchObservation = {
+            index: 0,
+            x: 5.5,
+            y: 6.5,
+            residual: 0,
+            converged: true,
+            iterations: 3,
+            frameLevel: 0,
+            gain: 1,
+            bias: 0,
+        };
+        const states: TrackingState[] = ["LOST", "DETECT", "TRACK"];
+        expect(obs.converged).toBe(true);
+        expect(new Set(states).size).toBe(3);
+    });
+});

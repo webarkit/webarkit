@@ -1,5 +1,5 @@
 /*
- *  select_patches.ts
+ *  level_scale.ts
  *  nft-tracker
  *
  *  This file is part of nft-tracker - WebARKit.
@@ -37,11 +37,33 @@
  *
  */
 
-import type { SelectPatches, Stub } from "./types.js";
-
 /**
- * Stub — see {@link SelectPatches}. Branch A implements it here and changes
- * the annotation from `Stub<SelectPatches>` to `SelectPatches`; nothing else in the
- * package needs to change.
+ * `s_l`, the scale of pyramid level `l` relative to level 0 (format spec §3):
+ * a level-`l` coordinate is `x_l = x0 · s_l`, and a level-0 one is
+ * `x0 = x_l / s_l`.
+ *
+ * Computed by dividing 1 by `scaleStep` `l` times, **not** as
+ * `Math.pow(scaleStep, -l)`. The two disagree in the last bits, and the
+ * iterated form is the one `build_from_image` records as `levelSizes`
+ * (the backend's own `scale /= scaleStep`). Every tracking branch uses this
+ * helper rather than its own arithmetic, so patch centres, frame levels and
+ * target levels agree exactly.
+ *
+ * Its inputs have already been validated by its callers, so an argument out
+ * of its domain is a contract violation and throws a `RangeError`, rather
+ * than returning `NaN` into the geometry.
+ *
+ * @param scaleStep Size ratio between consecutive levels; finite and `> 1`.
+ * @param level Pyramid level; an integer `≥ 0`.
  */
-export const selectPatches: Stub<SelectPatches> = () => ({ ok: false, reason: "not-implemented" });
+export function levelScale(scaleStep: number, level: number): number {
+    if (!(Number.isFinite(scaleStep) && scaleStep > 1)) {
+        throw new RangeError(`levelScale: scaleStep must be finite and > 1, got ${scaleStep}`);
+    }
+    if (!(Number.isInteger(level) && level >= 0)) {
+        throw new RangeError(`levelScale: level must be an integer >= 0, got ${level}`);
+    }
+    let scale = 1;
+    for (let l = 0; l < level; l++) scale /= scaleStep;
+    return scale;
+}

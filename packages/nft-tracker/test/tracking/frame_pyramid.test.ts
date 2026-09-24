@@ -1,5 +1,5 @@
 /*
- *  select_patches.ts
+ *  frame_pyramid.test.ts
  *  nft-tracker
  *
  *  This file is part of nft-tracker - WebARKit.
@@ -37,11 +37,20 @@
  *
  */
 
-import type { SelectPatches, Stub } from "./types.js";
+import { describe, it, expect } from "vitest";
+import type { GrayImage } from "@webarkit/cv-backend-spec";
+import { buildFramePyramid } from "../../src/index.js";
 
-/**
- * Stub — see {@link SelectPatches}. Branch A implements it here and changes
- * the annotation from `Stub<SelectPatches>` to `SelectPatches`; nothing else in the
- * package needs to change.
- */
-export const selectPatches: Stub<SelectPatches> = () => ({ ok: false, reason: "not-implemented" });
+// Stub test: this function is not implemented yet, and must say so with an
+// explicit failure rather than a wrong answer. The branch that implements it
+// replaces this file with the real tests.
+
+describe("buildFramePyramid (stub)", () => {
+    it("fails explicitly", () => {
+        const frame: GrayImage = { data: new Uint8Array(16 * 12), width: 16, height: 12 };
+        expect(buildFramePyramid(frame, { levels: 2, scaleStep: 2 })).toEqual({
+            ok: false,
+            reason: "not-implemented",
+        });
+    });
+});

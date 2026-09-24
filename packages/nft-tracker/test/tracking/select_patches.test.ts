@@ -1,5 +1,5 @@
 /*
- *  select_patches.ts
+ *  select_patches.test.ts
  *  nft-tracker
  *
  *  This file is part of nft-tracker - WebARKit.
@@ -37,11 +37,26 @@
  *
  */
 
-import type { SelectPatches, Stub } from "./types.js";
+import { describe, it, expect } from "vitest";
+import { selectPatches } from "../../src/index.js";
+import type { ImagePyramid } from "../../src/index.js";
 
-/**
- * Stub — see {@link SelectPatches}. Branch A implements it here and changes
- * the annotation from `Stub<SelectPatches>` to `SelectPatches`; nothing else in the
- * package needs to change.
- */
-export const selectPatches: Stub<SelectPatches> = () => ({ ok: false, reason: "not-implemented" });
+// Stub test: this function is not implemented yet, and must say so with an
+// explicit failure rather than a wrong answer. The branch that implements it
+// replaces this file with the real tests.
+
+describe("selectPatches (stub)", () => {
+    it("fails explicitly", () => {
+        const target: ImagePyramid = {
+            scaleStep: 2,
+            levels: [{ data: new Uint8Array(16 * 12), width: 16, height: 12 }],
+        };
+        const r = selectPatches(target, {
+            patchSize: 4,
+            maxPatches: 4,
+            minScore: 0,
+            minSpacing: 0,
+        });
+        expect(r).toEqual({ ok: false, reason: "not-implemented" });
+    });
+});

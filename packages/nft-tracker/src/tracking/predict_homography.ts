@@ -37,13 +37,14 @@
  *
  */
 
-import type { PredictHomography } from "./types.js";
+import type { PredictHomography, Stub } from "./types.js";
 
 /**
- * Stub — see {@link PredictHomography}. Branch C replaces this body and removes
- * `"not-implemented"` from `HomographyPredictionFailure`.
+ * Stub — see {@link PredictHomography}. Branch C implements it here and changes
+ * the annotation from `Stub<PredictHomography>` to `PredictHomography`; nothing else in the
+ * package needs to change.
  */
-export const predictHomography: PredictHomography = () => ({
+export const predictHomography: Stub<PredictHomography> = () => ({
     ok: false,
     reason: "not-implemented",
 });

@@ -37,10 +37,14 @@
  *
  */
 
-import type { RobustHomography } from "./types.js";
+import type { RobustHomography, Stub } from "./types.js";
 
 /**
- * Stub — see {@link RobustHomography}. Branch C replaces this body and removes
- * `"not-implemented"` from `RobustHomographyFailure`.
+ * Stub — see {@link RobustHomography}. Branch C implements it here and changes
+ * the annotation from `Stub<RobustHomography>` to `RobustHomography`; nothing else in the
+ * package needs to change.
  */
-export const robustHomography: RobustHomography = () => ({ ok: false, reason: "not-implemented" });
+export const robustHomography: Stub<RobustHomography> = () => ({
+    ok: false,
+    reason: "not-implemented",
+});

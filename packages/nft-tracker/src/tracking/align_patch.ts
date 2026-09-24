@@ -37,10 +37,11 @@
  *
  */
 
-import type { AlignPatch } from "./types.js";
+import type { AlignPatch, Stub } from "./types.js";
 
 /**
- * Stub — see {@link AlignPatch}. Branch B replaces this body and removes
- * `"not-implemented"` from `PatchAlignmentFailure`.
+ * Stub — see {@link AlignPatch}. Branch B implements it here and changes
+ * the annotation from `Stub<AlignPatch>` to `AlignPatch`; nothing else in the
+ * package needs to change.
  */
-export const alignPatch: AlignPatch = () => ({ ok: false, reason: "not-implemented" });
+export const alignPatch: Stub<AlignPatch> = () => ({ ok: false, reason: "not-implemented" });
