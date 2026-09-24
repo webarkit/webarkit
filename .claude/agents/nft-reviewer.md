@@ -21,7 +21,9 @@ Then inspect the diff you are given (default: `git diff dev...HEAD`) and check, 
 5. **Tests.** New behaviour is covered. Fixtures are produced by a committed deterministic script, never hand-edited. No tolerance was loosened without a written justification.
 6. **Repo conventions.** LGPL headers on new `src/` files; Conventional Commits; `nft-tracker` built after `cv-backend-jsfeatnext` in the root `package.json`.
 
-7. **Rust crate** (if `crates/` is touched). Implemented from the specification, not translated line by line from the TS codec; no `unsafe`; no panic reachable from `decode` on untrusted input (no `unwrap`, `expect`, unchecked indexing or unchecked arithmetic on sizes); unaligned data read with `from_le_bytes`, never pointer casts; the `no_std` build still compiles; fixtures are consumed, never generated, by Rust.
+7. **Numeric code** (tracking, geometry, any iterative solver). Every loop that iterates to convergence has an explicit iteration cap taken from its options, and reaching the cap is reported, not hidden. No silent NaN or Infinity propagation: every division by a quantity that can be zero is guarded, and nothing returns `ok: true` without its numbers being finite (`Number.isFinite`). Degenerate configurations — fewer than four points or patches, collinear points, a singular system, a window outside the image — are detected explicitly and returned as a named failure, never left to produce garbage. A `"not-implemented"` failure reason must not survive in a union whose function is implemented.
+
+8. **Rust crate** (if `crates/` is touched). Implemented from the specification, not translated line by line from the TS codec; no `unsafe`; no panic reachable from `decode` on untrusted input (no `unwrap`, `expect`, unchecked indexing or unchecked arithmetic on sizes); unaligned data read with `from_le_bytes`, never pointer casts; the `no_std` build still compiles; fixtures are consumed, never generated, by Rust.
 
 Run `npm run build`, `npm run typecheck` and `npm test`; if `crates/` is touched, also `cargo fmt --check`, `cargo clippy -- -D warnings` and `cargo test`. Report the outcome of each.
 
