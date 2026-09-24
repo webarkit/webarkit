@@ -53,11 +53,12 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import jpeg from "jpeg-js";
 
 import { decode } from "../src/target/format/decode.js";
 import type { DecodeResult } from "../src/target/format/errors.js";
@@ -443,6 +444,50 @@ describe("compile-target", () => {
             );
             expect(compilerInfo(target.info).maxPatches).toBe(0);
         });
+
+        it("refuses, before any detection, an image too large to score every window of", () => {
+            // 3000 x 3000 at --patch-levels 3 is ~18 M windows, over the 2^23
+            // cap. Noise, so no --patch-min-score could be relied on to thin
+            // it: every window can qualify. The refusal comes before the
+            // backend runs, so it is quick even though the image is not.
+            const side = 3000;
+            const rgba = new Uint8Array(side * side * 4);
+            let a = 1;
+            for (let i = 0; i < rgba.length; i += 4) {
+                a = (Math.imul(a, 1103515245) + 12345) >>> 0;
+                rgba[i] = rgba[i + 1] = rgba[i + 2] = a >>> 24;
+                rgba[i + 3] = 255;
+            }
+            const big = join(work, "big.jpg");
+            writeFileSync(big, jpeg.encode({ data: rgba, width: side, height: side }, 90).data);
+
+            const out = join(work, "never-written.wnft");
+            const failure = compileExpectingFailure([big, "-o", out, "--max-side", "3000"]);
+            expect(failure.status).toBe(2);
+            // Names the combination and the limit...
+            expect(failure.stderr).toContain("3000x3000");
+            expect(failure.stderr).toContain("--patch-levels 3");
+            expect(failure.stderr).toContain("--patch-size 16");
+            expect(failure.stderr).toContain("8388608");
+            // ...and what to change.
+            expect(failure.stderr).toContain("--max-side");
+            expect(failure.stderr).toContain("--patch-min-score");
+            expect(existsSync(out)).toBe(false);
+
+            // One level of it is still ~8.9 M windows, over the cap: the
+            // window count decides, not any one flag.
+            const oneLevel = compileExpectingFailure([
+                big,
+                "-o",
+                out,
+                "--max-side",
+                "3000",
+                "--patch-levels",
+                "1",
+            ]);
+            expect(oneLevel.status).toBe(2);
+            expect(oneLevel.stderr).toContain("--patch-levels 1");
+        }, 30000);
 
         it("fails, naming the way out, when too few windows qualify", () => {
             const out = join(work, "never-written.wnft");
