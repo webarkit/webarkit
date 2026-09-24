@@ -132,3 +132,78 @@ describe("predictHomography", () => {
         }
     });
 });
+
+describe("predictHomography failures", () => {
+    const H1 = mul(V, H0);
+    const H2 = mul(V, H1);
+    const IDENTITY: Mat3 = Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    // Rank 2 with entries that are not small integers, so the determinant is
+    // rounding noise rather than an exact 0: a·bᵀ + c·dᵀ.
+    const RANK_2: Mat3 = (() => {
+        const [a, b, c, d] = [
+            [0.3, -1.7, 2.9],
+            [1.1, 0.13, -0.7],
+            [-2.3, 0.37, 1.9],
+            [0.71, 1.3, 0.17],
+        ];
+        const m = new Float64Array(9);
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) m[i * 3 + j] = a[i] * b[j] + c[i] * d[j];
+        }
+        return m;
+    })();
+    const SINGULAR = { ok: false, reason: "singular" };
+    const NON_FINITE = { ok: false, reason: "non-finite" };
+
+    it("reports a non-finite entry in either input as non-finite", () => {
+        for (const bad of [Number.NaN, Infinity, -Infinity]) {
+            for (let i = 0; i < 9; i++) {
+                const p = H1.slice();
+                p[i] = bad;
+                const c = H2.slice();
+                c[i] = bad;
+                expect(predictHomography(p, H2), `previous[${i}] = ${bad}`).toEqual(NON_FINITE);
+                expect(predictHomography(H1, c), `current[${i}] = ${bad}`).toEqual(NON_FINITE);
+                expect(predictHomography(null, c), `current[${i}] = ${bad}`).toEqual(NON_FINITE);
+            }
+        }
+    });
+
+    it("reports an input that is not nine numbers as non-finite", () => {
+        // Mat3 is "row-major 3x3, length 9"; the union has no other name for
+        // a matrix that is not nine finite numbers.
+        const long = Float64Array.from([...H2, 1]);
+        expect(predictHomography(null, H2.slice(0, 8))).toEqual(NON_FINITE);
+        expect(predictHomography(H1, long)).toEqual(NON_FINITE);
+        expect(predictHomography(H1.slice(0, 8), H2)).toEqual(NON_FINITE);
+    });
+
+    it("reports a previous that is not invertible as singular", () => {
+        expect(predictHomography(RANK_2, H2)).toEqual(SINGULAR);
+        expect(predictHomography(new Float64Array(9), H2)).toEqual(SINGULAR);
+    });
+
+    it("reports a prediction that is not invertible, from a singular current, as singular", () => {
+        expect(predictHomography(null, RANK_2)).toEqual(SINGULAR);
+        expect(predictHomography(H1, RANK_2)).toEqual(SINGULAR);
+        expect(predictHomography(null, new Float64Array(9))).toEqual(SINGULAR);
+    });
+
+    it("reports a prediction whose H[8] is 0 as singular: it cannot be scaled to H[8] = 1", () => {
+        // C sends the target origin to (−1, 0); C·C sends it to infinity, so
+        // (C·C)[8] = 0 although C·C is invertible (det 4).
+        const C: Mat3 = Float64Array.from([1, 0, -1, 0, 1, 0, 1, 0, 1]);
+        expect(predictHomography(IDENTITY, C)).toEqual(SINGULAR);
+        // With no velocity, current itself is the prediction.
+        const originAtInfinity: Mat3 = Float64Array.from([0, 0, 1, 0, 1, 0, 1, 0, 0]);
+        expect(predictHomography(null, originAtInfinity)).toEqual(SINGULAR);
+    });
+
+    it("reports a prediction beyond the float range as non-finite", () => {
+        // A zoom by 1e155 per frame, applied once more, is a zoom by 1e310.
+        const zoom: Mat3 = Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1e-155]);
+        expect(predictHomography(IDENTITY, zoom)).toEqual(NON_FINITE);
+        const beyond: Mat3 = Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1e-310]);
+        expect(predictHomography(null, beyond)).toEqual(NON_FINITE);
+    });
+});

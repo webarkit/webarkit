@@ -59,6 +59,57 @@ export function mul3(a: Mat3, b: Mat3): Mat3 {
 }
 
 /**
+ * A homography whose {@link relativeDeterminant} is at or below this is
+ * treated as singular, by both homography functions.
+ *
+ * Measured, not assumed. Matrices that are singular in exact arithmetic —
+ * rank 2 and rank 1, with float entries spanning six orders of magnitude,
+ * 10⁵ samples — measure at most 3.5e-16: rounding. Views of a 640×480
+ * target through an 800 px camera, tilted 0–89° and turned ±60°, measure at
+ * least 1.2e-2, and ordinary views 0.3–1. The threshold sits 5½ orders above
+ * the first and 8 below the second.
+ */
+export const SINGULAR_RELATIVE_DET = 1e-10;
+
+/**
+ * `|det m|` divided by the sum of the magnitudes of the six products it is
+ * made of: in `[0, 1]`, and 0 exactly when `m` is singular.
+ *
+ * Why not `det` against a norm of `m`: a pixel-coordinate homography mixes
+ * entries near 1 (rotation, scale), in the hundreds (translation) and near
+ * 1e-4 (perspective), so `|det| / ‖m‖³` is ~1e-9 for a plain translation by
+ * 1000 px. Each of the six products takes one entry from every row and every
+ * column, so this ratio is unchanged by rescaling any row or column — by
+ * pixel units, in other words — as well as by the homogeneous scale.
+ */
+export function relativeDeterminant(m: Mat3): number {
+    const [a, b, c, d, e, f, g, h, i] = m;
+    const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+    const size =
+        Math.abs(a) * (Math.abs(e * i) + Math.abs(f * h)) +
+        Math.abs(b) * (Math.abs(d * i) + Math.abs(f * g)) +
+        Math.abs(c) * (Math.abs(d * h) + Math.abs(e * g));
+    return Math.abs(det) / size;
+}
+
+/**
+ * Whether `m` counts as an invertible homography: its relative determinant,
+ * taken at unit max-norm so that the products cannot overflow or underflow,
+ * is above {@link SINGULAR_RELATIVE_DET}. The zero matrix gives `0 / 0`,
+ * which the comparison also rejects.
+ */
+export function isInvertible(m: Mat3): boolean {
+    return relativeDeterminant(scaledToUnitMax(m)) > SINGULAR_RELATIVE_DET;
+}
+
+/** Whether `m` is nine finite numbers — the length included, which a type cannot pin. */
+export function isFiniteMat3(m: Mat3): boolean {
+    if (m.length !== 9) return false;
+    for (let i = 0; i < 9; i++) if (!Number.isFinite(m[i])) return false;
+    return true;
+}
+
+/**
  * `m` divided by its entry of largest magnitude, as a new array: the same
  * homography, with every entry in `[−1, 1]`. Taken before a product so that a
  * homography handed over at an extreme scale cannot overflow or underflow it.
