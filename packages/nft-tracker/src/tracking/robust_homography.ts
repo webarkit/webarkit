@@ -38,7 +38,7 @@
  */
 
 import type { Mat3, PointArray } from "@webarkit/cv-backend-spec";
-import { isFiniteMat3, mul3, scaledToUnitCorner, scaledToUnitMax } from "./mat3.js";
+import { isFiniteMat3, isInvertible, mul3, scaledToUnitCorner, scaledToUnitMax } from "./mat3.js";
 import type { RobustHomography, RobustHomographyOptions } from "./types.js";
 
 /**
@@ -61,6 +61,7 @@ export const robustHomography: RobustHomography = (src, dst, initial, options) =
     const weights = new Float64Array(n);
     transferErrors(scaledToUnitMax(initial), src, dst, residuals);
     tukeyWeights(residuals, c, weights);
+    if (countPositive(weights) < 4) return { ok: false, reason: "too-few-inliers" };
     let rms = weightedRms(residuals, weights);
 
     // Each iteration fits H to the current weights, then reweights at that H.
@@ -68,10 +69,13 @@ export const robustHomography: RobustHomography = (src, dst, initial, options) =
     let iterations = 0;
     let converged = false;
     do {
-        H = weightedDlt(src, dst, weights);
+        const fit = weightedDlt(src, dst, weights);
+        if (fit === null) return { ok: false, reason: "singular" };
+        H = fit;
         iterations++;
         transferErrors(H, src, dst, residuals);
         tukeyWeights(residuals, c, weights);
+        if (countPositive(weights) < 4) return { ok: false, reason: "too-few-inliers" };
         const next = weightedRms(residuals, weights);
         converged = Math.abs(next - rms) < options.epsilon;
         rms = next;
@@ -147,8 +151,16 @@ function countPositive(weights: Float64Array): number {
  * convergence is the IRLS one. Fixing `h̃₉` is safe: it is the projective
  * depth H gives the weighted centroid of `src`, which is 0 only when that
  * point maps to infinity.
+ *
+ * `null` when the fit is singular: the weighted points of `src` or `dst` all
+ * coincide; the normal system is singular ({@link choleskySolve}); or the
+ * solution is — H̃ with a relative determinant at or below
+ * `SINGULAR_RELATIVE_DET` (`mat3.ts`), which is how three collinear points
+ * among four, or a target seen edge-on, come out: the normal system is
+ * regular and its solution maps the plane onto a line or a point. Last, an H
+ * whose `H[8]` is 0 or that is not finite once rescaled.
  */
-function weightedDlt(src: PointArray, dst: PointArray, weights: Float64Array): Mat3 {
+function weightedDlt(src: PointArray, dst: PointArray, weights: Float64Array): Mat3 | null {
     const n = weights.length;
     let sw = 0;
     let sx = 0;
@@ -183,6 +195,8 @@ function weightedDlt(src: PointArray, dst: PointArray, weights: Float64Array): M
     // √2 over the weighted mean distance from the centroid.
     const ss = (Math.SQRT2 * sw) / spreadSrc;
     const sd = (Math.SQRT2 * sw) / spreadDst;
+    // Infinite when every weighted point sits on its centroid.
+    if (!(Number.isFinite(ss) && Number.isFinite(sd))) return null;
 
     // Each correspondence gives two rows of A h = b, with h = h̃₁…h̃₈:
     //   [x, y, 1, 0, 0, 0, −u·x, −u·y] · h = u
@@ -214,10 +228,15 @@ function weightedDlt(src: PointArray, dst: PointArray, weights: Float64Array): M
         accumulate(N, rhs, row, v, w);
     }
     const h = choleskySolve(N, rhs);
+    if (h === null) return null;
     const Hn = Float64Array.from([h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1]);
+    if (!isInvertible(Hn)) return null;
     const Ts = Float64Array.from([ss, 0, -ss * cx, 0, ss, -ss * cy, 0, 0, 1]);
     const TdInv = Float64Array.from([1 / sd, 0, cu, 0, 1 / sd, cv, 0, 0, 1]);
-    return scaledToUnitCorner(mul3(mul3(TdInv, Hn), Ts));
+    const H = mul3(mul3(TdInv, Hn), Ts);
+    if (H[8] === 0) return null;
+    const scaled = scaledToUnitCorner(H);
+    return isFiniteMat3(scaled) ? scaled : null;
 }
 
 /** `N += w · rowᵀ·row` (lower triangle) and `rhs += w · b · row`. */
@@ -236,13 +255,39 @@ function accumulate(
     }
 }
 
-/** Solves `N h = rhs` for symmetric positive-definite `N` (lower triangle read) by Cholesky. */
-function choleskySolve(N: Float64Array, rhs: Float64Array): Float64Array {
+/**
+ * A normal system counts as singular when a Cholesky pivot `d_k` is at or
+ * below this fraction of its diagonal entry `N_kk`.
+ *
+ * `d_k / N_kk` is `sin²` of the angle between column `k` of the weighted
+ * system and the span of the columns before it, so it reads directly as
+ * "how nearly dependent". Measured on the normalised DLT: exactly degenerate
+ * sets — collinear points, three distinct points among six, three collinear
+ * among four — give 3e-17 or less (rounding); eight points within 1e-4 px of
+ * a line give 2.7e-15; the 40-point grid under six views up to 85° of tilt
+ * gives 0.43–0.61; and the worst of ~120 000 random 4- to 10-point sets with
+ * no three points within 20 px of a line gives 5.9e-7. The threshold sits
+ * 4½ orders above rounding and nearly 4 below that worst valid set. In
+ * pixels: eight points spread along a line measure `3.2e-6 · b²` when they
+ * stray up to `b/2` px from it, so they are singular below `b ≈ 0.006 px` —
+ * within a few thousandths of a pixel of the line — and fitted above.
+ */
+const SINGULAR_PIVOT_RATIO = 1e-10;
+
+/**
+ * Solves `N h = rhs` for symmetric positive-definite `N` (lower triangle
+ * read) by Cholesky, or returns `null` when a pivot fails
+ * {@link SINGULAR_PIVOT_RATIO}. Fixed size and order: no loop here iterates
+ * to convergence.
+ */
+function choleskySolve(N: Float64Array, rhs: Float64Array): Float64Array | null {
     const m = 8;
     const L = new Float64Array(m * m);
     for (let k = 0; k < m; k++) {
         let d = N[k * m + k];
         for (let j = 0; j < k; j++) d -= L[k * m + j] * L[k * m + j];
+        // Also false for NaN, and for an all-zero column (0 > 0).
+        if (!(d > SINGULAR_PIVOT_RATIO * N[k * m + k])) return null;
         const lkk = Math.sqrt(d);
         L[k * m + k] = lkk;
         for (let i = k + 1; i < m; i++) {
