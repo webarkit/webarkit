@@ -77,11 +77,12 @@ const MAX_SIDE = 0xffff;
  *   can rank them against each other. In level units, the coarser levels'
  *   steeper gradients would outrank level 0 whatever they localised to.
  *
- * Sums are taken over integral images of the integer products
- * `(2gx)²`, `(2gx)(2gy)`, `(2gy)²`, which stay exact in float64 up to far
- * beyond any image a `.wnft` can hold, so a window's sums do not depend on
- * summation order. The score is rounded to `f32` before any comparison, as
- * the contract requires.
+ * Sums are of the integer products `(2gx)²`, `(2gx)(2gy)`, `(2gy)²`, kept as
+ * running column sums over the window's interior rows and a running sum
+ * across them, so a level needs `O(width)` working memory rather than
+ * full-size integral images. Every sum is an integer far below `2^53`, so it
+ * is exact in float64 and does not depend on summation order. The score is
+ * rounded to `f32` before any comparison, as the contract requires.
  *
  * **Low texture.** A window whose `f32` score is below `minScore` is not a
  * candidate. The minimum eigenvalue rejects edges as well as flat areas: a
@@ -96,12 +97,12 @@ const MAX_SIDE = 0xffff;
  * `PatchObservation` states, with `s_l` from {@link levelScale} and nowhere
  * else. The returned table is in that selection order.
  *
- * Cost: `O(pixels)` for the integral images and scores, a sort of the
- * candidates, and `O(candidates · Q)` distance checks — an offline cost,
- * paid once per compiled target, and small at the compiler's default
- * `Q = 64`. A budget in the thousands with a non-zero spacing would want a
- * spatial grid of `minSpacing` cells, which gives the same result in linear
- * time; not needed yet.
+ * Cost: `O(pixels)` time for the scores; memory `O(width)` per level for
+ * the running sums, plus the qualifying candidates (raise `minScore` to
+ * shrink those); a sort of the candidates; and a spacing check that looks
+ * only at chosen centres in the neighbouring cells of a grid of
+ * `minSpacing`-sized cells, so a large budget stays linear. An offline
+ * cost, paid once per compiled target.
  */
 export const selectPatches: SelectPatches = (target, options) => {
     if (!validOptions(options)) return { ok: false, reason: "invalid-options" };
@@ -113,44 +114,26 @@ export const selectPatches: SelectPatches = (target, options) => {
     // level's scale underflows.
     const scales = levels.map((_, l) => levelScale(target.scaleStep, l));
 
-    let capacity = 0;
-    for (const lv of levels) {
-        if (lv.width >= P && lv.height >= P) capacity += (lv.width - P + 1) * (lv.height - P + 1);
-    }
-    const candScore = new Float32Array(capacity);
-    const candLevel = new Uint8Array(capacity);
-    const candTop = new Uint16Array(capacity);
-    const candLeft = new Uint16Array(capacity);
-    let n = 0;
-
+    const cand = new Candidates();
     const n4 = 4 * (P - 2) * (P - 2);
     levels.forEach((lv, l) => {
         if (lv.width < P || lv.height < P) return;
-        const { sxx, sxy, syy } = gradientIntegrals(lv);
-        const stride = lv.width + 1;
         const s2 = scales[l] * scales[l];
-        for (let top = 0; top + P <= lv.height; top++) {
-            // Interior rows [top + 1, top + P − 2], as exclusive prefix bounds.
-            const r0 = (top + 1) * stride;
-            const r1 = (top + P - 1) * stride;
-            for (let left = 0; left + P <= lv.width; left++) {
-                const c0 = left + 1;
-                const c1 = left + P - 1;
-                const a = (sxx[r1 + c1] - sxx[r0 + c1] - sxx[r1 + c0] + sxx[r0 + c0]) / n4;
-                const b = (sxy[r1 + c1] - sxy[r0 + c1] - sxy[r1 + c0] + sxy[r0 + c0]) / n4;
-                const c = (syy[r1 + c1] - syy[r0 + c1] - syy[r1 + c0] + syy[r0 + c0]) / n4;
-                const half = (a - c) / 2;
-                const lambda = Math.max(0, (a + c) / 2 - Math.sqrt(half * half + b * b));
-                const score = Math.fround(lambda * s2);
-                if (!(score >= options.minScore)) continue;
-                candScore[n] = score;
-                candLevel[n] = l;
-                candTop[n] = top;
-                candLeft[n] = left;
-                n++;
-            }
-        }
+        scoreLevel(lv, P, (top, left, sxx, sxy, syy) => {
+            const a = sxx / n4;
+            const b = sxy / n4;
+            const c = syy / n4;
+            const half = (a - c) / 2;
+            const lambda = Math.max(0, (a + c) / 2 - Math.sqrt(half * half + b * b));
+            const score = Math.fround(lambda * s2);
+            if (score >= options.minScore) cand.push(score, l, top, left);
+        });
     });
+    const n = cand.length;
+    const candScore = cand.score;
+    const candLevel = cand.level;
+    const candTop = cand.top;
+    const candLeft = cand.left;
 
     const order = Uint32Array.from({ length: n }, (_, i) => i).sort(
         (i, j) =>
@@ -162,33 +145,17 @@ export const selectPatches: SelectPatches = (target, options) => {
 
     const Q = Math.min(options.maxPatches, n);
     const chosen: number[] = [];
-    const cx = new Float64Array(Q);
-    const cy = new Float64Array(Q);
-    const spacing2 = options.minSpacing * options.minSpacing;
+    const grid = new SpacingGrid(options.minSpacing);
     const offset = (P - 1) / 2;
     for (let k = 0; k < n && chosen.length < Q; k++) {
         const i = order[k];
+        // Finite: validPyramid holds every level to ImagePyramid's size rule,
+        // so a level at least P wide has s_l ≥ P / w0.
         const s = scales[candLevel[i]];
         const x = (candLeft[i] + offset) / s;
         const y = (candTop[i] + offset) / s;
-        // A hand-built pyramid whose sizes disagree with its step can have a
-        // subnormal s_l, and then a centre overflows to Infinity. Such a
-        // candidate has no position a distance can be measured from — the
-        // spacing check would compare NaN and wave it through — so it is
-        // skipped. A pyramid whose level sizes follow its step never gets
-        // here: a level at least P wide has s_l ≥ P / w0.
-        if (!(Number.isFinite(x) && Number.isFinite(y))) continue;
-        // With no spacing nothing can be too close, and skipping the scan
-        // keeps a large budget from costing candidates × Q comparisons.
-        let clear = true;
-        for (let q = 0; q < chosen.length && clear && spacing2 > 0; q++) {
-            const dx = x - cx[q];
-            const dy = y - cy[q];
-            clear = !(dx * dx + dy * dy < spacing2);
-        }
-        if (!clear) continue;
-        cx[chosen.length] = x;
-        cy[chosen.length] = y;
+        if (!grid.clear(x, y)) continue;
+        grid.add(x, y);
         chosen.push(i);
     }
 
@@ -205,15 +172,20 @@ function validOptions(o: SelectPatchesOptions): boolean {
         o.patchSize >= 3 &&
         Number.isInteger(o.maxPatches) &&
         o.maxPatches >= 4 &&
+        Number.isFinite(o.minScore) &&
         o.minScore >= 0 &&
+        Number.isFinite(o.minSpacing) &&
         o.minSpacing >= 0
     );
 }
 
 /**
- * A pyramid this function can read and a `.wnft` can hold. Everything
- * {@link levelScale} would throw on is refused here first: the step, the
- * level count (`MAX_LEVEL + 1`) and a scale that underflows to 0.
+ * A valid {@link ImagePyramid} that a `.wnft` can hold. Everything
+ * {@link levelScale} would throw on is refused first — the step, the level
+ * count (`MAX_LEVEL + 1`) and a scale that underflows to 0 — and then every
+ * level must have the size `ImagePyramid` defines, `(w0 · s_l) | 0` ×
+ * `(h0 · s_l) | 0`: the rule `build_from_image` records as `levelSizes`, so
+ * a pyramid of a target's own sizes passes.
  */
 function validPyramid(target: ImagePyramid): boolean {
     const { scaleStep, levels } = target;
@@ -230,45 +202,169 @@ function validPyramid(target: ImagePyramid): boolean {
     // two agree on where underflow starts; it computes no coordinate.
     let scale = 1;
     for (let l = 1; l < levels.length; l++) scale /= scaleStep;
-    return scale > 0;
+    if (!(scale > 0)) return false;
+
+    const { width: w0, height: h0 } = levels[0];
+    for (let l = 1; l < levels.length; l++) {
+        const s = levelScale(scaleStep, l);
+        if (levels[l].width !== ((w0 * s) | 0) || levels[l].height !== ((h0 * s) | 0)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /**
- * Exclusive-prefix integral images, `(width + 1) × (height + 1)`, of the
- * integer gradient products `(2gx)²`, `(2gx)(2gy)` and `(2gy)²`. Border pixels,
- * where a central difference would leave the image, contribute 0; no
- * window's interior ever reaches them.
+ * Calls `visit(top, left, sxx, sxy, syy)` for every `P × P` window of `lv`,
+ * rows then columns, with the sums of `(2gx)²`, `(2gx)(2gy)` and `(2gy)²`
+ * over the window's interior `[top + 1, top + P − 2] × [left + 1, left + P − 2]`.
+ *
+ * Column sums over the current interior rows are updated by one row out and
+ * one row in per step down, and each row of windows is a running sum across
+ * them — the same integers integral images would give, in `O(width)` memory.
+ * `lv` is at least `P` in both dimensions.
  */
-function gradientIntegrals(lv: GrayImage): {
-    sxx: Float64Array;
-    sxy: Float64Array;
-    syy: Float64Array;
-} {
+function scoreLevel(
+    lv: GrayImage,
+    P: number,
+    visit: (top: number, left: number, sxx: number, sxy: number, syy: number) => void,
+): void {
     const { width: w, height: h, data } = lv;
-    const stride = w + 1;
-    const sxx = new Float64Array(stride * (h + 1));
-    const sxy = new Float64Array(stride * (h + 1));
-    const syy = new Float64Array(stride * (h + 1));
-    for (let y = 0; y < h; y++) {
-        let rxx = 0;
-        let rxy = 0;
-        let ryy = 0;
-        for (let x = 0; x < w; x++) {
-            if (x > 0 && x < w - 1 && y > 0 && y < h - 1) {
-                const p = y * w + x;
-                const dx = data[p + 1] - data[p - 1];
-                const dy = data[p + w] - data[p - w];
-                rxx += dx * dx;
-                rxy += dx * dy;
-                ryy += dy * dy;
+    const colXX = new Float64Array(w);
+    const colXY = new Float64Array(w);
+    const colYY = new Float64Array(w);
+
+    // Adds (sign = 1) or removes (sign = −1) interior row `y`'s products.
+    const addRow = (y: number, sign: number) => {
+        for (let x = 1; x < w - 1; x++) {
+            const p = y * w + x;
+            const dx = data[p + 1] - data[p - 1];
+            const dy = data[p + w] - data[p - w];
+            colXX[x] += sign * dx * dx;
+            colXY[x] += sign * dx * dy;
+            colYY[x] += sign * dy * dy;
+        }
+    };
+
+    for (let y = 1; y <= P - 2; y++) addRow(y, 1);
+    for (let top = 0; top + P <= h; top++) {
+        if (top > 0) {
+            addRow(top, -1);
+            addRow(top + P - 2, 1);
+        }
+        let sxx = 0;
+        let sxy = 0;
+        let syy = 0;
+        for (let x = 1; x <= P - 2; x++) {
+            sxx += colXX[x];
+            sxy += colXY[x];
+            syy += colYY[x];
+        }
+        for (let left = 0; left + P <= w; left++) {
+            if (left > 0) {
+                sxx += colXX[left + P - 2] - colXX[left];
+                sxy += colXY[left + P - 2] - colXY[left];
+                syy += colYY[left + P - 2] - colYY[left];
             }
-            const o = (y + 1) * stride + x + 1;
-            sxx[o] = sxx[o - stride] + rxx;
-            sxy[o] = sxy[o - stride] + rxy;
-            syy[o] = syy[o - stride] + ryy;
+            visit(top, left, sxx, sxy, syy);
         }
     }
-    return { sxx, sxy, syy };
+}
+
+/**
+ * The qualifying candidates, in growable typed arrays: only windows at or
+ * above `minScore` take memory, not every window of every level.
+ */
+class Candidates {
+    length = 0;
+    score = new Float32Array(1024);
+    level = new Uint8Array(1024);
+    top = new Uint16Array(1024);
+    left = new Uint16Array(1024);
+
+    push(score: number, level: number, top: number, left: number): void {
+        if (this.length === this.score.length) this.grow();
+        const i = this.length++;
+        this.score[i] = score;
+        this.level[i] = level;
+        this.top[i] = top;
+        this.left[i] = left;
+    }
+
+    private grow(): void {
+        const size = this.score.length * 2;
+        const score = new Float32Array(size);
+        const level = new Uint8Array(size);
+        const top = new Uint16Array(size);
+        const left = new Uint16Array(size);
+        score.set(this.score);
+        level.set(this.level);
+        top.set(this.top);
+        left.set(this.left);
+        this.score = score;
+        this.level = level;
+        this.top = top;
+        this.left = left;
+    }
+}
+
+/**
+ * The chosen centres, bucketed in square cells no smaller than `minSpacing`,
+ * so "is any chosen centre closer than `minSpacing`?" reads only the 3 × 3
+ * neighbouring cells — the same answer as scanning them all, since a centre
+ * closer than one cell side is at most one cell away.
+ *
+ * The side carries a `1e-9` relative margin so that rounding in `x / side`
+ * cannot push a near neighbour two cells over, and is at least one level-0
+ * pixel so cell indices stay small for a sub-pixel spacing (centres lie in
+ * `[0, 65535]`). A larger cell only means more centres per cell, never a
+ * missed one.
+ */
+class SpacingGrid {
+    private readonly spacing2: number;
+    private readonly side: number;
+    private readonly cells = new Map<number, number[]>();
+    private readonly xs: number[] = [];
+    private readonly ys: number[] = [];
+
+    constructor(minSpacing: number) {
+        this.spacing2 = minSpacing * minSpacing;
+        this.side = Math.max(1, minSpacing * (1 + 1e-9));
+    }
+
+    private key(gx: number, gy: number): number {
+        return gx * 0x10001 + gy;
+    }
+
+    clear(x: number, y: number): boolean {
+        // With no spacing nothing can be too close.
+        if (this.spacing2 === 0) return true;
+        const gx = Math.floor(x / this.side);
+        const gy = Math.floor(y / this.side);
+        for (let i = gx - 1; i <= gx + 1; i++) {
+            for (let j = gy - 1; j <= gy + 1; j++) {
+                const bucket = this.cells.get(this.key(i, j));
+                if (bucket === undefined) continue;
+                for (const q of bucket) {
+                    const dx = x - this.xs[q];
+                    const dy = y - this.ys[q];
+                    if (dx * dx + dy * dy < this.spacing2) return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    add(x: number, y: number): void {
+        if (this.spacing2 === 0) return;
+        const q = this.xs.length;
+        this.xs.push(x);
+        this.ys.push(y);
+        const k = this.key(Math.floor(x / this.side), Math.floor(y / this.side));
+        const bucket = this.cells.get(k);
+        if (bucket === undefined) this.cells.set(k, [q]);
+        else bucket.push(q);
+    }
 }
 
 /** The §5.7 table of the chosen candidates, pixels copied verbatim. */

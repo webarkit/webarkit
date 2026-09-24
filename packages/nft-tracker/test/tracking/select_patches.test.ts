@@ -206,6 +206,10 @@ describe("selectPatches — domain", () => {
         ["minScore NaN", { minScore: Number.NaN }],
         ["minSpacing negative", { minSpacing: -0.5 }],
         ["minSpacing NaN", { minSpacing: Number.NaN }],
+        // Non-finite input is an explicit failure (types.ts rule 3), not a
+        // threshold that silently rejects every candidate.
+        ["minScore infinite", { minScore: Number.POSITIVE_INFINITY }],
+        ["minSpacing infinite", { minSpacing: Number.POSITIVE_INFINITY }],
     ])("%s is invalid-options", (_, override) => {
         expect(selectPatches(target, { ...OPTIONS, ...override })).toEqual({
             ok: false,
@@ -235,6 +239,22 @@ describe("selectPatches — domain", () => {
         ],
         // levelScale would throw here; selectPatches must say so first.
         ["a level scale that underflows", { scaleStep: 1e200, levels: [level, level, level] }],
+        // ImagePyramid's size rule: level l is (w0 · s_l) | 0 × (h0 · s_l) | 0.
+        ["a level repeated at level 0's size", { scaleStep: 2, levels: [level, level] }],
+        [
+            "a level rounded differently from the rule",
+            { scaleStep: 2, levels: [level, { data: new Uint8Array(9 * 6), width: 9, height: 6 }] },
+        ],
+        [
+            "a level larger than level 0",
+            {
+                scaleStep: 2,
+                levels: [
+                    { data: new Uint8Array(8 * 6), width: 8, height: 6 },
+                    { data: new Uint8Array(16 * 12), width: 16, height: 12 },
+                ],
+            },
+        ],
     ])("%s is invalid-pyramid", (_, target) => {
         expect(selectPatches(target as ImagePyramid, OPTIONS)).toEqual({
             ok: false,
@@ -242,26 +262,20 @@ describe("selectPatches — domain", () => {
         });
     });
 
-    it("refuses underflow exactly where levelScale starts to throw", () => {
-        // s_2 = 2^-1074, the smallest subnormal, is still > 0; one more
-        // doubling of the step underflows it. The pre-check must agree with
-        // levelScale to the bit, or one of these either throws or refuses a
-        // pyramid levelScale would accept.
+    it("refuses, without throwing, a step whose scale underflows at the edge", () => {
+        // s_2 = 2^-1074, the smallest subnormal, is still > 0 at a step of
+        // 2^537; at 2^538 it underflows and levelScale throws. Neither step
+        // can size a real level beyond 0, so both pyramids are invalid — and
+        // neither may reach levelScale's RangeError on the way to saying so.
         const lv = noise(16, 16, 10);
-        // A budget large enough that the greedy pass reaches level 2, whose
-        // scores (scaled by s_2²) round to 0 and rank last.
-        const options = { patchSize: 5, maxPatches: 1000, minScore: 0, minSpacing: 3 };
         expect(levelScale(2 ** 537, 2)).toBe(2 ** -1074);
         expect(() => levelScale(2 ** 538, 2)).toThrow(RangeError);
-
-        const t = ok(selectPatches({ scaleStep: 2 ** 537, levels: [lv, lv, lv] }, options));
-        // Level 2's centres overflow to Infinity at that scale: no distance
-        // can be measured from them, so none is chosen. Only finite numbers.
-        expect(Array.from(t.level).every((l) => l < 2)).toBe(true);
-        expect(selectPatches({ scaleStep: 2 ** 538, levels: [lv, lv, lv] }, options)).toEqual({
-            ok: false,
-            reason: "invalid-pyramid",
-        });
+        for (const scaleStep of [2 ** 537, 2 ** 538]) {
+            expect(selectPatches({ scaleStep, levels: [lv, lv, lv] }, OPTIONS)).toEqual({
+                ok: false,
+                reason: "invalid-pyramid",
+            });
+        }
     });
 
     it("accepts the limits of the domain", () => {
@@ -419,6 +433,32 @@ describe("selectPatches — the table it returns", () => {
 });
 
 describe("selectPatches — greedy order", () => {
+    it.each([0.5, 1, 2.5, 7])(
+        "matches the brute-force reference with a large budget, spacing %s",
+        (minSpacing) => {
+            const target = pyramidOf(noise(40, 30, 11), 1.5, 3);
+            const options = { patchSize: 5, maxPatches: 5000, minScore: 0, minSpacing };
+            expect(ok(selectPatches(target, options))).toEqual(referenceSelect(target, options));
+        },
+    );
+
+    it("stays fast at the largest budget with sub-pixel spacing", () => {
+        // 65 536 patches, §6.4's limit, over ~300 000 candidates: a check of
+        // every candidate against every chosen centre would be ~10^10
+        // comparisons. The spatial grid makes it one neighbourhood each.
+        const target = pyramidOf(readPgm(TARGET_FIXTURE), Math.cbrt(2), 3);
+        const t = ok(
+            selectPatches(target, {
+                patchSize: 16,
+                maxPatches: 65536,
+                minScore: 10,
+                minSpacing: 0.5,
+            }),
+        );
+        expect(t.count).toBeGreaterThan(10000);
+        // Measured: ~0.4 s with the grid, ~5 s scanning every chosen centre.
+    }, 3000);
+
     it("matches a brute-force reference on a small multi-level pyramid", () => {
         const target = pyramidOf(noise(36, 28, 8), 1.5, 3);
         const options = { patchSize: 5, maxPatches: 12, minScore: 0, minSpacing: 6 };
