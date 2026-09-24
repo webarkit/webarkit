@@ -686,15 +686,37 @@ alike too (≈560 vs ≈690 kb/s, the static one *lower*). Neither explains it.
 
 **This is the question that replaces the one above:** what about the static
 footage makes each frame dearer to draw and read back? It is not answered
-here. The one lead is that per-tick work differs: `total` p50 is about 128
-vs 109 ms between runs 4 and 8. A longer tick means more frames decoded in
-the background between two reads, and the frame-rate result shows decoding
-load reaches `acquire`.
+here.
+
+**It is not pipeline cost.** Runs 4 and 8 differ in `total` p50 as well
+(about 128 vs 109 ms), and a longer tick could mean more frames decoded in
+the background between two reads. The `maxKeypoints` sweep above already
+rules that out. On the static clip, `total` p50 falls 120.2 → 95.8 → 82.6 →
+70.4 ms across the four budgets while `acquire` stays at 35.9 / 36.4 /
+36.0 / 36.2 ms. The table clip shows the same pattern (122.5 → 71.4 ms
+against 40.1 / 40.0 / 39.9 / 39.1 ms). The tick length nearly halves and
+`acquire` does not move. So the footage effect does not come through the
+pipeline's cost per frame.
+
+That makes it more interesting, not less. The two footages are asked for
+frames just as often. What differs is what the decoder does for each frame.
+
+**This is in tension with the frame-rate result.** A higher frame rate and
+a longer tick both mean more decoding between two reads. Yet the first
+raised `acquire` by 1.41× while the second left it unchanged. The frame-rate
+result is the one to target next, because it is the one that moved.
+
+`wall-30fps` was made with `-vf fps=30`, which adds one duplicate for about
+every five original frames (298 → 359 frames). So that clip differs from `wall-native-fps` in its frame content as
+well as in how often frames arrive. Setting `video.playbackRate` on a
+single file would change the decode rate alone, with no re-encode and no
+duplicated frames.
 
 **For M2:**
 
 - The fix is not "avoid portrait sources".
 - A smaller processing box helps, but less than its pixel count suggests.
-- Keeping decoding load down helps. That means a lower frame rate or lower
-  resolution from the camera or decoder, as the `acquire` bullet under "What
-  this implies for M2" already suggests on other grounds.
+- A lower frame rate from the camera or decoder may help (1.41× measured
+  here). Until the tension above is resolved, that is a lead, not a
+  mechanism. The `acquire` bullet under "What this implies for M2" suggests
+  lowering decode resolution on other grounds.
