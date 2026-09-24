@@ -100,3 +100,66 @@ export function patchCentre(site: PatchSite, P: number, scaleStep: number): [num
     const s = levelScale(scaleStep, site.level);
     return [(site.left + (P - 1) / 2) / s, (site.top + (P - 1) / 2) / s];
 }
+
+export interface SiteOptions {
+    /** Minimum distance between two chosen patch centres, level px. */
+    readonly minSpacing: number;
+    /** Minimum distance from a window to the level's edge, level px. */
+    readonly margin: number;
+    /** Candidate grid step, level px. Default 2. */
+    readonly stride?: number;
+}
+
+/**
+ * Up to `count` sites on one level whose `P × P` window is well textured,
+ * for tests that need patches worth aligning.
+ *
+ * Candidates on a `stride` grid are ranked by the smallest eigenvalue of the
+ * window's gradient structure tensor (central differences, which read one
+ * pixel past the window — the level has it), then taken greedily, skipping
+ * any closer than `minSpacing` to one already taken. Ties rank by
+ * `(top, left)`, so the choice is deterministic.
+ */
+export function texturedSites(
+    pyramid: ImagePyramid,
+    P: number,
+    level: number,
+    count: number,
+    options: SiteOptions,
+): PatchSite[] {
+    const img = pyramid.levels[level];
+    const { width, height, data } = img;
+    const stride = options.stride ?? 2;
+    const lo = Math.max(1, options.margin);
+    const candidates: { left: number; top: number; score: number }[] = [];
+    for (let top = lo; top + P + lo <= height; top += stride) {
+        for (let left = lo; left + P + lo <= width; left += stride) {
+            let xx = 0;
+            let xy = 0;
+            let yy = 0;
+            for (let i = 0; i < P; i++) {
+                for (let j = 0; j < P; j++) {
+                    const k = (top + i) * width + left + j;
+                    const gx = (data[k + 1] - data[k - 1]) / 2;
+                    const gy = (data[k + width] - data[k - width]) / 2;
+                    xx += gx * gx;
+                    xy += gx * gy;
+                    yy += gy * gy;
+                }
+            }
+            const mean = (xx + yy) / 2;
+            const d = (xx - yy) / 2;
+            candidates.push({ left, top, score: mean - Math.sqrt(d * d + xy * xy) });
+        }
+    }
+    candidates.sort((a, b) => b.score - a.score || a.top - b.top || a.left - b.left);
+    const chosen: PatchSite[] = [];
+    for (const c of candidates) {
+        if (chosen.length === count) break;
+        const far = chosen.every(
+            (s) => Math.hypot(s.left - c.left, s.top - c.top) >= options.minSpacing,
+        );
+        if (far) chosen.push({ level, left: c.left, top: c.top });
+    }
+    return chosen;
+}
