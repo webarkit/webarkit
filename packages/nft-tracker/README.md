@@ -16,9 +16,9 @@ state carried between frames. Repeated detection is not yet tracking; the
 patch tracker and the state machine that make it tracking are M2
 ([ADR-0001](../../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md),
 [#48](https://github.com/webarkit/webarkit/issues/48)). M2's types and
-function signatures are in place; `selectPatches` is implemented and
-`compile-target` writes its patches, and the rest are **stubs** for now — see
-[The tracker](#the-tracker).
+function signatures are in place; `selectPatches`, the frame pyramid and
+single-patch alignment are implemented, and `compile-target` writes patches;
+the rest are **stubs** for now — see [The tracker](#the-tracker).
 
 ## The `.wnft` codec
 
@@ -304,21 +304,21 @@ when not `ok`, a `reason`, every result carries:
 
 Today every frame runs detection, so a result is only ever `DETECT` or `LOST`.
 
-### The M2 tracking state: all but `selectPatches` are stubs for now
+### The M2 tracking state: in progress
 
 The functions a tracking-state frame will be built from are defined in
 [`src/tracking/types.ts`](./src/tracking/types.ts) and exported, so that the
 three M2 implementation branches of
 [#48](https://github.com/webarkit/webarkit/issues/48) work against one fixed
-contract. **Most are still stubs:** each of those returns
-`{ ok: false, reason: "not-implemented" }` until its branch lands, and nothing
-should be built on them yet.
+contract. Those still marked stub return
+`{ ok: false, reason: "not-implemented" }` until their branch lands, and
+nothing should be built on them yet.
 
-| Export | What it will do | Status |
+| Export | What it does | Status |
 |---|---|---|
 | `selectPatches` | Compile time: the target's pyramid → the §5.7 `patches` table; `compile-target` writes it | **implemented** |
-| `buildFramePyramid` | A grey pyramid of the frame (and of the target, at compile time) | stub |
-| `alignPatch` | Aligns one patch in the frame by IC-LK → a `PatchObservation` | stub |
+| `buildFramePyramid` | A grey pyramid of the frame (and of the target, at compile time) | **implemented** |
+| `alignPatch` | Aligns one patch in the frame by IC-LK → a `PatchObservation` | **implemented** |
 | `robustHomography` | IRLS with Tukey's biweight over the patch correspondences → `H` and per-patch weights | stub |
 | `predictHomography` | Constant-velocity prediction of the next frame's `H` | stub |
 | `levelScale` | `s_l`, a pyramid level's scale, computed the way the backend computes it | **implemented** |
@@ -328,6 +328,39 @@ The rules every implementation keeps are stated once, in that file's header:
 of `NaN`, and a cap on every loop that iterates to convergence. The types
 themselves (`FramePyramid`, `PatchObservation`, `TrackingState`, and each
 function's options, result and failure union) are exported alongside.
+
+**`buildFramePyramid`** resamples each level from the previous one with a box
+of width `r = s_{l−1} / s_l` over a bilinear reconstruction, centred where
+decision D2 puts a level's pixels, so linear intensity is reproduced exactly
+and no level's content is shifted. At step 2 that is the `[1, 2, 1] / 4`
+decimation. The format does not say which filter produced a target's level
+images (open question Q11); the tracker assumes a target's patches were cut
+from levels this same function built, and the reasoning is in
+[`frame_pyramid.ts`](./src/tracking/frame_pyramid.ts).
+
+**`alignPatch`** places the patch's stored pixels where the prediction puts
+them and aligns a translation — plus gain and bias with `photometric` — by
+inverse-compositional Lucas–Kanade, starting on the frame level whose pixels
+match the patch's and refining on the finest. Rotation, scale and
+perspective come from the prediction. Each design choice, and the
+measurement behind it, is in [`align_patch.ts`](./src/tracking/align_patch.ts);
+the suites `test/tracking/align_patch_*.test.ts` re-measure them. In short,
+for 8 × 8 pinball patches whose level matches the frame's scale:
+
+| | Measured |
+|---|---|
+| Clean warps (frontal, rotated 30°, tilted) | median 0.022 px, worst 0.063 px |
+| Sensor noise σ = 4 / 8 grey levels, plus blur | median 0.070 / 0.082 px |
+| Converging from a prediction 3 / 4 / 8 px off | 97% / 89% / 37% (twice as far for a patch seen at twice its scale) |
+| Prediction's rotation off by 10° / scale by 10% | 94% / 100% converge |
+| Gain 0.6–1.3, bias ±40, compensated | as clean; uncompensated, errors grow 14× to 2000× |
+
+Their cost, in Node on a development machine, is measured by
+`scripts/bench-tracking.mjs` (`npm run build` first): at the 270×360
+camera-path frame, a four-level `∛2` pyramid takes about 1.85 ms and a
+matched patch about 15 µs. How that translates to the reference device is
+recorded, with its caveats, in
+[`docs/benchmarks/README.md`](../../docs/benchmarks/README.md).
 
 ## Conformance
 

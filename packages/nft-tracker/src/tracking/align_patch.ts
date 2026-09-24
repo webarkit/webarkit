@@ -105,9 +105,17 @@ const MIN_EIGENVALUE = 1;
  *    then puts the patch where that level cannot evaluate it.
  * 6. **Failures**, checked in the order the union declares them, every one
  *    before the iteration starts except `outside-frame` from a step and
- *    `singular` from a gain collapsing to 0 (a frame region with no
- *    contrast). No input reaches `levelScale`'s throw ({@link validPatch},
- *    {@link validPyramid}).
+ *    `singular` from a gain collapsing to 0. No input reaches `levelScale`'s
+ *    throw ({@link validPatch}, {@link validPyramid}). With gain and bias
+ *    estimated, `singular` is therefore also how an alignment that *loses*
+ *    its patch ends: drifted onto content without the patch's contrast, the
+ *    least-squares gain falls to 0 rather than a wrong position coming back.
+ *    Measured on a smooth synthetic frame: from two predictions with
+ *    perspective errors (up to 37 and 44 px off across the frame), 162 of
+ *    240 photometric alignments ended so; from one uniformly 1.8 px off,
+ *    none — and every patch involved had ample texture (λ_min ≥ 224 at the
+ *    start). So a tracker should read `singular` as a per-frame outcome, not
+ *    as a property of the patch.
  *
  * **Assumptions** (format spec Q11, frame_pyramid.ts): the patch was cut
  * from a level `buildFramePyramid` built with `targetScaleStep`, and the

@@ -809,3 +809,68 @@ M2" above:
   leave.
 - ADR-0001 point 5's **8 ms p95** threshold for tracker-side compute is
   therefore close to all the room there is.
+
+## 2026-09-24 — M2: frame pyramid and patch alignment, off-device
+
+> Not an on-device measurement. These numbers come from Node on the
+> development container, and are translated to the reference device by a
+> proxy stated below. They exist because ADR-0001 point 3 names the frame
+> pyramid as the first step to move into the backend if tracker-side cost is
+> too high, and that decision needs a number before `bench-nft.html` has a
+> tracking mode to measure it where it counts (#48, "Evaluation").
+
+**Method.** `packages/nft-tracker/scripts/bench-tracking.mjs` (run after
+`npm run build`), three runs: Node v22.22.2, linux/x64, "Intel Xeon
+Processor @ 2.80GHz" in a VM; p50 over 300 runs after 50 warm-up runs, on
+deterministic synthetic frames. The implementation is the one on branch
+`feat/nft-tracker-align-patch`: `buildFramePyramid`'s box-over-triangle
+filter at step `∛2`, and `alignPatch` with `P = 8`, `epsilon` 0.01 px.
+
+**The proxy to the device.** The script also times the RGBA → grey loop
+that `bench-nft` records as `gray`, on the camera path's 270×360 frame. On
+the reference device that stage measured **1.2 ms** p50 (the rear-camera
+runs above); here it measured 0.31–0.38 ms, so device ≈ here × 3.1–3.9
+(the ratio moved between runs by that much). Both are plain loops over
+typed arrays, but that is all they share: the device column is an estimate,
+not a measurement. One known way it misleads: in this Node build, allocating
+a typed array over 64 bytes costs about 2 µs, which dominated `alignPatch`
+until its allocations were consolidated (bit-identically); the grey loop
+allocates once and cannot see that cost.
+
+| 270×360, step `∛2` | here p50 (3 runs) | device estimate |
+|---|---|---|
+| `buildFramePyramid`, 2 levels (1 computed) | 0.89–0.92 ms | 2.8–3.6 ms |
+| 3 levels | 1.47–1.53 ms | 4.7–5.9 ms |
+| 4 levels | 1.82–1.88 ms | 5.9–7.1 ms |
+| 5 levels | 2.03–2.06 ms | 6.4–7.9 ms |
+| 6 levels | 2.20–2.22 ms | 7.0–8.5 ms |
+| `alignPatch`, one matched patch (≈ 4 iterations) | 14–15 µs | 44–54 µs |
+| `alignPatch`, one patch seen at twice its scale | 123–126 µs | 395–477 µs |
+
+Other frame sizes, one run: a four-level pyramid of 480×270 took 2.38 ms
+here, of 640×480 5.55 ms.
+
+**Against the ~10 ms the camera path leaves for the tracker** ("What this
+implies for M2" above):
+
+- A four-level `∛2` frame pyramid alone is estimated at **6–7 ms** on the
+  reference device: most of the budget, before a single patch is aligned.
+  Each level costs about 60% of the one before it (it has 63% of the
+  pixels), so the first computed level is half of a four-level pyramid's
+  cost: building only the levels a tracker's patches use is worth doing,
+  but even one level is about 3 ms.
+- 50 matched patches are estimated at 2.2–2.7 ms. Magnified patches cost
+  eight times more each (their footprints read 49 frame samples per patch
+  pixel on the finest level), so a tracker should align few of them.
+- Together that is at or over the 8 ms p95 threshold of ADR-0001 point 5,
+  before the robust homography, the pose, or any other step. The pyramid is
+  the largest single item, which is what point 3 expected of it.
+
+**What this does and does not settle.** It supports trying point 3's first
+move — the frame pyramid as an optional backend method — but does not by
+itself trigger it: the thresholds are defined on the reference device, and
+an on-device run of the tracking state replaces this estimate. The
+TypeScript implementation has had one pass of optimisation (unrolled
+four-tap passes, 3.08 → 1.87 ms here for four levels, bit-identical);
+integer arithmetic is the obvious next pass if the pyramid stays in
+TypeScript.
