@@ -116,8 +116,9 @@ at all.
 ## Compiling a target
 
 `bin/compile-target.mjs` is the offline half: an image in, a `.wnft` out. It is
-`buildTargetFromImage` with `@webarkit/cv-backend-jsfeatnext` followed by
-`encode`, run from a command line instead of from a page.
+`buildTargetFromImage` with `@webarkit/cv-backend-jsfeatnext`, then
+`selectPatches` for the §5.7 tracking patches, then `encode`, run from a command
+line instead of from a page.
 
 > **Repo-local dev tooling, not part of the package.** `bin/` names a concrete
 > backend and a JPEG decoder, and both are **dev**Dependencies — the package
@@ -155,8 +156,13 @@ unset, which is exactly the case where the cwd is already the right answer.
 | `--max-side` | 640 | cap on the image's longer side |
 | `--seed` | 0 | RNG seed, recorded in `info.compiler` and enforced during the build |
 | `--name` | the image's base name | `info.name` |
+| `--patches` | 64 | tracking-patch budget; `0` compiles a detection-only target with no `patches` section |
+| `--patch-size` | 16 | patch edge `P`, at least 3 |
+| `--patch-levels` | 3 | how many of the finest pyramid levels patches may come from |
+| `--patch-min-score` | 25 | minimum Shi–Tomasi score, (grey levels / level-0 px)² |
+| `--patch-spacing` | `0.75 * sqrt(W * H / patches)` | minimum distance between patch centres, level-0 px (54 on pinball) |
 
-Two of those deserve a word.
+Three of those deserve a word.
 
 **`--max-side` decides the target's coordinate space.** Keypoints are stored in
 level-0 pixels, so a page that draws them over the image it loaded must cap that
@@ -181,6 +187,24 @@ of draws (`0`, so far). A backend that starts drawing therefore stays
 reproducible instead of quietly making every recompile a new file — and when
 that day comes, the seed will be changing target data too, which is the case
 this option exists for.
+
+**The patch options are first choices, not tuned values.** Each default's
+reason, and what it was measured on, is written where it is defined in
+`bin/compile-target.mjs`; the M2 tuning pass, which can measure alignment, is
+expected to revise them. The score is defined in
+[`src/tracking/select_patches.ts`](./src/tracking/select_patches.ts): the
+smaller eigenvalue of the mean structure tensor of a window's interior, in
+level-0 units so patches from different levels compete fairly. Fewer than four
+qualifying patches is an error that names `--patches 0` as the way out, not a
+target silently compiled without tracking.
+
+The level images patches are cut from come from a **stand-in**,
+`bin/target-pyramid.mjs` (an area-weighted box filter), until
+`buildFramePyramid` exists: stored patches must be filtered the way the live
+frame's pyramid will be (format spec §11, Q11). Every file it produced says so
+in `info.compiler.patchPyramid`. When `buildFramePyramid` lands, the compiler
+switches to it and `examples/targets/pinball.wnft` is recompiled; level 0's
+patches are the image itself and do not move, coarser levels' do.
 
 [`examples/targets/pinball.wnft`](../../examples/targets) is one such target,
 committed, and the static demo can load it instead of building its own.
@@ -207,7 +231,7 @@ node packages/nft-tracker/bin/validate-target.mjs examples/targets/pinball.wnft
 ```
 examples/targets/pinball.wnft
   decode      ok, format 0.3
-  target      512x640, 8 levels, 2062 keypoints, 0 patches
+  target      512x640, 8 levels, 2062 keypoints, 64 patches
   physical    210 x 262.5 mm
   set         orb/hamming/bits/256 by jsfeatnext, 2062 rows, 32 B each
   usable      yes on 'jsfeatnext' via orb/hamming/256 (probe: 32 B/descriptor, hamming)
@@ -275,13 +299,13 @@ The functions a tracking-state frame will be built from are defined in
 [`src/tracking/types.ts`](./src/tracking/types.ts) and exported, so that the
 three M2 implementation branches of
 [#48](https://github.com/webarkit/webarkit/issues/48) work against one fixed
-contract. **They are stubs:** each returns
-`{ ok: false, reason: "not-implemented" }` until its branch lands. Nothing
+contract. **Most are still stubs:** each of those returns
+`{ ok: false, reason: "not-implemented" }` until its branch lands, and nothing
 should be built on them yet.
 
 | Export | What it will do | Status |
 |---|---|---|
-| `selectPatches` | Compile time: the target's pyramid → the §5.7 `patches` table | stub |
+| `selectPatches` | Compile time: the target's pyramid → the §5.7 `patches` table; `compile-target` writes it | **implemented** |
 | `buildFramePyramid` | A grey pyramid of the frame (and of the target, at compile time) | stub |
 | `alignPatch` | Aligns one patch in the frame by IC-LK → a `PatchObservation` | stub |
 | `robustHomography` | IRLS with Tukey's biweight over the patch correspondences → `H` and per-patch weights | stub |

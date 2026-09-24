@@ -350,8 +350,8 @@ loading it does.
 
 Don't read either figure as the cost of the format, in either direction. The
 build row is worst on the first load, before the JIT has warmed up, and settles
-lower afterwards; the file row is mostly the `fetch()` of 110 KB, not the
-decode. Measured apart from both effects, the gap is roughly **200×** — 84 ms to
+lower afterwards; the file row is mostly the `fetch()` of the file (110 KB when
+measured, before it carried tracking patches; 128 KB now), not the decode. Measured apart from both effects, the gap is roughly **200×** — 84 ms to
 build against 0.40 ms to decode. The [root README](../README.md#-compiled-targets-wnft)
 has the table and the conditions.
 

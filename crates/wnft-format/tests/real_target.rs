@@ -161,6 +161,80 @@ fn decodes_the_compiled_pinball_target() {
         }
         other => panic!("expected a `bits` set, got `{}`", other.element_type()),
     }
+
+    // §5.7's tracking patches: compile-target's defaults, 64 patches of
+    // 16 x 16 cut from the finest three levels, as it chose them for this
+    // image — 63 from level 0 and one from level 1.
+    let patches = target
+        .patches
+        .expect("compile-target writes a patches section");
+    assert_eq!(patches.patch_size, 16);
+    assert_eq!(patches.count, 64);
+    let p = patches.patch_size as usize;
+    let q = patches.count as usize;
+    assert_eq!(patches.score.len(), q);
+    assert_eq!(patches.left.len(), q);
+    assert_eq!(patches.top.len(), q);
+    assert_eq!(patches.level.len(), q);
+    assert_eq!(patches.pixels.len(), q * p * p);
+    let mut per_level = [0usize; 3];
+    for i in 0..q {
+        let level = patches.level[i] as usize;
+        assert!(
+            level < 3,
+            "patch {i} is from level {level}, beyond --patch-levels 3"
+        );
+        per_level[level] += 1;
+        // §5.7's bounds rule, on the level sizes this file records. The
+        // decoder has already enforced it; asserting it here says the real
+        // distribution reaches the edges it is allowed to and no further.
+        let [w, h] = target.pyramid.level_sizes[level];
+        assert!(
+            patches.left[i] as usize + p <= w as usize,
+            "patch {i} past the right edge"
+        );
+        assert!(
+            patches.top[i] as usize + p <= h as usize,
+            "patch {i} past the bottom edge"
+        );
+        // No flat patch: every one was selected for its texture.
+        let window = &patches.pixels[i * p * p..(i + 1) * p * p];
+        let (lo, hi) = window
+            .iter()
+            .fold((u8::MAX, u8::MIN), |(lo, hi), &v| (lo.min(v), hi.max(v)));
+        assert!(hi > lo, "patch {i} is flat");
+    }
+    assert_eq!(per_level, [63, 1, 0]);
+    // The compiler's selection order, and its default minimum score.
+    assert!(patches.score.iter().all(|&s| s.is_finite() && s >= 25.0));
+    assert!(
+        patches.score.windows(2).all(|w| w[0] >= w[1]),
+        "patches are stored best score first"
+    );
+
+    // Which pyramid the patches were cut from is provenance, not format: the
+    // level images come from a stand-in filter until the tracker's own
+    // pyramid builder exists (the specification's open question Q11). Once
+    // it does, the file is recompiled, level 1's patch changes, and this
+    // assertion is the one that says so.
+    let compiler = target
+        .info
+        .as_ref()
+        .and_then(|info| info.get("compiler"))
+        .and_then(|c| c.as_object())
+        .expect("compile-target records info.compiler");
+    assert_eq!(
+        compiler.get("maxPatches").and_then(|v| v.as_u64()),
+        Some(64)
+    );
+    assert!(
+        compiler
+            .get("patchPyramid")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| s.starts_with("stand-in")),
+        "patchPyramid was {:?}",
+        compiler.get("patchPyramid")
+    );
 }
 
 #[test]

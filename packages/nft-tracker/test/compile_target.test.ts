@@ -61,6 +61,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { decode } from "../src/target/format/decode.js";
 import type { DecodeResult } from "../src/target/format/errors.js";
+import { levelScale } from "../src/index.js";
+import type { ImagePyramid, PatchTable } from "../src/index.js";
+import { readPgm, TARGET_FIXTURE } from "./fixtures/pgm.js";
 
 const SCRIPT = fileURLToPath(new URL("../bin/compile-target.mjs", import.meta.url));
 const IMAGE = fileURLToPath(new URL("../../../examples/images/pinball.jpg", import.meta.url));
@@ -291,5 +294,178 @@ describe("compile-target", () => {
         const failure = compileExpectingFailure([IMAGE, "-o", out, "--physical-size", "210x0"]);
         expect(failure.status).toBe(2);
         expect(failure.stderr).toMatch(/--physical-size/);
+    });
+
+    describe("tracking patches (§5.7)", () => {
+        /**
+         * The stand-in target pyramid, loaded by URL so the type checker does
+         * not try to resolve a `.mjs` without declarations: it is `bin/`
+         * tooling, and only this suite reaches into it.
+         */
+        const PYRAMID_MODULE = new URL("../bin/target-pyramid.mjs", import.meta.url).href;
+        type BuildTargetPyramid = (
+            image: ReturnType<typeof readPgm>,
+            scaleStep: number,
+            levelSizes: readonly (readonly [number, number])[],
+        ) => ImagePyramid;
+
+        interface CompilerInfo {
+            maxPatches?: number;
+            patchSize?: number;
+            patchLevels?: number;
+            patchMinScore?: number;
+            patchSpacing?: number;
+            patchPyramid?: string;
+        }
+        const compilerInfo = (info: unknown) =>
+            (info as { compiler?: CompilerInfo } | undefined)?.compiler ?? {};
+
+        function centresOf(scaleStep: number, t: PatchTable): [number, number][] {
+            const half = (t.patchSize - 1) / 2;
+            return Array.from({ length: t.count }, (_, q) => {
+                const s = levelScale(scaleStep, t.level[q]);
+                return [(t.left[q] + half) / s, (t.top[q] + half) / s];
+            });
+        }
+
+        it("writes the documented defaults, every patch exactly its level's pixels", async () => {
+            const out = join(work, "patches-default.wnft");
+            const stdout = compile([IMAGE, "-o", out]);
+            expect(stdout).toContain("64 patches");
+
+            const { target, warnings } = decodeFile(out);
+            expect(warnings).toEqual([]);
+            const patches = target.patches!;
+            expect(patches.patchSize).toBe(16);
+            expect(patches.count).toBe(64);
+            expect(Math.max(...patches.level)).toBeLessThan(3);
+            expect(compilerInfo(target.info)).toMatchObject({
+                maxPatches: 64,
+                patchSize: 16,
+                patchLevels: 3,
+                patchMinScore: 25,
+                // 0.75 * sqrt(512 * 640 / 64), rounded.
+                patchSpacing: 54,
+                patchPyramid: expect.stringContaining("stand-in"),
+            });
+
+            // The pixels a reader decodes are the pixels of the level the
+            // compiler cut them from, at (left, top). The fixture PGM is the
+            // same 512 x 640 image compile-target decodes from pinball.jpg.
+            const { buildTargetPyramid } = (await import(PYRAMID_MODULE)) as {
+                buildTargetPyramid: BuildTargetPyramid;
+            };
+            const pyramid = buildTargetPyramid(
+                readPgm(TARGET_FIXTURE),
+                target.pyramid.scaleStep,
+                target.pyramid.levelSizes.slice(0, 3),
+            );
+            const P = patches.patchSize;
+            for (let q = 0; q < patches.count; q++) {
+                const level = pyramid.levels[patches.level[q]];
+                const expected = new Uint8Array(P * P);
+                for (let i = 0; i < P; i++) {
+                    const start = (patches.top[q] + i) * level.width + patches.left[q];
+                    expected.set(level.data.subarray(start, start + P), i * P);
+                }
+                expect(patches.pixels.subarray(q * P * P, (q + 1) * P * P)).toEqual(expected);
+            }
+        });
+
+        it("honours the patch options", () => {
+            const out = join(work, "patches-options.wnft");
+            compile([
+                IMAGE,
+                "-o",
+                out,
+                "--levels",
+                "3",
+                "--patches",
+                "12",
+                "--patch-size",
+                "9",
+                "--patch-levels",
+                "1",
+                "--patch-min-score",
+                "40",
+                "--patch-spacing",
+                "80",
+            ]);
+
+            const { target } = decodeFile(out);
+            const patches = target.patches!;
+            expect(patches.patchSize).toBe(9);
+            expect(patches.count).toBeGreaterThanOrEqual(4);
+            expect(patches.count).toBeLessThanOrEqual(12);
+            expect(Array.from(patches.level).every((l) => l === 0)).toBe(true);
+            expect(Math.min(...patches.score)).toBeGreaterThanOrEqual(40);
+            const centres = centresOf(target.pyramid.scaleStep, patches);
+            for (let p = 0; p < centres.length; p++) {
+                for (let q = p + 1; q < centres.length; q++) {
+                    const [a, b] = [centres[p], centres[q]];
+                    expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeGreaterThanOrEqual(80);
+                }
+            }
+            expect(compilerInfo(target.info)).toMatchObject({
+                maxPatches: 12,
+                patchSize: 9,
+                patchLevels: 1,
+                patchMinScore: 40,
+                patchSpacing: 80,
+            });
+        });
+
+        it("--patches 0 compiles a detection-only target, with no patches section", () => {
+            const out = join(work, "patches-none.wnft");
+            expect(compile([IMAGE, "-o", out, "--levels", "3", "--patches", "0"])).toContain(
+                "0 patches",
+            );
+
+            const { target } = decodeFile(out);
+            expect(target.patches).toBeUndefined();
+            expect(compilerInfo(target.info)).toEqual(
+                expect.not.objectContaining({ patchSize: expect.anything() }),
+            );
+            expect(compilerInfo(target.info).maxPatches).toBe(0);
+        });
+
+        it("fails, naming the way out, when too few windows qualify", () => {
+            const out = join(work, "never-written.wnft");
+            const failure = compileExpectingFailure([
+                IMAGE,
+                "-o",
+                out,
+                "--levels",
+                "2",
+                "--patch-min-score",
+                "1e9",
+            ]);
+            expect(failure.status).toBe(1);
+            expect(failure.stderr).toContain("too-few-patches");
+            expect(failure.stderr).toContain("--patches 0");
+            expect(existsSync(out)).toBe(false);
+        });
+
+        it.each([
+            ["--patches", "3"],
+            ["--patches", "-1"],
+            ["--patch-size", "2"],
+            ["--patch-size", "4.5"],
+            ["--patch-levels", "0"],
+            ["--patch-min-score", "-1"],
+            ["--patch-spacing", "nope"],
+        ])("refuses %s %s", (flag, value) => {
+            const failure = compileExpectingFailure([
+                IMAGE,
+                "-o",
+                join(work, "never-written.wnft"),
+                flag,
+                value,
+            ]);
+            expect(failure.status).toBe(2);
+            expect(failure.stderr).toContain(flag);
+            // Refused for its value, not for being a flag nobody knows.
+            expect(failure.stderr).not.toContain("unknown option");
+        });
     });
 });
