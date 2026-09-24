@@ -186,6 +186,18 @@ compared at equal output size. The export records the configured box as
 `processingBox` (absent in exports that predate it, which used 480×360),
 next to `processingResolution`, the size the source was actually fitted to.
 
+For a **webcam** source, a menu next to the radio chooses the **rear**
+(default) or **front** camera, or set it from the URL with `?camera=rear` or
+`?camera=front`. Without it, Android Chrome opens the front camera, which
+can't be pointed at a target while you look at the screen. The request is a
+preference (`facingMode: { ideal: … }`), so a laptop with a single webcam
+still gets that webcam. The export's `camera` field records what was asked
+for and what the camera actually delivered: `facingMode`, `frameRate`, and
+the camera's name as the browser reports it. The frame rate is recorded
+because, on the file path, frame rate measurably changed `acquire` (see
+[`docs/benchmarks/README.md`](../docs/benchmarks/README.md)). The field is
+`null` for file and bundled-clip runs.
+
 Both modes are timed by wrapping the `CvBackend` instance passed to whichever
 one is active, so the stage split is available for `NftTracker` even though
 `process()` does not expose it itself. Milestone M1 of

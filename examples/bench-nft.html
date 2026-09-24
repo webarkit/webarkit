@@ -272,6 +272,10 @@
           <div class="controls">
             <div class="row">
               <label><input type="radio" name="source" value="webcam" checked /> webcam</label>
+              <select id="camera" aria-label="camera">
+                <option value="environment" selected>rear camera</option>
+                <option value="user">front camera</option>
+              </select>
               <label><input type="radio" name="source" value="file" /> video file</label>
               <input type="file" id="fileInput" accept="video/*" disabled />
             </div>
@@ -424,6 +428,7 @@
       const maxKeypointsInput = $("maxKeypoints");
       const procWidthInput = $("procWidth");
       const procHeightInput = $("procHeight");
+      const cameraSelect = $("camera");
       const startButton = $("start");
       const stopButton = $("stop");
       const downloadButton = $("download");
@@ -475,6 +480,13 @@
       let lastMode = null;
       /** Which bundled clip a "bundled" run actually used, or `null` for any other source. */
       let lastBundledClip = null;
+      /**
+       * For a webcam run, the camera asked for and what it actually
+       * delivered (`facingMode`, `frameRate`, `label`), or `null` for any
+       * other source. The frame rate is recorded because decode rate
+       * measurably changes `acquire` (see docs/benchmarks/README.md).
+       */
+      let lastCamera = null;
       /**
        * The seek point of the last "video file" run, in seconds, or `null`
        * for a webcam run (nothing to seek). Recorded in the export so two
@@ -744,9 +756,17 @@
         }
       }
 
-      async function startWebcam(box) {
+      /**
+       * `facingMode` is `ideal`, not `exact`: a phone or tablet then opens
+       * the camera asked for (Android Chrome opens the FRONT one when the
+       * request does not say, which is useless for pointing at a target),
+       * while a laptop with a single webcam still gets that webcam instead
+       * of an OverconstrainedError. Returns what the camera actually
+       * delivered, which is not necessarily what was asked for.
+       */
+      async function startWebcam(box, facingMode) {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: box.width }, height: { ideal: box.height } },
+          video: { facingMode: { ideal: facingMode }, width: { ideal: box.width }, height: { ideal: box.height } },
           audio: false,
         });
         currentStream = stream;
@@ -754,6 +774,15 @@
         video.loop = false;
         await waitForEvent(video, "loadedmetadata");
         await video.play();
+        const track = stream.getVideoTracks()[0];
+        const settings = track?.getSettings?.() ?? {};
+        return {
+          requestedFacingMode: facingMode,
+          // Absent on a desktop webcam, which has no facing to report.
+          facingMode: settings.facingMode ?? null,
+          frameRate: settings.frameRate ?? null,
+          label: track?.label || null,
+        };
       }
 
       async function startFile(file, startAt) {
@@ -846,6 +875,10 @@
         maxKeypointsInput.value = String(parsePositiveInt(params.get("maxKeypoints")) ?? DEFAULT_MAX_SCENE_KEYPOINTS);
         procWidthInput.value = String(parsePositiveInt(params.get("procWidth")) ?? PROC_WIDTH);
         procHeightInput.value = String(parsePositiveInt(params.get("procHeight")) ?? PROC_HEIGHT);
+        // `?camera=front` or `?camera=rear`; anything else keeps the rear default.
+        const camera = params.get("camera");
+        if (camera === "front") cameraSelect.value = "user";
+        else if (camera === "rear") cameraSelect.value = "environment";
       }
 
       function readMaxKeypoints() {
@@ -872,6 +905,7 @@
         const source = currentSource();
         fileInput.disabled = source !== "file";
         bundledClipSelect.disabled = source !== "bundled";
+        cameraSelect.disabled = source !== "webcam";
         // Seeking only means anything against a video with a timeline -- a
         // webcam has none.
         startAtInput.disabled = source === "webcam";
@@ -1093,6 +1127,10 @@
           // for any other source -- same reproducibility reasoning as
           // `startAtSeconds` below, now that there is more than one.
           bundledClip: lastBundledClip,
+          // Webcam runs only: see `lastCamera`. An export without this field
+          // predates the camera choice; its webcam runs used whichever
+          // camera the browser picked by default.
+          camera: lastCamera,
           sourceResolution: lastSourceResolution,
           // Seconds into the file the run was seeked to before Start, or
           // `null` for a webcam run (nothing to seek) -- what makes a
@@ -1165,8 +1203,9 @@
             const box = readProcessingBox();
             let startAtSeconds = null;
             let bundledClip = null;
+            let camera = null;
             if (source === "webcam") {
-              await startWebcam(box);
+              camera = await startWebcam(box, cameraSelect.value);
             } else {
               const requestedStartAt = Math.max(0, Number(startAtInput.value) || 0);
               if (source === "bundled") {
@@ -1195,6 +1234,7 @@
             lastMode = mode;
             lastStartAtSeconds = startAtSeconds;
             lastBundledClip = bundledClip;
+            lastCamera = camera;
             lastMaxKeypoints = maxKeypoints;
             lastProcessingBox = box;
             history = [];
