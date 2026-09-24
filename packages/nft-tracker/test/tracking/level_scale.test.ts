@@ -69,6 +69,24 @@ describe("levelScale", () => {
         });
     });
 
+    it("divides iteratively rather than calling Math.pow, down to the last bit", () => {
+        // At these levels the two forms disagree in the last bit, and the
+        // size check above cannot see it: both truncate to the same size.
+        const step = Math.cbrt(2);
+        expect(levelScale(step, 3)).toBe(0.4999999999999999);
+        expect(levelScale(step, 6)).toBe(0.24999999999999994);
+        expect(levelScale(step, 3)).not.toBe(Math.pow(step, -3));
+    });
+
+    it("stops at level 255, the deepest a u8 level index can name", () => {
+        expect(levelScale(2, 255)).toBeGreaterThan(0);
+        expect(() => levelScale(2, 256)).toThrow(RangeError);
+    });
+
+    it("rejects a step that underflows the scale to 0, instead of letting x_l / s_l overflow", () => {
+        expect(() => levelScale(1e300, 2)).toThrow(RangeError);
+    });
+
     it("rejects a step or level outside its domain instead of returning NaN", () => {
         expect(() => levelScale(1, 1)).toThrow(RangeError);
         expect(() => levelScale(Number.NaN, 1)).toThrow(RangeError);
