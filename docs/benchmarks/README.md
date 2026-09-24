@@ -239,11 +239,12 @@ budget" from "tracks whatever `detect` returned". The sweep below can.
 ### Pre-flight: where the budget binds, per clip
 
 This is a count, not a timing: `maxKeypoints=100000` (so effectively no cap),
-`stateless`, a 400-frame window covering each clip's full loop, desktop Chrome
-(headless) on a laptop. `detect` is deterministic on identical pixels, but a
-device's `drawImage` downscale can differ from the laptop's by a pixel's worth
-of filtering, so treat these as approximate. The on-device export's
-`numSceneKeypoints` is the authority.
+`stateless`, a 400-frame window covering each clip's full loop, headless
+desktop Chrome on a Windows desktop PC — **not** on `Tab_9_WiFi`. `detect` is
+deterministic on identical pixels, but the tablet's `drawImage` downscale can
+differ from the desktop's by a pixel's worth of filtering, so treat these as
+approximate. The on-device export's `numSceneKeypoints` is the authority. No
+timing from that desktop run is quoted anywhere in this plan.
 
 | clip | processed at | corners found per frame (min / p5 / p50 / max) | frames where 300 binds |
 |---|---|---|---|
