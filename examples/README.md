@@ -175,6 +175,17 @@ the default), and every frame records `numSceneKeypoints`, what `detect`
 actually returned. The two differ whenever a frame has fewer corners than the
 budget, and a timing taken on such a frame says nothing about the budget.
 
+The **processing box** can be overridden the same way. Every frame is fitted
+into it with aspect ratio preserved, which decides how many pixels the
+`acquire` stage draws and reads back, and how many `detect` then searches.
+It defaults to 480×360, the page's box from the start, and can be set with
+the two "processing box" fields or from the URL:
+`bench-nft.html?procWidth=360&procHeight=360`. A square box gives the same
+long side to a portrait and a landscape source, which is how the two can be
+compared at equal output size. The export records the configured box as
+`processingBox` (absent in exports that predate it, which used 480×360),
+next to `processingResolution`, the size the source was actually fitted to.
+
 Both modes are timed by wrapping the `CvBackend` instance passed to whichever
 one is active, so the stage split is available for `NftTracker` even though
 `process()` does not expose it itself. Milestone M1 of

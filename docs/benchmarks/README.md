@@ -466,6 +466,10 @@ put run-to-run noise at about ±1–2%), and one device.
 
 ### Open question: why does a portrait source cost twice as much to acquire?
 
+> **Tested later the same day:** orientation is **not** the cause. See
+> "Separating the portrait `acquire` gap" below. The question as asked here
+> is kept unchanged.
+
 This is recorded as a question, not a finding. It matters because `acquire`
 is now the largest stage below about 170 keypoints (see Results). The
 answer decides the fix: a different acquisition path, or a different
@@ -614,3 +618,83 @@ Then each factor:
 
 These are not exclusive, and more than one factor may pass. If none does,
 the gap is unexplained by these three and stays an open question.
+
+### Results
+
+The runs were made on 2026-09-24 on `Tab_9_WiFi`, all nine by the automated
+driver. All report an Android `userAgent` and 120 frames. **One deviation:**
+the anchor run (1) failed twice at page start-up, before any timed code ran
+(the same stall the sweep saw). It was rerun last, after run 9, so the drift
+check compares run 9 with a run made after it rather than before it.
+
+| run | clip | native | box | processed at | `acquire` p50 (p5 / p95) |
+|---|---|---|---|---|---|
+| 1 | `pinball-static.mp4` | 720×1280 | 480×360 | 203×360 | **35.8** (33.0 / 38.0) |
+| 2 | `pinball-bench.mp4` | 1280×720 | 480×360 | 480×270 | **17.9** (16.5 / 24.5) |
+| 3 | `static-portrait` | 720×1280 | 480×360 | 203×360 | **36.1** (33.7 / 38.2) |
+| 4 | `static-landscape` | 1280×720 | 480×360 | 480×270 | **38.3** (35.2 / 41.2) |
+| 5 | `static-portrait` | 720×1280 | 480×480 | 270×480 | **43.3** (41.4 / 45.5) |
+| 6 | `static-landscape` | 1280×720 | 360×360 | 360×203 | **31.8** (27.5 / 33.7) |
+| 7 | `wall-native-fps` (24.9 fps) | 1280×720 | 480×360 | 480×270 | **18.3** (16.6 / 24.5) |
+| 8 | `wall-30fps` | 1280×720 | 480×360 | 480×270 | **25.8** (22.8 / 27.7) |
+| 9 | `pinball-static.mp4` | 720×1280 | 480×360 | 203×360 | **36.2** (32.9 / 38.3) |
+
+Raw files: `2026-09-24-tab9-ondevice-acquire-<NN>-<run>.json`.
+
+**Validity checks: both pass.**
+
+- Drift: run 9 ÷ run 1 = **1.011** (limit ±10%).
+- Re-encode control: run 3 ÷ run 1 = **1.008** (limit ±15%). So runs 4–8 can
+  be read against the bundled clips.
+
+**Each factor, by the decision rules:**
+
+| factor | comparison | ratio | verdict |
+|---|---|---|---|
+| session | run 2 ÷ 18.9 ms (2026-09-19) | 0.947 | no effect |
+| orientation, ≈73,000 px | run 3 ÷ run 6 | 1.135 | no effect |
+| orientation, ≈130,000 px | run 5 ÷ run 4 | 1.131 | no effect |
+| output pixels, portrait | run 5 ÷ run 3 | 1.199 | inconclusive |
+| output pixels, landscape | run 4 ÷ run 6 | 1.204 | inconclusive |
+| frame rate | run 8 ÷ run 7 | 1.410 | inconclusive |
+
+**What this answers.**
+
+- **Orientation does not explain the gap.** The question's premise that
+  "portrait sources cost twice as much" is wrong. The same footage costs
+  about the same portrait or landscape: 13% more when portrait, at both
+  output sizes. That is within the no-effect band, though near its edge.
+- **The five-day gap does not explain it either.** The wall clip reproduces
+  its 2026-09-19 value.
+- **The processing box is not proportional.** 1.78× the output pixels costs
+  only about 1.20× the `acquire` time, on both orientations. A smaller box
+  saves `acquire` time, but much less than proportionally.
+- **Frame rate matters, but not enough on its own.** 20% more decoded frames
+  per second cost 41% more `acquire` time, which suggests decoding competes
+  with the main thread. That is below the 1.5× threshold.
+
+**What is left: the footage.** This part was observed after the fact and was
+not in the plan. At an identical format (1280×720, 30 fps, same encoder
+command, same box), the static footage (run 4, 38.3 ms) still costs **1.48×**
+the wall footage (run 8, 25.8 ms). Together with frame rate, that accounts
+for the whole original gap: run 4 ÷ run 7 = 2.09×. So the gap follows the
+footage, not its orientation.
+
+The frame structures are alike: each re-encode has one I-frame and mostly
+B-frames (static: 265 B / 96 P; wall at 30 fps: 254 B / 103 P). Bitrates are
+alike too (≈560 vs ≈690 kb/s, the static one *lower*). Neither explains it.
+
+**This is the question that replaces the one above:** what about the static
+footage makes each frame dearer to draw and read back? It is not answered
+here. The one lead is that per-tick work differs: `total` p50 is about 128
+vs 109 ms between runs 4 and 8. A longer tick means more frames decoded in
+the background between two reads, and the frame-rate result shows decoding
+load reaches `acquire`.
+
+**For M2:**
+
+- The fix is not "avoid portrait sources".
+- A smaller processing box helps, but less than its pixel count suggests.
+- Keeping decoding load down helps. That means a lower frame rate or lower
+  resolution from the camera or decoder, as the `acquire` bullet under "What
+  this implies for M2" already suggests on other grounds.
