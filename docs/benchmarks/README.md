@@ -463,3 +463,62 @@ design from, not decisions:
 
 **Limits of this result:** one run per value (the manual runs and the repeat
 put run-to-run noise at about ±1–2%), and one device.
+
+### Open question: why does a portrait source cost twice as much to acquire?
+
+This is recorded as a question, not a finding. It matters because `acquire`
+is now the largest stage below about 170 keypoints (see Results). The
+answer decides the fix: a different acquisition path, or a different
+processing box.
+
+**The observation.** `acquire` times `new OffscreenCanvas`, `getContext`,
+`drawImage(video)` (the downscale) and `getImageData` (the readback), in
+`examples/js/pinball-shared.mjs`'s `toGrayTimed`. On `Tab_9_WiFi` its p50 is:
+
+| clip | native frame | pixels | fps | processing box | `acquire` p50 | `gray` p50 |
+|---|---|---|---|---|---|---|
+| wall, `pinball-bench.mp4` (2026-09-19) | 1280×720, landscape | 921,600 | 24.9 | 480×270 (129,600 px) | 18.9 | 1.5 |
+| static, `pinball-static.mp4` (sweep) | 720×1280, portrait | 921,600 | 30 | 203×360 (73,080 px) | 35.9–36.4 | 0.9 |
+| table, `pinball-bench-table.mp4` (sweep) | 1080×1920, portrait | 2,073,600 | 30 | 203×360 (73,080 px) | 39.1–40.1 | 0.9 |
+
+The wall and static clips have the same pixel count, yet the static one costs
+about twice as much to acquire. It also produces *fewer* output pixels, so
+it should be cheaper to read back, not dearer. Earlier sections explain
+`acquire` as tracking native frame size (the table-clip section, and the
+`acquire` bullet under "What this implies for M2"). That explains neither
+this 2× gap nor the table clip: it has 2.25× the static clip's pixels and
+costs only about 10% more.
+
+The stage after the readback behaves as expected. `gray` runs on the output
+pixels and scales with the processing box (0.9 ÷ 1.5 ≈ 0.56 ÷ 1), so the gap
+is inside `acquire`.
+
+**What differs between the wall and static clips, none of it tested yet:**
+
+- **Orientation:** portrait versus landscape frame layout, through the
+  decoder and `drawImage`.
+- **Frame rate:** 30 fps versus 24.9 fps. That is more decoding per second
+  competing with the main thread, and a different
+  `requestVideoFrameCallback` cadence.
+- **Downscale ratio:** 0.28 versus 0.375, which may take a different scaling
+  path.
+- **Session:** the two were measured five days apart. On its own this seems
+  an unlikely explanation for 2×, because the table clip measured 37.0 ms on
+  2026-09-19 and 39.1–40.1 ms here (a 6–8% drift). It is still a confound.
+
+The manual static-300 runs are left out of this comparison. Their `acquire`
+is much noisier (30.8–47.1 ms p50), and they were served without HTTP range
+support, which stalled the video at every loop.
+
+**What would separate these.** Each is a single run on `Tab_9_WiFi`, none
+of them made yet:
+
+1. The static footage re-encoded as a landscape frame: the same pixels,
+   frame rate and content, only the orientation changed.
+2. The wall footage re-encoded at 30 fps: the same orientation, only the
+   frame rate changed.
+3. The wall clip rerun in the same session as (1) and (2), to remove the
+   five-day gap.
+
+The first two would be test media, not bundled clips, unless they turn out
+to be worth keeping (see AGENTS.md's "Test assets").
