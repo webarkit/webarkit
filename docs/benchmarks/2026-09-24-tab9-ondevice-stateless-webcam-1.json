@@ -1,0 +1,2473 @@
+{
+  "exportedAt": "2026-09-24T15:39:50.472Z",
+  "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "deviceLabel": null,
+  "mode": "stateless",
+  "source": "webcam",
+  "bundledClip": null,
+  "camera": {
+    "requestedFacingMode": "environment",
+    "facingMode": "environment",
+    "frameRate": 30,
+    "label": "camera 0, facing back"
+  },
+  "sourceResolution": {
+    "width": 360,
+    "height": 480
+  },
+  "startAtSeconds": null,
+  "maxKeypoints": 300,
+  "processingBox": {
+    "width": 480,
+    "height": 360
+  },
+  "processingResolution": {
+    "width": 270,
+    "height": 360
+  },
+  "windowSize": 120,
+  "summaryMs": {
+    "acquire": {
+      "p50": 23,
+      "p95": 28,
+      "max": 29.30000001192093
+    },
+    "gray": {
+      "p50": 1.199999988079071,
+      "p95": 1.300000011920929,
+      "max": 1.600000023841858
+    },
+    "detect": {
+      "p50": 7.100000023841858,
+      "p95": 8.100000023841858,
+      "max": 22.5
+    },
+    "describe": {
+      "p50": 10.300000011920929,
+      "p95": 10.899999976158142,
+      "max": 18.30000001192093
+    },
+    "match": {
+      "p50": 64.00000005960464,
+      "p95": 68.79999995231628,
+      "max": 89.19999998807907
+    },
+    "estimateHomography": {
+      "p50": 1.7999999523162842,
+      "p95": 2.900000035762787,
+      "max": 13.900000035762787
+    },
+    "pose": {
+      "p50": 0.09999996423721313,
+      "p95": 0.19999998807907104,
+      "max": 0.19999998807907104
+    },
+    "total": {
+      "p50": 109,
+      "p95": 115.30000001192093,
+      "max": 171.69999998807907
+    }
+  },
+  "frames": [
+    {
+      "timestampMs": 26165,
+      "mediaTimeSeconds": 2418439.665388,
+      "timings": {
+        "acquire": 26.899999976158142,
+        "gray": 1.199999988079071,
+        "detect": 6.700000047683716,
+        "describe": 10.199999988079071,
+        "match": 64,
+        "filterMatches": 0,
+        "estimateHomography": 1.800000011920929,
+        "pose": 0.10000002384185791,
+        "total": 111.30000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 102,
+      "numInliers": 93
+    },
+    {
+      "timestampMs": 26283,
+      "mediaTimeSeconds": 2418439.785671,
+      "timings": {
+        "acquire": 23.19999998807907,
+        "gray": 1.300000011920929,
+        "detect": 6.899999976158142,
+        "describe": 10.5,
+        "match": 63.5,
+        "filterMatches": 0,
+        "estimateHomography": 2.700000047683716,
+        "pose": 0.09999996423721313,
+        "total": 108.39999997615814
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 95,
+      "numInliers": 84
+    },
+    {
+      "timestampMs": 26396.399999976158,
+      "mediaTimeSeconds": 2418439.905956,
+      "timings": {
+        "acquire": 23.100000023841858,
+        "gray": 1.199999988079071,
+        "detect": 6.800000011920929,
+        "describe": 10.300000011920929,
+        "match": 62.799999952316284,
+        "filterMatches": 0,
+        "estimateHomography": 1.699999988079071,
+        "pose": 0.10000002384185791,
+        "total": 106.30000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 112,
+      "numInliers": 97
+    },
+    {
+      "timestampMs": 26507.69999998808,
+      "mediaTimeSeconds": 2418440.026231,
+      "timings": {
+        "acquire": 26.80000001192093,
+        "gray": 1.0999999642372131,
+        "detect": 6.199999988079071,
+        "describe": 10.300000011920929,
+        "match": 63.200000047683716,
+        "filterMatches": 0,
+        "estimateHomography": 1.800000011920929,
+        "pose": 0.10000002384185791,
+        "total": 109.80000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 105,
+      "numInliers": 90
+    },
+    {
+      "timestampMs": 26623.80000001192,
+      "mediaTimeSeconds": 2418440.10642,
+      "timings": {
+        "acquire": 22.899999976158142,
+        "gray": 1.199999988079071,
+        "detect": 6.400000035762787,
+        "describe": 10.199999988079071,
+        "match": 65.49999994039536,
+        "filterMatches": 0,
+        "estimateHomography": 1,
+        "pose": 0.10000002384185791,
+        "total": 107.5
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 103,
+      "numInliers": 94
+    },
+    {
+      "timestampMs": 26736.19999998808,
+      "mediaTimeSeconds": 2418440.2267,
+      "timings": {
+        "acquire": 22.69999998807907,
+        "gray": 1,
+        "detect": 6.600000023841858,
+        "describe": 10.199999988079071,
+        "match": 63.10000002384186,
+        "filterMatches": 0,
+        "estimateHomography": 3,
+        "pose": 0.10000002384185791,
+        "total": 106.80000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 104,
+      "numInliers": 90
+    },
+    {
+      "timestampMs": 26847.30000001192,
+      "mediaTimeSeconds": 2418440.346985,
+      "timings": {
+        "acquire": 27.80000001192093,
+        "gray": 1.199999988079071,
+        "detect": 6.699999988079071,
+        "describe": 10.399999976158142,
+        "match": 63,
+        "filterMatches": 0,
+        "estimateHomography": 1.2999999523162842,
+        "pose": 0,
+        "total": 110.79999995231628
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 95,
+      "numInliers": 87
+    },
+    {
+      "timestampMs": 26965.399999976158,
+      "mediaTimeSeconds": 2418440.46727,
+      "timings": {
+        "acquire": 22.900000035762787,
+        "gray": 1.199999988079071,
+        "detect": 7.5,
+        "describe": 10.300000011920929,
+        "match": 67.99999994039536,
+        "filterMatches": 0,
+        "estimateHomography": 3,
+        "pose": 0,
+        "total": 113.19999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 96,
+      "numInliers": 85
+    },
+    {
+      "timestampMs": 27085.19999998808,
+      "mediaTimeSeconds": 2418440.587547,
+      "timings": {
+        "acquire": 22.80000001192093,
+        "gray": 1.199999988079071,
+        "detect": 7.699999988079071,
+        "describe": 10.600000023841858,
+        "match": 65,
+        "filterMatches": 0,
+        "estimateHomography": 1.600000023841858,
+        "pose": 0.10000002384185791,
+        "total": 109.10000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 90,
+      "numInliers": 80
+    },
+    {
+      "timestampMs": 27199.099999964237,
+      "mediaTimeSeconds": 2418440.707833,
+      "timings": {
+        "acquire": 26.80000001192093,
+        "gray": 1.199999988079071,
+        "detect": 6.700000047683716,
+        "describe": 10.399999976158142,
+        "match": 65.80000001192093,
+        "filterMatches": 0,
+        "estimateHomography": 2,
+        "pose": 0.10000002384185791,
+        "total": 113.30000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 99,
+      "numInliers": 91
+    },
+    {
+      "timestampMs": 27323.19999998808,
+      "mediaTimeSeconds": 2418440.828109,
+      "timings": {
+        "acquire": 23.30000001192093,
+        "gray": 1.0999999642372131,
+        "detect": 6.900000035762787,
+        "describe": 10.199999988079071,
+        "match": 62.89999997615814,
+        "filterMatches": 0,
+        "estimateHomography": 2.299999952316284,
+        "pose": 0.10000002384185791,
+        "total": 107
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 102,
+      "numInliers": 93
+    },
+    {
+      "timestampMs": 27434.899999976158,
+      "mediaTimeSeconds": 2418440.948401,
+      "timings": {
+        "acquire": 23.19999998807907,
+        "gray": 1.100000023841858,
+        "detect": 6.699999988079071,
+        "describe": 10.600000023841858,
+        "match": 63.80000001192093,
+        "filterMatches": 0,
+        "estimateHomography": 1.699999988079071,
+        "pose": 0.19999998807907104,
+        "total": 107.5
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 103,
+      "numInliers": 93
+    },
+    {
+      "timestampMs": 27547.80000001192,
+      "mediaTimeSeconds": 2418441.02858,
+      "timings": {
+        "acquire": 26.5,
+        "gray": 1.300000011920929,
+        "detect": 6.699999988079071,
+        "describe": 10.199999988079071,
+        "match": 62.90000003576279,
+        "filterMatches": 0,
+        "estimateHomography": 1.5,
+        "pose": 0,
+        "total": 109.59999996423721
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 112,
+      "numInliers": 99
+    },
+    {
+      "timestampMs": 27663.899999976158,
+      "mediaTimeSeconds": 2418441.148859,
+      "timings": {
+        "acquire": 22.900000035762787,
+        "gray": 1.199999988079071,
+        "detect": 6.599999964237213,
+        "describe": 10.300000011920929,
+        "match": 63.10000002384186,
+        "filterMatches": 0,
+        "estimateHomography": 2.100000023841858,
+        "pose": 0.10000002384185791,
+        "total": 106.40000003576279
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 121,
+      "numInliers": 105
+    },
+    {
+      "timestampMs": 27775,
+      "mediaTimeSeconds": 2418441.269143,
+      "timings": {
+        "acquire": 22.899999976158142,
+        "gray": 1.300000011920929,
+        "detect": 6.800000011920929,
+        "describe": 10.399999976158142,
+        "match": 64.80000007152557,
+        "filterMatches": 0,
+        "estimateHomography": 1.899999976158142,
+        "pose": 0.10000002384185791,
+        "total": 108.5
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 105,
+      "numInliers": 97
+    },
+    {
+      "timestampMs": 27887.899999976158,
+      "mediaTimeSeconds": 2418441.389422,
+      "timings": {
+        "acquire": 27.599999964237213,
+        "gray": 1.2000000476837158,
+        "detect": 7.099999964237213,
+        "describe": 10.199999988079071,
+        "match": 63,
+        "filterMatches": 0,
+        "estimateHomography": 1.5,
+        "pose": 0,
+        "total": 110.90000003576279
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 101,
+      "numInliers": 94
+    },
+    {
+      "timestampMs": 28005.899999976158,
+      "mediaTimeSeconds": 2418441.509703,
+      "timings": {
+        "acquire": 24.30000001192093,
+        "gray": 1.199999988079071,
+        "detect": 7.100000023841858,
+        "describe": 10.300000011920929,
+        "match": 63.19999998807907,
+        "filterMatches": 0,
+        "estimateHomography": 0.9000000357627869,
+        "pose": 0,
+        "total": 107.19999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 101,
+      "numInliers": 90
+    },
+    {
+      "timestampMs": 28118.30000001192,
+      "mediaTimeSeconds": 2418441.62999,
+      "timings": {
+        "acquire": 22.899999976158142,
+        "gray": 1.300000011920929,
+        "detect": 7.599999964237213,
+        "describe": 10.300000011920929,
+        "match": 67.40000003576279,
+        "filterMatches": 0,
+        "estimateHomography": 1.699999988079071,
+        "pose": 0.09999996423721313,
+        "total": 111.59999996423721
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 113,
+      "numInliers": 101
+    },
+    {
+      "timestampMs": 28234.399999976158,
+      "mediaTimeSeconds": 2418441.750268,
+      "timings": {
+        "acquire": 27.100000023841858,
+        "gray": 1.199999988079071,
+        "detect": 8.399999976158142,
+        "describe": 10.800000011920929,
+        "match": 63.300000071525574,
+        "filterMatches": 0,
+        "estimateHomography": 1.399999976158142,
+        "pose": 0,
+        "total": 112.40000003576279
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 103,
+      "numInliers": 96
+    },
+    {
+      "timestampMs": 28356.19999998808,
+      "mediaTimeSeconds": 2418441.870549,
+      "timings": {
+        "acquire": 22.69999998807907,
+        "gray": 1.199999988079071,
+        "detect": 7,
+        "describe": 10.5,
+        "match": 64.80000001192093,
+        "filterMatches": 0,
+        "estimateHomography": 2,
+        "pose": 0.09999996423721313,
+        "total": 108.39999997615814
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 104,
+      "numInliers": 93
+    },
+    {
+      "timestampMs": 28473,
+      "mediaTimeSeconds": 2418441.990831,
+      "timings": {
+        "acquire": 22.399999976158142,
+        "gray": 1.300000011920929,
+        "detect": 8.199999988079071,
+        "describe": 10.400000035762787,
+        "match": 63,
+        "filterMatches": 0,
+        "estimateHomography": 2.100000023841858,
+        "pose": 0,
+        "total": 107.89999997615814
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 95,
+      "numInliers": 86
+    },
+    {
+      "timestampMs": 28584.599999964237,
+      "mediaTimeSeconds": 2418442.071017,
+      "timings": {
+        "acquire": 26.900000035762787,
+        "gray": 1.199999988079071,
+        "detect": 7.100000023841858,
+        "describe": 10.5,
+        "match": 63.299999952316284,
+        "filterMatches": 0,
+        "estimateHomography": 2,
+        "pose": 0.09999996423721313,
+        "total": 111.30000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 94,
+      "numInliers": 84
+    },
+    {
+      "timestampMs": 28703.30000001192,
+      "mediaTimeSeconds": 2418442.1913,
+      "timings": {
+        "acquire": 22.799999952316284,
+        "gray": 1.300000011920929,
+        "detect": 7,
+        "describe": 10.100000023841858,
+        "match": 63.30000001192093,
+        "filterMatches": 0,
+        "estimateHomography": 1.5999999642372131,
+        "pose": 0.10000002384185791,
+        "total": 106.39999997615814
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 110,
+      "numInliers": 94
+    },
+    {
+      "timestampMs": 28814.099999964237,
+      "mediaTimeSeconds": 2418442.311583,
+      "timings": {
+        "acquire": 22.900000035762787,
+        "gray": 1.199999988079071,
+        "detect": 7.100000023841858,
+        "describe": 10.199999988079071,
+        "match": 63.39999997615814,
+        "filterMatches": 0,
+        "estimateHomography": 1.5,
+        "pose": 0,
+        "total": 106.40000003576279
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 97,
+      "numInliers": 85
+    },
+    {
+      "timestampMs": 28925,
+      "mediaTimeSeconds": 2418442.431863,
+      "timings": {
+        "acquire": 26.69999998807907,
+        "gray": 1.199999988079071,
+        "detect": 7.100000023841858,
+        "describe": 10.300000011920929,
+        "match": 64.40000003576279,
+        "filterMatches": 0,
+        "estimateHomography": 1.9000000357627869,
+        "pose": 0,
+        "total": 111.80000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 101,
+      "numInliers": 89
+    },
+    {
+      "timestampMs": 29043.399999976158,
+      "mediaTimeSeconds": 2418442.552144,
+      "timings": {
+        "acquire": 22.900000035762787,
+        "gray": 1.0999999642372131,
+        "detect": 7.199999988079071,
+        "describe": 10.200000047683716,
+        "match": 63.199999928474426,
+        "filterMatches": 0,
+        "estimateHomography": 1.300000011920929,
+        "pose": 0.10000002384185791,
+        "total": 106.40000003576279
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 77,
+      "numInliers": 72
+    },
+    {
+      "timestampMs": 29154.69999998808,
+      "mediaTimeSeconds": 2418442.672427,
+      "timings": {
+        "acquire": 22.5,
+        "gray": 1.399999976158142,
+        "detect": 7,
+        "describe": 10.200000047683716,
+        "match": 63.5,
+        "filterMatches": 0,
+        "estimateHomography": 1.300000011920929,
+        "pose": 0.09999996423721313,
+        "total": 106.19999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 89,
+      "numInliers": 80
+    },
+    {
+      "timestampMs": 29265,
+      "mediaTimeSeconds": 2418442.752612,
+      "timings": {
+        "acquire": 27.099999964237213,
+        "gray": 1.2000000476837158,
+        "detect": 7.099999964237213,
+        "describe": 10.300000011920929,
+        "match": 65.69999992847443,
+        "filterMatches": 0,
+        "estimateHomography": 1.699999988079071,
+        "pose": 0,
+        "total": 113.39999997615814
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 101,
+      "numInliers": 88
+    },
+    {
+      "timestampMs": 29386.30000001192,
+      "mediaTimeSeconds": 2418442.872899,
+      "timings": {
+        "acquire": 22.69999998807907,
+        "gray": 1.199999988079071,
+        "detect": 7.5,
+        "describe": 10.399999976158142,
+        "match": 68.5,
+        "filterMatches": 0,
+        "estimateHomography": 2,
+        "pose": 0.09999996423721313,
+        "total": 112.79999995231628
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 95,
+      "numInliers": 87
+    },
+    {
+      "timestampMs": 29506.099999964237,
+      "mediaTimeSeconds": 2418442.993175,
+      "timings": {
+        "acquire": 22.900000035762787,
+        "gray": 1.199999988079071,
+        "detect": 7.800000011920929,
+        "describe": 10.699999988079071,
+        "match": 63.299999952316284,
+        "filterMatches": 0,
+        "estimateHomography": 1,
+        "pose": 0.10000002384185791,
+        "total": 107.20000004768372
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 96,
+      "numInliers": 88
+    },
+    {
+      "timestampMs": 29617.599999964237,
+      "mediaTimeSeconds": 2418443.113458,
+      "timings": {
+        "acquire": 27.100000023841858,
+        "gray": 1.300000011920929,
+        "detect": 7,
+        "describe": 10.399999976158142,
+        "match": 65.09999996423721,
+        "filterMatches": 0,
+        "estimateHomography": 2,
+        "pose": 0.09999996423721313,
+        "total": 113.30000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 102,
+      "numInliers": 89
+    },
+    {
+      "timestampMs": 29738,
+      "mediaTimeSeconds": 2418443.233742,
+      "timings": {
+        "acquire": 22.899999976158142,
+        "gray": 1.199999988079071,
+        "detect": 7,
+        "describe": 10.300000011920929,
+        "match": 63.300000071525574,
+        "filterMatches": 0,
+        "estimateHomography": 1.199999988079071,
+        "pose": 0.10000002384185791,
+        "total": 106.19999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 92,
+      "numInliers": 86
+    },
+    {
+      "timestampMs": 29849,
+      "mediaTimeSeconds": 2418443.354024,
+      "timings": {
+        "acquire": 22.899999976158142,
+        "gray": 1.100000023841858,
+        "detect": 7.099999964237213,
+        "describe": 10.5,
+        "match": 63.59999990463257,
+        "filterMatches": 0,
+        "estimateHomography": 1.5999999642372131,
+        "pose": 0.10000002384185791,
+        "total": 107.5
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 99,
+      "numInliers": 90
+    },
+    {
+      "timestampMs": 29966.69999998808,
+      "mediaTimeSeconds": 2418443.474301,
+      "timings": {
+        "acquire": 27.799999952316284,
+        "gray": 1.300000011920929,
+        "detect": 7,
+        "describe": 10.100000023841858,
+        "match": 64.70000004768372,
+        "filterMatches": 0,
+        "estimateHomography": 1.100000023841858,
+        "pose": 0.19999998807907104,
+        "total": 112.5
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 105,
+      "numInliers": 98
+    },
+    {
+      "timestampMs": 30098.19999998808,
+      "mediaTimeSeconds": 2418443.594584,
+      "timings": {
+        "acquire": 23,
+        "gray": 1.2999999523162842,
+        "detect": 6.800000011920929,
+        "describe": 10.199999988079071,
+        "match": 63.69999998807907,
+        "filterMatches": 0,
+        "estimateHomography": 2.300000011920929,
+        "pose": 0.10000002384185791,
+        "total": 107.80000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 99,
+      "numInliers": 87
+    },
+    {
+      "timestampMs": 30232.399999976158,
+      "mediaTimeSeconds": 2418443.714869,
+      "timings": {
+        "acquire": 23.600000023841858,
+        "gray": 1.199999988079071,
+        "detect": 7.100000023841858,
+        "describe": 10.5,
+        "match": 65.80000007152557,
+        "filterMatches": 0,
+        "estimateHomography": 1.300000011920929,
+        "pose": 0.09999996423721313,
+        "total": 110
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 93,
+      "numInliers": 86
+    },
+    {
+      "timestampMs": 30349.69999998808,
+      "mediaTimeSeconds": 2418443.835149,
+      "timings": {
+        "acquire": 28.30000001192093,
+        "gray": 1.199999988079071,
+        "detect": 7,
+        "describe": 10.300000011920929,
+        "match": 63.69999998807907,
+        "filterMatches": 0,
+        "estimateHomography": 2.099999964237213,
+        "pose": 0.19999998807907104,
+        "total": 112.89999997615814
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 97,
+      "numInliers": 85
+    },
+    {
+      "timestampMs": 30483.599999964237,
+      "mediaTimeSeconds": 2418443.995522,
+      "timings": {
+        "acquire": 22.80000001192093,
+        "gray": 1.300000011920929,
+        "detect": 7.199999988079071,
+        "describe": 10.300000011920929,
+        "match": 64.00000005960464,
+        "filterMatches": 0,
+        "estimateHomography": 2,
+        "pose": 0,
+        "total": 107.80000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 102,
+      "numInliers": 93
+    },
+    {
+      "timestampMs": 30596.80000001192,
+      "mediaTimeSeconds": 2418444.115802,
+      "timings": {
+        "acquire": 22.69999998807907,
+        "gray": 1.199999988079071,
+        "detect": 7,
+        "describe": 10.099999964237213,
+        "match": 63.200000047683716,
+        "filterMatches": 0,
+        "estimateHomography": 1.7999999523162842,
+        "pose": 0,
+        "total": 106.29999995231628
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 106,
+      "numInliers": 94
+    },
+    {
+      "timestampMs": 30709.30000001192,
+      "mediaTimeSeconds": 2418444.195991,
+      "timings": {
+        "acquire": 26.80000001192093,
+        "gray": 1.300000011920929,
+        "detect": 7,
+        "describe": 10.099999964237213,
+        "match": 64.89999997615814,
+        "filterMatches": 0,
+        "estimateHomography": 1.600000023841858,
+        "pose": 0.19999998807907104,
+        "total": 112.19999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 102,
+      "numInliers": 96
+    },
+    {
+      "timestampMs": 30827.30000001192,
+      "mediaTimeSeconds": 2418444.316272,
+      "timings": {
+        "acquire": 22.799999952316284,
+        "gray": 1.300000011920929,
+        "detect": 7.600000023841858,
+        "describe": 10.300000011920929,
+        "match": 69.3999999165535,
+        "filterMatches": 0,
+        "estimateHomography": 1.399999976158142,
+        "pose": 0.10000002384185791,
+        "total": 113.19999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 98,
+      "numInliers": 88
+    },
+    {
+      "timestampMs": 30948.099999964237,
+      "mediaTimeSeconds": 2418444.436556,
+      "timings": {
+        "acquire": 22.80000001192093,
+        "gray": 1.199999988079071,
+        "detect": 8,
+        "describe": 10.700000047683716,
+        "match": 63.3999999165535,
+        "filterMatches": 0,
+        "estimateHomography": 1.300000011920929,
+        "pose": 0.09999996423721313,
+        "total": 107.80000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 104,
+      "numInliers": 96
+    },
+    {
+      "timestampMs": 31064.19999998808,
+      "mediaTimeSeconds": 2418444.556837,
+      "timings": {
+        "acquire": 27.399999976158142,
+        "gray": 1.300000011920929,
+        "detect": 7,
+        "describe": 10.400000035762787,
+        "match": 68.39999997615814,
+        "filterMatches": 0,
+        "estimateHomography": 1.399999976158142,
+        "pose": 0.10000002384185791,
+        "total": 116.60000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 104,
+      "numInliers": 95
+    },
+    {
+      "timestampMs": 31186.19999998808,
+      "mediaTimeSeconds": 2418444.677117,
+      "timings": {
+        "acquire": 23.600000023841858,
+        "gray": 1.399999976158142,
+        "detect": 7.199999988079071,
+        "describe": 10.400000035762787,
+        "match": 65.09999996423721,
+        "filterMatches": 0,
+        "estimateHomography": 1.600000023841858,
+        "pose": 0.10000002384185791,
+        "total": 109.60000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 101,
+      "numInliers": 94
+    },
+    {
+      "timestampMs": 31299.899999976158,
+      "mediaTimeSeconds": 2418444.797404,
+      "timings": {
+        "acquire": 22.80000001192093,
+        "gray": 1.199999988079071,
+        "detect": 7.199999988079071,
+        "describe": 10.600000023841858,
+        "match": 64.89999997615814,
+        "filterMatches": 0,
+        "estimateHomography": 1.5,
+        "pose": 0,
+        "total": 108.5
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 94,
+      "numInliers": 88
+    },
+    {
+      "timestampMs": 31416.599999964237,
+      "mediaTimeSeconds": 2418444.917685,
+      "timings": {
+        "acquire": 29.30000001192093,
+        "gray": 1.300000011920929,
+        "detect": 7.399999976158142,
+        "describe": 10.600000023841858,
+        "match": 66,
+        "filterMatches": 0,
+        "estimateHomography": 1.800000011920929,
+        "pose": 0.09999996423721313,
+        "total": 116.80000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 99,
+      "numInliers": 93
+    },
+    {
+      "timestampMs": 31539,
+      "mediaTimeSeconds": 2418445.037964,
+      "timings": {
+        "acquire": 23.19999998807907,
+        "gray": 1.100000023841858,
+        "detect": 7.099999964237213,
+        "describe": 10.199999988079071,
+        "match": 63.60000002384186,
+        "filterMatches": 0,
+        "estimateHomography": 1.9000000357627869,
+        "pose": 0,
+        "total": 107.30000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 103,
+      "numInliers": 96
+    },
+    {
+      "timestampMs": 31650.19999998808,
+      "mediaTimeSeconds": 2418445.158245,
+      "timings": {
+        "acquire": 22.399999976158142,
+        "gray": 1.300000011920929,
+        "detect": 7.199999988079071,
+        "describe": 10.300000011920929,
+        "match": 64.89999997615814,
+        "filterMatches": 0,
+        "estimateHomography": 2.600000023841858,
+        "pose": 0.19999998807907104,
+        "total": 109.19999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 105,
+      "numInliers": 94
+    },
+    {
+      "timestampMs": 31765.19999998808,
+      "mediaTimeSeconds": 2418445.278526,
+      "timings": {
+        "acquire": 26.69999998807907,
+        "gray": 1.199999988079071,
+        "detect": 7.100000023841858,
+        "describe": 10.300000011920929,
+        "match": 64.19999998807907,
+        "filterMatches": 0,
+        "estimateHomography": 1.7000000476837158,
+        "pose": 0.09999996423721313,
+        "total": 111.69999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 99,
+      "numInliers": 93
+    },
+    {
+      "timestampMs": 31881,
+      "mediaTimeSeconds": 2418445.398806,
+      "timings": {
+        "acquire": 22.5,
+        "gray": 1.300000011920929,
+        "detect": 7,
+        "describe": 10.299999952316284,
+        "match": 63.60000002384186,
+        "filterMatches": 0,
+        "estimateHomography": 2.099999964237213,
+        "pose": 0.10000002384185791,
+        "total": 107
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 99,
+      "numInliers": 90
+    },
+    {
+      "timestampMs": 31992,
+      "mediaTimeSeconds": 2418445.478997,
+      "timings": {
+        "acquire": 22.5,
+        "gray": 1.2000000476837158,
+        "detect": 7.199999988079071,
+        "describe": 10.199999988079071,
+        "match": 64.5,
+        "filterMatches": 0,
+        "estimateHomography": 1.7999999523162842,
+        "pose": 0.10000002384185791,
+        "total": 107.69999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 106,
+      "numInliers": 94
+    },
+    {
+      "timestampMs": 32106.599999964237,
+      "mediaTimeSeconds": 2418445.599275,
+      "timings": {
+        "acquire": 28,
+        "gray": 1.2000000476837158,
+        "detect": 7,
+        "describe": 10.199999988079071,
+        "match": 63.5,
+        "filterMatches": 0,
+        "estimateHomography": 1.800000011920929,
+        "pose": 0,
+        "total": 111.80000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 100,
+      "numInliers": 93
+    },
+    {
+      "timestampMs": 32223.599999964237,
+      "mediaTimeSeconds": 2418445.719554,
+      "timings": {
+        "acquire": 22.900000035762787,
+        "gray": 1.0999999642372131,
+        "detect": 7.800000011920929,
+        "describe": 10.399999976158142,
+        "match": 68.30000001192093,
+        "filterMatches": 0,
+        "estimateHomography": 1.100000023841858,
+        "pose": 0.19999998807907104,
+        "total": 112.10000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 103,
+      "numInliers": 99
+    },
+    {
+      "timestampMs": 32343,
+      "mediaTimeSeconds": 2418445.83984,
+      "timings": {
+        "acquire": 23.399999976158142,
+        "gray": 1.300000011920929,
+        "detect": 8.100000023841858,
+        "describe": 10.699999988079071,
+        "match": 63.90000003576279,
+        "filterMatches": 0,
+        "estimateHomography": 1.699999988079071,
+        "pose": 0.19999998807907104,
+        "total": 109.59999996423721
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 110,
+      "numInliers": 103
+    },
+    {
+      "timestampMs": 32459.599999964237,
+      "mediaTimeSeconds": 2418445.960121,
+      "timings": {
+        "acquire": 27,
+        "gray": 1.2000000476837158,
+        "detect": 7.199999988079071,
+        "describe": 10.5,
+        "match": 65.29999995231628,
+        "filterMatches": 0,
+        "estimateHomography": 1.300000011920929,
+        "pose": 0.10000002384185791,
+        "total": 112.70000004768372
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 100,
+      "numInliers": 94
+    },
+    {
+      "timestampMs": 32577.30000001192,
+      "mediaTimeSeconds": 2418446.080404,
+      "timings": {
+        "acquire": 22.599999964237213,
+        "gray": 1.300000011920929,
+        "detect": 7.300000011920929,
+        "describe": 10.199999988079071,
+        "match": 63.5,
+        "filterMatches": 0,
+        "estimateHomography": 1.699999988079071,
+        "pose": 0,
+        "total": 106.69999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 96,
+      "numInliers": 88
+    },
+    {
+      "timestampMs": 32688.399999976158,
+      "mediaTimeSeconds": 2418446.200683,
+      "timings": {
+        "acquire": 22.600000023841858,
+        "gray": 1.199999988079071,
+        "detect": 7.300000011920929,
+        "describe": 10.5,
+        "match": 63.89999997615814,
+        "filterMatches": 0,
+        "estimateHomography": 1.300000011920929,
+        "pose": 0,
+        "total": 106.90000003576279
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 97,
+      "numInliers": 90
+    },
+    {
+      "timestampMs": 32803.89999997616,
+      "mediaTimeSeconds": 2418446.320963,
+      "timings": {
+        "acquire": 28.5,
+        "gray": 1.199999988079071,
+        "detect": 7.200000047683716,
+        "describe": 10.199999988079071,
+        "match": 64.60000002384186,
+        "filterMatches": 0,
+        "estimateHomography": 2.699999988079071,
+        "pose": 0,
+        "total": 114.60000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 115,
+      "numInliers": 104
+    },
+    {
+      "timestampMs": 32923,
+      "mediaTimeSeconds": 2418446.441247,
+      "timings": {
+        "acquire": 22.400000035762787,
+        "gray": 1.300000011920929,
+        "detect": 7.399999976158142,
+        "describe": 10.100000023841858,
+        "match": 63.59999996423721,
+        "filterMatches": 0,
+        "estimateHomography": 1.300000011920929,
+        "pose": 0,
+        "total": 106.39999997615814
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 105,
+      "numInliers": 99
+    },
+    {
+      "timestampMs": 33033.59999996424,
+      "mediaTimeSeconds": 2418446.521432,
+      "timings": {
+        "acquire": 22.5,
+        "gray": 1.300000011920929,
+        "detect": 7.300000011920929,
+        "describe": 10.300000011920929,
+        "match": 64.79999995231628,
+        "filterMatches": 0,
+        "estimateHomography": 1.699999988079071,
+        "pose": 0.10000002384185791,
+        "total": 108.20000004768372
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 100,
+      "numInliers": 97
+    },
+    {
+      "timestampMs": 33149.59999996424,
+      "mediaTimeSeconds": 2418446.641715,
+      "timings": {
+        "acquire": 26.700000047683716,
+        "gray": 1.199999988079071,
+        "detect": 7.199999988079071,
+        "describe": 10.099999964237213,
+        "match": 63.200000047683716,
+        "filterMatches": 0,
+        "estimateHomography": 1.600000023841858,
+        "pose": 0,
+        "total": 110.40000003576279
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 99,
+      "numInliers": 93
+    },
+    {
+      "timestampMs": 33264.69999998808,
+      "mediaTimeSeconds": 2418446.761997,
+      "timings": {
+        "acquire": 22.600000023841858,
+        "gray": 1.199999988079071,
+        "detect": 7.300000011920929,
+        "describe": 10.299999952316284,
+        "match": 63.500000059604645,
+        "filterMatches": 0,
+        "estimateHomography": 1.199999988079071,
+        "pose": 0.09999996423721313,
+        "total": 106.39999997615814
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 92,
+      "numInliers": 84
+    },
+    {
+      "timestampMs": 33377,
+      "mediaTimeSeconds": 2418446.882281,
+      "timings": {
+        "acquire": 22.899999976158142,
+        "gray": 1.300000011920929,
+        "detect": 7.800000011920929,
+        "describe": 10.300000011920929,
+        "match": 68.79999995231628,
+        "filterMatches": 0,
+        "estimateHomography": 1.399999976158142,
+        "pose": 0.10000002384185791,
+        "total": 112.80000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 107,
+      "numInliers": 99
+    },
+    {
+      "timestampMs": 33499,
+      "mediaTimeSeconds": 2418447.00256,
+      "timings": {
+        "acquire": 26.80000001192093,
+        "gray": 1.2999999523162842,
+        "detect": 8.100000023841858,
+        "describe": 10.399999976158142,
+        "match": 63.59999996423721,
+        "filterMatches": 0,
+        "estimateHomography": 1.699999988079071,
+        "pose": 0.10000002384185791,
+        "total": 112.30000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 108,
+      "numInliers": 101
+    },
+    {
+      "timestampMs": 33615.89999997616,
+      "mediaTimeSeconds": 2418447.122841,
+      "timings": {
+        "acquire": 22.5,
+        "gray": 1.199999988079071,
+        "detect": 7.300000011920929,
+        "describe": 10.400000035762787,
+        "match": 66.19999992847443,
+        "filterMatches": 0,
+        "estimateHomography": 1.899999976158142,
+        "pose": 0.10000002384185791,
+        "total": 109.80000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 112,
+      "numInliers": 102
+    },
+    {
+      "timestampMs": 33729.39999997616,
+      "mediaTimeSeconds": 2418447.243121,
+      "timings": {
+        "acquire": 22.80000001192093,
+        "gray": 1.199999988079071,
+        "detect": 7.199999988079071,
+        "describe": 10.300000011920929,
+        "match": 63.30000001192093,
+        "filterMatches": 0,
+        "estimateHomography": 1.800000011920929,
+        "pose": 0.10000002384185791,
+        "total": 106.90000003576279
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 108,
+      "numInliers": 102
+    },
+    {
+      "timestampMs": 33842.80000001192,
+      "mediaTimeSeconds": 2418447.363404,
+      "timings": {
+        "acquire": 27.19999998807907,
+        "gray": 1.199999988079071,
+        "detect": 7.199999988079071,
+        "describe": 10.699999988079071,
+        "match": 63.59999996423721,
+        "filterMatches": 0,
+        "estimateHomography": 1.5999999642372131,
+        "pose": 0.10000002384185791,
+        "total": 111.89999997615814
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 117,
+      "numInliers": 106
+    },
+    {
+      "timestampMs": 33958.89999997616,
+      "mediaTimeSeconds": 2418447.443594,
+      "timings": {
+        "acquire": 22.400000035762787,
+        "gray": 1.2999999523162842,
+        "detect": 7.300000011920929,
+        "describe": 10.199999988079071,
+        "match": 64.60000002384186,
+        "filterMatches": 0,
+        "estimateHomography": 1.800000011920929,
+        "pose": 0.10000002384185791,
+        "total": 107.90000003576279
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 107,
+      "numInliers": 97
+    },
+    {
+      "timestampMs": 34072.09999996424,
+      "mediaTimeSeconds": 2418447.563872,
+      "timings": {
+        "acquire": 22.5,
+        "gray": 1.100000023841858,
+        "detect": 7.300000011920929,
+        "describe": 10.199999988079071,
+        "match": 64.69999998807907,
+        "filterMatches": 0,
+        "estimateHomography": 2.099999964237213,
+        "pose": 0.10000002384185791,
+        "total": 108.10000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 106,
+      "numInliers": 101
+    },
+    {
+      "timestampMs": 34186.59999996424,
+      "mediaTimeSeconds": 2418447.684154,
+      "timings": {
+        "acquire": 27.400000035762787,
+        "gray": 1.199999988079071,
+        "detect": 7.300000011920929,
+        "describe": 10.300000011920929,
+        "match": 65.79999995231628,
+        "filterMatches": 0,
+        "estimateHomography": 1.399999976158142,
+        "pose": 0.10000002384185791,
+        "total": 113.70000004768372
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 107,
+      "numInliers": 97
+    },
+    {
+      "timestampMs": 34305,
+      "mediaTimeSeconds": 2418447.804435,
+      "timings": {
+        "acquire": 22.69999998807907,
+        "gray": 1.199999988079071,
+        "detect": 7.300000011920929,
+        "describe": 10.199999988079071,
+        "match": 63.40000003576279,
+        "filterMatches": 0,
+        "estimateHomography": 1.5,
+        "pose": 0.10000002384185791,
+        "total": 106.5
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 105,
+      "numInliers": 101
+    },
+    {
+      "timestampMs": 34416.19999998808,
+      "mediaTimeSeconds": 2418447.924717,
+      "timings": {
+        "acquire": 22.80000001192093,
+        "gray": 1.199999988079071,
+        "detect": 7.300000011920929,
+        "describe": 10.199999988079071,
+        "match": 63.299999952316284,
+        "filterMatches": 0,
+        "estimateHomography": 1.600000023841858,
+        "pose": 0.09999996423721313,
+        "total": 106.69999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 107,
+      "numInliers": 99
+    },
+    {
+      "timestampMs": 34538.89999997616,
+      "mediaTimeSeconds": 2418448.045,
+      "timings": {
+        "acquire": 27.100000023841858,
+        "gray": 1.0999999642372131,
+        "detect": 7.200000047683716,
+        "describe": 10.199999988079071,
+        "match": 63.80000001192093,
+        "filterMatches": 0,
+        "estimateHomography": 1.5,
+        "pose": 0.10000002384185791,
+        "total": 111.10000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 106,
+      "numInliers": 101
+    },
+    {
+      "timestampMs": 34688.5,
+      "mediaTimeSeconds": 2418448.205388,
+      "timings": {
+        "acquire": 23.30000001192093,
+        "gray": 1.2999999523162842,
+        "detect": 7.300000011920929,
+        "describe": 10.199999988079071,
+        "match": 63.80000001192093,
+        "filterMatches": 0,
+        "estimateHomography": 1.5,
+        "pose": 0,
+        "total": 107.59999996423721
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 104,
+      "numInliers": 99
+    },
+    {
+      "timestampMs": 34823.5,
+      "mediaTimeSeconds": 2418448.325656,
+      "timings": {
+        "acquire": 23.099999964237213,
+        "gray": 1.2000000476837158,
+        "detect": 7.199999988079071,
+        "describe": 10.399999976158142,
+        "match": 64.60000002384186,
+        "filterMatches": 0,
+        "estimateHomography": 1.100000023841858,
+        "pose": 0.09999996423721313,
+        "total": 107.89999997615814
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 113,
+      "numInliers": 110
+    },
+    {
+      "timestampMs": 34965.5,
+      "mediaTimeSeconds": 2418448.486033,
+      "timings": {
+        "acquire": 26.399999976158142,
+        "gray": 1.199999988079071,
+        "detect": 22.5,
+        "describe": 18.30000001192093,
+        "match": 89,
+        "filterMatches": 0,
+        "estimateHomography": 13.900000035762787,
+        "pose": 0.19999998807907104,
+        "total": 171.69999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 102,
+      "numInliers": 95
+    },
+    {
+      "timestampMs": 35143.89999997616,
+      "mediaTimeSeconds": 2418448.646409,
+      "timings": {
+        "acquire": 22.80000001192093,
+        "gray": 1.300000011920929,
+        "detect": 7.599999964237213,
+        "describe": 10.800000011920929,
+        "match": 64.80000001192093,
+        "filterMatches": 0,
+        "estimateHomography": 2.900000035762787,
+        "pose": 0.10000002384185791,
+        "total": 110.60000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 106,
+      "numInliers": 98
+    },
+    {
+      "timestampMs": 35262.89999997616,
+      "mediaTimeSeconds": 2418448.766687,
+      "timings": {
+        "acquire": 22.69999998807907,
+        "gray": 1.100000023841858,
+        "detect": 7.300000011920929,
+        "describe": 10.200000047683716,
+        "match": 64.80000001192093,
+        "filterMatches": 0,
+        "estimateHomography": 3.799999952316284,
+        "pose": 0.10000002384185791,
+        "total": 110.30000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 107,
+      "numInliers": 99
+    },
+    {
+      "timestampMs": 35380.5,
+      "mediaTimeSeconds": 2418448.88697,
+      "timings": {
+        "acquire": 26.599999964237213,
+        "gray": 1.300000011920929,
+        "detect": 7.600000023841858,
+        "describe": 10.899999976158142,
+        "match": 65.99999994039536,
+        "filterMatches": 0,
+        "estimateHomography": 2.5,
+        "pose": 0,
+        "total": 115.30000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 99,
+      "numInliers": 94
+    },
+    {
+      "timestampMs": 35503.09999996424,
+      "mediaTimeSeconds": 2418449.00725,
+      "timings": {
+        "acquire": 22.900000035762787,
+        "gray": 1.199999988079071,
+        "detect": 7,
+        "describe": 10.300000011920929,
+        "match": 63.799999952316284,
+        "filterMatches": 0,
+        "estimateHomography": 3.099999964237213,
+        "pose": 0.10000002384185791,
+        "total": 108.60000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 112,
+      "numInliers": 109
+    },
+    {
+      "timestampMs": 35615.80000001192,
+      "mediaTimeSeconds": 2418449.127533,
+      "timings": {
+        "acquire": 22.899999976158142,
+        "gray": 1.300000011920929,
+        "detect": 7.199999988079071,
+        "describe": 10.399999976158142,
+        "match": 64.10000002384186,
+        "filterMatches": 0,
+        "estimateHomography": 2.199999988079071,
+        "pose": 0,
+        "total": 108.29999995231628
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 100,
+      "numInliers": 92
+    },
+    {
+      "timestampMs": 35728.69999998808,
+      "mediaTimeSeconds": 2418449.247814,
+      "timings": {
+        "acquire": 27.30000001192093,
+        "gray": 1.199999988079071,
+        "detect": 6.899999976158142,
+        "describe": 10.300000011920929,
+        "match": 65.40000003576279,
+        "filterMatches": 0,
+        "estimateHomography": 1.0999999642372131,
+        "pose": 0,
+        "total": 112.5
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 113,
+      "numInliers": 105
+    },
+    {
+      "timestampMs": 35847.69999998808,
+      "mediaTimeSeconds": 2418449.368096,
+      "timings": {
+        "acquire": 22.899999976158142,
+        "gray": 1.199999988079071,
+        "detect": 7.100000023841858,
+        "describe": 10.199999988079071,
+        "match": 63.89999997615814,
+        "filterMatches": 0,
+        "estimateHomography": 1.699999988079071,
+        "pose": 0,
+        "total": 107.19999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 108,
+      "numInliers": 102
+    },
+    {
+      "timestampMs": 35968.89999997616,
+      "mediaTimeSeconds": 2418449.448283,
+      "timings": {
+        "acquire": 23.100000023841858,
+        "gray": 1.199999988079071,
+        "detect": 6.899999976158142,
+        "describe": 10.299999952316284,
+        "match": 63.80000001192093,
+        "filterMatches": 0,
+        "estimateHomography": 1.800000011920929,
+        "pose": 0.09999996423721313,
+        "total": 107.69999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 124,
+      "numInliers": 113
+    },
+    {
+      "timestampMs": 36101.09999996424,
+      "mediaTimeSeconds": 2418449.608656,
+      "timings": {
+        "acquire": 26.80000001192093,
+        "gray": 1.300000011920929,
+        "detect": 6.5,
+        "describe": 10.199999988079071,
+        "match": 66.30000001192093,
+        "filterMatches": 0,
+        "estimateHomography": 1.9000000357627869,
+        "pose": 0.09999996423721313,
+        "total": 113.30000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 118,
+      "numInliers": 111
+    },
+    {
+      "timestampMs": 36252.89999997616,
+      "mediaTimeSeconds": 2418449.769034,
+      "timings": {
+        "acquire": 22.69999998807907,
+        "gray": 1.600000023841858,
+        "detect": 6.5,
+        "describe": 10.300000011920929,
+        "match": 64.79999995231628,
+        "filterMatches": 0,
+        "estimateHomography": 1.699999988079071,
+        "pose": 0,
+        "total": 107.80000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 112,
+      "numInliers": 103
+    },
+    {
+      "timestampMs": 36366.5,
+      "mediaTimeSeconds": 2418449.849223,
+      "timings": {
+        "acquire": 22.899999976158142,
+        "gray": 1.300000011920929,
+        "detect": 6.899999976158142,
+        "describe": 10.300000011920929,
+        "match": 65.10000002384186,
+        "filterMatches": 0,
+        "estimateHomography": 2,
+        "pose": 0.09999996423721313,
+        "total": 108.59999996423721
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 109,
+      "numInliers": 100
+    },
+    {
+      "timestampMs": 36481.69999998808,
+      "mediaTimeSeconds": 2418449.969503,
+      "timings": {
+        "acquire": 27.30000001192093,
+        "gray": 1.199999988079071,
+        "detect": 6.5,
+        "describe": 10.300000011920929,
+        "match": 63.40000003576279,
+        "filterMatches": 0,
+        "estimateHomography": 2,
+        "pose": 0.10000002384185791,
+        "total": 111.10000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 110,
+      "numInliers": 100
+    },
+    {
+      "timestampMs": 36611.19999998808,
+      "mediaTimeSeconds": 2418450.089784,
+      "timings": {
+        "acquire": 23,
+        "gray": 1.2999999523162842,
+        "detect": 7.400000035762787,
+        "describe": 18,
+        "match": 89.19999998807907,
+        "filterMatches": 0,
+        "estimateHomography": 2.400000035762787,
+        "pose": 0.09999996423721313,
+        "total": 141.69999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 111,
+      "numInliers": 98
+    },
+    {
+      "timestampMs": 36766.09999996424,
+      "mediaTimeSeconds": 2418450.250163,
+      "timings": {
+        "acquire": 22.80000001192093,
+        "gray": 1.300000011920929,
+        "detect": 6.300000011920929,
+        "describe": 10.899999976158142,
+        "match": 63.69999998807907,
+        "filterMatches": 0,
+        "estimateHomography": 1.399999976158142,
+        "pose": 0,
+        "total": 106.70000004768372
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 108,
+      "numInliers": 99
+    },
+    {
+      "timestampMs": 36877.69999998808,
+      "mediaTimeSeconds": 2418450.370443,
+      "timings": {
+        "acquire": 28,
+        "gray": 1.300000011920929,
+        "detect": 5.899999976158142,
+        "describe": 11.300000011920929,
+        "match": 65.09999996423721,
+        "filterMatches": 0,
+        "estimateHomography": 2.700000047683716,
+        "pose": 0.09999996423721313,
+        "total": 114.69999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 105,
+      "numInliers": 91
+    },
+    {
+      "timestampMs": 36997.30000001192,
+      "mediaTimeSeconds": 2418450.49072,
+      "timings": {
+        "acquire": 24.899999976158142,
+        "gray": 1.199999988079071,
+        "detect": 6.800000011920929,
+        "describe": 13.399999976158142,
+        "match": 64.10000002384186,
+        "filterMatches": 0,
+        "estimateHomography": 1.5,
+        "pose": 0.10000002384185791,
+        "total": 112.19999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 115,
+      "numInliers": 109
+    },
+    {
+      "timestampMs": 37115.39999997616,
+      "mediaTimeSeconds": 2418450.611007,
+      "timings": {
+        "acquire": 23,
+        "gray": 1.100000023841858,
+        "detect": 6,
+        "describe": 10.200000047683716,
+        "match": 64.49999994039536,
+        "filterMatches": 0,
+        "estimateHomography": 1.5,
+        "pose": 0.19999998807907104,
+        "total": 106.80000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 109,
+      "numInliers": 102
+    },
+    {
+      "timestampMs": 37226,
+      "mediaTimeSeconds": 2418450.731285,
+      "timings": {
+        "acquire": 27,
+        "gray": 1.199999988079071,
+        "detect": 6.5,
+        "describe": 10.399999976158142,
+        "match": 64.90000003576279,
+        "filterMatches": 0,
+        "estimateHomography": 1.800000011920929,
+        "pose": 0.10000002384185791,
+        "total": 112
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 120,
+      "numInliers": 111
+    },
+    {
+      "timestampMs": 37341.69999998808,
+      "mediaTimeSeconds": 2418450.85157,
+      "timings": {
+        "acquire": 23.100000023841858,
+        "gray": 1.199999988079071,
+        "detect": 6.899999976158142,
+        "describe": 10.199999988079071,
+        "match": 64.40000003576279,
+        "filterMatches": 0,
+        "estimateHomography": 1.600000023841858,
+        "pose": 0,
+        "total": 107.60000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 111,
+      "numInliers": 103
+    },
+    {
+      "timestampMs": 37456.30000001192,
+      "mediaTimeSeconds": 2418450.971849,
+      "timings": {
+        "acquire": 23.099999964237213,
+        "gray": 1.100000023841858,
+        "detect": 6.800000011920929,
+        "describe": 10.199999988079071,
+        "match": 65,
+        "filterMatches": 0,
+        "estimateHomography": 1.699999988079071,
+        "pose": 0.09999996423721313,
+        "total": 108.29999995231628
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 105,
+      "numInliers": 97
+    },
+    {
+      "timestampMs": 37569.19999998808,
+      "mediaTimeSeconds": 2418451.052037,
+      "timings": {
+        "acquire": 28.30000001192093,
+        "gray": 1.199999988079071,
+        "detect": 5.799999952316284,
+        "describe": 10.400000035762787,
+        "match": 64.79999995231628,
+        "filterMatches": 0,
+        "estimateHomography": 1.9000000357627869,
+        "pose": 0.09999996423721313,
+        "total": 112.69999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 91,
+      "numInliers": 80
+    },
+    {
+      "timestampMs": 37685.59999996424,
+      "mediaTimeSeconds": 2418451.172329,
+      "timings": {
+        "acquire": 23,
+        "gray": 1.100000023841858,
+        "detect": 6.899999976158142,
+        "describe": 10.200000047683716,
+        "match": 63.89999997615814,
+        "filterMatches": 0,
+        "estimateHomography": 1.899999976158142,
+        "pose": 0.10000002384185791,
+        "total": 107.10000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 108,
+      "numInliers": 97
+    },
+    {
+      "timestampMs": 37798.80000001192,
+      "mediaTimeSeconds": 2418451.2926,
+      "timings": {
+        "acquire": 23,
+        "gray": 1.2999999523162842,
+        "detect": 7.100000023841858,
+        "describe": 10.300000011920929,
+        "match": 64.59999996423721,
+        "filterMatches": 0,
+        "estimateHomography": 2.299999952316284,
+        "pose": 0,
+        "total": 108.89999997615814
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 101,
+      "numInliers": 93
+    },
+    {
+      "timestampMs": 37911.80000001192,
+      "mediaTimeSeconds": 2418451.412883,
+      "timings": {
+        "acquire": 26.799999952316284,
+        "gray": 1.2000000476837158,
+        "detect": 6.699999988079071,
+        "describe": 10.199999988079071,
+        "match": 63.60000002384186,
+        "filterMatches": 0,
+        "estimateHomography": 1.600000023841858,
+        "pose": 0.09999996423721313,
+        "total": 110.29999995231628
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 99,
+      "numInliers": 91
+    },
+    {
+      "timestampMs": 38025.89999997616,
+      "mediaTimeSeconds": 2418451.533162,
+      "timings": {
+        "acquire": 22.600000023841858,
+        "gray": 1.399999976158142,
+        "detect": 6.900000035762787,
+        "describe": 10.199999988079071,
+        "match": 63.80000001192093,
+        "filterMatches": 0,
+        "estimateHomography": 2.699999988079071,
+        "pose": 0.10000002384185791,
+        "total": 107.90000003576279
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 111,
+      "numInliers": 95
+    },
+    {
+      "timestampMs": 38140.09999996424,
+      "mediaTimeSeconds": 2418451.653443,
+      "timings": {
+        "acquire": 23,
+        "gray": 1.2000000476837158,
+        "detect": 7.5,
+        "describe": 11.099999964237213,
+        "match": 64.59999996423721,
+        "filterMatches": 0,
+        "estimateHomography": 2.299999952316284,
+        "pose": 0.10000002384185791,
+        "total": 110.10000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 110,
+      "numInliers": 103
+    },
+    {
+      "timestampMs": 38254.59999996424,
+      "mediaTimeSeconds": 2418451.773725,
+      "timings": {
+        "acquire": 26.900000035762787,
+        "gray": 1.199999988079071,
+        "detect": 6.399999976158142,
+        "describe": 10.100000023841858,
+        "match": 63.200000047683716,
+        "filterMatches": 0,
+        "estimateHomography": 2,
+        "pose": 0,
+        "total": 110.10000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 112,
+      "numInliers": 101
+    },
+    {
+      "timestampMs": 38368.80000001192,
+      "mediaTimeSeconds": 2418451.853911,
+      "timings": {
+        "acquire": 23,
+        "gray": 1.2999999523162842,
+        "detect": 6.900000035762787,
+        "describe": 10.300000011920929,
+        "match": 64.40000003576279,
+        "filterMatches": 0,
+        "estimateHomography": 1.300000011920929,
+        "pose": 0.19999998807907104,
+        "total": 107.59999996423721
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 111,
+      "numInliers": 107
+    },
+    {
+      "timestampMs": 38483.30000001192,
+      "mediaTimeSeconds": 2418451.974195,
+      "timings": {
+        "acquire": 22.799999952316284,
+        "gray": 1.100000023841858,
+        "detect": 6.699999988079071,
+        "describe": 10.100000023841858,
+        "match": 63.39999997615814,
+        "filterMatches": 0,
+        "estimateHomography": 2.800000011920929,
+        "pose": 0,
+        "total": 107
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 115,
+      "numInliers": 103
+    },
+    {
+      "timestampMs": 38595.80000001192,
+      "mediaTimeSeconds": 2418452.094476,
+      "timings": {
+        "acquire": 29.099999964237213,
+        "gray": 1.300000011920929,
+        "detect": 6.199999988079071,
+        "describe": 10.299999952316284,
+        "match": 69.40000003576279,
+        "filterMatches": 0,
+        "estimateHomography": 1.5999999642372131,
+        "pose": 0.10000002384185791,
+        "total": 118.69999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 105,
+      "numInliers": 94
+    },
+    {
+      "timestampMs": 38723.09999996424,
+      "mediaTimeSeconds": 2418452.214758,
+      "timings": {
+        "acquire": 22.5,
+        "gray": 1.2000000476837158,
+        "detect": 8.099999964237213,
+        "describe": 10.5,
+        "match": 64.00000005960464,
+        "filterMatches": 0,
+        "estimateHomography": 2.5,
+        "pose": 0.09999996423721313,
+        "total": 109
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 108,
+      "numInliers": 101
+    },
+    {
+      "timestampMs": 38838.89999997616,
+      "mediaTimeSeconds": 2418452.335038,
+      "timings": {
+        "acquire": 22.80000001192093,
+        "gray": 1.300000011920929,
+        "detect": 7,
+        "describe": 10.099999964237213,
+        "match": 65.20000010728836,
+        "filterMatches": 0,
+        "estimateHomography": 2,
+        "pose": 0.09999996423721313,
+        "total": 108.69999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 101,
+      "numInliers": 92
+    },
+    {
+      "timestampMs": 38951.69999998808,
+      "mediaTimeSeconds": 2418452.455319,
+      "timings": {
+        "acquire": 26.69999998807907,
+        "gray": 1.300000011920929,
+        "detect": 7.100000023841858,
+        "describe": 10.399999976158142,
+        "match": 63.39999997615814,
+        "filterMatches": 0,
+        "estimateHomography": 1.800000011920929,
+        "pose": 0,
+        "total": 111
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 113,
+      "numInliers": 107
+    },
+    {
+      "timestampMs": 39066.69999998808,
+      "mediaTimeSeconds": 2418452.575599,
+      "timings": {
+        "acquire": 23.899999976158142,
+        "gray": 1.2000000476837158,
+        "detect": 7.099999964237213,
+        "describe": 10.800000011920929,
+        "match": 63.499999940395355,
+        "filterMatches": 0,
+        "estimateHomography": 2,
+        "pose": 0,
+        "total": 109
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 100,
+      "numInliers": 91
+    },
+    {
+      "timestampMs": 39182.89999997616,
+      "mediaTimeSeconds": 2418452.695884,
+      "timings": {
+        "acquire": 22.80000001192093,
+        "gray": 1.199999988079071,
+        "detect": 7.199999988079071,
+        "describe": 10.300000011920929,
+        "match": 63.60000002384186,
+        "filterMatches": 0,
+        "estimateHomography": 1.800000011920929,
+        "pose": 0.19999998807907104,
+        "total": 107.19999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 119,
+      "numInliers": 106
+    },
+    {
+      "timestampMs": 39294.80000001192,
+      "mediaTimeSeconds": 2418452.77607,
+      "timings": {
+        "acquire": 26.80000001192093,
+        "gray": 1.300000011920929,
+        "detect": 7.099999964237213,
+        "describe": 10.300000011920929,
+        "match": 63.59999996423721,
+        "filterMatches": 0,
+        "estimateHomography": 1.4000000357627869,
+        "pose": 0,
+        "total": 110.69999998807907
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 109,
+      "numInliers": 109
+    },
+    {
+      "timestampMs": 39409.89999997616,
+      "mediaTimeSeconds": 2418452.896352,
+      "timings": {
+        "acquire": 22.80000001192093,
+        "gray": 1.199999988079071,
+        "detect": 7.199999988079071,
+        "describe": 10.300000011920929,
+        "match": 64.70000004768372,
+        "filterMatches": 0,
+        "estimateHomography": 1.899999976158142,
+        "pose": 0.10000002384185791,
+        "total": 108.30000001192093
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 116,
+      "numInliers": 106
+    },
+    {
+      "timestampMs": 39525.59999996424,
+      "mediaTimeSeconds": 2418453.016633,
+      "timings": {
+        "acquire": 23,
+        "gray": 1.2000000476837158,
+        "detect": 7.299999952316284,
+        "describe": 10.300000011920929,
+        "match": 63.5,
+        "filterMatches": 0,
+        "estimateHomography": 2,
+        "pose": 0.09999996423721313,
+        "total": 107.5
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 107,
+      "numInliers": 96
+    },
+    {
+      "timestampMs": 39637.5,
+      "mediaTimeSeconds": 2418453.136917,
+      "timings": {
+        "acquire": 27.599999964237213,
+        "gray": 1.300000011920929,
+        "detect": 7.300000011920929,
+        "describe": 10.199999988079071,
+        "match": 63.60000002384186,
+        "filterMatches": 0,
+        "estimateHomography": 1.4000000357627869,
+        "pose": 0.09999996423721313,
+        "total": 111.89999997615814
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 95,
+      "numInliers": 87
+    },
+    {
+      "timestampMs": 39754.19999998808,
+      "mediaTimeSeconds": 2418453.257197,
+      "timings": {
+        "acquire": 22.899999976158142,
+        "gray": 1.300000011920929,
+        "detect": 7.800000011920929,
+        "describe": 10.399999976158142,
+        "match": 69.70000004768372,
+        "filterMatches": 0,
+        "estimateHomography": 1.800000011920929,
+        "pose": 0.10000002384185791,
+        "total": 114.60000002384186
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 101,
+      "numInliers": 91
+    },
+    {
+      "timestampMs": 39877.19999998808,
+      "mediaTimeSeconds": 2418453.377483,
+      "timings": {
+        "acquire": 22.399999976158142,
+        "gray": 1.199999988079071,
+        "detect": 8.100000023841858,
+        "describe": 10.399999976158142,
+        "match": 63.6000000834465,
+        "filterMatches": 0,
+        "estimateHomography": 1.7999999523162842,
+        "pose": 0,
+        "total": 107.89999997615814
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 106,
+      "numInliers": 100
+    },
+    {
+      "timestampMs": 39989.39999997616,
+      "mediaTimeSeconds": 2418453.497759,
+      "timings": {
+        "acquire": 26.19999998807907,
+        "gray": 1.2000000476837158,
+        "detect": 7.199999988079071,
+        "describe": 10.300000011920929,
+        "match": 64.89999997615814,
+        "filterMatches": 0,
+        "estimateHomography": 1.800000011920929,
+        "pose": 0.09999996423721313,
+        "total": 112
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 98,
+      "numInliers": 91
+    },
+    {
+      "timestampMs": 40105.59999996424,
+      "mediaTimeSeconds": 2418453.618042,
+      "timings": {
+        "acquire": 22.900000035762787,
+        "gray": 1.0999999642372131,
+        "detect": 7.300000011920929,
+        "describe": 10.300000011920929,
+        "match": 63.59999996423721,
+        "filterMatches": 0,
+        "estimateHomography": 1.800000011920929,
+        "pose": 0.09999996423721313,
+        "total": 107.5
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 102,
+      "numInliers": 92
+    },
+    {
+      "timestampMs": 40221.89999997616,
+      "mediaTimeSeconds": 2418453.738323,
+      "timings": {
+        "acquire": 22.900000035762787,
+        "gray": 1.399999976158142,
+        "detect": 7.300000011920929,
+        "describe": 10.599999964237213,
+        "match": 65,
+        "filterMatches": 0,
+        "estimateHomography": 2,
+        "pose": 0.10000002384185791,
+        "total": 109.40000003576279
+      },
+      "ok": true,
+      "reason": null,
+      "numSceneKeypoints": 300,
+      "numMatches": 109,
+      "numInliers": 99
+    }
+  ]
+}
