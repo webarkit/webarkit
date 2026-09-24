@@ -41,19 +41,19 @@ import { describe, it, expect } from "vitest";
 import type { Mat3 } from "@webarkit/cv-backend-spec";
 import { predictHomography } from "../../src/index.js";
 
-// Stub test: this function is not implemented yet, and must say so with an
-// explicit failure rather than a wrong answer. The branch that implements it
-// replaces this file with the real tests.
-
-describe("predictHomography (stub)", () => {
-    it("fails explicitly and leaves its inputs untouched", () => {
-        const current: Mat3 = Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+describe("predictHomography", () => {
+    it("predicts current itself when there is no velocity yet (previous = null)", () => {
+        // The first frame after a lock has one pose and no motion: zero velocity.
+        // current[8] = 2, so the rescale to H[8] = 1 is an exact halving and the
+        // comparison can be bit for bit.
+        const current: Mat3 = Float64Array.from([2, 0.25, 40, -0.5, 1.5, 60, 0.001, 0.002, 2]);
         const before = Array.from(current);
-        expect(predictHomography(null, current)).toEqual({ ok: false, reason: "not-implemented" });
-        expect(predictHomography(current, current)).toEqual({
-            ok: false,
-            reason: "not-implemented",
-        });
+        const r = predictHomography(null, current);
+        expect(r.ok).toBe(true);
+        if (!r.ok) return;
+        expect(Array.from(r.H)).toEqual(before.map((v) => v / 2));
+        expect(r.H[8]).toBe(1);
+        expect(r.H).not.toBe(current);
         expect(Array.from(current)).toEqual(before);
     });
 });
