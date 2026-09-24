@@ -37,14 +37,43 @@
  *
  */
 
-import type { RobustHomography, Stub } from "./types.js";
+import type { PointArray } from "@webarkit/cv-backend-spec";
+import { isFiniteMat3 } from "./mat3.js";
+import type { RobustHomography, RobustHomographyOptions, Stub } from "./types.js";
 
 /**
  * Stub — see {@link RobustHomography}. Branch C implements it here and changes
  * the annotation from `Stub<RobustHomography>` to `RobustHomography`; nothing else in the
  * package needs to change.
  */
-export const robustHomography: Stub<RobustHomography> = () => ({
-    ok: false,
-    reason: "not-implemented",
-});
+export const robustHomography: Stub<RobustHomography> = (src, dst, initial, options) => {
+    if (!validOptions(options)) return { ok: false, reason: "invalid-options" };
+    if (src.length !== dst.length || src.length % 2 !== 0) {
+        return { ok: false, reason: "invalid-input" };
+    }
+    if (!allFinite(src) || !allFinite(dst) || !isFiniteMat3(initial)) {
+        return { ok: false, reason: "invalid-input" };
+    }
+    if (src.length / 2 < 4) return { ok: false, reason: "too-few-points" };
+    return { ok: false, reason: "not-implemented" };
+};
+
+/**
+ * The domains stated on {@link RobustHomographyOptions}, finite included: a
+ * cutoff or a tolerance of `Infinity` is not a distance.
+ */
+function validOptions(o: RobustHomographyOptions): boolean {
+    return (
+        Number.isInteger(o.maxIterations) &&
+        o.maxIterations >= 1 &&
+        Number.isFinite(o.tukeyC) &&
+        o.tukeyC > 0 &&
+        Number.isFinite(o.epsilon) &&
+        o.epsilon > 0
+    );
+}
+
+function allFinite(a: PointArray): boolean {
+    for (let i = 0; i < a.length; i++) if (!Number.isFinite(a[i])) return false;
+    return true;
+}
