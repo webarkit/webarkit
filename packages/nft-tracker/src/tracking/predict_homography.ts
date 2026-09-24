@@ -37,6 +37,7 @@
  *
  */
 
+import type { Mat3 } from "@webarkit/cv-backend-spec";
 import type { PredictHomography, Stub } from "./types.js";
 
 /**
@@ -44,7 +45,14 @@ import type { PredictHomography, Stub } from "./types.js";
  * the annotation from `Stub<PredictHomography>` to `PredictHomography`; nothing else in the
  * package needs to change.
  */
-export const predictHomography: Stub<PredictHomography> = () => ({
-    ok: false,
-    reason: "not-implemented",
-});
+export const predictHomography: Stub<PredictHomography> = (previous, current) => {
+    if (previous === null) return { ok: true, H: scaledToUnitCorner(current) };
+    return { ok: false, reason: "not-implemented" };
+};
+
+/** A new array: `m` scaled so that `m[8] = 1`. */
+function scaledToUnitCorner(m: Mat3): Mat3 {
+    const out = new Float64Array(9);
+    for (let i = 0; i < 9; i++) out[i] = m[i] / m[8];
+    return out;
+}
