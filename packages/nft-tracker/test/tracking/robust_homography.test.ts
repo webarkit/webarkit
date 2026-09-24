@@ -44,6 +44,7 @@ import type { RobustHomographyOptions } from "../../src/index.js";
 import {
     chain,
     corners,
+    gaussian,
     maxTransferGap,
     perspective,
     planeView,
@@ -402,5 +403,40 @@ describe("robustHomography degenerate input", () => {
         dst[6] += 3.99;
         dst[8] += 3.99;
         expect(robustHomography(src, dst, IDENTITY, OPTIONS)).toEqual(TOO_FEW_INLIERS);
+    });
+});
+
+describe("robustHomography with noise", () => {
+    it("keeps the error at the patches within σ under σ = 0.5 px of Gaussian noise", () => {
+        // 40 correspondences, 2 × 40 noisy coordinates, 8 parameters. The
+        // maximum-likelihood estimate's error at the patches has an RMS of
+        // σ·√(8/n) ≈ 0.45σ, and exceeds σ with probability P(χ²₈ > 40) ≈ 1e-5;
+        // the weighted DLT is close to it when every weight is near 1, as
+        // here (tukeyC = 8σ). A residual passes tukeyC with probability e⁻³².
+        const sigma = 0.5;
+        const src = targetGrid();
+        const exact = projectAll(H_TRUE, src);
+        const prediction = chain(translation(2, 0), H_TRUE);
+        for (let seed = 1; seed <= 20; seed++) {
+            const noise = gaussian(seed);
+            const dst = exact.map((v) => v + sigma * noise());
+            const r = robustHomography(src, dst, prediction, OPTIONS);
+            expect(r.ok, `seed ${seed}`).toBe(true);
+            if (!r.ok) continue;
+            expect(r.converged, `seed ${seed}`).toBe(true);
+            expect(r.numInliers, `seed ${seed}`).toBe(40);
+            expectSelfConsistent(r, src, dst, OPTIONS.tukeyC);
+            let sq = 0;
+            for (let i = 0; i < src.length; i += 2) {
+                const [ax, ay] = project(r.H, src[i], src[i + 1]);
+                sq += (ax - exact[i]) ** 2 + (ay - exact[i + 1]) ** 2;
+            }
+            expect(Math.sqrt(sq / 40), `seed ${seed}`).toBeLessThan(sigma);
+            // The residuals themselves: E Σ r² = (2n − 8)σ², so the RMS is
+            // near σ·√(2 − 8/n) ≈ 0.67 px, within ±8% (1 sd).
+            const expected = sigma * Math.sqrt(2 - 8 / 40);
+            expect(r.rmsError, `seed ${seed}`).toBeGreaterThan(0.5 * expected);
+            expect(r.rmsError, `seed ${seed}`).toBeLessThan(1.5 * expected);
+        }
     });
 });
