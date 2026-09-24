@@ -66,6 +66,7 @@ import type { CvBackend, GrayImage, Keypoint, Mat3, Pose } from "@webarkit/cv-ba
 import { buildLevelIndex, chooseDescriptorSet, matchPerLevel } from "./detection.js";
 import type { TargetLevelView } from "./detection.js";
 import type { TargetDb } from "./target/types.js";
+import type { TrackingState } from "./tracking/types.js";
 
 /**
  * Pyramid levels searched in the LIVE frame.
@@ -104,10 +105,26 @@ export interface NftTrackerOptions {
     readonly ransacThreshold?: number;
 }
 
-/** What one frame produced. `ok` narrows the union. */
+/**
+ * What one frame produced. `ok` narrows the union.
+ *
+ * `state` says how the frame's result was obtained (see `TrackingState`):
+ * a pose comes from `"DETECT"` or `"TRACK"`, no pose is `"LOST"`. Until M2's
+ * state machine lands, `process` runs detection on every frame, so it reports
+ * only `"DETECT"` and `"LOST"`.
+ */
 export type TrackResult =
     | {
           readonly ok: true;
+          /** Detection or patch tracking produced this pose. */
+          readonly state: Exclude<TrackingState, "LOST">;
+          /**
+           * Share of the frame's correspondences the final estimate kept, in
+           * `[0, 1]`. `"DETECT"`: `numInliers / numMatches`. `"TRACK"`: the sum
+           * of the robust fit's weights divided by the patches the frame
+           * attempted.
+           */
+          readonly quality: number;
           /** Echoed back from `process`; the tracker reads no clock. */
           readonly timestampMs: number;
           readonly numMatches: number;
@@ -125,6 +142,9 @@ export type TrackResult =
       }
     | {
           readonly ok: false;
+          readonly state: "LOST";
+          /** Always 0: nothing was kept. */
+          readonly quality: 0;
           readonly reason: TrackFailure;
           readonly timestampMs: number;
           readonly numMatches: number;
@@ -196,6 +216,8 @@ export class NftTracker {
         if (matches.length < 4) {
             return {
                 ok: false,
+                state: "LOST",
+                quality: 0,
                 reason: "too-few-matches",
                 timestampMs,
                 numMatches: matches.length,
@@ -225,6 +247,8 @@ export class NftTracker {
         if (!h.ok) {
             return {
                 ok: false,
+                state: "LOST",
+                quality: 0,
                 reason: "no-consensus",
                 timestampMs,
                 numMatches: matches.length,
@@ -237,6 +261,9 @@ export class NftTracker {
 
         return {
             ok: true,
+            state: "DETECT",
+            // matches.length >= 4 here, so the division is safe.
+            quality: h.numInliers / matches.length,
             timestampMs,
             numMatches: matches.length,
             numInliers: h.numInliers,

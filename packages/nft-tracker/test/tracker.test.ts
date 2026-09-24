@@ -107,6 +107,32 @@ describe("NftTracker.process", () => {
         expect(result.pose).toBeNull();
     });
 
+    it("reports a DETECT state and an inlier-share quality when detection locks on", () => {
+        const tracker = new NftTracker(cv, target, K, { maxSceneKeypoints: 900 });
+        const { value: result } = withSeededRandom(1, () => tracker.process(scene, 0));
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.state).toBe("DETECT");
+        expect(result.quality).toBe(result.numInliers / result.numMatches);
+        expect(result.quality).toBeGreaterThan(0);
+        expect(result.quality).toBeLessThanOrEqual(1);
+    });
+
+    it("reports LOST with quality 0 when nothing is found", () => {
+        const blank: GrayImage = {
+            data: new Uint8Array(320 * 240).fill(128),
+            width: 320,
+            height: 240,
+        };
+        const tracker = new NftTracker(cv, target, K);
+        const { value: result } = withSeededRandom(1, () => tracker.process(blank, 0));
+
+        expect(result.ok).toBe(false);
+        expect(result.state).toBe("LOST");
+        expect(result.quality).toBe(0);
+    });
+
     it("gives the same answer twice for the same frame under the same seed", () => {
         // ADR-0001 point 7: fixtures have to reproduce. Two full process()
         // runs on the REAL backend, each under its own freshly seeded
