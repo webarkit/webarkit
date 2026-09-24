@@ -145,6 +145,21 @@ describe("validate-target", () => {
         expect(r.stdout).toContain("probe: 32 B/descriptor, hamming");
     });
 
+    it("reports the demo target's tracking patches (§5.7)", () => {
+        // compile-target writes a patches section, and the committed demo
+        // target is compiled with it: a zero here means the file was compiled
+        // detection-only, or by a compiler that predates patch selection.
+        const human = run(PINBALL);
+        const count = /target\s+.*, (\d+) patch(?:es)?\b/.exec(human.stdout);
+        expect(count, human.stdout).not.toBeNull();
+        expect(Number(count![1])).toBeGreaterThan(0);
+
+        const r = run("--json", PINBALL);
+        expect(r.status).toBe(0);
+        const [parsed] = JSON.parse(r.stdout) as { target: { patches: number } }[];
+        expect(parsed!.target.patches).toBe(Number(count![1]));
+    });
+
     it("reports a decode failure with its §6.2 code, and exits 1", () => {
         const r = run(join(FIXTURES_DIR, "invalid/bad-magic.wnft"));
         expect(r.status).toBe(1);

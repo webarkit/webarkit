@@ -39,7 +39,7 @@ If you're deciding where to plug in: **jsfeatNext** is the place to start today 
 |---|---|
 | [`@webarkit/cv-backend-spec`](./packages/cv-backend-spec) | Minimal stateless CV backend interface (`detect`, `describe`, `match`, `estimateHomography`, `poseFromHomography`) implemented by jsfeatNext and (future) WebARKitLib-rs. |
 | [`@webarkit/cv-backend-jsfeatnext`](./packages/cv-backend-jsfeatnext) | The jsfeatNext implementation of that contract. Depends on the spec **and** on `@webarkit/jsfeat-next` (>= 0.17.0); neither of those depends on it. |
-| [`@webarkit/nft-tracker`](./packages/nft-tracker) | Natural-feature tracking for planar image targets, written **above** the contract. Depends on the spec alone — the backend is injected by the caller, so it runs on any implementation. Currently the target layer — the in-memory target types, the `.wnft` codec (`decode`/`encode`) for the files that store one, an image-to-target builder — plus per-pyramid-level matching and a detection-only `NftTracker` (milestone M1), whose per-frame result reports a `state` (`DETECT` or `LOST`) and a `quality`. The milestone-M2 tracking-state contract — patch selection, frame pyramid, IC-LK patch alignment, IRLS homography, constant-velocity prediction — is defined and exported, but its functions are **stubs** that return `not-implemented` until their implementations land ([#48](https://github.com/webarkit/webarkit/issues/48)). See [ADR-0001](./docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) and the [target format spec](./docs/specs/nft-target-format.md). |
+| [`@webarkit/nft-tracker`](./packages/nft-tracker) | Natural-feature tracking for planar image targets, written **above** the contract. Depends on the spec alone — the backend is injected by the caller, so it runs on any implementation. Currently the target layer — the in-memory target types, the `.wnft` codec (`decode`/`encode`) for the files that store one, an image-to-target builder — plus per-pyramid-level matching and a detection-only `NftTracker` (milestone M1), whose per-frame result reports a `state` (`DETECT` or `LOST`) and a `quality`. The milestone-M2 tracking-state contract — patch selection, frame pyramid, IC-LK patch alignment, IRLS homography, constant-velocity prediction — is defined and exported; patch selection is implemented and `compile-target` writes its patches into the `.wnft`, while the other functions are still **stubs** that return `not-implemented` until their implementations land ([#48](https://github.com/webarkit/webarkit/issues/48)). See [ADR-0001](./docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) and the [target format spec](./docs/specs/nft-target-format.md). |
 
 None of the three is published to npm yet — see [Getting started](#-getting-started) for installing from source. `nft-tracker` is `private` and pre-0.1.
 
@@ -136,7 +136,9 @@ for scripts.
 Preparing this target costs roughly **200× more than loading it**. Measured on
 one development machine (Node as pinned in [`.nvmrc`](./.nvmrc), jsfeatNext
 backend, `examples/images/pinball.jpg` at 512×640 → 2062 keypoints over 8 levels,
-a 110,600-byte file), median of 30 runs after warm-up:
+a 110,600-byte file), median of 30 runs after warm-up. That file predates the
+tracking patches; the committed one now also carries 64 of them and is 128,016
+bytes, and has not been re-measured:
 
 | | median | min–max |
 |---|---|---|
@@ -154,7 +156,8 @@ Three things that table says, which a single ratio would not:
   levels; decoding grows with file size, at a tiny constant. Raising `--levels`
   or `--max-side` widens the gap rather than closing it.
 - **The demo's own "target prepared in" row shows a much smaller gap** (~25 ms
-  for the file path) because it times the `fetch()` of those 110 KB along with
+  for the file path) because it times the `fetch()` of the file (110 KB when
+  measured, 128 KB with today's patches) along with
   the decode. That is the honest answer to "what did it cost to get a target
   here?", and it is dominated by the network, not by the format.
 
