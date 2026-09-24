@@ -49,7 +49,14 @@ import type {
 import { cutPatches, patchCentre, texturedSites } from "../fixtures/patch_table.js";
 import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
 import type { RenderOptions } from "../fixtures/warped_frames.js";
-import { mat3Mul, project, renderWarp, translation, view } from "../fixtures/warped_frames.js";
+import {
+    IDENTITY,
+    mat3Mul,
+    project,
+    renderWarp,
+    translation,
+    view,
+} from "../fixtures/warped_frames.js";
 
 // Gain and bias: the frame's intensity as `gain · patch + bias`, estimated
 // alongside the translation when `photometric` is set.
@@ -258,6 +265,39 @@ describe("alignPatch: gain and bias", () => {
         // are not filtered alike, even with no photometric change at all.
         expect(unchanged.gain).toBeGreaterThan(1);
         expect(alignAll({ blurPasses: 1 }, ON).gain).toBeLessThan(1);
+    });
+
+    it("estimates gain and bias absolutely where the patch and the frame are filtered alike: every one within 0.01·g and 1 grey level", () => {
+        // Level-0 patches in a frame that is the target itself, changed by
+        // (g, b): neither has been through a pyramid filter, so nothing reads
+        // as contrast but the change. (Above, level-3 patches meet a frame
+        // rendered at level 3's scale: the patch has been through three of
+        // the pyramid's steps and the frame through none, whence gain₀ 1.04.)
+        // Predictions ½–1 px off, 24 patches × 4. Measured: gain within
+        // 0.0085·g, bias within 0.83 grey levels, position within 0.0084 px.
+        const sites0 = texturedSites(targetPyramid, P, 0, 24, { minSpacing: 12, margin: 4 });
+        const table = cutPatches(targetPyramid, P, sites0);
+        const size = { width: target.width, height: target.height };
+        for (const [g, b] of [[1, 0], ...CHANGES]) {
+            const frame = pyramidOf(renderWarp(target, IDENTITY, { ...size, gain: g, bias: b }), 5);
+            sites0.forEach((site, q) => {
+                const [tx, ty] = patchCentre(site, P, STEP);
+                for (const [dx, dy] of [
+                    [0.5, -0.5],
+                    [1, 0],
+                    [0, -1],
+                    [-0.7, 0.7],
+                ]) {
+                    const r = alignPatch(frame, table, q, STEP, translation(dx, dy), ON);
+                    if (!r.ok) throw new Error(`patch ${q}: ${r.reason}`);
+                    const o = r.observation;
+                    expect(o.converged).toBe(true);
+                    expect(Math.hypot(o.x - tx, o.y - ty)).toBeLessThan(0.02);
+                    expect(Math.abs(o.gain - g)).toBeLessThan(0.01 * g);
+                    expect(Math.abs(o.bias - b)).toBeLessThan(1);
+                }
+            });
+        }
     });
 
     it("fails singular when the frame region is flat: the gain collapses to 0, no position is invented", () => {

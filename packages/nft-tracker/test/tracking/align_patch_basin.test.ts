@@ -112,7 +112,7 @@ const minified = scenario(1, 3); // σ = 0.63
  * the frame, `(tx, ty)` being the patch's true centre: the share converged,
  * and every error.
  */
-function trials(c: Case, errs: ((tx: number, ty: number) => Mat3)[]) {
+function trials(c: Case, errs: ((tx: number, ty: number) => Mat3)[], options = OPTIONS) {
     let converged = 0;
     let n = 0;
     const errors: number[] = [];
@@ -128,7 +128,7 @@ function trials(c: Case, errs: ((tx: number, ty: number) => Mat3)[]) {
                     q,
                     STEP,
                     mat3Mul(err(tx, ty), H),
-                    OPTIONS,
+                    options,
                 );
                 n++;
                 if (!r.ok) continue;
@@ -144,16 +144,19 @@ function trials(c: Case, errs: ((tx: number, ty: number) => Mat3)[]) {
 
 const successes = new Map<string, number>();
 
-/** The share converged from `d` px off, over 16 directions. Memoised: tests share rates. */
-function successFrom(c: Case, d: number): number {
-    const key = `${[matched, magnified, minified].indexOf(c)}:${d}`;
+/**
+ * The share converged from `d` px off, over 16 directions, with gain and bias
+ * estimated too when `photometric`. Memoised: tests share rates.
+ */
+function successFrom(c: Case, d: number, photometric = false): number {
+    const key = `${[matched, magnified, minified].indexOf(c)}:${d}:${photometric}`;
     const known = successes.get(key);
     if (known !== undefined) return known;
     const errs = Array.from({ length: 16 }, (_, k) => {
         const a = (k * Math.PI) / 8;
         return () => translation(d * Math.cos(a), d * Math.sin(a));
     });
-    const rate = trials(c, errs).rate;
+    const rate = trials(c, errs, { ...OPTIONS, photometric }).rate;
     successes.set(key, rate);
     return rate;
 }
@@ -207,6 +210,17 @@ describe("alignPatch: the convergence basin", () => {
         expect(successFrom(minified, 2)).toBeGreaterThanOrEqual(0.85);
         expect(successFrom(minified, 3)).toBeLessThan(0.8);
     });
+
+    it("keeps most of the basin with gain and bias estimated too: 96% from 3 px when matched (97% without), 83% from 8 px magnified (90%), 89% from 2 px minified (91%)", () => {
+        // On these unchanged frames, gain and bias only cost basin: matched
+        // by moments while the translation converges, they vary as the
+        // window crosses the texture (align_patch.ts). Estimated by least
+        // squares from the first iteration instead, matched patches converged
+        // 46% from 3 px, magnified ones 17% from 8 px.
+        expect(successFrom(matched, 3, true)).toBeGreaterThanOrEqual(0.9);
+        expect(successFrom(magnified, 8, true)).toBeGreaterThanOrEqual(0.75);
+        expect(successFrom(minified, 2, true)).toBeGreaterThanOrEqual(0.8);
+    }, 30_000);
 
     it("needs the predicted rotation within about 10° (94% converge) and scale within 10% (100%); at 20°, most do not (30%)", () => {
         // The alignment estimates a translation only: rotation and scale come
