@@ -110,12 +110,13 @@ const minified = scenario(1, 3); // σ = 0.63
 /**
  * Every trial of a case with the prediction's error `err(tx, ty)` applied in
  * the frame, `(tx, ty)` being the patch's true centre: the share converged,
- * and every error.
+ * and every error and iteration count.
  */
 function trials(c: Case, errs: ((tx: number, ty: number) => Mat3)[], options = OPTIONS) {
     let converged = 0;
     let n = 0;
     const errors: number[] = [];
+    const iterations: number[] = [];
     const levels = new Set<number>();
     c.views.forEach((H, v) => {
         c.sites.forEach((site, q) => {
@@ -134,12 +135,13 @@ function trials(c: Case, errs: ((tx: number, ty: number) => Mat3)[], options = O
                 if (!r.ok) continue;
                 const e = Math.hypot(r.observation.x - tx, r.observation.y - ty);
                 errors.push(e);
+                iterations.push(r.observation.iterations);
                 levels.add(r.observation.frameLevel);
                 if (r.observation.converged && e < 0.5) converged++;
             }
         });
     });
-    return { rate: converged / n, errors, levels };
+    return { rate: converged / n, errors, iterations, levels };
 }
 
 const successes = new Map<string, number>();
@@ -186,6 +188,22 @@ describe("alignPatch: the convergence basin", () => {
             expect(successFrom(magnified, 2 * d)).toBeGreaterThanOrEqual(successFrom(matched, d));
         }
     }, 30_000);
+
+    it("converges in few iterations: from 1 px off a median of 4 (95th percentile 6) when matched, 5 (6) when magnified; from 2 px, all 1152 of each within the cap of 30", () => {
+        const onePx = Array.from({ length: 8 }, (_, k) => {
+            const a = (k * Math.PI) / 4;
+            return () => translation(Math.cos(a), Math.sin(a));
+        });
+        for (const [c, median] of [
+            [matched, 4],
+            [magnified, 5],
+        ] as const) {
+            const { iterations } = trials(c, onePx);
+            expect(quantile(iterations, 0.5)).toBeLessThanOrEqual(median);
+            expect(quantile(iterations, 0.95)).toBeLessThanOrEqual(6);
+            expect(successFrom(c, 2)).toBe(1);
+        }
+    });
 
     it("refines magnified patches on frame level 0, to a median of 0.010 px (asserted < 0.02; worst 0.026, < 0.05)", () => {
         // Level 0 is read through footprints that blur it as the pyramid would

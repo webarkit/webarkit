@@ -115,6 +115,9 @@ describe("alignPatch: accuracy", () => {
         expect(results.every((o) => o.gain === 1 && o.bias === 0)).toBe(true);
         expect(median(errors)).toBeLessThan(0.05);
         expect(Math.max(...errors)).toBeLessThan(0.25);
+        const iterations = results.map((o) => o.iterations).sort((a, b) => a - b);
+        expect(median(iterations)).toBeLessThanOrEqual(4);
+        expect(iterations[Math.floor(0.95 * iterations.length)]).toBeLessThanOrEqual(6);
     });
 
     it("degrades gracefully with sensor noise: median error below 0.1 px at σ = 4 grey levels, below 0.2 px at σ = 8, blur included", () => {

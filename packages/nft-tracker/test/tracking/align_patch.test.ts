@@ -426,3 +426,29 @@ describe("alignPatch: never throws, never returns a non-finite number", () => {
         );
     });
 });
+
+describe("alignPatch: its inputs", () => {
+    it("leaves every input untouched, and answers the same input the same way", () => {
+        // types.ts: pure and deterministic. A photometric alignment 1.5 px
+        // off uses every buffer the function has; the negated prediction is
+        // the one it must sign-normalise, which it must not do in place.
+        const options: AlignPatchOptions = { ...OPTIONS, photometric: true };
+        for (const H of [
+            translation(1.5, -1),
+            Float64Array.from(translation(1.5, -1), (v) => -v),
+        ]) {
+            const levels = frame.levels.map((l) => Uint8Array.from(l.data));
+            const { pixels, left, top, level, score } = table;
+            const before = [pixels, left, top, level, score].map((a) => Array.from(a));
+            const prediction = Array.from(H);
+            const a = alignPatch(frame, table, 0, STEP, H, options);
+            const b = alignPatch(frame, table, 0, STEP, H, options);
+            expect(a.ok).toBe(true);
+            expect(b).toEqual(a);
+            frame.levels.forEach((l, i) => expect(l.data).toEqual(levels[i]));
+            expect([pixels, left, top, level, score].map((x) => Array.from(x))).toEqual(before);
+            expect(Array.from(H)).toEqual(prediction);
+            expect(options).toEqual({ ...OPTIONS, photometric: true });
+        }
+    });
+});
