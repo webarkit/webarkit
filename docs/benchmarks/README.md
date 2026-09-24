@@ -522,3 +522,95 @@ of them made yet:
 
 The first two would be test media, not bundled clips, unless they turn out
 to be worth keeping (see AGENTS.md's "Test assets").
+
+## 2026-09-24 — Separating the portrait `acquire` gap
+
+These runs address the open question above: why a portrait source costs about
+twice as much to acquire. The plan and its decision rules were written
+**before** any of the runs. Results follow at the end of this section.
+
+### What varies, and what is held fixed
+
+There are three candidate causes: orientation, output pixel count (the
+processing box), and frame rate. Plus the five-day gap between sessions. The
+bundled wall and static clips differ in all of them at once. So these runs
+use four **test re-encodes**, made with one identical command so that encoder
+settings are not a fifth difference:
+
+```bash
+ENC="-an -c:v libx264 -preset medium -crf 28 -movflags +faststart"
+ffmpeg -i pinball-static.mp4                  $ENC static-portrait.mp4   # 720x1280, 30 fps
+ffmpeg -i pinball-static.mp4 -vf transpose=1  $ENC static-landscape.mp4  # 1280x720, 30 fps
+ffmpeg -i pinball-bench.mp4                   $ENC wall-native-fps.mp4   # 1280x720, 24.9 fps
+ffmpeg -i pinball-bench.mp4  -vf fps=30       $ENC wall-30fps.mp4        # 1280x720, 30 fps
+```
+
+The commands used ffmpeg 9.0.2 and ran from `examples/videos/`. Their
+outputs are test media and are **not** committed; the commands above
+regenerate them from the committed clips. The static pair are the same
+footage transposed: same pixels, frame rate and bitrate class. The wall pair
+differ only in frame rate.
+
+`bench-nft.html` now takes the processing box as a run parameter (a
+`?procWidth=` / `?procHeight=` control, default 480×360; the export records it
+as `processingBox`). That lets orientation and output pixel count vary
+independently on the static footage:
+
+| | output ≈ 73,000 px | output ≈ 130,000 px |
+|---|---|---|
+| **portrait** (`static-portrait`) | box 480×360 → 203×360 | box 480×480 → 270×480 |
+| **landscape** (`static-landscape`) | box 360×360 → 360×203 | box 480×360 → 480×270 |
+
+### The runs
+
+Same device and method as the sweep above: `Tab_9_WiFi`, the tablet's own
+Chrome, the automated driver, `stateless`, 120 frames, start at 0,
+`maxKeypoints` 300. Only `acquire` is under test. The box also changes what
+`detect`/`describe` search, so the other stages are not compared across
+boxes. Run in this order, with 120 s idle between runs:
+
+1. `pinball-static.mp4` (bundled), default box: the anchor, to reproduce the
+   sweep's 35.9–36.4 ms.
+2. `pinball-bench.mp4` (bundled), default box: the session control, against
+   the 2026-09-19 value of 18.9 ms.
+3. `static-portrait`, default box: the re-encode control, against run 1.
+4. `static-landscape`, default box (480×270).
+5. `static-portrait`, box 480×480 (270×480).
+6. `static-landscape`, box 360×360 (360×203).
+7. `wall-native-fps`, default box.
+8. `wall-30fps`, default box.
+9. `pinball-static.mp4` (bundled), default box: the drift check, against
+   run 1.
+
+### Decision rules (on `acquire` p50)
+
+A factor **explains** the gap if it changes `acquire` by a ratio of **≥ 1.5**
+(the gap under question is about 1.9×). It has **no effect** if the ratio is
+within **±15%** (0.87–1.15). Anything in between is **inconclusive** and is
+reported as such.
+
+Validity comes first:
+
+- Run 9 must be within ±10% of run 1. If not, the session drifted.
+- Run 3 must be within ±15% of run 1. If not, re-encoding alone changes
+  `acquire`, and runs 4–8 cannot be read against the bundled clips (only
+  against each other).
+
+Then each factor:
+
+- **Session:** run 2 vs 18.9 ms. If run 2 is ≥ 1.5× 18.9 ms (about 28 ms or
+  more), the five-day gap, not the clip, explains the 2026-09-19 figure. The
+  question then changes to "what changed on the device", and the factors
+  below say nothing about it.
+- **Orientation**, at equal output pixels: run 3 vs run 6 (≈73,000 px) and
+  run 5 vs run 4 (≈130,000 px). Portrait ÷ landscape ≥ 1.5 at **both** sizes
+  means orientation explains it, which points at the acquisition path, not
+  the box.
+- **Output pixels (the box)**, at fixed orientation: run 5 vs run 3
+  (portrait) and run 4 vs run 6 (landscape). A ratio ≥ 1.5 means the box
+  explains it (130,000 ÷ 73,000 ≈ 1.8, so a cost fully proportional to output
+  pixels would show about 1.8).
+- **Frame rate:** run 8 vs run 7. A ratio ≥ 1.5 means frame rate explains it.
+
+These are not exclusive, and more than one factor may pass. If none does,
+the gap is unexplained by these three and stays an open question.
