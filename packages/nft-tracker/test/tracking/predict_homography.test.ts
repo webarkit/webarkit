@@ -99,4 +99,36 @@ describe("predictHomography", () => {
         expect(maxTransferGap(r.H, H3, TARGET_CORNERS)).toBeLessThan(EXACT_PX);
         expect([Array.from(H1), Array.from(H2)]).toEqual(before);
     });
+
+    it("does not depend on the scale of either input, however large or small", () => {
+        // λH is the same homography as H (types.ts accepts any scale with
+        // H[8] ≠ 0), so the prediction must not move with λ. The extreme
+        // pairs would overflow or underflow a triple product taken as given.
+        const H1 = mul(V, H0);
+        const H2 = mul(V, H1);
+        const reference = predictHomography(H1, H2);
+        expect(reference.ok).toBe(true);
+        if (!reference.ok) return;
+        const scales: [number, number][] = [
+            [-3.7, 1],
+            [1, -0.02],
+            [1e3, 1e-3],
+            [1e200, 1],
+            [1, 1e-200],
+            [-1e-200, 1e200],
+        ];
+        for (const [a, b] of scales) {
+            const r = predictHomography(
+                H1.map((v) => v * a),
+                H2.map((v) => v * b),
+            );
+            expect(r.ok, `scales ${a}, ${b}`).toBe(true);
+            if (!r.ok) continue;
+            expect(r.H[8], `scales ${a}, ${b}`).toBe(1);
+            expect(
+                maxTransferGap(r.H, reference.H, TARGET_CORNERS),
+                `scales ${a}, ${b}`,
+            ).toBeLessThan(EXACT_PX);
+        }
+    });
 });

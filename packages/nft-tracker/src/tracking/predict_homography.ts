@@ -38,7 +38,7 @@
  */
 
 import type { Mat3 } from "@webarkit/cv-backend-spec";
-import { adjugate3, mul3 } from "./mat3.js";
+import { adjugate3, mul3, scaledToUnitMax } from "./mat3.js";
 import type { PredictHomography } from "./types.js";
 
 /**
@@ -72,12 +72,15 @@ import type { PredictHomography } from "./types.js";
  * `current · previous⁻¹ · current`.
  *
  * `previous⁻¹` is computed as the adjugate: the two differ only by the scalar
- * `det(previous)`, which the final rescale removes.
+ * `det(previous)`, which the final rescale removes. Both inputs are first
+ * rescaled to unit max-norm, since the contract accepts them at any scale and
+ * a triple product of homographies at `1e200` would overflow.
  */
 export const predictHomography: PredictHomography = (previous, current) => {
     if (previous === null) return { ok: true, H: scaledToUnitCorner(current) };
-    const velocity = mul3(current, adjugate3(previous));
-    return { ok: true, H: scaledToUnitCorner(mul3(velocity, current)) };
+    const cur = scaledToUnitMax(current);
+    const velocity = mul3(cur, adjugate3(scaledToUnitMax(previous)));
+    return { ok: true, H: scaledToUnitCorner(mul3(velocity, cur)) };
 };
 
 /** A new array: `m` scaled so that `m[8] = 1`. */
