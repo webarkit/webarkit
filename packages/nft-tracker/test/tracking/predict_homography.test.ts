@@ -46,6 +46,7 @@ import {
     maxTransferGap,
     mul,
     perspective,
+    planeView,
     rotationAbout,
     scaling,
     translation,
@@ -199,6 +200,15 @@ describe("predictHomography failures", () => {
     it("reports a previous that is not invertible as singular", () => {
         expect(predictHomography(RANK_2, H2)).toEqual(SINGULAR);
         expect(predictHomography(new Float64Array(9), H2)).toEqual(SINGULAR);
+    });
+
+    it("does not count a steep but valid view as singular", () => {
+        // The other side of SINGULAR_RELATIVE_DET (1e-10): a target tilted 88°
+        // then 89°, turned 60°, measures relative determinants of 3.2e-2 and
+        // 1.6e-2, and the prediction 8.2e-3 — a threshold anywhere near them
+        // would reject real views, not only singular matrices.
+        const r = predictHomography(planeView(88, 60, 1000), planeView(89, 60, 1000));
+        expect(r.ok).toBe(true);
     });
 
     it("reports a prediction that is not invertible, from a singular current, as singular", () => {
