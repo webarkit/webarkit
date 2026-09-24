@@ -170,19 +170,27 @@ function downsample(src: GrayImage, dst: GrayImage, r: number): void {
     const dh = dst.height;
     const cols = taps(dw, sw, r);
     const rows = taps(dh, sh, r);
+    const tmp = new Float32Array(sh * dw);
+    if (cols.maxCount <= 4 && rows.maxCount <= 4) {
+        downsample4(src, dst, tmp, fourTaps(cols, dw), fourTaps(rows, dh));
+        return;
+    }
+    const { start: cStart, index: cIndex, weight: cWeight } = cols;
+    const { start: rStart, index: rIndex, weight: rWeight } = rows;
 
     // Horizontal pass: every source row, filtered to the destination width.
-    const tmp = new Float32Array(sh * dw);
+    // The taps of consecutive outputs are consecutive, so one cursor walks
+    // them all.
     const s = src.data;
     for (let y = 0; y < sh; y++) {
         const srcRow = y * sw;
-        const tmpRow = y * dw;
-        for (let x = 0; x < dw; x++) {
+        let o = y * dw;
+        let t = cStart[0];
+        for (let x = 0; x < dw; x++, o++) {
+            const end = cStart[x + 1];
             let acc = 0;
-            for (let t = cols.start[x]; t < cols.start[x + 1]; t++) {
-                acc += cols.weight[t] * s[srcRow + cols.index[t]];
-            }
-            tmp[tmpRow + x] = acc;
+            for (; t < end; t++) acc += cWeight[t] * s[srcRow + cIndex[t]];
+            tmp[o] = acc;
         }
     }
 
@@ -191,9 +199,10 @@ function downsample(src: GrayImage, dst: GrayImage, r: number): void {
     const d = dst.data;
     for (let y = 0; y < dh; y++) {
         acc.fill(0);
-        for (let t = rows.start[y]; t < rows.start[y + 1]; t++) {
-            const w = rows.weight[t];
-            const tmpRow = rows.index[t] * dw;
+        const end = rStart[y + 1];
+        for (let t = rStart[y]; t < end; t++) {
+            const w = rWeight[t];
+            const tmpRow = rIndex[t] * dw;
             for (let x = 0; x < dw; x++) acc[x] += w * tmp[tmpRow + x];
         }
         const dstRow = y * dw;
@@ -201,6 +210,72 @@ function downsample(src: GrayImage, dst: GrayImage, r: number): void {
         // up to rounding: `+ 0.5` then truncation rounds to nearest.
         for (let x = 0; x < dw; x++) d[dstRow + x] = (acc[x] + 0.5) | 0;
     }
+}
+
+/**
+ * {@link downsample} for kernels of at most four taps per output — every
+ * step `r ≤ 2`, since the kernel's support `r + 2` then holds at most four
+ * pixel centres — with each output padded to exactly four, the extra taps
+ * weighing 0. The passes then unroll. The result is bit-identical to the
+ * general path: the same products are summed in the same order, and adding
+ * `+0` to a sum of non-negative terms is exact.
+ */
+function downsample4(
+    src: GrayImage,
+    dst: GrayImage,
+    tmp: Float32Array,
+    cols: FourTaps,
+    rows: FourTaps,
+): void {
+    const { width: sw, height: sh, data: s } = src;
+    const { width: dw, height: dh, data: d } = dst;
+    const ci = cols.index;
+    const cw = cols.weight;
+    for (let y = 0; y < sh; y++) {
+        const row = y * sw;
+        let o = y * dw;
+        for (let k = 0; k < 4 * dw; k += 4, o++) {
+            tmp[o] =
+                cw[k] * s[row + ci[k]] +
+                cw[k + 1] * s[row + ci[k + 1]] +
+                cw[k + 2] * s[row + ci[k + 2]] +
+                cw[k + 3] * s[row + ci[k + 3]];
+        }
+    }
+    for (let y = 0; y < dh; y++) {
+        const k = 4 * y;
+        const [w0, w1, w2, w3] = rows.weight.subarray(k, k + 4);
+        const r0 = rows.index[k] * dw;
+        const r1 = rows.index[k + 1] * dw;
+        const r2 = rows.index[k + 2] * dw;
+        const r3 = rows.index[k + 3] * dw;
+        const o = y * dw;
+        for (let x = 0; x < dw; x++) {
+            const v = w0 * tmp[r0 + x] + w1 * tmp[r1 + x] + w2 * tmp[r2 + x] + w3 * tmp[r3 + x];
+            d[o + x] = (v + 0.5) | 0;
+        }
+    }
+}
+
+/** {@link Taps} padded to exactly four per output: `index`/`weight` hold `4 · count` entries. */
+interface FourTaps {
+    readonly index: Int32Array;
+    readonly weight: Float64Array;
+}
+
+function fourTaps(t: Taps, count: number): FourTaps {
+    const index = new Int32Array(4 * count);
+    const weight = new Float64Array(4 * count);
+    for (let i = 0; i < count; i++) {
+        const first = t.start[i];
+        const n = t.start[i + 1] - first;
+        for (let j = 0; j < 4; j++) {
+            // Padding repeats the last real tap's pixel, at weight 0.
+            index[4 * i + j] = t.index[first + Math.min(j, n - 1)];
+            weight[4 * i + j] = j < n ? t.weight[first + j] : 0;
+        }
+    }
+    return { index, weight };
 }
 
 /**
@@ -220,6 +295,8 @@ interface Taps {
     readonly start: Int32Array;
     readonly index: Int32Array;
     readonly weight: Float64Array;
+    /** The most taps any output has. */
+    readonly maxCount: number;
 }
 
 /**
@@ -235,6 +312,7 @@ function taps(count: number, length: number, r: number): Taps {
     const index = new Int32Array(count * perOutput);
     const weight = new Float64Array(count * perOutput);
     let n = 0;
+    let maxCount = 0;
     for (let i = 0; i < count; i++) {
         start[i] = n;
         const c = i * r;
@@ -250,9 +328,10 @@ function taps(count: number, length: number, r: number): Taps {
             n++;
         }
         for (let t = start[i]; t < n; t++) weight[t] /= sum;
+        maxCount = Math.max(maxCount, n - start[i]);
     }
     start[count] = n;
-    return { start, index, weight };
+    return { start, index, weight, maxCount };
 }
 
 /** `∫ tri(t) dt` from −∞ to `u`, `tri` the unit triangle on `[−1, 1]`. */

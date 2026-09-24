@@ -187,8 +187,15 @@ describe("buildFramePyramid: the filter", () => {
     }
 
     it("keeps a constant image constant at every level", () => {
-        for (const step of [CBRT2, 2, 1.5]) {
-            for (const level of build(image(97, 61, 173), 5, step)) {
+        // Steps up to 2 take the four-tap path, larger ones the general one.
+        // 97×61 has five levels at steps up to 2, three at step 3.
+        for (const [step, levels] of [
+            [CBRT2, 5],
+            [2, 5],
+            [1.5, 5],
+            [3, 3],
+        ]) {
+            for (const level of build(image(97, 61, 173), levels, step)) {
                 expect(level.data.every((v) => v === 173)).toBe(true);
             }
         }
@@ -224,6 +231,19 @@ describe("buildFramePyramid: the filter", () => {
                 }
                 expect(Math.abs(sum / n)).toBeLessThan(0.15);
                 expect(worst).toBeLessThanOrEqual(0.5 * l + 1e-9);
+            }
+        }
+    });
+
+    it("reproduces a ramp exactly on the general path (step 3), where level 1's x is level 0's 3x", () => {
+        // v = x + 20 filtered at c = 3x is exactly 3x + 20, an integer: the
+        // kernel's first moment is exact, so nothing is left to round.
+        const ramp = sampled(216, 12, (x) => x + 20);
+        const [, level1] = build(ramp, 2, 3);
+        expect(level1.width).toBe(72);
+        for (let y = 0; y < level1.height; y++) {
+            for (let x = 1; x < level1.width - 1; x++) {
+                expect(level1.data[y * level1.width + x]).toBe(3 * x + 20);
             }
         }
     });

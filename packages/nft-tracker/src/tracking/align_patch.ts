@@ -169,7 +169,8 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
     for (const l of start === usable[0] ? [start] : [start, usable[0]]) {
         level = l;
         const fp = footprint(frame, frameScales, l, window);
-        if (!inside(frame, frameScales, l, window, dx, dy, fp)) return fail("outside-frame");
+        const reach = fp === null ? 0 : fp.halfWidth;
+        if (!inside(frame, frameScales, l, window, dx, dy, reach)) return fail("outside-frame");
         const img = frame.levels[l];
         const s = frameScales[l];
         converged = false;
@@ -204,14 +205,14 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
                     return fail("singular");
                 }
             }
-            if (!inside(frame, frameScales, l, window, dx, dy, fp)) return fail("outside-frame");
+            if (!inside(frame, frameScales, l, window, dx, dy, reach)) return fail("outside-frame");
             if (s * Math.sqrt(stepX * stepX + stepY * stepY) < options.epsilon) {
                 converged = true;
                 break;
             }
         }
     }
-    return observation(q, centre, dx, dy, frame, frameScales, level, window, patch, {
+    return observation(q, centre, dx, dy, frame, frameScales, level, window, patch, values, {
         converged,
         iterations,
         gain,
@@ -279,14 +280,13 @@ function footprint(
     l: number,
     window: Window,
 ): Footprint | null {
+    const halfWidth = footprintHalfWidth(frame, scales, l, window);
+    if (halfWidth === 0) return null;
     const sigma = window.scaleAtCentre * scales[l];
-    const r = frame.scaleStep;
-    if (!(sigma > Math.sqrt(r))) return null;
-    const variance = (stepVariance(r) * (1 - 1 / (sigma * sigma))) / (r * r - 1);
-    const halfWidth = Math.sqrt(6 * variance);
     const m = Math.min(MAX_FOOTPRINT_POINTS, Math.ceil(2 * halfWidth * sigma));
-    const offsets = new Float64Array(m);
-    const weights = new Float64Array(m);
+    const grid = new Float64Array(2 * m);
+    const offsets = grid.subarray(0, m);
+    const weights = grid.subarray(m);
     let sum = 0;
     for (let a = 0; a < m; a++) {
         offsets[a] = -halfWidth + ((a + 0.5) * 2 * halfWidth) / m;
@@ -295,6 +295,25 @@ function footprint(
     }
     for (let a = 0; a < m; a++) weights[a] /= sum;
     return { offsets, weights, halfWidth };
+}
+
+/**
+ * The half-width, patch px, of the {@link footprint} level `l` is read
+ * through, or 0 where it is point-sampled — which a footprint never is, its
+ * variance being positive whenever `σ > √r > 1`. Allocates nothing, so the
+ * usability of every level can be decided before any is read.
+ */
+function footprintHalfWidth(
+    frame: FramePyramid,
+    scales: Float64Array,
+    l: number,
+    window: Window,
+): number {
+    const sigma = window.scaleAtCentre * scales[l];
+    const r = frame.scaleStep;
+    if (!(sigma > Math.sqrt(r))) return 0;
+    const variance = (stepVariance(r) * (1 - 1 / (sigma * sigma))) / (r * r - 1);
+    return Math.sqrt(6 * variance);
 }
 
 /**
@@ -356,12 +375,13 @@ function observation(
     level: number,
     window: Window,
     patch: Patch,
+    values: Float64Array,
     run: { converged: boolean; iterations: number; gain: number; bias: number },
 ): PatchAlignment {
     const x = centre[0] + dx;
     const y = centre[1] + dy;
     const { gain, bias } = run;
-    const residual = residualAt(frame, scales, level, window, patch, dx, dy, gain, bias);
+    const residual = residualAt(frame, scales, level, window, patch, dx, dy, gain, bias, values);
     const numbers = [x, y, residual, gain, bias];
     if (!numbers.every((v) => Number.isFinite(v))) return fail("singular");
     return {
@@ -462,29 +482,52 @@ function alignmentSystem(
     const { P, pixels, offset, scale } = patch;
     const n = P * P;
     const size = photometric ? 4 : 2;
-    const sx = new Float64Array(n);
-    const sy = new Float64Array(n);
-    const H = new Float64Array(size * size);
+    const work = new Float64Array(2 * n + 32);
+    const sx = work.subarray(0, n);
+    const sy = work.subarray(n, 2 * n);
+    // H₀'s lower triangle, over the columns [SDx, SDy, T, 1].
+    let h00 = 0;
+    let h10 = 0;
+    let h11 = 0;
+    let h20 = 0;
+    let h21 = 0;
+    let h22 = 0;
+    let h30 = 0;
+    let h31 = 0;
+    let h32 = 0;
+    let h33 = 0;
     for (let i = 0; i < P; i++) {
         for (let j = 0; j < P; j++) {
             const k = i * P + j;
-            const [gx, gy] = gradient(pixels, offset, P, i, j);
+            const gx = gradientX(pixels, offset, P, i, j);
+            const gy = gradientY(pixels, offset, P, i, j);
             // J = J_H / scale, so J⁻¹ = scale · J_H⁻¹.
             const a = window.ja[k];
             const b = window.jb[k];
             const c = window.jc[k];
             const d = window.jd[k];
             const f = scale / (a * d - b * c);
-            sx[k] = f * (gx * d - gy * c);
-            sy[k] = f * (gy * a - gx * b);
-            const col = photometric ? [sx[k], sy[k], pixels[offset + k], 1] : [sx[k], sy[k]];
-            for (let r = 0; r < size; r++) {
-                for (let q = 0; q <= r; q++) H[r * size + q] += col[r] * col[q];
+            const sxk = f * (gx * d - gy * c);
+            const syk = f * (gy * a - gx * b);
+            sx[k] = sxk;
+            sy[k] = syk;
+            h00 += sxk * sxk;
+            h10 += syk * sxk;
+            h11 += syk * syk;
+            if (photometric) {
+                const t = pixels[offset + k];
+                h20 += t * sxk;
+                h21 += t * syk;
+                h22 += t * t;
+                h30 += sxk;
+                h31 += syk;
+                h32 += t;
+                h33 += 1;
             }
         }
     }
     if (size === 2) {
-        const [h00, , h01, h11] = H;
+        const h01 = h10;
         const det = h00 * h11 - h01 * h01;
         if (!(Number.isFinite(det) && det > 0)) return null;
         return {
@@ -495,8 +538,10 @@ function alignmentSystem(
             factor: Float64Array.from([h11 / det, -h01 / det, -h01 / det, h00 / det]),
         };
     }
-    const L = cholesky(H, size);
-    return L === null ? null : { n, size, sx, sy, factor: L };
+    const H = work.subarray(2 * n, 2 * n + 16);
+    H.set([h00, 0, 0, 0, h10, h11, 0, 0, h20, h21, h22, 0, h30, h31, h32, h33]);
+    const L = work.subarray(2 * n + 16, 2 * n + 32);
+    return cholesky(H, size, L) ? { n, size, sx, sy, factor: L } : null;
 }
 
 /** `b ← H₀⁻¹ b`, in place. */
@@ -524,24 +569,23 @@ function solve(system: AlignmentSystem, b: Float64Array): void {
 
 /**
  * The lower Cholesky factor of the symmetric `n × n` matrix whose lower
- * triangle `A` holds (row-major), or `null` unless it is positive definite
- * with finite entries.
+ * triangle `A` holds (row-major), into `L` (zeroed, `n²` entries); `false`
+ * unless it is positive definite with finite entries.
  */
-function cholesky(A: Float64Array, n: number): Float64Array | null {
-    const L = new Float64Array(n * n);
+function cholesky(A: Float64Array, n: number, L: Float64Array): boolean {
     for (let r = 0; r < n; r++) {
         for (let q = 0; q <= r; q++) {
             let v = A[r * n + q];
             for (let k = 0; k < q; k++) v -= L[r * n + k] * L[q * n + k];
             if (r === q) {
-                if (!(Number.isFinite(v) && v > 0)) return null;
+                if (!(Number.isFinite(v) && v > 0)) return false;
                 L[r * n + r] = Math.sqrt(v);
             } else {
                 L[r * n + q] = v / L[q * n + q];
             }
         }
     }
-    return L;
+    return true;
 }
 
 function validOptions(o: AlignPatchOptions): boolean {
@@ -698,16 +742,12 @@ interface Window {
 function warpWindow(H: Mat3, patch: Patch): Window | null {
     const { P, left, top, scale } = patch;
     const n = P * P;
-    const x = new Float64Array(n);
-    const y = new Float64Array(n);
-    const ja = new Float64Array(n);
-    const jb = new Float64Array(n);
-    const jc = new Float64Array(n);
-    const jd = new Float64Array(n);
-    const ux = new Float64Array(n);
-    const uy = new Float64Array(n);
-    const vx = new Float64Array(n);
-    const vy = new Float64Array(n);
+    // One allocation for all ten per-sample arrays: a typed array's backing
+    // store costs far more to allocate than its size suggests (see
+    // scripts/bench-tracking.mjs), and this runs for every patch.
+    const fields = new Float64Array(10 * n);
+    const field = (f: number) => fields.subarray(f * n, (f + 1) * n);
+    const [x, y, ja, jb, jc, jd, ux, uy, vx, vy] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(field);
     let spanX = 0;
     let spanY = 0;
     let minX = Infinity;
@@ -717,26 +757,38 @@ function warpWindow(H: Mat3, patch: Patch): Window | null {
     let invertible = true;
     for (let i = 0; i < P; i++) {
         for (let j = 0; j < P; j++) {
+            // project() and jacobian(), inlined: this loop runs P² times
+            // for every patch of every frame, and their tuples cost more
+            // than their arithmetic. The expressions are theirs, unchanged.
             const X = (left + j) / scale;
             const Y = (top + i) / scale;
-            const p = project(H, X, Y);
-            if (p === null) return null;
+            const w = H[6] * X + H[7] * Y + H[8];
+            if (!(w > 0)) return null;
+            const px = (H[0] * X + H[1] * Y + H[2]) / w;
+            const py = (H[3] * X + H[4] * Y + H[5]) / w;
+            if (!(Number.isFinite(px) && Number.isFinite(py))) return null;
             const k = i * P + j;
-            x[k] = p[0];
-            y[k] = p[1];
-            minX = Math.min(minX, p[0]);
-            maxX = Math.max(maxX, p[0]);
-            minY = Math.min(minY, p[1]);
-            maxY = Math.max(maxY, p[1]);
-            const J = jacobian(H, X, Y, p[0], p[1]);
-            [ja[k], jb[k], jc[k], jd[k]] = J;
-            ux[k] = J[0] / scale;
-            uy[k] = J[2] / scale;
-            vx[k] = J[1] / scale;
-            vy[k] = J[3] / scale;
+            x[k] = px;
+            y[k] = py;
+            minX = Math.min(minX, px);
+            maxX = Math.max(maxX, px);
+            minY = Math.min(minY, py);
+            maxY = Math.max(maxY, py);
+            const a = (H[0] - H[6] * px) / w;
+            const b = (H[1] - H[7] * px) / w;
+            const c = (H[3] - H[6] * py) / w;
+            const d = (H[4] - H[7] * py) / w;
+            ja[k] = a;
+            jb[k] = b;
+            jc[k] = c;
+            jd[k] = d;
+            ux[k] = a / scale;
+            uy[k] = c / scale;
+            vx[k] = b / scale;
+            vy[k] = d / scale;
             spanX = Math.max(spanX, Math.abs(ux[k]) + Math.abs(vx[k]));
             spanY = Math.max(spanY, Math.abs(uy[k]) + Math.abs(vy[k]));
-            const det = J[0] * J[3] - J[1] * J[2];
+            const det = a * d - b * c;
             if (!(Number.isFinite(det) && det !== 0)) invertible = false;
         }
     }
@@ -804,7 +856,7 @@ function jacobian(
 function usableLevels(frame: FramePyramid, scales: Float64Array, window: Window): number[] {
     const out: number[] = [];
     for (let l = 0; l < frame.levels.length; l++) {
-        if (inside(frame, scales, l, window, 0, 0, footprint(frame, scales, l, window))) {
+        if (inside(frame, scales, l, window, 0, 0, footprintHalfWidth(frame, scales, l, window))) {
             out.push(l);
         }
     }
@@ -813,7 +865,8 @@ function usableLevels(frame: FramePyramid, scales: Float64Array, window: Window)
 
 /**
  * Whether everything the window reads, moved by `(dx, dy)` level-0 px, lies
- * inside level `l` when each patch pixel is read through `fp`.
+ * inside level `l` when each patch pixel is read through a footprint of
+ * `halfWidth` patch px (0: one point).
  */
 function inside(
     frame: FramePyramid,
@@ -822,13 +875,13 @@ function inside(
     window: Window,
     dx: number,
     dy: number,
-    fp: Footprint | null,
+    halfWidth: number,
 ): boolean {
     const { width, height } = frame.levels[l];
     if (width < 2 || height < 2) return false;
     const s = scales[l];
-    const rx = fp === null ? 0 : fp.halfWidth * window.spanX;
-    const ry = fp === null ? 0 : fp.halfWidth * window.spanY;
+    const rx = halfWidth === 0 ? 0 : halfWidth * window.spanX;
+    const ry = halfWidth === 0 ? 0 : halfWidth * window.spanY;
     return (
         s * (window.minX + dx - rx) >= 0 &&
         s * (window.maxX + dx + rx) <= width - 1 &&
@@ -858,7 +911,8 @@ function translationInformation(patch: Patch, photometric: boolean): number {
     let sTT = 0;
     for (let i = 0; i < P; i++) {
         for (let j = 0; j < P; j++) {
-            const [gx, gy] = gradient(pixels, offset, P, i, j);
+            const gx = gradientX(pixels, offset, P, i, j);
+            const gy = gradientY(pixels, offset, P, i, j);
             const t = pixels[offset + i * P + j];
             gxx += gx * gx;
             gxy += gx * gy;
@@ -889,7 +943,8 @@ function translationInformation(patch: Patch, photometric: boolean): number {
 }
 
 /**
- * The patch's intensity gradient at pixel `(i, j)`, grey levels per patch
+ * The column-direction component of the patch's intensity gradient at
+ * pixel `(i, j)` ({@link gradientY} gives the other), grey levels per patch
  * px: central differences inside, one-sided on the border rows and columns.
  *
  * **Why every pixel, border included.** A stored patch has no pixels around
@@ -902,27 +957,19 @@ function translationInformation(patch: Patch, photometric: boolean): number {
  * ordering holds at `P = 12` (0.014 vs 0.020 px; 91% vs 89%). The border's
  * cruder gradient costs less than the information it adds.
  */
-function gradient(
-    pixels: Uint8Array,
-    offset: number,
-    P: number,
-    i: number,
-    j: number,
-): [number, number] {
-    const at = (r: number, c: number) => pixels[offset + r * P + c];
-    const gx =
-        j === 0
-            ? at(i, 1) - at(i, 0)
-            : j === P - 1
-              ? at(i, j) - at(i, j - 1)
-              : (at(i, j + 1) - at(i, j - 1)) / 2;
-    const gy =
-        i === 0
-            ? at(1, j) - at(0, j)
-            : i === P - 1
-              ? at(i, j) - at(i - 1, j)
-              : (at(i + 1, j) - at(i - 1, j)) / 2;
-    return [gx, gy];
+function gradientX(pixels: Uint8Array, offset: number, P: number, i: number, j: number): number {
+    const row = offset + i * P;
+    if (j === 0) return pixels[row + 1] - pixels[row];
+    if (j === P - 1) return pixels[row + j] - pixels[row + j - 1];
+    return (pixels[row + j + 1] - pixels[row + j - 1]) / 2;
+}
+
+/** The row-direction component of the gradient {@link gradientX} describes. */
+function gradientY(pixels: Uint8Array, offset: number, P: number, i: number, j: number): number {
+    const col = offset + j;
+    if (i === 0) return pixels[col + P] - pixels[col];
+    if (i === P - 1) return pixels[col + i * P] - pixels[col + (i - 1) * P];
+    return (pixels[col + (i + 1) * P] - pixels[col + (i - 1) * P]) / 2;
 }
 
 /** Smallest eigenvalue of the symmetric 2 × 2 `[[a, b], [b, c]]`. */
@@ -935,7 +982,7 @@ function minEigenvalue(a: number, b: number, c: number): number {
 /**
  * RMS intensity difference between the patch, after gain and bias, and
  * level `l` over the P × P window, the level read the way the alignment
- * reads it there.
+ * reads it there. `values` is scratch of P² entries.
  */
 function residualAt(
     frame: FramePyramid,
@@ -947,9 +994,9 @@ function residualAt(
     dy: number,
     gain: number,
     bias: number,
+    values: Float64Array,
 ): number {
     const n = patch.P * patch.P;
-    const values = new Float64Array(n);
     const fp = footprint(frame, scales, l, window);
     sampleFrame(frame.levels[l], scales[l], window, dx, dy, fp, values);
     let sum = 0;
