@@ -40,7 +40,12 @@
 import { describe, it, expect } from "vitest";
 import type { GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
 import { alignPatch, buildFramePyramid, levelScale } from "../../src/index.js";
-import type { AlignPatchOptions, FramePyramid, PatchObservation } from "../../src/index.js";
+import type {
+    AlignPatchOptions,
+    FramePyramid,
+    PatchAlignment,
+    PatchObservation,
+} from "../../src/index.js";
 import { cutPatches, patchCentre, texturedSites } from "../fixtures/patch_table.js";
 import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
 import type { RenderOptions } from "../fixtures/warped_frames.js";
@@ -54,8 +59,8 @@ import { mat3Mul, project, renderWarp, translation, view } from "../fixtures/war
 // - The pinball image spans 0..255, so any contrast increase or brightness
 //   shift clips it, and a clipped frame is not an affine change of the patch.
 //   The target here is therefore a low-contrast print of it, 0.5 · v + 64
-//   (64..192), with room on both sides; each test checks the frames it
-//   renders stay inside [0, 255] rather than assuming it.
+//   (64..192), with room on both sides; the first test checks that every
+//   change keeps it inside [0, 255] rather than assuming it.
 // - Even on an unchanged frame the estimate is not (1, 0): measured gain
 //   1.04, bias −4.5 on the full-contrast image. The renderer's frame is
 //   sharper than the level-3 patch, so its texture has a few percent more
@@ -122,6 +127,26 @@ function alignAll(render: Partial<RenderOptions>, options: AlignPatchOptions) {
     };
 }
 
+/** The target in the view `H`, rendered with `render`, as a pyramid. */
+function frameOf(render: Partial<RenderOptions>): FramePyramid {
+    return pyramidOf(renderWarp(target, H, { ...FRAME, ...render }), 5);
+}
+
+/** Every patch aligned with gain and bias from `d` px off, in `directions` directions. */
+function fromOff(frame: FramePyramid, d: number, directions: number) {
+    const results: { r: PatchAlignment; error: number }[] = [];
+    truths.forEach(([tx, ty], q) => {
+        for (let k = 0; k < directions; k++) {
+            const a = (2 * k * Math.PI) / directions;
+            const off = translation(d * Math.cos(a), d * Math.sin(a));
+            const r = alignPatch(frame, patches, q, STEP, mat3Mul(off, H), ON);
+            const error = r.ok ? Math.hypot(r.observation.x - tx, r.observation.y - ty) : Infinity;
+            results.push({ r, error });
+        }
+    });
+    return results;
+}
+
 /** Contrast from 0.6 to 1.3 and brightness ±40, each inside [0, 255] on this target. */
 const CHANGES: [number, number][] = [
     [0.6, 0],
@@ -142,9 +167,15 @@ describe("alignPatch: gain and bias", () => {
         }
     });
 
-    it("keeps the clean-warp accuracy (median below 0.05 px) under brightness/contrast changes, carrying gain within 0.01·g and bias within 1 grey level", () => {
+    it("keeps the clean-warp accuracy (median below 0.05 px) under brightness/contrast changes, carrying the unchanged frame's estimate over: gain within 0.01·g of g·gain₀, bias within 1 grey level of g·bias₀ + b", () => {
+        // Measured: median errors 0.016–0.020 px; gain within 0.0024·g, bias
+        // within 0.19 grey levels. A level converges twice with gain and bias
+        // (align_patch.ts): a median of 5 iterations, 95th percentile 6.
         expect(unchanged.converged).toBe(true);
         expect(median(unchanged.errors)).toBeLessThan(0.05);
+        const iterations = unchanged.observations.map((o) => o.iterations).sort((a, c) => a - c);
+        expect(median(iterations)).toBeLessThanOrEqual(5);
+        expect(iterations[Math.floor(0.95 * iterations.length)]).toBeLessThanOrEqual(6);
         for (const [g, b] of CHANGES) {
             const changed = alignAll({ gain: g, bias: b }, ON);
             expect(changed.converged).toBe(true);
@@ -154,13 +185,63 @@ describe("alignPatch: gain and bias", () => {
         }
     });
 
-    it("is what the changes need: without it, errors grow 14× to 2000×, except for a change that pivots at the patches' mean grey level (2×)", () => {
-        // Measured, median error off / on: 2182× (gain 0.6: uncompensated
-        // alignment diverges, 42 px), 50× (1.3), 75× and 90× (bias ∓40), 14×
+    it("keeps the basin under every change: from 2 px off all converge, from 3 px 96% (asserted ≥ 90%), and at most 1.6% elsewhere (≤ 2%)", () => {
+        // 24 patches × 8 directions per change. Estimating gain and bias by
+        // least squares from the first iteration, as the simultaneous
+        // algorithm alone does, converged only 45–48% from 3 px (84–92% from
+        // 2 px), and 3–6% of alignments converged away from the truth: a
+        // window that far off matches the patch poorly, so the fitted gain
+        // collapses towards 0 and the translation step, divided by it,
+        // overshoots. Matching gain and bias by moments until the translation
+        // has converged (align_patch.ts) is what keeps it.
+        for (const [g, b] of [[1, 0], ...CHANGES]) {
+            const frame = frameOf({ gain: g, bias: b });
+            const near = fromOff(frame, 2, 8);
+            expect(
+                near.every(({ r, error }) => r.ok && r.observation.converged && error < 0.5),
+            ).toBe(true);
+            const far = fromOff(frame, 3, 8);
+            const converged = far.filter(({ r }) => r.ok && r.observation.converged);
+            const right = converged.filter(({ error }) => error < 0.5).length;
+            expect(right / far.length).toBeGreaterThanOrEqual(0.9);
+            expect((converged.length - right) / far.length).toBeLessThanOrEqual(0.02);
+        }
+    }, 30_000);
+
+    it("tells a wrong convergence by its residual: from 3 to 8 px off, residual / gain is at most 3.8 grey levels when right and at least 6.1 when wrong", () => {
+        // Beyond the basin an alignment can converge in the wrong place, as
+        // any local method's can; rejecting it is the robust fit's job
+        // (align_patch.ts, point 6), and this is its signal. Four changes,
+        // σ = 2 grey levels of noise, 24 patches × 16 directions × 4
+        // offsets: 3521 right convergences and 778 wrong ones, measured.
+        const right: number[] = [];
+        const wrong: number[] = [];
+        for (const [g, b] of [
+            [1, 0],
+            [0.6, 0],
+            [1.3, 0],
+            [0.7, 30],
+        ]) {
+            const frame = frameOf({ gain: g, bias: b, noiseSigma: 2, seed: 5 });
+            for (const d of [3, 4, 6, 8]) {
+                for (const { r, error } of fromOff(frame, d, 16)) {
+                    if (!(r.ok && r.observation.converged)) continue;
+                    (error < 0.5 ? right : wrong).push(r.observation.residual / r.observation.gain);
+                }
+            }
+        }
+        expect(wrong.length).toBeGreaterThan(100);
+        expect(Math.max(...right)).toBeLessThan(4);
+        expect(Math.min(...wrong)).toBeGreaterThan(6);
+    }, 30_000);
+
+    it("is what the changes need: without it, errors grow 14× to over 2000×, except for a change that pivots at the patches' mean grey level (2.2×)", () => {
+        // Measured, median error off / on: 2157× (gain 0.6: uncompensated
+        // alignment diverges, 42 px), 50× (1.3), 73× and 88× (bias ∓40), 14×
         // (0.7 / +30). A change leaves grey level b / (1 − g) where it was;
         // for 1.2 / −25 that is 125, the patches' own mean (126), so it only
         // rescales their contrast about their mean, which a translation-only
-        // fit barely notices: 2.1×. Compensating never loses.
+        // fit barely notices: 2.2×. Compensating never loses.
         const mean = patches.pixels.reduce((a, v) => a + v, 0) / patches.pixels.length;
         for (const [g, b] of CHANGES) {
             const on = alignAll({ gain: g, bias: b }, ON);

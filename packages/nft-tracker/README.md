@@ -353,7 +353,8 @@ for 8 × 8 pinball patches whose level matches the frame's scale:
 | Sensor noise σ = 4 / 8 grey levels, plus blur | median 0.070 / 0.082 px |
 | Converging from a prediction 3 / 4 / 8 px off | 97% / 89% / 37% (twice as far for a patch seen at twice its scale) |
 | Prediction's rotation off by 10° / scale by 10% | 94% / 100% converge |
-| Gain 0.6–1.3, bias ±40, compensated | as clean; uncompensated, errors grow 14× to 2000× |
+| Gain 0.6–1.3, bias ±40, compensated | as clean, and 96% converge from 3 px off; uncompensated, errors grow 14× to over 2000× (2.2× for a change pivoting at the patches' mean grey level) |
+| A wrong convergence, beyond the basin | told by its `residual / gain`: at least 6.1 grey levels, against at most 3.8 for a right one |
 
 Their cost, in Node on a development machine, is measured by
 `scripts/bench-tracking.mjs` (`npm run build` first): at the 270×360

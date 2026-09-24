@@ -84,9 +84,19 @@ const MIN_EIGENVALUE = 1;
  * 3. **How.** Inverse compositional Lucas–Kanade (Baker & Matthews, "Lucas-
  *    Kanade 20 Years On"): the template's steepest-descent images and the
  *    Hessian are built once per patch, and an iteration only samples the
- *    frame. Gain and bias by the simultaneous inverse compositional
+ *    frame. Gain and bias, when estimated, in two phases per level
+ *    ({@link alignmentSystem}): first matched to the sampled window's mean
+ *    and spread while the translation takes the reduced (variable
+ *    projection) step; then, once that has converged, estimated with the
+ *    translation by least squares, by the simultaneous inverse compositional
  *    algorithm of the same series' Part 3, which for a translation keeps a
- *    once-built Hessian too ({@link alignmentSystem}).
+ *    once-built Hessian too. Least squares from the first iteration, that
+ *    algorithm alone, halved the basin — from 3 px off, 46% converged
+ *    against 96% (align_patch_photometric.test.ts) — because a window that
+ *    far off matches the patch poorly: the fitted gain collapses towards 0,
+ *    and the translation's step, divided by it, overshoots. A window's
+ *    spread does not collapse on textured content, and the final estimate is
+ *    still the least-squares one.
  * 4. **Coarse to fine.** Start on the level where one patch pixel is one
  *    level pixel; then refine on the finest level usable at the estimate
  *    that start reached, read through footprints that blur it as the pyramid
@@ -99,6 +109,9 @@ const MIN_EIGENVALUE = 1;
  *    suites at `epsilon` 0.01 px: a median of 4 iterations (95th percentile
  *    6) for matched patches, 5 (6) for magnified ones, and every one of 1152
  *    alignments from 2 px off converged within a cap of 30, at `σ` 1 and 2.
+ *    With gain and bias, a level converges twice, under matched moments and
+ *    then jointly: a median of 5 iterations (95th percentile 6) from 1 px
+ *    off (align_patch_photometric.test.ts).
  *    `epsilon` is in the finest level's px, so for a magnified patch it is a
  *    finer tolerance in patch px (0.01 frame px is 0.005 patch px at
  *    `σ = 2`) — tight, but met. A step that would take the window out of the
@@ -114,15 +127,15 @@ const MIN_EIGENVALUE = 1;
  *    the prediction: an estimate that later reaches an edge shortens its
  *    steps (point 5) instead of failing. No input reaches `levelScale`'s
  *    throw ({@link validPatch}, {@link validPyramid}). With gain and bias
- *    estimated, `singular` is therefore also how an alignment that *loses*
- *    its patch ends: drifted onto content without the patch's contrast, the
- *    least-squares gain falls to 0 rather than a wrong position coming back.
- *    Measured on a smooth synthetic frame: from two predictions with
- *    perspective errors (up to 37 and 44 px off across the frame), 162 of
- *    240 photometric alignments ended so; from one uniformly 1.8 px off,
- *    none — and every patch involved had ample texture (λ_min ≥ 224 at the
- *    start). So a tracker should read `singular` as a per-frame outcome, not
- *    as a property of the patch.
+ *    estimated, `singular` also ends an alignment whose window has lost the
+ *    patch's contrast, on a flat frame region: a per-frame outcome, not a
+ *    property of the patch. An alignment predicted outside its basin is not
+ *    a failure this function can see: like any local method's, it ends
+ *    unconverged, or converged in the wrong place. Rejecting those is the
+ *    robust fit's job (branch C), and the residual is its signal: in the
+ *    photometric suite, from 3 to 8 px off, every correct convergence had a
+ *    `residual / gain` of at most 3.8 grey levels, every wrong one at least
+ *    6.1 (align_patch_photometric.test.ts).
  *
  * **Assumptions** (format spec Q11, frame_pyramid.ts): the patch was cut
  * from a level `buildFramePyramid` built with `targetScaleStep`, and the
@@ -182,6 +195,10 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
     let iterations = 0;
     let converged = false;
     let level = start;
+    // With gain and bias, they are first matched to the window's moments while
+    // the translation alone is stepped, and estimated with it by least
+    // squares only once that has converged (alignmentSystem).
+    let matching = system.size === 4;
     for (let pass = 0; pass < 2; pass++) {
         // Pass 0 aligns on the start level, which holds the window at the
         // prediction (it is usable). Pass 1 refines on the finest level that
@@ -202,17 +219,40 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
         converged = false;
         for (let it = 0; it < options.maxIterations; it++) {
             sampleFrame(img, s, window, dx, dy, fp, values);
+            if (matching) {
+                // The gain and bias that give the template the window's mean
+                // and spread. templateSpread > 0: a patch without spread has
+                // no information, and was found singular above.
+                let sum = 0;
+                for (let i = 0; i < system.n; i++) sum += values[i];
+                const mean = sum / system.n;
+                let spread = 0;
+                for (let i = 0; i < system.n; i++) {
+                    const v = values[i] - mean;
+                    spread += v * v;
+                }
+                gain = Math.sqrt(spread / system.templateSpread);
+                bias = mean - gain * system.templateMean;
+                if (!(gain > 0 && gain * gain * information >= MIN_EIGENVALUE)) {
+                    return fail("singular");
+                }
+            }
+            const joint = system.size === 4 && !matching;
             b.fill(0);
             for (let i = 0; i < system.n; i++) {
                 const t = patch.pixels[patch.offset + i];
                 const e = values[i] - gain * t - bias;
                 b[0] += system.sx[i] * e;
                 b[1] += system.sy[i] * e;
-                if (system.size === 4) {
+                if (joint) {
                     b[2] += t * e;
                     b[3] += e;
                 }
             }
+            // While matching, b's gain and bias rows are 0 and their part of
+            // the solution is discarded. What is left is the translation step
+            // of the reduced (variable projection) problem: the inverse of
+            // H₀'s Schur complement on the translation, applied to its gradient.
             solve(system, b);
             // The translation's steepest-descent images scale with the gain
             // (see alignmentSystem), so its step is H₀'s divided by it.
@@ -230,8 +270,8 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
                 if (f < 1 / 1024) break;
             }
             if (f < 1 / 1024) break;
-            const nextGain = system.size === 4 ? gain + f * b[2] : gain;
-            const nextBias = system.size === 4 ? bias + f * b[3] : bias;
+            const nextGain = joint ? gain + f * b[2] : gain;
+            const nextBias = joint ? bias + f * b[3] : bias;
             // The information left for the translation is gain² times the
             // patch's own: a frame region with no contrast drives the gain to
             // 0 and the system singular.
@@ -247,6 +287,12 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
             // the full step keeps pointing out; a truth on the edge itself
             // still converges, its full steps shrinking to nothing.
             if (s * Math.sqrt(stepX * stepX + stepY * stepY) < options.epsilon) {
+                if (matching) {
+                    // Aligned under matched moments: the level goes on, now
+                    // estimating gain and bias by least squares.
+                    matching = false;
+                    continue;
+                }
                 converged = true;
                 break;
             }
@@ -512,6 +558,9 @@ interface AlignmentSystem {
     readonly sy: Float64Array;
     /** `H₀⁻¹` for size 2, row-major; `H₀`'s Cholesky factor `L` for size 4. */
     readonly factor: Float64Array;
+    /** With gain and bias: the template's mean, and its sum of squared deviations from it. */
+    readonly templateMean: number;
+    readonly templateSpread: number;
 }
 
 /**
@@ -522,7 +571,8 @@ interface AlignmentSystem {
  * `[SDx, SDy, T, 1]` with gain and bias. `null` if `H₀` is not positive
  * definite.
  *
- * **Gain and bias** follow the simultaneous inverse compositional
+ * **Gain and bias** are estimated in two phases per level (point 3 of
+ * {@link alignPatch}). The second is the simultaneous inverse compositional
  * algorithm of Baker, Gross and Matthews ("Lucas-Kanade 20 Years On",
  * Part 3, linear appearance variation) with the appearance basis `{T, 1}`:
  * the model is `I(x + d) ≈ gain · T(x) + bias`, and each iteration solves
@@ -535,6 +585,17 @@ interface AlignmentSystem {
  * `D = diag(gain, gain, 1, 1)`: `H₀` is factored once, and the translation's
  * step is `H₀`'s divided by the gain. The inverse compositional property —
  * no per-iteration Hessian — survives the photometric extension.
+ *
+ * The first phase uses the same factor. Each iteration sets gain and bias
+ * so that the template's mean and spread (`templateMean`, `templateSpread`)
+ * become the window's, and steps the translation by the translation part of
+ * `H₀⁻¹` applied to the translation's gradient alone: the Gauss–Newton step
+ * of the reduced problem in which gain and bias are eliminated (variable
+ * projection, Golub and Pereyra), with the matched moments standing in for
+ * the least-squares values that a misaligned window drives to 0. Stepping
+ * with the translation block of `H₀` instead, which ignores how the window's
+ * mean moves with the translation, converged as far but crept: on a synthetic
+ * sinusoid, some alignments from 1.8 px off took up to 51 iterations.
  */
 function alignmentSystem(
     window: Window,
@@ -598,12 +659,21 @@ function alignmentSystem(
             sx,
             sy,
             factor: Float64Array.from([h11 / det, -h01 / det, -h01 / det, h00 / det]),
+            templateMean: 0,
+            templateSpread: 0,
         };
     }
     const H = work.subarray(2 * n, 2 * n + 16);
     H.set([h00, 0, 0, 0, h10, h11, 0, 0, h20, h21, h22, 0, h30, h31, h32, h33]);
     const L = work.subarray(2 * n + 16, 2 * n + 32);
-    return cholesky(H, size, L) ? { n, size, sx, sy, factor: L } : null;
+    if (!cholesky(H, size, L)) return null;
+    const templateMean = h32 / n;
+    let templateSpread = 0;
+    for (let k = 0; k < n; k++) {
+        const t = pixels[offset + k] - templateMean;
+        templateSpread += t * t;
+    }
+    return { n, size, sx, sy, factor: L, templateMean, templateSpread };
 }
 
 /** `b ← H₀⁻¹ b`, in place. */
