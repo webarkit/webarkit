@@ -364,10 +364,11 @@ for 8 × 8 pinball patches whose level matches the frame's scale:
 
 Their cost, in Node on a development machine, is measured by
 `scripts/bench-tracking.mjs` (`npm run build` first): at the 270×360
-camera-path frame, a four-level `∛2` pyramid takes about 1.85 ms and a
-matched patch about 15 µs. How that translates to the reference device is
-recorded, with its caveats, in
-[`docs/benchmarks/README.md`](../../docs/benchmarks/README.md).
+camera-path frame, a four-level `∛2` pyramid takes about 1.8 ms, and a
+matched patch about 15 µs at 8 × 8 or 36 µs at `compile-target`'s 16 × 16.
+How that translates to the reference device, where 64 such patches and the
+pyramid together overrun the tracker's ~10 ms, is recorded with its caveats
+in [`docs/benchmarks/README.md`](../../docs/benchmarks/README.md).
 
 ## Conformance
 

@@ -172,17 +172,19 @@ for (const [w, h] of [
     }
 }
 
-console.log("\nalignPatch, P = 8, 270×360 frame, 6 levels, prediction off by (1.5, −1) px:");
+// P = 8 and P = 16, compile-target's default: a patch's cost grows with its
+// P² pixels.
+console.log("\nalignPatch, 270×360 frame, 6 levels, prediction off by (1.5, −1) px:");
 const frame = pyramid(textured(270, 360), 6);
 const options = { maxIterations: 30, epsilon: 0.01, photometric: false };
 const off = Float64Array.from([1, 0, 1.5, 0, 1, -1, 0, 0, 1]);
-for (const [label, level, photometric] of [
-    ["matched (σ = 1), translation", 0, false],
-    ["matched (σ = 1), with gain and bias", 0, true],
-    ["magnified (σ = 2: starts on level 3, footprints on level 0)", 3, false],
-]) {
+for (const [P, label, level, photometric] of [8, 16].flatMap((P) => [
+    [P, "matched (σ = 1), translation", 0, false],
+    [P, "matched (σ = 1), with gain and bias", 0, true],
+    [P, "magnified (σ = 2: starts on level 3, footprints on level 0)", 3, false],
+])) {
     const count = 100;
-    const patches = patchesFrom(frame, level, 8, count);
+    const patches = patchesFrom(frame, level, P, count);
     let iterations = 0;
     let aligned = 0;
     const t = time(() => {
@@ -197,7 +199,7 @@ for (const [label, level, photometric] of [
         }
     });
     console.log(
-        `  ${label}: ${fmt((1000 * t.p50) / count)} µs per patch here ` +
+        `  P = ${P}, ${label}: ${fmt((1000 * t.p50) / count)} µs per patch here ` +
             `(${((t.p50 / count) * toDevice * 1000).toFixed(0)} µs device estimate); ` +
             `${aligned}/${count} aligned, ${(iterations / Math.max(1, aligned)).toFixed(1)} iterations each`,
     );

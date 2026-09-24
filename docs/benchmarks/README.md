@@ -822,55 +822,69 @@ M2" above:
 **Method.** `packages/nft-tracker/scripts/bench-tracking.mjs` (run after
 `npm run build`), three runs: Node v22.22.2, linux/x64, "Intel Xeon
 Processor @ 2.80GHz" in a VM; p50 over 300 runs after 50 warm-up runs, on
-deterministic synthetic frames. The implementation is the one on branch
+deterministic synthetic frames. `.nvmrc` pins Node v24.18.0, which this
+container does not have; the allocation cost described below is V8's, so it
+may differ on the pinned version. The implementation is the one on branch
 `feat/nft-tracker-align-patch`: `buildFramePyramid`'s box-over-triangle
-filter at step `∛2`, and `alignPatch` with `P = 8`, `epsilon` 0.01 px.
+filter at step `∛2`, and `alignPatch` with `P = 8` and `P = 16`
+(`compile-target`'s default), `epsilon` 0.01 px, from predictions 1.8 px off.
 
 **The proxy to the device.** The script also times the RGBA → grey loop
 that `bench-nft` records as `gray`, on the camera path's 270×360 frame. On
 the reference device that stage measured **1.2 ms** p50 (the rear-camera
-runs above); here it measured 0.31–0.38 ms, so device ≈ here × 3.1–3.9
-(the ratio moved between runs by that much). Both are plain loops over
-typed arrays, but that is all they share: the device column is an estimate,
-not a measurement. One known way it misleads: in this Node build, allocating
-a typed array over 64 bytes costs about 2 µs, which dominated `alignPatch`
-until its allocations were consolidated (bit-identically); the grey loop
-allocates once and cannot see that cost.
+runs above); here it measured 0.29–0.39 ms over six runs, so device ≈
+here × 3.1–4.1 (the ratio moved between runs by that much). Both are plain
+loops over typed arrays, but that is all they share: the device column is
+an estimate, not a measurement. One known way it misleads: in this Node
+build, allocating a typed array over 64 bytes costs about 2 µs, which
+dominated `alignPatch` until its allocations were consolidated
+(bit-identically); the grey loop allocates once and cannot see that cost.
 
 | 270×360, step `∛2` | here p50 (3 runs) | device estimate |
 |---|---|---|
-| `buildFramePyramid`, 2 levels (1 computed) | 0.89–0.92 ms | 2.8–3.6 ms |
-| 3 levels | 1.47–1.53 ms | 4.7–5.9 ms |
-| 4 levels | 1.82–1.88 ms | 5.9–7.1 ms |
-| 5 levels | 2.03–2.06 ms | 6.4–7.9 ms |
-| 6 levels | 2.20–2.22 ms | 7.0–8.5 ms |
-| `alignPatch`, one matched patch (≈ 4 iterations) | 14–15 µs | 44–54 µs |
-| `alignPatch`, one patch seen at twice its scale | 123–126 µs | 395–477 µs |
+| `buildFramePyramid`, 2 levels (1 computed) | 0.87–0.90 ms | 2.7–3.7 ms |
+| 3 levels | 1.44–1.46 ms | 4.5–6.0 ms |
+| 4 levels | 1.80–1.83 ms | 5.6–7.5 ms |
+| 5 levels | 2.05–2.07 ms | 6.4–8.5 ms |
+| 6 levels | 2.20–2.23 ms | 6.8–9.1 ms |
+| `alignPatch`, `P = 8`, matched (≈ 4 iterations) | 13.7–16.3 µs | 42–67 µs |
+| … with gain and bias (≈ 5 iterations) | 15.4–15.5 µs | 48–64 µs |
+| … seen at twice its scale | 122–126 µs | 378–518 µs |
+| `alignPatch`, `P = 16`, matched (≈ 3 iterations) | 35.3–36.0 µs | 109–148 µs |
+| … with gain and bias (≈ 4 iterations) | 42.8–43.4 µs | 133–178 µs |
+| … seen at twice its scale | 403–410 µs | 1.25–1.68 ms |
 
-Other frame sizes, one run: a four-level pyramid of 480×270 took 2.38 ms
-here, of 640×480 5.55 ms.
+Other frame sizes, three runs: a four-level pyramid of 480×270 took
+2.36–2.37 ms here, of 640×480 5.53–5.57 ms.
 
 **Against the ~10 ms the camera path leaves for the tracker** ("What this
 implies for M2" above):
 
-- A four-level `∛2` frame pyramid alone is estimated at **6–7 ms** on the
-  reference device: most of the budget, before a single patch is aligned.
-  Each level costs about 60% of the one before it (it has 63% of the
-  pixels), so the first computed level is half of a four-level pyramid's
-  cost: building only the levels a tracker's patches use is worth doing,
-  but even one level is about 3 ms.
-- 50 matched patches are estimated at 2.2–2.7 ms. Magnified patches cost
-  eight times more each (their footprints read 49 frame samples per patch
-  pixel on the finest level), so a tracker should align few of them.
-- Together that is at or over the 8 ms p95 threshold of ADR-0001 point 5,
-  before the robust homography, the pose, or any other step. The pyramid is
-  the largest single item, which is what point 3 expected of it.
+- A four-level `∛2` frame pyramid alone is estimated at **5.6–7.5 ms** on
+  the reference device: most of the budget, before a single patch is
+  aligned. Each level costs about 60% of the one before it (it has 63% of
+  the pixels), so the first computed level is half of a four-level
+  pyramid's cost: building only the levels a tracker's patches use is worth
+  doing, but even one level is about 3 ms.
+- `compile-target`'s default, **64 patches of 16 × 16**, matched to the
+  frame's scale: 2.3 ms here, estimated at **7.0–9.4 ms** on the device,
+  and 8.5–11.4 ms with gain and bias. A patch costs about 2.5 times more at
+  `P = 16` than at `P = 8`: four times the pixels, fewer iterations.
+  Magnified patches cost 8 to 11 times more each (their footprints read 49
+  frame samples per patch pixel at `σ = 2`), so a tracker should align few
+  of them.
+- Together that is 13–17 ms (14–19 with gain and bias): over the ~10 ms,
+  and over the 8 ms p95 threshold of ADR-0001 point 5, before the robust
+  homography, the pose, or any other step. At these defaults the patches
+  cost as much as the pyramid.
 
 **What this does and does not settle.** It supports trying point 3's first
 move — the frame pyramid as an optional backend method — but does not by
 itself trigger it: the thresholds are defined on the reference device, and
-an on-device run of the tracking state replaces this estimate. The
-TypeScript implementation has had one pass of optimisation (unrolled
-four-tap passes, 3.08 → 1.87 ms here for four levels, bit-identical);
-integer arithmetic is the obvious next pass if the pyramid stays in
-TypeScript.
+an on-device run of the tracking state replaces this estimate. It also
+shows that moving the pyramid would not be enough on its own at
+`compile-target`'s defaults: the patch budget (how many, how large, and at
+which scale they are matched) is the other half. The TypeScript
+implementation has had one pass of optimisation (unrolled four-tap passes,
+3.08 → 1.87 ms here for four levels, bit-identical); integer arithmetic is
+the obvious next pass if the pyramid stays in TypeScript.
