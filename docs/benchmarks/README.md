@@ -203,3 +203,149 @@ future change that looks like an improvement on a desktop run but doesn't
 move the on-device number is not the improvement it appears to be. Treat
 "laptop" as a fast, convenient smoke-test tier, and `Tab_9_WiFi`, run
 on-device, as the only one item 5's thresholds can ever be evaluated against.
+
+## Planned — `maxKeypoints` sweep (M2: patch tracking)
+
+A measurement plan, written down **before** any of its runs, so the result
+can be read against what was predicted rather than explained after the
+fact. No numbers below are measurements unless they say so.
+
+### The hypothesis
+
+From "What this implies for M2" above: `match` cost tracks the scene
+keypoint budget (`maxKeypoints`, 300 today), not scene content. The
+mechanism behind it is the backend's `match`, a brute-force k=2 nearest-neighbour
+search followed by Lowe's ratio test. `matchPerLevel` runs it once per target
+level, so a frame costs about (scene keypoints) × (target descriptors)
+Hamming distances, and the target side is fixed for the whole run. If the
+hypothesis holds, `match` p50 is close to proportional to the number of scene
+keypoints and nearly independent of what the frame shows.
+
+The precise form is that `match` tracks `numSceneKeypoints`, what `detect`
+returned. The budget only controls that when it *binds*, i.e. when the frame
+has more corners than the budget. `bench-nft.html` now records both (the
+run's `maxKeypoints` and each frame's `numSceneKeypoints`), because without
+the second one a slow frame on a corner-poor scene cannot be told apart from
+a slow frame on a full budget.
+
+**A caveat on the evidence the hypothesis came from.** The wall and table
+clips' near-identical `match` (62.7 vs 64.1 ms) was read as "the budget
+dominates". A corner count taken since then (below) shows that on the wall
+clip a budget of 300 binds on only about half the frames. That run's median
+frame had around 280 scene keypoints, not 300. That is still consistent with
+the hypothesis, but the comparison could not have separated "tracks the
+budget" from "tracks whatever `detect` returned". The sweep below can.
+
+### Pre-flight: where the budget binds, per clip
+
+This is a count, not a timing: `maxKeypoints=100000` (so effectively no cap),
+`stateless`, a 400-frame window covering each clip's full loop, desktop Chrome
+(headless) on a laptop. `detect` is deterministic on identical pixels, but a
+device's `drawImage` downscale can differ from the laptop's by a pixel's worth
+of filtering, so treat these as approximate. The on-device export's
+`numSceneKeypoints` is the authority.
+
+| clip | processed at | corners found per frame (min / p5 / p50 / max) | frames where 300 binds |
+|---|---|---|---|
+| `pinball-bench.mp4` (wall, moving) | 480×270 | 134 / 144 / 282 / 951 | 46% |
+| `pinball-bench-table.mp4` (table, oblique) | 203×360 | 355 / 371 / 548 / 1217 | 100% |
+| `pinball-static.mp4` (wall, fixed camera) | 203×360 | 1210 / 1231 / 1262 / 1313 | 100% |
+
+### The runs
+
+- **Device:** `Tab_9_WiFi`, the ADR-0001 reference device, run **on the
+  device's own Chrome** over `adb reverse`, exactly as the 2026-09-19
+  baseline was. Check `userAgent` in each export for `Android`: the laptop
+  mix-up recorded above is the failure this guards against. Device label
+  `Tab_9_WiFi`.
+- **Mode:** `stateless` (same as the baseline). **Window:** 120 frames.
+  **start at:** 0.
+- **Clips:**
+  - `pinball-static.mp4` is the primary. The content is identical on every
+    frame and the budget binds on every frame at every value below, so the
+    budget is the only thing that varies.
+  - `pinball-bench-table.mp4` is the content control. It is processed at the
+    same 203×360, and the budget also binds on every frame (≥355 corners),
+    but the scene is different.
+  - Not the wall clip: it does not fill a 300 or 200 budget on about half of
+    its frames, and not a 150 budget on about one in ten.
+- **Values:** `maxKeypoints` = 300 (default and anchor), 200, 150, 100.
+- **Order:** static 300 → 100 → 200 → 150, then table 300 → 100 → 200 → 150,
+  then **static 300 again**. Nine runs. The order is shuffled so that thermal
+  drift over the session doesn't line up with the budget. The final repeat
+  is the check for drift.
+- **Between runs:** load the page fresh with the value in the URL
+  (`bench-nft.html?maxKeypoints=150`), so every run starts from a cold page
+  the way the baseline did. Leave about two minutes idle between runs, with
+  the same charging state throughout.
+- **Raw files:**
+  `YYYY-MM-DD-tab9-ondevice-stateless-<static|table>-mk<N>.json`, and the
+  repeat as `...-static-mk300-repeat.json`.
+
+### Validity checks (before reading any timing)
+
+1. `numSceneKeypoints === maxKeypoints` on at least 95% of a run's frames. A
+   run that fails this is not evidence either way: the budget did not bind.
+2. The repeat static-300 run's `match` p50 is within ±10% of the first
+   static-300 run. Otherwise the session drifted (thermal throttling or
+   background load) and the sweep is **inconclusive**, not falsified. Rerun
+   with longer idle gaps.
+
+### What each run should show if the hypothesis holds
+
+The prediction is proportional, anchored on the one on-device run where 300
+is known to have bound on every frame: the table clip's `match` p50 of
+64.1 ms, which is ≈ 0.214 ms per scene keypoint. `describe` computes one
+descriptor per keypoint, so it should scale the same way, from its 10.1 ms
+anchor.
+
+| `maxKeypoints` | `match` p50, predicted (both clips) | `describe` p50, predicted |
+|---|---|---|
+| 300 | ≈ 64 ms | ≈ 10.1 ms |
+| 200 | ≈ 43 ms | ≈ 6.7 ms |
+| 150 | ≈ 32 ms | ≈ 5.1 ms |
+| 100 | ≈ 21 ms | ≈ 3.4 ms |
+
+In concrete terms, the hypothesis **holds** if both of these do:
+
+- **Proportional:** on each clip, `match` p50 ÷ `maxKeypoints` stays within
+  ±15% of its mean across the four values. A straight-line fit through the
+  four points then has an intercept of a few ms, not tens of ms.
+- **Content-independent:** at the same budget, the static and table clips'
+  `match` p50 are within ±10% of each other. This holds even though their
+  scenes differ, and even though `detect` does not match between them (the
+  static clip has more than twice as many corners to find and sort, so its
+  `detect` should cost more; the hypothesis says nothing about `detect`).
+
+`acquire` and `gray` should not move with the budget. `detect` should move
+only slightly: FAST and the score sort run over every corner found, whatever
+the budget. Only the orientation computed for each *kept* keypoint scales
+with the budget.
+
+### What would falsify it
+
+- **A large fixed cost:** `match` p50 at 100 is **≥ 50%** of its value at 300
+  on either clip. Proportional scaling predicts 33%. Reaching 50% needs a
+  fixed component of at least about a quarter of the 300-keypoint cost, which
+  is per-call or per-level overhead that no budget reduces. The budget would
+  then be a weaker lever than it looks.
+- **A content effect:** at the same binding budget, the static and table
+  clips' `match` p50 differ by **more than 20%**. Something other than the
+  keypoint count would then be driving the cost. The candidates are the
+  ratio-test and per-level merge work, which scale with how many matches
+  survive rather than with how many keypoints were searched.
+- **Non-monotonic results:** a lower budget costs more than a higher one on
+  the same clip, beyond the drift the repeat run shows.
+
+Results between the "holds" and "falsified" thresholds (for example, a 12–20%
+difference between clips) are to be reported as inconclusive, not rounded
+toward either side.
+
+### Recorded alongside, not part of the test
+
+Lowering the budget is only useful if tracking survives it. For each run,
+also note the lock rate (`ok` frames out of all frames) and the `numInliers`
+p50. The static clip is expected to lock at every budget and so says little
+about this. The table clip is the harder scene and the one where a lower
+budget could start costing locks. That trade-off is an M2 design question,
+and this sweep only supplies its inputs.
