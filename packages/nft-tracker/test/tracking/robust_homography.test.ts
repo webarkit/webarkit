@@ -498,3 +498,49 @@ describe("robustHomography outlier rejection", () => {
         }
     });
 });
+
+describe("robustHomography purity", () => {
+    it("gives a bit-identical result on a repeat call and leaves every input untouched", () => {
+        // types.ts rule 2: no RNG, no clock, no global state. A full run —
+        // noise, outliers, several reweightings — so every array is exercised.
+        const src = targetGrid();
+        const { dst } = contaminate(H_TRUE, src, {
+            seed: 7,
+            outliers: 10,
+            sigma: 0.25,
+            minPx: 5,
+            maxPx: 16,
+        });
+        const prediction = chain(translation(3, 0), H_TRUE);
+        const before = [Array.from(src), Array.from(dst), Array.from(prediction)];
+        const first = robustHomography(src, dst, prediction, OPTIONS);
+        expect(first.ok).toBe(true);
+        if (!first.ok) return;
+        const snapshot = [
+            Array.from(first.H),
+            Array.from(first.weights),
+            first.numInliers,
+            first.rmsError,
+            first.iterations,
+            first.converged,
+        ];
+        expect(first.iterations).toBeGreaterThan(1);
+        // Scribble over the first result: the second must share no array with it.
+        first.H.fill(Number.NaN);
+        first.weights.fill(Number.NaN);
+        const second = robustHomography(src, dst, prediction, OPTIONS);
+        expect(second.ok).toBe(true);
+        if (!second.ok) return;
+        // toEqual compares numbers with Object.is: bit for bit, sign of zero included.
+        expect([
+            Array.from(second.H),
+            Array.from(second.weights),
+            second.numInliers,
+            second.rmsError,
+            second.iterations,
+            second.converged,
+        ]).toEqual(snapshot);
+        expect(second.H).not.toBe(prediction);
+        expect([Array.from(src), Array.from(dst), Array.from(prediction)]).toEqual(before);
+    });
+});
