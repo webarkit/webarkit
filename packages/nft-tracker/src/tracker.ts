@@ -335,7 +335,11 @@ export interface TrackTimings {
     readonly trackMs: number;
     /** Part of `trackMs` building the frame pyramid: ADR-0001 point 3's first candidate for the backend. */
     readonly pyramidMs: number;
-    /** Part of `trackMs` in `alignPatch`. */
+    /**
+     * Part of `trackMs` in `alignPatch`: each patch's warp and its alignment.
+     * Choosing the pyramid's depth, the cull, the prediction and the
+     * judgement are in `trackMs` only.
+     */
     readonly alignMs: number;
     /** Part of `trackMs` in `robustHomography`. */
     readonly fitMs: number;

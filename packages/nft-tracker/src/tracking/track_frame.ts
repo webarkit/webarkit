@@ -230,10 +230,13 @@ type FitStats = Pick<TrackStats, "inliers" | "rmsError" | "fitIterations" | "fit
 
 /** Where a step's time went, ms, by the injected clock. */
 export interface TrackStepTimings {
-    /** The whole step: prediction, cull, pyramid, alignment, fit, judgement. */
+    /** The whole step: prediction, cull, pyramid depth, pyramid, alignment, fit, judgement. */
     readonly trackMs: number;
+    /** `buildFramePyramid`. */
     readonly pyramidMs: number;
+    /** `alignPatch`, both halves: each patch's warp (`preparePatch`) and its alignment. */
     readonly alignMs: number;
+    /** `robustHomography`. */
     readonly fitMs: number;
 }
 
@@ -322,11 +325,14 @@ export function trackFrame(
     counts.culled = patches.count - candidates.length;
 
     // Each window is warped once, here: frameLevelsFor reads where it can be
-    // sampled, and the alignment below reads the same warp.
+    // sampled, and the alignment below reads the same warp. The warp is
+    // alignPatch's first half, so it counts as alignment; choosing the
+    // pyramid's depth is neither alignment nor building, and counts only in
+    // trackMs.
     const prepareStart = now();
     const prepared = candidates.map((q) => preparePatch(patches, q, target.scaleStep, H));
-    const levels = frameLevelsFor(prepared, target.scaleStep, frame, options.maxFrameLevels);
     alignMs = now() - prepareStart;
+    const levels = frameLevelsFor(prepared, target.scaleStep, frame, options.maxFrameLevels);
     const pyramidStart = now();
     const built = buildFramePyramid(firstPixels(frame), { levels, scaleStep: target.scaleStep });
     pyramidMs = now() - pyramidStart;
