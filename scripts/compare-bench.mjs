@@ -45,8 +45,24 @@ if (!firstPath || !secondPath) {
     console.error("usage: node scripts/compare-bench.mjs <first.json> <second.json>");
     process.exit(2);
 }
-const first = JSON.parse(readFileSync(firstPath, "utf8"));
-const second = JSON.parse(readFileSync(secondPath, "utf8"));
+/** An export, or exit with one line: 2 for a file that cannot be read, 1 for one that is not JSON. */
+function load(path) {
+    let text;
+    try {
+        text = readFileSync(path, "utf8");
+    } catch (e) {
+        console.error(`cannot read ${path}: ${e.message}`);
+        process.exit(2);
+    }
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        console.error(`cannot parse ${path} as JSON: ${e.message}`);
+        process.exit(1);
+    }
+}
+const first = load(firstPath);
+const second = load(secondPath);
 
 let aligned;
 try {
@@ -84,9 +100,9 @@ const rows = [
         `${b.firstSteps.confirmed} / ${b.firstSteps.n}`,
     ],
     [
-        "held-lock steps lost",
-        `${a.heldLockSteps.lost} / ${a.heldLockSteps.n}`,
-        `${b.heldLockSteps.lost} / ${b.heldLockSteps.n}`,
+        "held-lock steps lost (at loop wraps)",
+        `${a.heldLockSteps.lost} / ${a.heldLockSteps.n} (${a.heldLockSteps.lostAtLoopWrap})`,
+        `${b.heldLockSteps.lost} / ${b.heldLockSteps.n} (${b.heldLockSteps.lostAtLoopWrap})`,
     ],
     ["trackStepMs p50 / p95", ms(a.trackStepMs), ms(b.trackStepMs)],
     ["pyramidMs p50 / p95", ms(a.pyramidMs), ms(b.pyramidMs)],

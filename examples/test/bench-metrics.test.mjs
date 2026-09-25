@@ -41,9 +41,12 @@ import {
     parsePositiveInt,
     parseRunParams,
     percentile,
+    proxyRatio,
     reacquisitions,
     reprojectCorners,
+    sequenceRefusal,
     sha256Hex,
+    startRefusal,
     stats,
     summarizeRun,
     targetCorners,
@@ -370,14 +373,25 @@ describe("loop wraps, re-acquisitions and lock steps", () => {
         ];
         expect(lockSteps(frames)).toEqual({
             firstSteps: { n: 3, confirmed: 2 },
-            heldLockSteps: { n: 2, lost: 1 },
+            heldLockSteps: { n: 2, lost: 1, lostAtLoopWrap: 0 },
         });
+    });
+
+    it("counts a held lock lost on the first frame after a wrap apart: the jump there is the clip's", () => {
+        const frames = [
+            f("DETECT", 11.8),
+            f("TRACK", 11.9, { tracking: step }),
+            f("DETECT", 0.03, { tracking: step, trackLoss: "too-few-patches" }), // held, lost at the wrap
+            f("TRACK", 0.07, { tracking: step }),
+            f("TRACK", 0.1, { tracking: step }),
+        ];
+        expect(lockSteps(frames).heldLockSteps).toEqual({ n: 2, lost: 0, lostAtLoopWrap: 1 });
     });
 
     it("finds no lock steps where nothing tracks", () => {
         expect(lockSteps([f("DETECT", 0.1), f("DETECT", 0.2), f("LOST", 0.3)])).toEqual({
             firstSteps: { n: 0, confirmed: 0 },
-            heldLockSteps: { n: 0, lost: 0 },
+            heldLockSteps: { n: 0, lost: 0, lostAtLoopWrap: 0 },
         });
     });
 });
@@ -818,5 +832,94 @@ describe("nextFrameIndex and framesAt", () => {
             2, 1, 0,
         ]);
         expect(() => framesAt([0.1, 0.133333], [0.12])).toThrow(/no frame at media time 0\.12/);
+    });
+});
+
+describe("the review's fixes", () => {
+    describe("DEFINITIONS.jitterPx", () => {
+        it("says it pools every posed frame, and so where it can be read", () => {
+            expect(DEFINITIONS.jitterPx).toMatch(/DETECT and TRACK alike/);
+            expect(DEFINITIONS.jitterPx).toMatch(/spreadPx/);
+        });
+    });
+
+    describe("startRefusal", () => {
+        const trackable = { db: { patches: { count: 64, patchSize: 16 } } };
+        const untrackable = { db: {} };
+
+        it("starts a known mode on a target it can run", () => {
+            for (const mode of MODES)
+                expect(startRefusal({ mode, target: trackable, minTrackedPatches: 8 })).toBeNull();
+            expect(
+                startRefusal({ mode: "stateless", target: untrackable, minTrackedPatches: 8 }),
+            ).toBeNull();
+        });
+
+        it.each([
+            ["an empty mode", ""],
+            ["the old 'tracker' value", "tracker"],
+        ])("refuses %s, naming the modes", (_, mode) => {
+            expect(startRefusal({ mode, target: trackable, minTrackedPatches: 8 })).toMatch(
+                /stateless, detection-only, tracking/,
+            );
+        });
+
+        it("refuses a target that did not load, and tracking one it cannot track", () => {
+            expect(startRefusal({ mode: "stateless", target: null, minTrackedPatches: 8 })).toMatch(
+                /not loaded/,
+            );
+            expect(
+                startRefusal({ mode: "tracking", target: untrackable, minTrackedPatches: 8 }),
+            ).toMatch(/targets\/pinball\.wnft/);
+        });
+    });
+
+    describe("sequenceRefusal", () => {
+        const expected = {
+            metricsVersion: METRICS_VERSION,
+            sha256: "ab",
+            clips: ["pinball-static.mp4"],
+        };
+        const e = (o = {}) => ({
+            metricsVersion: METRICS_VERSION,
+            mode: "tracking",
+            source: "bundled",
+            bundledClip: "pinball-static.mp4",
+            target: { sha256: "ab" },
+            processingResolution: { width: 203, height: 360 },
+            frames: [],
+            ...o,
+        });
+
+        it("accepts a tracking export of a bundled clip on the same target", () => {
+            expect(sequenceRefusal(e(), expected)).toBeNull();
+        });
+
+        it.each([
+            ["a stateless run", { mode: "stateless" }, /tracking run/],
+            ["a webcam run", { source: "webcam", bundledClip: null }, /bundled clip/],
+            ["another clip", { bundledClip: "other.mp4" }, /bundled clip/],
+            ["another metricsVersion", { metricsVersion: undefined }, /metricsVersion/],
+            ["another target", { target: { sha256: "cd" } }, /target/],
+            ["no processing size", { processingResolution: undefined }, /processingResolution/],
+        ])("refuses %s in one line", (_, o, why) => {
+            const r = sequenceRefusal(e(o), expected);
+            expect(r).toMatch(why);
+            expect(r).not.toMatch(/\n/);
+        });
+    });
+
+    describe("proxyRatio", () => {
+        it("divides the device's p50 by the replay's", () => {
+            expect(proxyRatio({ n: 200, p50: 14 }, { n: 200, p50: 4 })).toBe(3.5);
+        });
+
+        it.each([
+            ["the device run had no TRACK frames", { n: 0, p50: null }, { n: 200, p50: 4 }],
+            ["the replay had none", { n: 200, p50: 14 }, { n: 0, p50: null }],
+            ["a p50 is 0", { n: 200, p50: 14 }, { n: 200, p50: 0 }],
+        ])("is null, not 0 or Infinity, when %s", (_, device, here) => {
+            expect(proxyRatio(device, here)).toBeNull();
+        });
     });
 });

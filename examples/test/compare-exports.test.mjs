@@ -150,6 +150,26 @@ describe("scripts/compare-bench.mjs", () => {
         expect(r.stderr).not.toMatch(/\n\s+at /);
     });
 
+    it("exits 2 with a one-line reason, not a stack trace, on a file it cannot read", () => {
+        const first = write("e.json", run([at(0.1)]));
+        const r = spawnSync(process.execPath, [CLI, first, join(dir, "missing.json")], {
+            encoding: "utf8",
+        });
+        expect(r.status).toBe(2);
+        expect(r.stderr.trim()).toMatch(/^cannot read .*missing\.json/);
+        expect(r.stderr).not.toMatch(/\n\s+at /);
+    });
+
+    it("exits 1 with a one-line reason, not a stack trace, on a file that is not JSON", () => {
+        const first = write("f.json", run([at(0.1)]));
+        const truncated = join(dir, "truncated.json");
+        writeFileSync(truncated, JSON.stringify(run([at(0.1)])).slice(0, 40));
+        const r = spawnSync(process.execPath, [CLI, first, truncated], { encoding: "utf8" });
+        expect(r.status).toBe(1);
+        expect(r.stderr.trim()).toMatch(/^cannot parse .*truncated\.json/);
+        expect(r.stderr).not.toMatch(/\n\s+at /);
+    });
+
     it("exits 2 on bad usage", () => {
         const r = spawnSync(process.execPath, [CLI, "only-one.json"], { encoding: "utf8" });
         expect(r.status).toBe(2);

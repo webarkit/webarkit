@@ -432,12 +432,12 @@
         parseRunParams,
         percentile,
         sha256Hex,
+        startRefusal,
         summarizeRun,
         targetCorners,
         targetRecord,
         texturedFrame,
         timeRepeated,
-        trackabilityError,
       } from "./js/bench-metrics.mjs";
 
       const TARGET_IMAGE = "./images/pinball.jpg";
@@ -791,7 +791,10 @@
           ["TRACK share", s.trackShare === null ? "—" : `${(100 * s.trackShare).toFixed(1)}%`],
           ["re-acquisitions", `${s.reacquisitions} (+${s.reacquisitionsAtLoopWrap} at loop wraps)`],
           ["first steps confirmed", `${s.firstSteps.confirmed} of ${s.firstSteps.n}`],
-          ["held-lock steps lost", `${s.heldLockSteps.lost} of ${s.heldLockSteps.n}`],
+          [
+            "held-lock steps lost",
+            `${s.heldLockSteps.lost} of ${s.heldLockSteps.n} (+${s.heldLockSteps.lostAtLoopWrap} at loop wraps)`,
+          ],
           ["tracking step p50 / p95", `${ms(s.trackStepMs)}; ADR-0001 point 5: 8 ms at p95`],
           ["frame pyramid p50 / p95", ms(s.pyramidMs)],
           ["capped fits", `${s.fits.capped} of ${s.fits.n}`],
@@ -1465,11 +1468,7 @@
           // the source.
           const mode = modeSelect.value;
           const target = targets[targetSelect.value];
-          const refusal = !target
-            ? "targets/pinball.wnft is not loaded (see above)."
-            : mode === "tracking"
-              ? trackabilityError(target.db, DEFAULT_MIN_TRACKED_PATCHES)
-              : null;
+          const refusal = startRefusal({ mode, target, minTrackedPatches: DEFAULT_MIN_TRACKED_PATCHES });
           if (refusal) {
             showError(refusal);
             return;

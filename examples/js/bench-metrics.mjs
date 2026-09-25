@@ -188,7 +188,7 @@ export const DEFINITIONS = Object.freeze({
     firstSteps:
         "Tracking steps (frames whose tracking is not null) that follow a DETECT frame: a lock's first step, which has no velocity to predict with. confirmed: those that returned TRACK.",
     heldLockSteps:
-        "Tracking steps that follow a TRACK frame: a held lock's. lost: those that set trackLoss.",
+        "Tracking steps that follow a TRACK frame: a held lock's. lost: those that set trackLoss, other than on the first frame after a loop wrap, which are counted apart in lostAtLoopWrap: the jump there is the clip's, not the tracker's.",
     trackStepMs:
         "{ n, min, p50, p95, max } of NftTracker's timings.trackMs on TRACK frames: the whole tracking step (prediction, cull, pyramid depth, pyramid, alignment, fit, judgement), without the pose (a backend call), frame acquisition or grey conversion. ADR-0001 point 5's tracker-side TypeScript compute in the tracking state; its threshold is 8 ms at p95.",
     pyramidMs: "The same, over timings.pyramidMs: the part of the step in buildFramePyramid.",
@@ -210,7 +210,7 @@ export const DEFINITIONS = Object.freeze({
     corners:
         "Per frame: the target's corners (0, 0), (w − 1, 0), (w − 1, h − 1) and (0, h − 1), in target level-0 px, projected into the frame by the frame's H, in frame px. null without a pose, or when the four do not all project to finite points on the same side of the camera.",
     jitterPx:
-        "The corners' standard deviation about their own straight-line motion within each one-second window of media time, frame px: in each window (never spanning a loop wrap) holding at least 4 frames with corners, a least-squares line in time is fitted to each corner's x and to its y; jitterPx = √(Σ residual² ÷ (4 · Σ(n − 2))) over those windows, n being each window's frames. Equal to the corners' SD for a target still in the image; motion that is straight over a second does not count; with n − 2 degrees of freedom per window it does not depend, in expectation, on how many frames per second the run processed.",
+        "The corners' standard deviation about their own straight-line motion within each one-second window of media time, frame px: in each window (never spanning a loop wrap) holding at least 4 frames with corners, a least-squares line in time is fitted to each corner's x and to its y; jitterPx = √(Σ residual² ÷ (4 · Σ(n − 2))) over those windows, n being each window's frames. Equal to the corners' SD for a target still in the image; motion that is straight over a second does not count; with n − 2 degrees of freedom per window it does not depend, in expectation, on how many frames per second the run processed. It pools every frame with corners, DETECT and TRACK alike, so a single wrong but finite pose weighs on it heavily: it measures steadiness only on a clip where the target stays in view and every pose is right, such as the static clip, and a spreadPx far above that clip's own drift (a few px) is a wrong pose to find before reading it.",
     spreadPx:
         "√(Σ|cᵢ − c̄|² ÷ (4 · n)), frame px, over the n frames with corners, c̄ being each corner's mean: the corners' standard deviation over the run. It counts any motion of the target in the image, and a clip's drift, along with jitter.",
     alignment:
@@ -248,7 +248,7 @@ export function reacquisitions(frames) {
 /** See `DEFINITIONS.firstSteps` and `DEFINITIONS.heldLockSteps`. */
 export function lockSteps(frames) {
     const firstSteps = { n: 0, confirmed: 0 };
-    const heldLockSteps = { n: 0, lost: 0 };
+    const heldLockSteps = { n: 0, lost: 0, lostAtLoopWrap: 0 };
     for (let i = 1; i < frames.length; i++) {
         const f = frames[i];
         if (!f.tracking) continue;
@@ -258,7 +258,10 @@ export function lockSteps(frames) {
             if (f.state === "TRACK") firstSteps.confirmed++;
         } else if (before === "TRACK") {
             heldLockSteps.n++;
-            if (f.trackLoss) heldLockSteps.lost++;
+            if (f.trackLoss) {
+                if (isLoopWrap(frames[i - 1], f)) heldLockSteps.lostAtLoopWrap++;
+                else heldLockSteps.lost++;
+            }
         }
     }
     return { firstSteps, heldLockSteps };
@@ -485,6 +488,52 @@ export function trackabilityError(db, minTrackedPatches) {
         return `This target has ${p.count} patches, fewer than minTrackedPatches (${minTrackedPatches}): ${use}.`;
     }
     return null;
+}
+
+/**
+ * Why the page must not start a run, or `null` when it may: a mode that is
+ * not one of {@link MODES} (a script that set `#mode` to a value the page no
+ * longer has, such as the old `tracker`, leaves the select empty), a target
+ * that did not load, or a tracking run on a target the tracker would not
+ * track (`trackabilityError`). Checked before any source starts.
+ */
+export function startRefusal({ mode, target, minTrackedPatches }) {
+    if (!MODES.includes(mode)) return `Unknown mode "${mode}": choose one of ${MODES.join(", ")}.`;
+    if (!target) return "targets/pinball.wnft is not loaded (see above).";
+    return mode === "tracking" ? trackabilityError(target.db, minTrackedPatches) : null;
+}
+
+/**
+ * Why `scripts/replay-clips.mjs --sequence` cannot replay export `e`, in one
+ * line, or `null` when it can: it must be a tracking run on one of `clips`,
+ * with this module's `metricsVersion`, the replay's target (`sha256`) and a
+ * recorded processing size.
+ */
+export function sequenceRefusal(e, { metricsVersion, sha256, clips }) {
+    if (e?.mode !== "tracking") return `it is a ${e?.mode ?? "(no mode)"} run, not a tracking run`;
+    if (e.source !== "bundled" || !clips.includes(e.bundledClip)) {
+        return `it did not run on a bundled clip (source ${e.source}, clip ${e.bundledClip ?? "(none)"})`;
+    }
+    if (e.metricsVersion !== metricsVersion) {
+        return `it has metricsVersion ${e.metricsVersion ?? "(none)"}, not ${metricsVersion}`;
+    }
+    if (e.target?.sha256 !== sha256) {
+        return `its target (sha256 ${e.target?.sha256 ?? "(none)"}) is not targets/pinball.wnft as this replay reads it (${sha256})`;
+    }
+    if (!(e.processingResolution?.width > 0 && e.processingResolution?.height > 0)) {
+        return "it records no processingResolution";
+    }
+    return null;
+}
+
+/**
+ * The device ÷ desktop ratio of two `trackStepMs` statistics' p50, or `null`
+ * when either has no TRACK frames or a p50 of 0: a run that never tracked has
+ * no ratio, and must not read as one of 0 or Infinity.
+ */
+export function proxyRatio(device, here) {
+    if (!(device?.n > 0 && here?.n > 0 && device.p50 > 0 && here.p50 > 0)) return null;
+    return device.p50 / here.p50;
 }
 
 /**
