@@ -62,8 +62,8 @@ import jpeg from "jpeg-js";
 
 import { decode } from "../src/target/format/decode.js";
 import type { DecodeResult } from "../src/target/format/errors.js";
-import { levelScale } from "../src/index.js";
-import type { ImagePyramid, PatchTable } from "../src/index.js";
+import { buildFramePyramid, levelScale } from "../src/index.js";
+import type { PatchTable } from "../src/index.js";
 import { readPgm, TARGET_FIXTURE } from "./fixtures/pgm.js";
 
 const SCRIPT = fileURLToPath(new URL("../bin/compile-target.mjs", import.meta.url));
@@ -298,18 +298,6 @@ describe("compile-target", () => {
     });
 
     describe("tracking patches (§5.7)", () => {
-        /**
-         * The stand-in target pyramid, loaded by URL so the type checker does
-         * not try to resolve a `.mjs` without declarations: it is `bin/`
-         * tooling, and only this suite reaches into it.
-         */
-        const PYRAMID_MODULE = new URL("../bin/target-pyramid.mjs", import.meta.url).href;
-        type BuildTargetPyramid = (
-            image: ReturnType<typeof readPgm>,
-            scaleStep: number,
-            levelSizes: readonly (readonly [number, number])[],
-        ) => ImagePyramid;
-
         interface CompilerInfo {
             maxPatches?: number;
             patchSize?: number;
@@ -330,7 +318,7 @@ describe("compile-target", () => {
             });
         }
 
-        it("writes the documented defaults, every patch exactly its level's pixels", async () => {
+        it("writes the documented defaults, every patch exactly its level's pixels", () => {
             const out = join(work, "patches-default.wnft");
             const stdout = compile([IMAGE, "-o", out]);
             expect(stdout).toContain("64 patches");
@@ -348,20 +336,25 @@ describe("compile-target", () => {
                 patchMinScore: 25,
                 // 0.75 * sqrt(512 * 640 / 64), rounded.
                 patchSpacing: 54,
-                patchPyramid: expect.stringContaining("stand-in"),
+                // The function the tracker builds the live frame's pyramid
+                // with (format spec §11, Q11), named so a reader can tell.
+                patchPyramid: expect.stringMatching(/^buildFramePyramid/),
                 // §5.7 leaves the score's units open; the file says which.
                 patchScore: expect.stringContaining("level-0 px"),
             });
 
             // The pixels a reader decodes are the pixels of the level the
-            // compiler cut them from, at (left, top). The fixture PGM is the
-            // same 512 x 640 image compile-target decodes from pinball.jpg.
-            const { buildTargetPyramid } = (await import(PYRAMID_MODULE)) as {
-                buildTargetPyramid: BuildTargetPyramid;
-            };
-            const pyramid = buildTargetPyramid(
-                readPgm(TARGET_FIXTURE),
-                target.pyramid.scaleStep,
+            // compiler cut them from, at (left, top), in the pyramid
+            // buildFramePyramid builds at the file's own step and sizes. The
+            // fixture PGM is the same 512 x 640 image compile-target decodes
+            // from pinball.jpg.
+            const built = buildFramePyramid(readPgm(TARGET_FIXTURE), {
+                levels: 3,
+                scaleStep: target.pyramid.scaleStep,
+            });
+            if (!built.ok) throw new Error(`buildFramePyramid: ${built.reason}`);
+            const pyramid = built.pyramid;
+            expect(pyramid.levels.map((l) => [l.width, l.height])).toEqual(
                 target.pyramid.levelSizes.slice(0, 3),
             );
             const P = patches.patchSize;

@@ -151,10 +151,10 @@ const MIN_EIGENVALUE = 1;
  *    threshold depends on the target (align_patch_photometric.test.ts).
  *
  * **Assumptions** (format spec Q11, frame_pyramid.ts): the patch was cut
- * from a level `buildFramePyramid` built with `targetScaleStep` — not yet
- * true of `compile-target`'s coarser levels, which come from a stand-in —
- * and the frame's pyramid comes from the same function, ideally with the
- * same step, so a patch and a frame level equally deep are filtered alike.
+ * from a level `buildFramePyramid` built with `targetScaleStep` — as
+ * `compile-target` does — and the frame's pyramid comes from the same
+ * function, ideally with the same step, so a patch and a frame level equally
+ * deep are filtered alike.
  * They are rarely read at equal depth: a patch is aligned on the frame
  * level nearest its scale, usually a shallower one, and the frame carries
  * the camera's blur besides. That difference biases the gain and the
