@@ -337,4 +337,27 @@ describe("NftTracker on camera-path sequences", () => {
         const bad: GrayImage = { data: new Uint8Array(10), width: 270, height: 360 };
         expect(() => tracker.process(bad, 33)).toThrow(RangeError);
     }, 60_000);
+
+    it("tracks a frame whose buffer is longer than width × height, reading its first w · h bytes as the backend does", () => {
+        // Found in review: GrayImage does not fix data.length, and the
+        // reference backend reads the first w · h bytes of a longer buffer —
+        // a pooled one, say — so such a frame detected, and the next, locked,
+        // threw. The same frame padded tracks exactly as it does unpadded.
+        const padded = (frame: GrayImage): GrayImage => {
+            const data = new Uint8Array(frame.width * frame.height + 16).fill(255);
+            data.set(frame.data);
+            return { ...frame, data };
+        };
+        const { frame: f0 } = frameAt(wander(0), 0);
+        const { frame: f1 } = frameAt(wander(1), 1);
+        const plain = new NftTracker(cv, target, K);
+        const longer = new NftTracker(cv, target, K);
+        for (const [i, f] of [f0, f1].entries()) {
+            const a = withSeededRandom(SEED, () => plain.process(f, 33 * i)).value;
+            const b = withSeededRandom(SEED, () => longer.process(padded(f), 33 * i)).value;
+            expect(b).toEqual(a);
+        }
+        const last = withSeededRandom(SEED, () => longer.process(padded(f1), 66)).value;
+        expect(last.state).toBe("TRACK");
+    }, 60_000);
 });

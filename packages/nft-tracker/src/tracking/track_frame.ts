@@ -309,7 +309,7 @@ export function trackFrame(
     const levels = frameLevelsFor(prepared, target.scaleStep, frame, options.maxFrameLevels);
     alignMs = now() - prepareStart;
     const pyramidStart = now();
-    const built = buildFramePyramid(frame, { levels, scaleStep: target.scaleStep });
+    const built = buildFramePyramid(firstPixels(frame), { levels, scaleStep: target.scaleStep });
     pyramidMs = now() - pyramidStart;
     if (!built.ok) {
         throw new RangeError(`@webarkit/nft-tracker: not a valid frame (${built.reason})`);
@@ -385,6 +385,21 @@ export function trackFrame(
         outcomes,
         timings: timings(),
     };
+}
+
+/**
+ * The frame's first `width · height` bytes, through a view, not a copy.
+ * `GrayImage` does not fix `data.length`, and the backend reads those bytes of
+ * a longer buffer — a pooled one, say — so the tracking step must too, or a
+ * frame that detected would throw on the next, locked. A shorter buffer, or a
+ * size that is not a positive integer, is left for `buildFramePyramid` to
+ * refuse: that stays a contract violation.
+ */
+function firstPixels(frame: GrayImage): GrayImage {
+    const { width, height, data } = frame;
+    const n = width * height;
+    if (!(Number.isInteger(width) && Number.isInteger(height) && data.length > n)) return frame;
+    return { width, height, data: data.subarray(0, n) };
 }
 
 /**
