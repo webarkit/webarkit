@@ -954,36 +954,50 @@ one. The model leaves out the page's own work per frame (the overlay and the
 stats panel, after `total`), the video callback's latency and JIT warm-up, so
 it brackets the device rather than predicting it to the frame.
 
-| clip, processed at | tracking, schedule | TRACK share | first steps confirmed | held-lock steps lost | `trackStepMs` p50 / p95, desktop | capped fits |
-|---|---|---|---|---|---|---|
-| static, 203×360 | every frame | 99.9% | 1 / 1 | 0 / 724 | 3.9–4.1 / 4.9–6.0 | 0 |
-| | device, 15 or 25 ms | 99.7% | 1 / 1 | 0 / 361–362 | 3.9–4.1 / 5.5–6.7 | 0 |
-| wall, 480×270 | every frame | 69.5–69.6% | 4–5 / 132–137 | 3–4 / 413–414 | 6.5–6.9 / 9.0–11.2 | 0 |
-| | device, 15 ms | 79–84% | 4 / 58–75 | 3 / 329–373 | 6.5–6.6 / 9.2–9.9 | 0–1 |
-| | device, 25 ms | 57–59% | 15–16 / 75–76 | 14–16 / 124–129 | 6.7–7.0 / 8.5–9.2 | 3–4 of 136–138 |
-| table, 203×360 | every frame | 79–81% | 2–3 / 91–102 | 1–2 / 422–433 | 5.1–5.4 / 6.7–8.3 | 0 |
-| | device, 15 or 25 ms | 78–84% | 6–7 / 34–41 | 5–6 / 158–177 | 5.7–6.1 / 7.6–8.7 | 0–2 |
+Every number in this section comes from three runs of that script, committed
+as printed in [`2026-09-25-desktop-replay.md`](./2026-09-25-desktop-replay.md).
+The runs differ by RANSAC's draws in the detections and by this machine's
+timing noise, so the table gives ranges over the three.
 
-(Ranges over three replays, which differ by RANSAC's draws.) Also from the
-replay:
+| clip, processed at | tracking, schedule | TRACK share | first steps confirmed | held-lock steps lost (+ at loop wraps) | `trackStepMs` p50 / p95, desktop | capped fits |
+|---|---|---|---|---|---|---|
+| static, 203×360 | every frame | 99.9% | 1 / 1 | 0 / 724 (+0) | 4.0–4.4 / 5.6–6.7 | 0 |
+| | device, 15 or 25 ms | 99.7% | 1 / 1 | 0 / 361 (+0) | 3.8–4.2 / 5.6–6.6 | 0 |
+| wall, 480×270 | every frame | 69.1–69.5% | 4–5 / 132–133 | 2–3 / 411–413 (+1) | 6.3–6.8 / 8.6–10.2 | 0 |
+| | device, 15 ms | 81.7–83.5% | 4–5 / 58–63 | 2–3 / 355–373 (+1) | 6.3–6.6 / 8.6–9.2 | 0–1 |
+| | device, 25 ms | 57.7–61.8% | 12–18 / 68–76 | 10–18 / 124–136 (+0–1) | 7.1–7.5 / 9.4–10.5 | 3–4 of 133–144 |
+| table, 203×360 | every frame | 78.7–81.3% | 2–3 / 87–104 | 0–1 / 419–433 (+1) | 5.0–5.3 / 7.1–7.8 | 0–1 |
+| | device, 15 or 25 ms | 79.6–84.3% | 5–7 / 31–39 | 3–5 / 163–182 (+1) | 5.6–6.4 / 7.8–9.5 | 0–2 |
+
+Also from the replay:
 
 - **Frame levels:** 1 on every TRACK frame of every clip and schedule;
   alignment is 97–99% of `trackStepMs`.
-- **The static clip holds its lock through its loops:** no re-acquisition at
-  the wrap, on any schedule.
+- **The static clip holds its lock through its loops:** no re-acquisition,
+  and no lock lost, at the wrap, on any schedule.
 - **On the moving clips, a lock is almost never lost once held; it is a
   detection the first step cannot confirm.** Nearly every lock loss is a
-  lock's first step, with 0–1 patches observed and 20–29 of the 64 culled at
+  lock's first step, with 0–1 patches observed and 19–29 of the 64 culled at
   p50: a detection of a target partly out of view, or of the wrong place,
-  which the step refuses rather than tracks. Held locks lose 0–4% of their
-  steps — except the wall clip on the 25 ms schedule, 11–13%, where each
-  processed step spans two frames.
+  which the step refuses rather than tracks. Held locks lose at most 1% of
+  their steps on the wall clip while the schedule keeps up with it (every
+  frame, 15 ms) and 0–3% on the table clip; on the wall clip's 25 ms
+  schedule, where each processed step spans two frames, 7–15%. Each moving
+  clip also loses a held lock at its loop wrap, where the clip itself jumps;
+  those are counted apart (`lostAtLoopWrap`).
 - **Jitter, static clip, aligned on common frames:** every frame, `jitterPx`
-  0.124–0.131 tracked against 0.41–0.48 detection-only (÷ 3.1–3.8); device
-  schedules, 0.135–0.158 against 0.39–0.46 (÷ 2.6–3.0). `spreadPx` 0.85–0.90
-  against 0.99–1.08.
-- **Quality ≤ 0.20:** 3–6 TRACK frames on the wall clip (the lowest 0.12),
-  0–4 on the table clip, none on the static clip.
+  0.131 tracked against 0.44–0.50 detection-only (÷ 3.4–3.8); device
+  schedules, 0.153–0.158 against 0.42–0.54 (÷ 2.7–3.5). `spreadPx` 0.89–0.90
+  against 1.02–1.08. Every detection on the static clip was right in all
+  three runs; on the table clip they were not (a `spreadPx` in the thousands
+  of px, from detections far off), which is why jitter is read on the static
+  clip only.
+- **Quality:** the lowest TRACK quality per run was 0.34–0.37 on the static
+  clip, 0.11–0.14 on the wall clip and 0.15–0.29 on the table clip; TRACK
+  frames at 0.20 or below: 0, 4–9 and 0–3.
+- **Fits:** at most 4 of 133 reached the iteration cap (3.0%, the wall clip's
+  25 ms schedule); iterations were 3 at p50 on the static and table clips and
+  4 on the wall clip.
 
 ### The runs
 
@@ -1042,6 +1056,9 @@ frames it processed.
    inconclusive too.)
 6. `clockResolutionMs` recorded (0.1 ms expected): a timing under it reads 0
    or 0.1.
+7. Static-clip runs (1, 2, 7): `spreadPx` ≤ 2 px (replay 0.89–1.08). Above
+   that, some pose in the window is wrong, and prediction 3 is not read until
+   it is found: `jitterPx` pools every posed frame.
 
 ### What each should show, and what would falsify it
 
@@ -1050,12 +1067,12 @@ rounded toward either side.
 
 **1. Tracker-side compute against 8 ms, and against the ~10 ms the camera
 path leaves after `acquire`.** Replay `trackStepMs` p50, desktop, over its
-schedules and runs: static 3.9–4.3 ms, wall 6.5–7.5, table 5.1–7.7 — alignment
+schedules and runs: static 3.8–4.4 ms, wall 6.3–7.5, table 5.0–6.4 — alignment
 97–99% of it. The desktop-to-device proxy (the `gray` loop in
 `bench-tracking.mjs`) measured 3.4–3.8× on this machine over three runs, and
 3.1–4.1× in #63's container. If it holds, the device's `trackStepMs` p50 is
 about **12–18 ms** on the static clip, **20–31 ms** on the wall clip and
-**16–32 ms** on the table clip, and p95 above each. The camera path aligns the
+**15–26 ms** on the table clip, and p95 above each. The camera path aligns the
 same 64 patches, below their scale, on a 270×360 frame: expect it near the
 static clip. So:
 
@@ -1102,9 +1119,11 @@ The replay: frame levels 1 on every TRACK frame, `pyramidMs` 0.00–0.01 ms.
 
 **3. Jitter on the static clip, tracked against stateless.** Runs 1 and 2,
 read through `scripts/compare-bench.mjs` on the media times both posed. The
-replay under device schedules gave `jitterPx` 0.135–0.158 tracked against
-0.39–0.46 (÷ 2.6–3.0); every frame, 0.124–0.131 against 0.41–0.48
-(÷ 3.1–3.8).
+replay under device schedules gave `jitterPx` 0.153–0.158 tracked against
+0.42–0.54 (÷ 2.7–3.5); every frame, 0.131 against 0.44–0.50 (÷ 3.4–3.8).
+Read only once validity check 7 holds: `jitterPx` pools every posed frame,
+DETECT and TRACK alike, so one wrong stateless detection could make the
+ratio hold for the wrong reason.
 
 - **Holds:** stateless ÷ tracking `jitterPx` ≥ 2. **Falsified:** < 1.3
   (the tracker not measurably steadier). Between: inconclusive.
@@ -1138,22 +1157,24 @@ The replay agrees (the pre-flight above). Predicted on `Tab_9_WiFi`, per run:
 
 | clip | TRACK share | held-lock steps lost | first steps confirmed |
 |---|---|---|---|
-| static | ≥ 95% | 0–1 | every one |
-| wall | 70–85% if a TRACK tick keeps up with the clip (`acquire` + `gray` + `trackStepMs` p50 < 40 ms at 24.9 fps); 50–65% if it does not | ≤ 5% of held steps if it keeps up; ≤ 20% if not | ≤ 30% |
+| static | ≥ 95% | 0–1 (`lost`; `lostAtLoopWrap` apart) | every one |
+| wall | 70–85% if a TRACK tick keeps up with the clip (`acquire` + `gray` + `trackStepMs` p50 < 40 ms at 24.9 fps); 50–65% if it does not | ≤ 5% of held steps if it keeps up; ≤ 20% if not (`lost`; `lostAtLoopWrap` apart) | ≤ 30% |
 | table | 70–90% (at 41 ms `acquire`, a TRACK tick never keeps up with 30 fps) | ≤ 5% | ≤ 30% |
 
-- **Falsified:** static TRACK share < 90%, or more than 1 held-lock step lost;
-  on a moving clip, held-lock losses above twice the bound in its column, or
-  TRACK share more than 10 points outside its range. Within 10 points of the
-  range: inconclusive.
+- **Falsified:** on the static clip, TRACK share < 90%, more than 1 held-lock
+  step `lost`, or a first step refused; on a moving clip, held-lock losses
+  above twice the bound in its column, first steps confirmed above 50%, or
+  TRACK share more than 10 points outside its range. Between a bound and its
+  falsifier (first steps confirmed 30–50%, TRACK share within 10 points of the
+  range): inconclusive.
 - **Wrong poses** from rotation or scale cannot be seen without ground truth;
   `lowQualityTrackFrames` (quality ≤ 0.20) is recorded as the watch number
-  (replay: 0 / 3–6 / 0–4). The camera run's TRACK share is reported, not
+  (replay: 0 / 4–9 / 0–3). The camera run's TRACK share is reported, not
   tested.
 
 **5. Fit health.** In the replay, 0–4 fits per run reached the iteration cap
-— at most 2.9%, on the wall clip's 25 ms schedule — and iterations were 3–4 at
-p50. **Prediction:** capped fits ≤ 3% of `fits.n` on every run. Above 5% on
+— at most 3.0% (4 of 133), on the wall clip's 25 ms schedule — and iterations
+were 3–4 at p50. **Prediction:** capped fits ≤ 4% of `fits.n` on every run. Above 5% on
 any run: not a falsification, a finding for the tuning pass (#66 measured 1 in
 484 on synthetic frames).
 

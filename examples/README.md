@@ -273,7 +273,8 @@ reprojected into the frame by the frame's homography.
 over the same window as the stage percentiles: the frames per state and the
 **TRACK share**; **re-acquisitions** (a re-detection on the first frame after
 a loop wrap counted apart); a lock's **first steps**, and how many were
-confirmed, and a **held lock's steps**, and how many were lost;
+confirmed, and a **held lock's steps**, and how many were lost (a loss on the
+first frame after a loop wrap counted apart);
 **`trackStepMs`** — `trackMs` on TRACK frames, ADR-0001 point 5's tracker-side
 TypeScript compute in the tracking state, against its 8 ms at p95 —
 `pyramidMs`, `alignMs`, `fitMs` and the frame pyramid levels built; fit health
@@ -282,7 +283,10 @@ refuses); quality and tracked patches; and the corners' **`jitterPx`** —
 their standard deviation about their own straight-line motion within each
 one-second window, so neither a slow drift of the footage nor the run's frame
 rate moves it — and **`spreadPx`**, their standard deviation over the whole
-run, motion and drift included. Each is defined once, in
+run, motion and drift included. Both pool every frame with a pose, DETECT and
+TRACK alike, so one wrong detection weighs on them heavily: read them on a
+clip where the target stays in view and every pose is right, such as the
+static clip. Each is defined once, in
 [`js/bench-metrics.mjs`](./js/bench-metrics.mjs)'s `DEFINITIONS`; the page
 shows the ones it headlines, and every export carries all of them with
 `metricsVersion`, so two exports cannot mean different things by one name.
