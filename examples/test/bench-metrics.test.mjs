@@ -27,19 +27,30 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    clockResolution,
     cornerJitter,
     countLoopWraps,
     DEFINITIONS,
     frameRecord,
+    framesAt,
     framesForStage,
     lockSteps,
     METRICS_VERSION,
+    MODES,
+    nextFrameIndex,
+    parsePositiveInt,
+    parseRunParams,
     percentile,
     reacquisitions,
     reprojectCorners,
+    sha256Hex,
     stats,
     summarizeRun,
     targetCorners,
+    targetRecord,
+    texturedFrame,
+    timeRepeated,
+    trackabilityError,
 } from "../js/bench-metrics.mjs";
 
 describe("percentile", () => {
@@ -603,5 +614,209 @@ describe("summarizeRun", () => {
         for (const key of ["corners", "alignment"]) expect(DEFINITIONS).toHaveProperty(key);
         expect(Object.isFrozen(DEFINITIONS)).toBe(true);
         expect(METRICS_VERSION).toBe(1);
+    });
+});
+
+describe("parsePositiveInt and parseRunParams", () => {
+    const clips = ["pinball-bench.mp4", "pinball-static.mp4"];
+
+    it("reads a positive integer, and nothing else", () => {
+        expect(parsePositiveInt("300")).toBe(300);
+        expect(parsePositiveInt("150.9")).toBe(150);
+        for (const raw of [null, "", " ", "abc", "0", "-5", "1e999"])
+            expect(parsePositiveInt(raw)).toBeNull();
+    });
+
+    it("sets nothing without parameters", () => {
+        expect(parseRunParams("", { bundledClips: clips })).toEqual({
+            maxKeypoints: null,
+            procWidth: null,
+            procHeight: null,
+            camera: null,
+            mode: null,
+            target: null,
+            windowSize: null,
+            clip: null,
+        });
+    });
+
+    it("reads a tracking run's URL, and gives tracking the file by default", () => {
+        const p = parseRunParams(
+            "?mode=tracking&window=300&clip=pinball-static.mp4&maxKeypoints=150",
+            {
+                bundledClips: clips,
+            },
+        );
+        expect(p).toMatchObject({
+            mode: "tracking",
+            target: "wnft",
+            windowSize: 300,
+            clip: "pinball-static.mp4",
+            maxKeypoints: 150,
+        });
+    });
+
+    it("keeps an explicit target, even one tracking cannot use: Start refuses it", () => {
+        expect(parseRunParams("?mode=tracking&target=image", { bundledClips: clips }).target).toBe(
+            "image",
+        );
+    });
+
+    it("drops what is out of its domain, and clamps the window to 10–2000", () => {
+        const p = parseRunParams("?mode=tracker&target=png&clip=other.mp4&window=5&camera=side", {
+            bundledClips: clips,
+        });
+        expect(p).toMatchObject({
+            mode: null,
+            target: null,
+            clip: null,
+            windowSize: 10,
+            camera: null,
+        });
+        expect(parseRunParams("?window=99999", { bundledClips: clips }).windowSize).toBe(2000);
+        expect(parseRunParams("?camera=front", { bundledClips: clips }).camera).toBe("user");
+        expect(parseRunParams("?camera=rear", { bundledClips: clips }).camera).toBe("environment");
+        expect(MODES).toEqual(["stateless", "detection-only", "tracking"]);
+    });
+});
+
+describe("trackabilityError", () => {
+    const db = (patches) => ({ patches });
+
+    it("accepts a target NftTracker would track", () => {
+        expect(trackabilityError(db({ count: 64, patchSize: 16 }), 8)).toBeNull();
+    });
+
+    it.each([
+        ["no patches", undefined, /no patches/],
+        ["patches under 3 × 3", { count: 64, patchSize: 2 }, /3 × 3/],
+        ["fewer patches than minTrackedPatches", { count: 7, patchSize: 16 }, /minTrackedPatches/],
+    ])("refuses a target with %s, naming targets/pinball.wnft", (_, patches, why) => {
+        const message = trackabilityError(db(patches), 8);
+        expect(message).toMatch(why);
+        expect(message).toMatch(/targets\/pinball\.wnft/);
+    });
+});
+
+describe("clockResolution", () => {
+    it("finds the smallest step a coarse clock takes", () => {
+        let calls = 0;
+        expect(clockResolution(() => Math.floor(calls++ / 7) * 0.1, 20)).toBeCloseTo(0.1, 12);
+    });
+
+    it("is null for a clock that never moves", () => {
+        expect(clockResolution(() => 5, 2)).toBeNull();
+    });
+});
+
+describe("timeRepeated", () => {
+    it("times runs after untimed warm-up runs, and ranks p50 and p95 as bench-tracking.mjs does", () => {
+        let now = 0;
+        let i = 0;
+        const r = timeRepeated(() => void (now += ++i), { clock: () => now, warmup: 5, runs: 10 });
+        // Timed calls add 6 … 15: p50 is rank 5 of 10, p95 rank 9.
+        expect(r).toEqual({ p50: 11, p95: 15 });
+    });
+});
+
+describe("texturedFrame", () => {
+    it("is bench-tracking.mjs's texture, pixel for pixel", () => {
+        const f = texturedFrame(5, 4);
+        expect(f.width).toBe(5);
+        expect(f.height).toBe(4);
+        expect(f.data).toBeInstanceOf(Uint8Array);
+        for (const [x, y] of [
+            [0, 0],
+            [4, 0],
+            [2, 3],
+            [4, 3],
+        ]) {
+            const v =
+                128 +
+                50 * Math.sin(0.35 * x + 0.2 * y) +
+                40 * Math.cos(0.23 * y - 0.31 * x) +
+                20 * Math.sin(0.57 * x) * Math.cos(0.49 * y);
+            expect(f.data[y * 5 + x]).toBe(Math.round(v));
+        }
+    });
+});
+
+describe("sha256Hex and targetRecord", () => {
+    it("hashes bytes to lowercase hex", async () => {
+        expect(await sha256Hex(new TextEncoder().encode("abc"))).toBe(
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        );
+    });
+
+    it("is null without SubtleCrypto, as on a page served over plain http from another host", async () => {
+        expect(await sha256Hex(new Uint8Array(1), null)).toBeNull();
+    });
+
+    const meta = { widthPx: 512, heightPx: 640 };
+    const pyramid = {
+        scaleStep: Math.cbrt(2),
+        levelSizes: [
+            [512, 640],
+            [406, 507],
+        ],
+    };
+
+    it("says what a decoded target carries", () => {
+        const db = {
+            meta,
+            pyramid,
+            keypoints: { count: 2062 },
+            patches: { count: 64, patchSize: 16 },
+        };
+        expect(
+            targetRecord({ source: "wnft", file: "targets/pinball.wnft", sha256: "ab", db }),
+        ).toEqual({
+            source: "wnft",
+            file: "targets/pinball.wnft",
+            sha256: "ab",
+            builtWith: null,
+            widthPx: 512,
+            heightPx: 640,
+            levels: 2,
+            keypoints: 2062,
+            patches: 64,
+            patchSize: 16,
+        });
+    });
+
+    it("says a target built in the page has no patches, and how it was built", () => {
+        const db = { meta, pyramid, keypoints: { count: 2067 } };
+        const builtWith = { function: "buildTargetFromImage", maxSide: 640, levels: 8 };
+        expect(
+            targetRecord({
+                source: "image",
+                file: "images/pinball.jpg",
+                sha256: null,
+                db,
+                builtWith,
+            }),
+        ).toMatchObject({
+            patches: 0,
+            patchSize: null,
+            builtWith,
+        });
+    });
+});
+
+describe("nextFrameIndex and framesAt", () => {
+    const times = [0, 1 / 30, 2 / 30, 3 / 30, 4 / 30, 5 / 30];
+
+    it("takes the first frame at or after the busy time, and runs off the end when there is none", () => {
+        expect(nextFrameIndex(times, 0, 10)).toBe(1); // done before the next frame
+        expect(nextFrameIndex(times, 0, 50)).toBe(2); // 50 ms: frame 1 (33 ms) went stale
+        expect(nextFrameIndex(times, 1, 30)).toBe(2); // under one interval (33.3 ms)
+        expect(nextFrameIndex(times, 4, 120)).toBe(6);
+    });
+
+    it("finds each media time's frame to the microsecond, and throws on one no frame has", () => {
+        expect(framesAt([0.1, 0.133333, 0.166667], [0.166667, 0.1333330000001, 0.1])).toEqual([
+            2, 1, 0,
+        ]);
+        expect(() => framesAt([0.1, 0.133333], [0.12])).toThrow(/no frame at media time 0\.12/);
     });
 });

@@ -427,3 +427,170 @@ export function compareExports(first, second) {
         second: cornerJitter(restrict(second)),
     };
 }
+
+/** The page's modes, as its `<select>` and the `?mode=` parameter name them. */
+export const MODES = Object.freeze(["stateless", "detection-only", "tracking"]);
+
+/**
+ * A positive integer from `raw`, or `null` for anything else (empty, `abc`,
+ * `0`, `-5`, `1e999`), so a malformed URL parameter or an emptied field falls
+ * back to its default rather than reaching `detect` or the canvas as `NaN`.
+ */
+export function parsePositiveInt(raw) {
+    if (raw === null || raw === undefined || String(raw).trim() === "") return null;
+    const n = Math.floor(Number(raw));
+    return Number.isFinite(n) && n >= 1 ? n : null;
+}
+
+/**
+ * The run parameters `search` (a URL's query string) sets, each `null` when
+ * absent or out of its domain: `?maxKeypoints=`, `?procWidth=`,
+ * `?procHeight=`, `?camera=rear|front` (as a `facingMode`),
+ * `?mode=stateless|detection-only|tracking`, `?target=image|wnft`, `?window=`
+ * (clamped to 10–2000 frames) and `?clip=` (one of `bundledClips`). Tracking
+ * needs patches, which only the file carries, so `mode=tracking` defaults the
+ * target to `"wnft"`; an explicit `target=image` is kept, and Start refuses it.
+ */
+export function parseRunParams(search, { bundledClips }) {
+    const p = new URLSearchParams(search);
+    const mode = MODES.includes(p.get("mode")) ? p.get("mode") : null;
+    const t = p.get("target");
+    const windowSize = parsePositiveInt(p.get("window"));
+    const camera = p.get("camera");
+    return {
+        maxKeypoints: parsePositiveInt(p.get("maxKeypoints")),
+        procWidth: parsePositiveInt(p.get("procWidth")),
+        procHeight: parsePositiveInt(p.get("procHeight")),
+        camera: camera === "front" ? "user" : camera === "rear" ? "environment" : null,
+        mode,
+        target: t === "image" || t === "wnft" ? t : mode === "tracking" ? "wnft" : null,
+        windowSize: windowSize === null ? null : Math.min(2000, Math.max(10, windowSize)),
+        clip: bundledClips.includes(p.get("clip")) ? p.get("clip") : null,
+    };
+}
+
+/**
+ * Why `NftTracker` would run detection-only on `db` — the constructor's rule:
+ * no patches, patches under 3 × 3, or fewer than `minTrackedPatches` — or
+ * `null` when it would track. The page checks this before starting a
+ * tracking run, so a run is never exported as tracking while it detects.
+ */
+export function trackabilityError(db, minTrackedPatches) {
+    const p = db.patches;
+    const use = "choose targets/pinball.wnft";
+    if (!p) return `Tracking needs a target with patches, and this one has no patches: ${use}.`;
+    if (p.patchSize < 3)
+        return `This target's patches are ${p.patchSize} × ${p.patchSize}, and alignPatch needs at least 3 × 3: ${use}.`;
+    if (p.count < minTrackedPatches) {
+        return `This target has ${p.count} patches, fewer than minTrackedPatches (${minTrackedPatches}): ${use}.`;
+    }
+    return null;
+}
+
+/**
+ * The smallest step `clock` was seen to take over `samples` attempts, or
+ * `null` if it never moved. Chrome coarsens `performance.now()` to 0.1 ms on a
+ * page that is not cross-origin isolated, so a stage under that reads 0 or
+ * 0.1 ms; exports record this so such values are read as what they are.
+ */
+export function clockResolution(clock, samples = 50) {
+    let best = Infinity;
+    for (let s = 0; s < samples; s++) {
+        const t0 = clock();
+        let t1 = t0;
+        for (let spin = 0; t1 === t0 && spin < 1e6; spin++) t1 = clock();
+        if (t1 > t0) best = Math.min(best, t1 - t0);
+    }
+    return best === Infinity ? null : best;
+}
+
+/**
+ * `fn` timed `runs` times after `warmup` untimed runs, `{ p50, p95 }` in the
+ * clock's unit: the method of packages/nft-tracker/scripts/bench-tracking.mjs,
+ * whose numbers #63's device estimates came from, so the page's probe measures
+ * what that script estimated.
+ */
+export function timeRepeated(fn, { clock, warmup = 50, runs = 300 }) {
+    for (let i = 0; i < warmup; i++) fn();
+    const samples = new Array(runs);
+    for (let i = 0; i < runs; i++) {
+        const t0 = clock();
+        fn();
+        samples[i] = clock() - t0;
+    }
+    samples.sort((a, b) => a - b);
+    return { p50: percentile(samples, 50), p95: percentile(samples, 95) };
+}
+
+/**
+ * The smooth, deterministic texture bench-tracking.mjs times the frame pyramid
+ * on. The pyramid's arithmetic does not depend on the pixels; the texture
+ * matches so the two measurements are of the same thing.
+ */
+export function texturedFrame(width, height) {
+    const data = new Uint8Array(width * height);
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const v =
+                128 +
+                50 * Math.sin(0.35 * x + 0.2 * y) +
+                40 * Math.cos(0.23 * y - 0.31 * x) +
+                20 * Math.sin(0.57 * x) * Math.cos(0.49 * y);
+            data[y * width + x] = Math.round(v);
+        }
+    }
+    return { data, width, height };
+}
+
+/**
+ * SHA-256 of `bytes` as lowercase hex, or `null` without SubtleCrypto — which
+ * browsers give only to a secure context (https://, or http://localhost).
+ */
+export async function sha256Hex(bytes, subtle = globalThis.crypto?.subtle) {
+    if (!subtle) return null;
+    const digest = new Uint8Array(await subtle.digest("SHA-256", bytes));
+    return Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * What an export records about the target a run used: where it came from
+ * (`"wnft"`, a file loaded and decoded; `"image"`, built in the page), the
+ * file and its SHA-256, how it was built when it was, and what it carries.
+ */
+export function targetRecord({ source, file, sha256, db, builtWith = null }) {
+    return {
+        source,
+        file,
+        sha256,
+        builtWith,
+        widthPx: db.meta.widthPx,
+        heightPx: db.meta.heightPx,
+        levels: db.pyramid.levelSizes.length,
+        keypoints: db.keypoints.count,
+        patches: db.patches ? db.patches.count : 0,
+        patchSize: db.patches ? db.patches.patchSize : null,
+    };
+}
+
+/**
+ * The frame a device busy for `busyMs` after frame `i` processes next: the
+ * first whose time is at or after `times[i] + busyMs`, or `times.length`
+ * when none is. `times` ascending, seconds — the desktop replay's model of
+ * `requestVideoFrameCallback` skipping the frames that went stale.
+ */
+export function nextFrameIndex(times, i, busyMs) {
+    const until = times[i] + busyMs / 1000;
+    let j = i + 1;
+    while (j < times.length && times[j] < until) j++;
+    return j;
+}
+
+/** The index in `pts` of each of `mediaTimes`, matched to the microsecond; throws on one no frame has. */
+export function framesAt(pts, mediaTimes) {
+    const index = new Map(pts.map((t, i) => [mediaKey(t), i]));
+    return mediaTimes.map((t) => {
+        const i = index.get(mediaKey(t));
+        if (i === undefined) throw new Error(`no frame at media time ${t}`);
+        return i;
+    });
+}
