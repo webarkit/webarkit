@@ -146,24 +146,32 @@ live webcam, a user-chosen video file, or one of three bundled reference clips
 (`videos/pinball-*.mp4`) — the two video sources loop, so a short clip
 still fills the measurement window and a run can be repeated; a webcam is
 already live and has no clip to loop. It changes nothing
-about how the pipeline runs — it only times it, in eight stages per frame:
-frame acquisition, grayscale conversion, `detect`, `describe`, `match`,
-`estimateHomography`, `poseFromHomography`, and the frame total — plus the
-tracker's own outcome (`locked on` / `too few matches` / `no consensus`).
+about how the pipeline runs — it only times it, in eight stages per frame
+(frame acquisition, grayscale conversion, `detect`, `describe`, `match`,
+`estimateHomography`, `poseFromHomography` and the frame total) and, when
+`NftTracker` runs, in its own timings of its tracking step.
 p50, p95 and max are kept over a configurable window (frame count), and the
 whole window is downloadable as JSON, with the user agent, the source and
 processing resolutions, and a device label typed in by hand — none of that
 is inferrable from the numbers alone, and a benchmark without it cannot be
 told apart from the one run before it.
 
-Two modes, selected before pressing Start:
+Three modes, selected before pressing Start (or with `?mode=`):
 
-- **stateless pipeline** — the same inline `detect → describe → match →
-  estimateHomography → poseFromHomography` calls as the static demo above (the
-  webcam demo already runs `NftTracker` itself), against
-  `@webarkit/nft-tracker`'s own `DEFAULT_SCENE_LEVELS` /
+- **stateless pipeline** (`stateless`) — the same inline `detect → describe →
+  match → estimateHomography → poseFromHomography` calls as the static demo,
+  against `@webarkit/nft-tracker`'s own `DEFAULT_SCENE_LEVELS` /
   `DEFAULT_MAX_SCENE_KEYPOINTS` / `DEFAULT_RATIO` / `DEFAULT_RANSAC_THRESHOLD`.
-- **NftTracker** — `tracker.process(frame, timestampMs)`, once per tick.
+- **NftTracker, detection-only** (`detection-only`) — `tracker.process(frame,
+  timestampMs)` with `detectionOnly: true`: M1 of
+  [ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md),
+  every frame detected from scratch, the same pipeline as the stateless mode
+  and expected to report the same match and inlier counts. Exports made before
+  the tracking mode called this mode `tracker`; their target had no patches,
+  so it was detection-only too.
+- **NftTracker, tracking** (`tracking`) — M2's `LOST → DETECT → TRACK` state
+  machine: a detection locks on, and the frames after it track the target's
+  patches without detecting. It needs a target with patches.
 
 One of those defaults can be overridden per run: **max keypoints (scene)**,
 the `maxKeypoints` budget passed to the scene-side `detect` (the stateless
@@ -202,22 +210,31 @@ because, on the file path, frame rate measurably changed `acquire` (see
 [`docs/benchmarks/README.md`](../docs/benchmarks/README.md)). The field is
 `null` for file and bundled-clip runs.
 
-Both modes are timed by wrapping the `CvBackend` instance passed to whichever
-one is active, so the stage split is available for `NftTracker` even though
-`process()` does not expose it itself. The page builds its target with
-`buildTargetFromImage`, which writes no tracking patches, so `NftTracker` runs
-detection-only here — M1 of
-[ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md), the
-same pipeline as the stateless mode — and the two modes are expected to report
-the same match/inlier counts. That makes this page the baseline for M2's
-tracking state, which needs a target with patches (a compiled `.wnft`, not yet
-an option here): whatever tracking costs or saves shows as a change against
-these numbers rather than a number with nothing to compare it to.
+Every mode is timed by wrapping the `CvBackend` instance passed to it, so the
+stage split is available for `NftTracker` even though `process()` does not
+expose it. Both `NftTracker` modes are also given a `clock`
+(`performance.now`), and the tracker reports its tracking step's own
+`timings`: `trackMs` for the whole step, of which `pyramidMs` is
+`buildFramePyramid`, `alignMs` `alignPatch` (each patch's warp and its
+alignment) and `fitMs` `robustHomography` — exactly as `src/tracker.ts`
+defines them. On a TRACK frame nothing is detected, so the detection stages'
+percentiles are taken over the frames that detected.
 
-**Comparing the two modes on the same footage.** `timestampMs` passed to each
+**The target** (`?target=`). By default the page builds its target at load
+with `buildTargetFromImage`, from `images/pinball.jpg` at 640 px on its long
+side; that target has no patches, and a run with no parameters stays the run
+this page always measured. The other choice is `targets/pinball.wnft`,
+fetched and decoded, never built here — the only target with patches (64 of
+16 × 16, all from level 0) — and the tracking mode selects it. Start refuses
+to track a target the tracker would not track, before any source starts,
+rather than run detection-only under the tracking label. The export's
+`target` records which one a run used: `file`, the file's `sha256`,
+`builtWith` for the in-page build, and what it carries.
+
+**Comparing two modes on the same footage.** `timestampMs` passed to each
 tick is `performance.now()`, not `video.currentTime`, so two separate Start
 clicks against a looped video land at two different, arbitrary points in the
-loop by default — a stateless-pipeline run and an NftTracker run then measure
+loop by default — two runs then measure
 different content, not just different code paths, which defeats the point of
 comparing them. The **"start at (s)"** field (either video source; a webcam
 has no timeline to seek) seeks there before the first tick, so running it once
@@ -232,14 +249,70 @@ way both times.
 *presents*, and a main thread busy for longer than the clip's own frame
 interval (real here: `total`'s own p50 sits close to a ~25fps clip's ~40ms
 budget) makes the browser coalesce to the latest decoded frame, skipping
-whichever ones went stale while it was blocked. Stateless-pipeline and
-NftTracker cost a slightly different number of milliseconds per frame, so
+whichever ones went stale while it was blocked. Two modes cost a slightly
+different number of milliseconds per frame, so
 they skip a different number of frames and drift apart — tick 47 in one run
 is not guaranteed to be the same clip moment as tick 47 in the other, even
 from an identical `startAt`. Each frame's own `mediaTimeSeconds` (from
 `requestVideoFrameCallback`'s metadata, or `video.currentTime` on the rAF
 fallback) is recorded for exactly this reason: **compare two exports by
 `mediaTimeSeconds`, not by array index or position in `frames`.**
+`scripts/compare-bench.mjs` does exactly that (below).
+
+**What each frame records.** Besides the stage timings and the counts every
+export has always had (`numSceneKeypoints`, `numMatches`, `numInliers`, `ok`,
+`reason`, `mediaTimeSeconds`), each frame carries its `state` (`LOST`,
+`DETECT` or `TRACK`; for the stateless pipeline, `DETECT` with a pose and
+`LOST` without one), the tracker's `quality`, `trackLoss`, `tracking` (the
+step's patch counts and its fit's `inliers`, `rmsError`, `fitIterations` and
+`fitConverged`) and `trackerTimings` — copied as the tracker reports them,
+`null` without a tracker — and `corners`, the target's four corners
+reprojected into the frame by the frame's homography.
+
+**The run summary.** The "Run summary" panel, and the export's `runSummary`,
+over the same window as the stage percentiles: the frames per state and the
+**TRACK share**; **re-acquisitions** (a re-detection on the first frame after
+a loop wrap counted apart); a lock's **first steps**, and how many were
+confirmed, and a **held lock's steps**, and how many were lost;
+**`trackStepMs`** — `trackMs` on TRACK frames, ADR-0001 point 5's tracker-side
+TypeScript compute in the tracking state, against its 8 ms at p95 —
+`pyramidMs`, `alignMs`, `fitMs` and the frame pyramid levels built; fit health
+(fits that stopped at their cap, which the tracker reports rather than
+refuses); quality and tracked patches; and the corners' **`jitterPx`** —
+their standard deviation about their own straight-line motion within each
+one-second window, so neither a slow drift of the footage nor the run's frame
+rate moves it — and **`spreadPx`**, their standard deviation over the whole
+run, motion and drift included. Each is defined once, in
+[`js/bench-metrics.mjs`](./js/bench-metrics.mjs)'s `DEFINITIONS`; the page
+shows the ones it headlines, and every export carries all of them with
+`metricsVersion`, so two exports cannot mean different things by one name.
+The export also records `ticks`, the frames processed since Start (the window
+is the last `windowSize` of them), and `clockResolutionMs`: Chrome coarsens
+`performance.now()` to 0.1 ms on a page that is not cross-origin isolated, so
+a stage cheaper than that reads 0.
+
+**Comparing two exports: `scripts/compare-bench.mjs`.**
+`node scripts/compare-bench.mjs first.json second.json` prints both runs'
+summaries and the corners' jitter and spread on the frames both posed
+(`DEFINITIONS.alignment`): the tracking and the stateless run of one clip,
+side by side, on the same footage. It refuses — one line, exit 1 — exports it
+cannot align: a webcam run (its media time is the stream's), an export from
+before `metricsVersion` 1, another clip, another processing size.
+
+**Timing the frame pyramid on the device.** The tracker builds only the
+pyramid levels its patches start on; with `pinball.wnft`'s level-0 patches,
+on the bundled clips and on the camera path, that is one level — the frame
+itself, nothing computed — so `pyramidMs` reads about 0. The **Time frame
+pyramid** button measures what #63 estimated instead: `buildFramePyramid` at
+1–6 levels of 270×360, 480×270 and 640×480, by
+`packages/nft-tracker/scripts/bench-tracking.mjs`'s method (p50 and p95 of 300
+runs after 50 warm-up), downloaded as its own JSON.
+
+**URL parameters.** Besides `?maxKeypoints=`, `?procWidth=`/`?procHeight=`
+and `?camera=`: `?mode=`, `?target=`, `?window=` (10–2000 frames) and
+`?clip=` (a bundled clip's file name, which also selects that source) — e.g.
+`bench-nft.html?mode=tracking&window=300&clip=pinball-static.mp4`
+(tracking defaults to `target=wnft`).
 
 ## The bundled reference clips: `videos/pinball-*.mp4`
 
@@ -391,6 +464,14 @@ static demo's own inline copy did before this file existed. The
 per-pyramid-level matching strategy that used to live here moved into
 [`@webarkit/nft-tracker`](../packages/nft-tracker) — it is tracker logic, not
 page logic, and the tracker needs it too. What stayed is what touches the DOM.
+
+`js/bench-metrics.mjs` is the bench page's other module: every run metric it
+reports and the text defining each, its URL parameters, and the helpers its
+pyramid probe and the desktop replay share — no DOM, tested in
+`examples/test/` by the root `npm test`. `scripts/compare-bench.mjs` and
+`scripts/replay-clips.mjs` (a desktop pre-flight that replays the bundled
+clips through the tracker; ffmpeg needed) import it too, so a comparison or a
+replay means by each name what the page does.
 
 ## Images
 
