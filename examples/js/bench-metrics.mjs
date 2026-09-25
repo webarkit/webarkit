@@ -161,3 +161,213 @@ export function framesForStage(frames, stage) {
             return frames;
     }
 }
+
+/** Bumped whenever a definition in {@link DEFINITIONS} changes meaning; every export records it. */
+export const METRICS_VERSION = 1;
+
+/** The quality at or below which a TRACK frame is counted in `lowQualityTrackFrames`. */
+export const LOW_QUALITY = 0.2;
+
+/** The media-time window `jitterPx` is taken within, seconds. */
+export const JITTER_WINDOW_S = 1;
+
+/** What each exported metric means, in the words the page shows and every export carries. */
+export const DEFINITIONS = Object.freeze({
+    frames: "Frames in the window: the last windowSize ticks of the run, one per video frame the page processed.",
+    states: "Frames per state. NftTracker's result.state; the stateless pipeline has no tracker, and its frames are DETECT with a pose and LOST without one, as a detection-only tracker's are for the same frame (M1).",
+    trackShare:
+        "TRACK frames ÷ frames. Counted per processed frame: a TRACK frame costs less than a DETECT frame, so more of them fit in a second of video.",
+    loopWraps:
+        "Frames whose mediaTimeSeconds is lower than the frame's before: the video looped between the two. A webcam has none.",
+    reacquisitions:
+        "DETECT frames after an earlier frame of the window had a pose, other than the first frame after a loop wrap. In the stateless and detection-only modes every posed frame after the first is one.",
+    reacquisitionsAtLoopWrap:
+        "DETECT frames that are the first after a loop wrap and follow an earlier pose: the jump there is the clip's, not the tracker's.",
+    lockLosses:
+        "Frames per trackLoss reason: the tracking steps that dropped the lock (tracker.ts, TrackLoss). The same frame is then detected again.",
+    firstSteps:
+        "Tracking steps (frames whose tracking is not null) that follow a DETECT frame: a lock's first step, which has no velocity to predict with. confirmed: those that returned TRACK.",
+    heldLockSteps:
+        "Tracking steps that follow a TRACK frame: a held lock's. lost: those that set trackLoss.",
+    trackStepMs:
+        "{ n, min, p50, p95, max } of NftTracker's timings.trackMs on TRACK frames: the whole tracking step (prediction, cull, pyramid depth, pyramid, alignment, fit, judgement), without the pose (a backend call), frame acquisition or grey conversion. ADR-0001 point 5's tracker-side TypeScript compute in the tracking state; its threshold is 8 ms at p95.",
+    pyramidMs: "The same, over timings.pyramidMs: the part of the step in buildFramePyramid.",
+    alignMs:
+        "The same, over timings.alignMs: the part of the step in alignPatch, each patch's warp and its alignment. Choosing the pyramid's depth counts in trackMs only.",
+    fitMs: "The same, over timings.fitMs: the part of the step in robustHomography.",
+    frameLevels:
+        "TRACK frames per tracking.frameLevels: the frame pyramid levels the step built, 1 being the frame itself with nothing computed.",
+    fits: "Tracking steps whose robust fit returned (tracking.fitConverged not null): how many, how many stopped at fitMaxIterations (capped: reported by the tracker, not refused), and their iterations.",
+    quality:
+        "{ n, min, p50, p95, max } of result.quality on TRACK frames: the sum of the fit's weights ÷ the patches passed to alignPatch.",
+    trackedPatches:
+        "The same, over tracking.inliers on TRACK frames: the correspondences the fit kept with a weight above 0 (result.numInliers), the count minTrackedPatches bounds.",
+    lowQualityTrackFrames:
+        "TRACK frames with a quality of at most 0.20. The wrong poses #66 measured after a sudden roll or scale change had 0.12–0.20, but right fits on few patches reach it too: this counts candidates, not wrong poses.",
+    posedFrames: "Frames with corners.",
+    jitterWindows:
+        "The one-second windows jitterPx pools: those holding at least 4 frames with corners.",
+    corners:
+        "Per frame: the target's corners (0, 0), (w − 1, 0), (w − 1, h − 1) and (0, h − 1), in target level-0 px, projected into the frame by the frame's H, in frame px. null without a pose, or when the four do not all project to finite points on the same side of the camera.",
+    jitterPx:
+        "The corners' standard deviation about their own straight-line motion within each one-second window of media time, frame px: in each window (never spanning a loop wrap) holding at least 4 frames with corners, a least-squares line in time is fitted to each corner's x and to its y; jitterPx = √(Σ residual² ÷ (4 · Σ(n − 2))) over those windows, n being each window's frames. Equal to the corners' SD for a target still in the image; motion that is straight over a second does not count; with n − 2 degrees of freedom per window it does not depend, in expectation, on how many frames per second the run processed.",
+    spreadPx:
+        "√(Σ|cᵢ − c̄|² ÷ (4 · n)), frame px, over the n frames with corners, c̄ being each corner's mean: the corners' standard deviation over the run. It counts any motion of the target in the image, and a clip's drift, along with jitter.",
+    alignment:
+        "Two exports of the same footage compared on common frames: each restricted to its frames with corners at the media times, to the microsecond, where both have a frame with corners (every occurrence kept when a loop revisits one); jitterPx and spreadPx are then taken over each restricted run as defined above.",
+});
+
+/** Whether the video looped between two consecutive frames: media time went back. */
+export function isLoopWrap(prev, cur) {
+    return cur.mediaTimeSeconds < prev.mediaTimeSeconds;
+}
+
+/** See `DEFINITIONS.loopWraps`. */
+export function countLoopWraps(frames) {
+    let wraps = 0;
+    for (let i = 1; i < frames.length; i++) if (isLoopWrap(frames[i - 1], frames[i])) wraps++;
+    return wraps;
+}
+
+/** See `DEFINITIONS.reacquisitions` and `DEFINITIONS.reacquisitionsAtLoopWrap`. */
+export function reacquisitions(frames) {
+    let hadPose = false;
+    let count = 0;
+    let atWrap = 0;
+    for (let i = 0; i < frames.length; i++) {
+        const f = frames[i];
+        if (f.state === "DETECT" && hadPose) {
+            if (i > 0 && isLoopWrap(frames[i - 1], f)) atWrap++;
+            else count++;
+        }
+        if (f.ok) hadPose = true;
+    }
+    return { reacquisitions: count, reacquisitionsAtLoopWrap: atWrap };
+}
+
+/** See `DEFINITIONS.firstSteps` and `DEFINITIONS.heldLockSteps`. */
+export function lockSteps(frames) {
+    const firstSteps = { n: 0, confirmed: 0 };
+    const heldLockSteps = { n: 0, lost: 0 };
+    for (let i = 1; i < frames.length; i++) {
+        const f = frames[i];
+        if (!f.tracking) continue;
+        const before = frames[i - 1].state;
+        if (before === "DETECT") {
+            firstSteps.n++;
+            if (f.state === "TRACK") firstSteps.confirmed++;
+        } else if (before === "TRACK") {
+            heldLockSteps.n++;
+            if (f.trackLoss) heldLockSteps.lost++;
+        }
+    }
+    return { firstSteps, heldLockSteps };
+}
+
+/**
+ * See `DEFINITIONS.jitterPx`, `spreadPx`, `posedFrames` and `jitterWindows`.
+ * `frames` in the order they were processed: a loop wrap is read from it.
+ */
+export function cornerJitter(frames) {
+    const posed = frames.filter((f) => f.corners);
+    let spreadPx = null;
+    if (posed.length > 0) {
+        let sum = 0;
+        for (let c = 0; c < 4; c++) {
+            for (let axis = 0; axis < 2; axis++) {
+                let mean = 0;
+                for (const f of posed) mean += f.corners[c][axis];
+                mean /= posed.length;
+                for (const f of posed) sum += (f.corners[c][axis] - mean) ** 2;
+            }
+        }
+        spreadPx = Math.sqrt(sum / (4 * posed.length));
+    }
+    const windows = new Map();
+    let loop = 0;
+    for (let i = 0; i < frames.length; i++) {
+        if (i > 0 && isLoopWrap(frames[i - 1], frames[i])) loop++;
+        const f = frames[i];
+        if (!f.corners) continue;
+        const key = `${loop}:${Math.floor(f.mediaTimeSeconds / JITTER_WINDOW_S)}`;
+        if (!windows.has(key)) windows.set(key, []);
+        windows.get(key).push(f);
+    }
+    let residuals = 0;
+    let dof = 0;
+    let used = 0;
+    for (const w of windows.values()) {
+        const n = w.length;
+        if (n < 4) continue;
+        let tMean = 0;
+        for (const f of w) tMean += f.mediaTimeSeconds;
+        tMean /= n;
+        let tSpread = 0;
+        for (const f of w) tSpread += (f.mediaTimeSeconds - tMean) ** 2;
+        if (tSpread === 0) continue;
+        for (let c = 0; c < 4; c++) {
+            for (let axis = 0; axis < 2; axis++) {
+                let mean = 0;
+                for (const f of w) mean += f.corners[c][axis];
+                mean /= n;
+                let slope = 0;
+                for (const f of w)
+                    slope += (f.mediaTimeSeconds - tMean) * (f.corners[c][axis] - mean);
+                slope /= tSpread;
+                for (const f of w) {
+                    residuals +=
+                        (f.corners[c][axis] - mean - slope * (f.mediaTimeSeconds - tMean)) ** 2;
+                }
+            }
+        }
+        dof += n - 2;
+        used++;
+    }
+    return {
+        posedFrames: posed.length,
+        jitterWindows: used,
+        jitterPx: dof > 0 ? Math.sqrt(residuals / (4 * dof)) : null,
+        spreadPx,
+    };
+}
+
+/** A run's summary over its window of frame records. Every key is defined in {@link DEFINITIONS}. */
+export function summarizeRun(frames) {
+    const states = { LOST: 0, DETECT: 0, TRACK: 0 };
+    const lockLosses = {};
+    for (const f of frames) {
+        states[f.state]++;
+        if (f.trackLoss) lockLosses[f.trackLoss] = (lockLosses[f.trackLoss] ?? 0) + 1;
+    }
+    const track = frames.filter((f) => f.state === "TRACK");
+    const timed = track.filter((f) => f.trackerTimings);
+    const stepTiming = (key) => stats(timed.map((f) => f.trackerTimings[key]));
+    const stepped = track.filter((f) => f.tracking);
+    const frameLevels = {};
+    for (const f of stepped)
+        frameLevels[f.tracking.frameLevels] = (frameLevels[f.tracking.frameLevels] ?? 0) + 1;
+    const fits = frames.filter((f) => f.tracking && f.tracking.fitConverged !== null);
+    return {
+        frames: frames.length,
+        states,
+        trackShare: frames.length > 0 ? states.TRACK / frames.length : null,
+        ...reacquisitions(frames),
+        loopWraps: countLoopWraps(frames),
+        lockLosses,
+        ...lockSteps(frames),
+        trackStepMs: stepTiming("trackMs"),
+        pyramidMs: stepTiming("pyramidMs"),
+        alignMs: stepTiming("alignMs"),
+        fitMs: stepTiming("fitMs"),
+        frameLevels,
+        fits: {
+            n: fits.length,
+            capped: fits.filter((f) => f.tracking.fitConverged === false).length,
+            iterations: stats(fits.map((f) => f.tracking.fitIterations)),
+        },
+        quality: stats(track.map((f) => f.quality)),
+        trackedPatches: stats(stepped.map((f) => f.tracking.inliers)),
+        lowQualityTrackFrames: track.filter((f) => f.quality <= LOW_QUALITY).length,
+        ...cornerJitter(frames),
+    };
+}
