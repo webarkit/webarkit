@@ -450,6 +450,65 @@ describe("robustHomography with noise", () => {
     });
 });
 
+describe("robustHomography at extreme magnitudes", () => {
+    it("weighs a residual of 1e200 px as types.ts states when tukeyC is larger still", () => {
+        // Squaring a residual above ~1.3e154 px overflows a double; the
+        // residual itself does not. 1e200 px from the prediction, with
+        // tukeyC = 1e201, every correspondence weighs (1 − 0.1²)² ≈ 0.98, not 0.
+        const src = targetGrid();
+        const dst = projectAll(H_TRUE, src);
+        const farOff = chain(translation(1e200, 0), H_TRUE);
+        const r = robustHomography(src, dst, farOff, { ...OPTIONS, tukeyC: 1e201 });
+        expect(r.ok).toBe(true);
+        if (!r.ok) return;
+        expect(r.numInliers).toBe(40);
+        expect(maxTransferGap(r.H, H_TRUE, src)).toBeLessThan(EXACT_PX);
+    });
+
+    it("gives the same result, to the bit, in units 2^530 times larger", () => {
+        // A change of units by a power of two rounds nothing, so every output
+        // must be the unscaled one rescaled exactly — while residuals of a few
+        // units, squared, overflow past 2^512. The view is affine: with
+        // perspective, a translation × K beside a perspective term ÷ K would
+        // span more exponents than a prediction at unit max-norm can hold.
+        const K = 2 ** 530;
+        const affine: Mat3 = chain(
+            translation(70, 35),
+            rotationAbout(0.1, 320, 240),
+            scaling(0.85),
+        );
+        const src = targetGrid();
+        const noise = gaussian(3);
+        const dst = projectAll(affine, src).map((v) => v + 0.5 * noise());
+        const prediction = chain(translation(2, 0), affine);
+        const base = robustHomography(src, dst, prediction, OPTIONS);
+        const toUnits = scaling(K);
+        const fromUnits = scaling(1 / K);
+        const scaled = robustHomography(
+            src.map((v) => v * K),
+            dst.map((v) => v * K),
+            chain(toUnits, prediction, fromUnits),
+            {
+                maxIterations: OPTIONS.maxIterations,
+                tukeyC: OPTIONS.tukeyC * K,
+                epsilon: OPTIONS.epsilon * K,
+            },
+        );
+        expect(base.ok).toBe(true);
+        expect(scaled.ok).toBe(true);
+        if (!base.ok || !scaled.ok) return;
+        // toEqual and toBe compare numbers with Object.is: bit for bit.
+        expect(Array.from(scaled.weights)).toEqual(Array.from(base.weights));
+        expect([scaled.numInliers, scaled.iterations, scaled.converged]).toEqual([
+            base.numInliers,
+            base.iterations,
+            base.converged,
+        ]);
+        expect(scaled.rmsError).toBe(base.rmsError * K);
+        expect(Array.from(scaled.H)).toEqual(Array.from(chain(toUnits, base.H, fromUnits)));
+    });
+});
+
 describe("robustHomography outlier rejection", () => {
     // The model, and what it measured before this test was written: 40
     // patches with σ = 0.25 px on every coordinate (a converged sub-pixel
