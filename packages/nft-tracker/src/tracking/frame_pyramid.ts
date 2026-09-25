@@ -113,8 +113,10 @@ export function pyramidScales(scaleStep: number, count: number): Float64Array | 
  * - **It is small**: support `r + 2`, so three or four taps per axis at `∛2`,
  *   and each level costs a pass over the level before it, not over level 0.
  *
- * Every weight comes from `+ − × ÷` on the level scales, so the output is
- * bit-identical for the same input on any engine.
+ * Every weight comes from `+ − × ÷` on the level scales, and the horizontal
+ * pass stores its rows in a `Float32Array` — a rounding to single precision
+ * that the output depends on, and that a port must reproduce — so the output
+ * is bit-identical for the same input on any engine.
  *
  * **Open question Q11.** Format spec §5.7 does not say which filter produced
  * a target's level images. The assumption made here, and relied on by
@@ -135,7 +137,8 @@ export function pyramidScales(scaleStep: number, count: number): Float64Array | 
  *   residual, and little as position: with the tests' renderer, whose
  *   resampling blurs about as much as two `∛2` steps, patches of levels 0 to
  *   5 read at their own scale give a gain of 0.86 to 1.10 and a median error
- *   of 0.016 to 0.042 px (align_patch_accuracy.test.ts).
+ *   of 0.016 to 0.042 px, the longest tail at level 0, the sharpest (95th
+ *   percentile 0.28 px; align_patch_accuracy.test.ts).
  *
  * A target whose levels another filter built adds its own difference to the
  * second, by an amount this code cannot see.

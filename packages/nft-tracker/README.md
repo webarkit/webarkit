@@ -341,7 +341,8 @@ from levels this same function built, which `compile-target` does not do yet
 (above). Even then, a patch is usually read on a shallower frame level than
 its own, so the two differ in blur: that shows in the estimated gain and the
 residual, hardly in position (a median of 0.016–0.042 px across patch levels
-0 to 5). The reasoning is in
+0 to 5; level 0, the sharpest, has the longest tail, 0.28 px at the 95th
+percentile). The reasoning is in
 [`frame_pyramid.ts`](./src/tracking/frame_pyramid.ts).
 
 **`alignPatch`** places the patch's stored pixels where the prediction puts
@@ -360,7 +361,7 @@ for 8 × 8 pinball patches whose level matches the frame's scale:
 | Converging from a prediction 3 / 4 / 8 px off | 97% / 89% / 37% (twice as far for a patch seen at twice its scale) |
 | Prediction's rotation off by 10° / scale by 10% | 94% / 100% converge |
 | Gain 0.6–1.3, bias ±40, compensated | as clean, and 96% converge from 3 px off; uncompensated, errors grow 14× to over 2000× (2.2× for a change pivoting at the patches' mean grey level) |
-| A wrong convergence, beyond the basin | told by its `residual / gain`: at least 6.1 grey levels, against at most 3.8 for a right one |
+| A wrong convergence, beyond the basin | level-3 patches: told by `residual / gain`, at least 6.1 grey levels against at most 3.8 for a right one (on a half-contrast print); level-0 patches, sharper than the frame: the two overlap |
 
 Their cost, in Node on a development machine, is measured by
 `scripts/bench-tracking.mjs` (`npm run build` first): at the 270×360

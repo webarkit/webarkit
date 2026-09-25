@@ -84,13 +84,17 @@ const MIN_EIGENVALUE = 1;
  * 3. **How.** Inverse compositional Lucas–Kanade (Baker & Matthews, "Lucas-
  *    Kanade 20 Years On"): the template's steepest-descent images and the
  *    Hessian are built once per patch, and an iteration only samples the
- *    frame. Gain and bias, when estimated, in two phases per level
- *    ({@link alignmentSystem}): first matched to the sampled window's mean
- *    and spread while the translation takes the reduced (variable
- *    projection) step; then, once that has converged, estimated with the
- *    translation by least squares, by the simultaneous inverse compositional
- *    algorithm of the same series' Part 3, which for a translation keeps a
- *    once-built Hessian too. Least squares from the first iteration, that
+ *    frame. Gain and bias, when estimated, in two phases
+ *    ({@link alignmentSystem}): until the translation first converges — on
+ *    the start level, as a rule — they are matched to the sampled window's
+ *    mean and spread while the translation takes the reduced (variable
+ *    projection) step; from then on, the refinement level included, they
+ *    are estimated with the translation by least squares, by the
+ *    simultaneous inverse compositional algorithm of the same series' Part
+ *    3, which for a translation keeps a once-built Hessian too. The
+ *    refinement level starts inside that phase's basin, and matching moments
+ *    again there only cost iterations (align_patch_basin.test.ts). Least
+ *    squares from the first iteration, that
  *    algorithm alone, halved the basin — from 3 px off, 46% converged
  *    against 96% (align_patch_photometric.test.ts) — because a window that
  *    far off matches the patch poorly: the fitted gain collapses towards 0,
@@ -110,9 +114,12 @@ const MIN_EIGENVALUE = 1;
  *    (95th percentile 6) for matched patches, 5 (6) for magnified ones; and
  *    every one of 1152 alignments from 2 px off converged within a cap of
  *    30, at `σ` 1 and 2 (align_patch_basin.test.ts).
- *    With gain and bias, a level converges twice, under matched moments and
- *    then jointly: a median of 5 iterations (95th percentile 6) from 1 px
- *    off (align_patch_photometric.test.ts).
+ *    With gain and bias, the start level converges twice, under matched
+ *    moments and then jointly: from 1 px off, a median of 5 iterations (95th
+ *    percentile 6) for matched patches (align_patch_photometric.test.ts), 7
+ *    (8) for magnified ones (align_patch_basin.test.ts). So converging with
+ *    them takes at least two iterations, and a cap of 1 never reports
+ *    `converged`.
  *    `epsilon` is in the finest level's px, so for a magnified patch it is a
  *    finer tolerance in patch px (0.01 frame px is 0.005 patch px at
  *    `σ = 2`) — tight, but met. A step that would take the window out of the
@@ -128,15 +135,20 @@ const MIN_EIGENVALUE = 1;
  *    the prediction: an estimate that later reaches an edge shortens its
  *    steps (point 5) instead of failing. No input reaches `levelScale`'s
  *    throw ({@link validPatch}, {@link validPyramid}). With gain and bias
- *    estimated, `singular` also ends an alignment whose window has lost the
- *    patch's contrast, on a flat frame region: a per-frame outcome, not a
- *    property of the patch. An alignment predicted outside its basin is not
- *    a failure this function can see: like any local method's, it ends
- *    unconverged, or converged in the wrong place. Rejecting those is the
- *    robust fit's job (branch C), and the residual is its signal: in the
- *    photometric suite, from 3 to 8 px off, every correct convergence had a
- *    `residual / gain` of at most 3.8 grey levels, every wrong one at least
- *    6.1 (align_patch_photometric.test.ts).
+ *    estimated, `singular` is also how many alignments that lose their patch
+ *    end: the moment phase converges where the patch does not match, and the
+ *    least-squares gain collapses there, or the window is flat and the
+ *    matched moments fail themselves. In the photometric suite, 346 of 6144
+ *    alignments from 3 to 8 px off ended so: none from 3 px, 149 of 1536
+ *    from 8. So a tracker should read `singular` as a per-frame outcome, not
+ *    as a property of the patch. The other lost alignments end unconverged,
+ *    or converged in the wrong place, as any local method's can. The robust
+ *    fit (branch C) sees only positions, so a caller that wants those out
+ *    before it has the residual to filter on: cleanly where the patch is no
+ *    sharper than the frame — for the suite's level-3 patches,
+ *    `residual / gain` is at most 3.8 grey levels when right and at least
+ *    6.1 when wrong — but not where it is: at level 0 the two overlap. Any
+ *    threshold depends on the target (align_patch_photometric.test.ts).
  *
  * **Assumptions** (format spec Q11, frame_pyramid.ts): the patch was cut
  * from a level `buildFramePyramid` built with `targetScaleStep` — not yet
@@ -147,10 +159,11 @@ const MIN_EIGENVALUE = 1;
  * level nearest its scale, usually a shallower one, and the frame carries
  * the camera's blur besides. That difference biases the gain and the
  * residual, and the position little: a median error of 0.016 to 0.042 px
- * across patch levels 0 to 5 (align_patch_accuracy.test.ts). A footprint at
- * `σ ≈ 1` could take the pyramid's share of it out, at a footprint's cost
- * in samples, and is not used. A target compiled with another filter adds
- * to the difference, unseen.
+ * across patch levels 0 to 5, with the longest tail at level 0, the
+ * sharpest (95th percentile 0.28 px; align_patch_accuracy.test.ts). A
+ * footprint at `σ ≈ 1` could take the pyramid's share of it out, at a
+ * footprint's cost in samples, and is not used. A target compiled with
+ * another filter adds to the difference, unseen.
  */
 export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, prediction, options) => {
     if (!validOptions(options)) return fail("invalid-options");
@@ -202,9 +215,10 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
     let iterations = 0;
     let converged = false;
     let level = start;
-    // With gain and bias, they are first matched to the window's moments while
-    // the translation alone is stepped, and estimated with it by least
-    // squares only once that has converged (alignmentSystem).
+    // With gain and bias, they are matched to the window's moments while the
+    // translation alone is stepped, until it first converges, and estimated
+    // with it by least squares from then on, the refinement level included
+    // (alignmentSystem).
     let matching = system.size === 4;
     for (let pass = 0; pass < 2; pass++) {
         // Pass 0 aligns on the start level, which holds the window at the
@@ -585,8 +599,9 @@ interface AlignmentSystem {
  * `[SDx, SDy, T, 1]` with gain and bias. `null` if `H₀` is not positive
  * definite.
  *
- * **Gain and bias** are estimated in two phases per level (point 3 of
- * {@link alignPatch}). The second is the simultaneous inverse compositional
+ * **Gain and bias** are estimated in two phases (point 3 of
+ * {@link alignPatch}): the first until the translation first converges, the
+ * second from then on. The second is the simultaneous inverse compositional
  * algorithm of Baker, Gross and Matthews ("Lucas-Kanade 20 Years On",
  * Part 3, linear appearance variation) with the appearance basis `{T, 1}`:
  * the model is `I(x + d) ≈ gain · T(x) + bias`, and each iteration solves

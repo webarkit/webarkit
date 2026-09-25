@@ -832,8 +832,9 @@ filter at step `∛2`, and `alignPatch` with `P = 8` and `P = 16`
 **The proxy to the device.** The script also times the RGBA → grey loop
 that `bench-nft` records as `gray`, on the camera path's 270×360 frame. On
 the reference device that stage measured **1.2 ms** p50 (the rear-camera
-runs above); here it measured 0.29–0.39 ms over six runs, so device ≈
-here × 3.1–4.1 (the ratio moved between runs by that much). Both are plain
+runs above); here it measured 0.29–0.39 ms over six runs the same day (the
+table's three and three earlier ones), so device ≈ here × 3.1–4.1 (the
+ratio moved between runs by that much). Both are plain
 loops over typed arrays, but that is all they share: the device column is
 an estimate, not a measurement. One known way it misleads: in this Node
 build, allocating a typed array over 64 bytes costs about 2 µs, which

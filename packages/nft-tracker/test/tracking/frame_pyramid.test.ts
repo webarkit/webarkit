@@ -335,9 +335,11 @@ describe("buildFramePyramid: the filter", () => {
         // into a backend that ADR-0001 point 3 names — shows up here, to be
         // explained, instead of as a shifted accuracy figure. Level 0 is the
         // input itself. The filter uses only +, −, ×, /, comparisons, floor,
-        // ceil and truncation, all exactly specified, so the pins hold on any
-        // conforming engine given the same step: Math.cbrt, which is not
-        // exactly specified, returns 1.2599210498948732 for 2 here.
+        // ceil, truncation and the rounding of its intermediate rows to
+        // float32 (a Float32Array; a port must round there too, since storing
+        // them in float64 changes these pins), all exactly specified, so the
+        // pins hold on any conforming engine given the same step: Math.cbrt,
+        // which is not exactly specified, returns 1.2599210498948732 for 2 here.
         const pinball = readPgm(TARGET_FIXTURE);
         const crcs = (step: number, levels: number) =>
             build(pinball, levels, step).map((l) => [l.width, l.height, crc32(l.data)]);
