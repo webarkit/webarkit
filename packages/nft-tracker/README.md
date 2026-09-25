@@ -17,8 +17,9 @@ patch tracker and the state machine that make it tracking are M2
 ([ADR-0001](../../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md),
 [#48](https://github.com/webarkit/webarkit/issues/48)). M2's types and
 function signatures are in place; `selectPatches` is implemented and
-`compile-target` writes its patches, and the rest are **stubs** for now — see
-[The tracker](#the-tracker).
+`compile-target` writes its patches, `robustHomography` and
+`predictHomography` are implemented too, and the rest are **stubs** for now —
+see [The tracker](#the-tracker).
 
 ## The `.wnft` codec
 
@@ -304,23 +305,28 @@ when not `ok`, a `reason`, every result carries:
 
 Today every frame runs detection, so a result is only ever `DETECT` or `LOST`.
 
-### The M2 tracking state: all but `selectPatches` are stubs for now
+### The M2 tracking state: partly stubs for now
 
 The functions a tracking-state frame will be built from are defined in
 [`src/tracking/types.ts`](./src/tracking/types.ts) and exported, so that the
 three M2 implementation branches of
 [#48](https://github.com/webarkit/webarkit/issues/48) work against one fixed
-contract. **Most are still stubs:** each of those returns
-`{ ok: false, reason: "not-implemented" }` until its branch lands, and nothing
-should be built on them yet.
+contract. **Those marked stub** return
+`{ ok: false, reason: "not-implemented" }` until their branch lands, and
+nothing should be built on them yet. The implemented ones record their own
+decisions where they are defined; among them, for `robustHomography` the
+initialisation, the scale of Tukey's weights, the iteration cap, the
+convergence test, what counts as singular and why, and its measured outlier
+breakdown, and for `predictHomography` what velocity means for a homography,
+and the first frames after a lock.
 
 | Export | What it will do | Status |
 |---|---|---|
 | `selectPatches` | Compile time: the target's pyramid → the §5.7 `patches` table; `compile-target` writes it | **implemented** |
 | `buildFramePyramid` | A grey pyramid of the frame (and of the target, at compile time) | stub |
 | `alignPatch` | Aligns one patch in the frame by IC-LK → a `PatchObservation` | stub |
-| `robustHomography` | IRLS with Tukey's biweight over the patch correspondences → `H` and per-patch weights | stub |
-| `predictHomography` | Constant-velocity prediction of the next frame's `H` | stub |
+| `robustHomography` | IRLS with Tukey's biweight over the patch correspondences → `H` and per-patch weights. Deterministic: starts from the prediction, no RANSAC | **implemented** |
+| `predictHomography` | Constant-velocity prediction of the next frame's `H`: the last frame-to-frame motion, applied once more | **implemented** |
 | `levelScale` | `s_l`, a pyramid level's scale, computed the way the backend computes it | **implemented** |
 
 The rules every implementation keeps are stated once, in that file's header:
