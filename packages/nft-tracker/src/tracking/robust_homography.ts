@@ -144,9 +144,9 @@ export const robustHomography: RobustHomography = (src, dst, initial, options) =
 };
 
 /**
- * `r_i = ‖π(H · src_i) − dst_i‖₂` into `out`, px. A point `H` sends to or
- * beyond infinity gets `NaN` or `Infinity`, which {@link tukeyWeights} turns
- * into a weight of 0.
+ * `r_i = ‖π(H · src_i) − dst_i‖₂` into `out`, px, by {@link norm2}, so a
+ * finite residual stays finite. A point `H` sends to or beyond infinity gets
+ * `NaN` or `Infinity`, which {@link tukeyWeights} turns into a weight of 0.
  */
 function transferErrors(H: Mat3, src: PointArray, dst: PointArray, out: Float64Array): void {
     for (let i = 0; i < out.length; i++) {
@@ -155,8 +155,25 @@ function transferErrors(H: Mat3, src: PointArray, dst: PointArray, out: Float64A
         const w = H[6] * x + H[7] * y + H[8];
         const dx = (H[0] * x + H[1] * y + H[2]) / w - dst[2 * i];
         const dy = (H[3] * x + H[4] * y + H[5]) / w - dst[2 * i + 1];
-        out[i] = Math.sqrt(dx * dx + dy * dy);
+        out[i] = norm2(dx, dy);
     }
+}
+
+/**
+ * `√(a² + b²)` without squaring either: both are divided by the larger
+ * magnitude first, so the result is finite whenever it is representable —
+ * `√(dx² + dy²)` overflows once a component passes ~1.3e154. `NaN` and
+ * `Infinity` pass through. Built from basic IEEE-754 operations and `√` only,
+ * which round the same way on every engine and in a port.
+ */
+function norm2(a: number, b: number): number {
+    const x = Math.abs(a);
+    const y = Math.abs(b);
+    const m = Math.max(x, y);
+    if (!(m > 0) || m === Infinity) return m;
+    const p = x / m;
+    const q = y / m;
+    return m * Math.sqrt(p * p + q * q);
 }
 
 /** Tukey's biweight, `(1 − (r/c)²)²` below `c` and 0 from `c` on, into `out`. */
@@ -175,18 +192,28 @@ function tukeyWeights(residuals: Float64Array, c: number, out: Float64Array): vo
 /**
  * `√(Σ w_i · r_i² / Σ w_i)` over the points with `w_i > 0`, px. Its callers
  * have checked that at least four weights are positive, so `Σ w_i > 0`.
+ *
+ * Taken relative to the largest such residual, as `peak · √(Σ w_i (r_i /
+ * peak)² / Σ w_i)`, so no residual is squared: the result is at most `peak`,
+ * and finite because every weighted residual is (it is below `tukeyC`).
  */
 function weightedRms(residuals: Float64Array, weights: Float64Array): number {
+    let peak = 0;
+    for (let i = 0; i < weights.length; i++) {
+        if (weights[i] > 0 && residuals[i] > peak) peak = residuals[i];
+    }
+    if (peak === 0) return 0;
     let sw = 0;
-    let swr2 = 0;
+    let swq2 = 0;
     for (let i = 0; i < weights.length; i++) {
         const w = weights[i];
         if (w > 0) {
+            const q = residuals[i] / peak;
             sw += w;
-            swr2 += w * residuals[i] * residuals[i];
+            swq2 += w * q * q;
         }
     }
-    return Math.sqrt(swr2 / sw);
+    return peak * Math.sqrt(swq2 / sw);
 }
 
 function countPositive(weights: Float64Array): number {
@@ -244,8 +271,8 @@ function weightedDlt(src: PointArray, dst: PointArray, weights: Float64Array): M
         const ay = src[2 * i + 1] - cy;
         const au = dst[2 * i] - cu;
         const av = dst[2 * i + 1] - cv;
-        spreadSrc += w * Math.sqrt(ax * ax + ay * ay);
-        spreadDst += w * Math.sqrt(au * au + av * av);
+        spreadSrc += w * norm2(ax, ay);
+        spreadDst += w * norm2(au, av);
     }
     // √2 over the weighted mean distance from the centroid.
     const ss = (Math.SQRT2 * sw) / spreadSrc;
