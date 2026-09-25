@@ -16,10 +16,11 @@ state carried between frames. Repeated detection is not yet tracking; the
 patch tracker and the state machine that make it tracking are M2
 ([ADR-0001](../../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md),
 [#48](https://github.com/webarkit/webarkit/issues/48)). M2's types and
-function signatures are in place; `selectPatches` is implemented and
-`compile-target` writes its patches, `levelScale`, `robustHomography` and
-`predictHomography` are implemented too, and `buildFramePyramid` and
-`alignPatch` are **stubs** for now — see [The tracker](#the-tracker).
+function signatures are in place, and all of the functions are implemented:
+`selectPatches` (`compile-target` writes its patches), `levelScale`,
+`buildFramePyramid`, `alignPatch`, `robustHomography` and `predictHomography`.
+The state machine that makes them tracking is still to come — see
+[The tracker](#the-tracker).
 
 ## The `.wnft` codec
 
@@ -211,12 +212,14 @@ compiled in the browser from arbitrary images (M5), and the function's own
 comment records it.
 
 The level images patches are cut from come from a **stand-in**,
-`bin/target-pyramid.mjs` (an area-weighted box filter), until
-`buildFramePyramid` exists: stored patches must be filtered the way the live
-frame's pyramid will be (format spec §11, Q11). Every file it produced says so
-in `info.compiler.patchPyramid`. When `buildFramePyramid` lands, the compiler
-switches to it and `examples/targets/pinball.wnft` is recompiled; level 0's
-patches are the image itself and do not move, coarser levels' do.
+`bin/target-pyramid.mjs` (an area-weighted box filter), until the compiler is
+switched to `buildFramePyramid`: stored patches must be filtered the way the
+live frame's pyramid will be (format spec §11, Q11). Every file it produced
+says so in `info.compiler.patchPyramid`. `buildFramePyramid` now exists; the
+switch is a change of its own, because it recompiles
+`examples/targets/pinball.wnft`, and so updates
+`crates/wnft-format/tests/real_target.rs` in the same commit. Level 0's
+patches are the image itself and do not move; coarser levels' do.
 
 [`examples/targets/pinball.wnft`](../../examples/targets) is one such target,
 committed, and the static demo can load it instead of building its own.
@@ -305,26 +308,26 @@ when not `ok`, a `reason`, every result carries:
 
 Today every frame runs detection, so a result is only ever `DETECT` or `LOST`.
 
-### The M2 tracking state: partly stubs for now
+### The M2 tracking state: in progress
 
 The functions a tracking-state frame will be built from are defined in
 [`src/tracking/types.ts`](./src/tracking/types.ts) and exported, so that the
 three M2 implementation branches of
 [#48](https://github.com/webarkit/webarkit/issues/48) work against one fixed
-contract. **Those marked stub** return
-`{ ok: false, reason: "not-implemented" }` until their branch lands, and
-nothing should be built on them yet. The implemented ones record their own
-decisions where they are defined; among them, for `robustHomography` the
-initialisation, the scale of Tukey's weights, the iteration cap, the
-convergence test, what counts as singular and why, and its measured outlier
-breakdown, and for `predictHomography` what velocity means for a homography,
-and the first frames after a lock.
+contract. All of them are implemented now; the state machine that calls them
+per frame is not. Each records its own decisions where it is defined: for
+`buildFramePyramid` the filter and the Q11 assumption, for `alignPatch` the
+warp, what it estimates, the coarse-to-fine schedule, the convergence test and
+the cap; for `robustHomography` the initialisation, the scale of Tukey's
+weights, the iteration cap, the convergence test, what counts as singular and
+why, and its measured outlier breakdown; and for `predictHomography` what
+velocity means for a homography, and the first frames after a lock.
 
-| Export | What it will do | Status |
+| Export | What it does | Status |
 |---|---|---|
 | `selectPatches` | Compile time: the target's pyramid → the §5.7 `patches` table; `compile-target` writes it | **implemented** |
-| `buildFramePyramid` | A grey pyramid of the frame (and of the target, at compile time) | stub |
-| `alignPatch` | Aligns one patch in the frame by IC-LK → a `PatchObservation` | stub |
+| `buildFramePyramid` | A grey pyramid of the frame (and of the target, at compile time) | **implemented** |
+| `alignPatch` | Aligns one patch in the frame by IC-LK → a `PatchObservation` | **implemented** |
 | `robustHomography` | IRLS with Tukey's biweight over the patch correspondences → `H` and per-patch weights. Deterministic: starts from the prediction, no RANSAC | **implemented** |
 | `predictHomography` | Constant-velocity prediction of the next frame's `H`: the last frame-to-frame motion, applied once more | **implemented** |
 | `levelScale` | `s_l`, a pyramid level's scale, computed the way the backend computes it | **implemented** |
@@ -334,6 +337,46 @@ The rules every implementation keeps are stated once, in that file's header:
 of `NaN`, and a cap on every loop that iterates to convergence. The types
 themselves (`FramePyramid`, `PatchObservation`, `TrackingState`, and each
 function's options, result and failure union) are exported alongside.
+
+**`buildFramePyramid`** resamples each level from the previous one with a box
+of width `r = s_{l−1} / s_l` over a bilinear reconstruction, centred where
+decision D2 puts a level's pixels, so linear intensity is reproduced exactly
+and no level's content is shifted. At step 2 that is the `[1, 2, 1] / 4`
+decimation. The format does not say which filter produced a target's level
+images (open question Q11); the tracker assumes a target's patches were cut
+from levels this same function built, which `compile-target` does not do yet
+(above). Even then, a patch is usually read on a shallower frame level than
+its own, so the two differ in blur: that shows in the estimated gain and the
+residual, hardly in position (a median of 0.016–0.042 px across patch levels
+0 to 5; level 0, the sharpest, has the longest tail, 0.28 px at the 95th
+percentile). The reasoning is in
+[`frame_pyramid.ts`](./src/tracking/frame_pyramid.ts).
+
+**`alignPatch`** places the patch's stored pixels where the prediction puts
+them and aligns a translation — plus gain and bias with `photometric` — by
+inverse-compositional Lucas–Kanade, starting on the frame level whose pixels
+match the patch's and refining on the finest. Rotation, scale and
+perspective come from the prediction. Each design choice, and the
+measurement behind it, is in [`align_patch.ts`](./src/tracking/align_patch.ts);
+the suites `test/tracking/align_patch_*.test.ts` re-measure them. In short,
+for 8 × 8 pinball patches whose level matches the frame's scale:
+
+| | Measured |
+|---|---|
+| Clean warps (frontal, rotated 30°, tilted) | median 0.022 px, worst 0.063 px |
+| Sensor noise σ = 4 / 8 grey levels, plus blur | median 0.070 / 0.082 px |
+| Converging from a prediction 3 / 4 / 8 px off | 97% / 89% / 37% (twice as far for a patch seen at twice its scale) |
+| Prediction's rotation off by 10° / scale by 10% | 94% / 100% converge |
+| Gain 0.6–1.3, bias ±40, compensated | as clean, and 96% converge from 3 px off; uncompensated, errors grow 14× to over 2000× (2.2× for a change pivoting at the patches' mean grey level) |
+| A wrong convergence, beyond the basin | level-3 patches: told by `residual / gain`, at least 6.1 grey levels against at most 3.8 for a right one (on a half-contrast print); level-0 patches, sharper than the frame: the two overlap |
+
+Their cost, in Node on a development machine, is measured by
+`scripts/bench-tracking.mjs` (`npm run build` first): at the 270×360
+camera-path frame, a four-level `∛2` pyramid takes about 1.8 ms, and a
+matched patch about 15 µs at 8 × 8 or 36 µs at `compile-target`'s 16 × 16.
+How that translates to the reference device, where 64 such patches and the
+pyramid together overrun the tracker's ~10 ms, is recorded with its caveats
+in [`docs/benchmarks/README.md`](../../docs/benchmarks/README.md).
 
 ## Conformance
 
