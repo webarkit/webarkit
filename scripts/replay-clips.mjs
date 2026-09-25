@@ -72,6 +72,8 @@ import {
     frameRecord,
     METRICS_VERSION,
     nextFrameIndex,
+    proxyRatio,
+    sequenceRefusal,
     sha256Hex,
     stats,
     summarizeRun,
@@ -260,53 +262,80 @@ console.log(
 
 const sequencePath = arg("--sequence");
 if (sequencePath) {
-    const e = JSON.parse(readFileSync(sequencePath, "utf8"));
-    if (e.mode !== "tracking" || e.source !== "bundled")
-        throw new Error("--sequence needs a tracking run on a bundled clip");
+    /** One line on stderr, and exit: a refusal is not a crash. */
+    const refuse = (why, code = 1) => {
+        console.error(`cannot replay ${sequencePath}: ${why}`);
+        process.exit(code);
+    };
+    let e;
+    try {
+        e = JSON.parse(readFileSync(sequencePath, "utf8"));
+    } catch (err) {
+        refuse(err.message, 2);
+    }
+    const why = sequenceRefusal(e, {
+        metricsVersion: METRICS_VERSION,
+        sha256: targetRec.sha256,
+        clips: CLIPS,
+    });
+    if (why) refuse(why);
     const { frames, pts, width, height } = await loadClip(e.bundledClip);
     if (width !== e.processingResolution.width || height !== e.processingResolution.height) {
-        throw new Error(
-            `${e.bundledClip}: the export ran at ${e.processingResolution.width}x${e.processingResolution.height}, this replay at ${width}x${height}`,
+        refuse(
+            `it ran at ${e.processingResolution.width}x${e.processingResolution.height}, this replay at ${width}x${height}`,
         );
     }
-    const order = framesAt(
-        pts,
-        e.frames.map((f) => f.mediaTimeSeconds),
-    );
+    let order;
+    try {
+        order = framesAt(
+            pts,
+            e.frames.map((f) => f.mediaTimeSeconds),
+        );
+    } catch (err) {
+        refuse(err.message);
+    }
     const K = intrinsics(width, height);
-    replay({ clip: e.bundledClip, frames, pts, K, mode: "tracking", stepMs: null, order }); // warm-up
-    const runs = [0, 1, 2].map(
-        () =>
-            summarizeRun(
-                replay({
-                    clip: e.bundledClip,
-                    frames,
-                    pts,
-                    K,
-                    mode: "tracking",
-                    stepMs: null,
-                    order,
-                }),
-            ).trackStepMs,
-    );
-    const median = (k) => stats(runs.map((s) => s[k])).p50;
-    const device = e.runSummary?.trackStepMs ?? summarizeRun(e.frames).trackStepMs;
+    const replayed = () =>
+        summarizeRun(
+            replay({
+                clip: e.bundledClip,
+                frames,
+                pts,
+                K,
+                mode: "tracking",
+                stepMs: null,
+                order,
+            }),
+        ).trackStepMs;
+    replayed(); // warm-up
+    const runs = [replayed(), replayed(), replayed()];
+    const here = runs.every((s) => s.n > 0)
+        ? {
+              n: runs[0].n,
+              p50: stats(runs.map((s) => s.p50)).p50,
+              p95: stats(runs.map((s) => s.p95)).p50,
+          }
+        : { n: 0, p50: null, p95: null };
+    // Recomputed from the export's frames, by this module's definition.
+    const device = summarizeRun(e.frames).trackStepMs;
     console.log(
         `${sequencePath}: ${e.frames.length} frames of ${e.bundledClip}, replayed 3 times after a warm-up`,
     );
     console.log(
-        `trackStepMs p50 / p95 — device ${fmt(device.p50)} / ${fmt(device.p95)}; here, median of 3: ${fmt(median("p50"))} / ${fmt(median("p95"))}`,
+        `trackStepMs p50 / p95 — device ${fmt(device.p50)} / ${fmt(device.p95)} (n ${device.n}); here, median of 3: ${fmt(here.p50)} / ${fmt(here.p95)} (n ${here.n})`,
     );
-    console.log(`device ÷ here, p50: ${fmt(device.p50 / median("p50"))}`);
+    const ratio = proxyRatio(device, here);
+    if (ratio === null) refuse("no TRACK frames on one side, so no ratio");
+    console.log(`device ÷ here, p50: ${fmt(ratio)}`);
     process.exit(0);
 }
 
 const outDir = arg("--out");
 if (outDir) mkdirSync(outDir, { recursive: true });
 console.log(
-    "| clip, at | mode, schedule | frames | TRACK share | re-acq. (at wraps) | wraps | first steps confirmed | held-lock steps lost | lock losses | trackStepMs p50 / p95 | align share | frame levels | capped / fits | quality ≤ 0.20 | jitterPx | spreadPx |",
+    "| clip, at | mode, schedule | frames | TRACK share | re-acq. (at wraps) | wraps | first steps confirmed | held-lock steps lost (at wraps) | lock losses | trackStepMs p50 / p95 | align share | frame levels | capped / fits | fit iterations p50 | quality min | quality ≤ 0.20 | jitterPx | spreadPx |",
 );
-console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
 for (const clip of CLIPS) {
     const { frames, pts, width, height } = await loadClip(clip);
     const K = intrinsics(width, height);
@@ -330,7 +359,7 @@ for (const clip of CLIPS) {
                 .join(", ") || "—";
         const align = s.alignMs.n > 0 ? fmt(s.alignMs.p50 / s.trackStepMs.p50) : "—";
         console.log(
-            `| ${clip}, ${width}×${height} | ${run.mode}, ${run.schedule} | ${s.frames} | ${pct(s.trackShare)} | ${s.reacquisitions} (${s.reacquisitionsAtLoopWrap}) | ${s.loopWraps} | ${s.firstSteps.confirmed} / ${s.firstSteps.n} | ${s.heldLockSteps.lost} / ${s.heldLockSteps.n} | ${losses} | ${fmt(s.trackStepMs.p50)} / ${fmt(s.trackStepMs.p95)} | ${align} | ${JSON.stringify(s.frameLevels)} | ${s.fits.capped} / ${s.fits.n} | ${s.lowQualityTrackFrames} | ${fmt(s.jitterPx, 3)} | ${fmt(s.spreadPx, 3)} |`,
+            `| ${clip}, ${width}×${height} | ${run.mode}, ${run.schedule} | ${s.frames} | ${pct(s.trackShare)} | ${s.reacquisitions} (${s.reacquisitionsAtLoopWrap}) | ${s.loopWraps} | ${s.firstSteps.confirmed} / ${s.firstSteps.n} | ${s.heldLockSteps.lost} / ${s.heldLockSteps.n} (${s.heldLockSteps.lostAtLoopWrap}) | ${losses} | ${fmt(s.trackStepMs.p50)} / ${fmt(s.trackStepMs.p95)} | ${align} | ${JSON.stringify(s.frameLevels)} | ${s.fits.capped} / ${s.fits.n} | ${s.fits.iterations.p50 ?? "—"} | ${fmt(s.quality.min)} | ${s.lowQualityTrackFrames} | ${fmt(s.jitterPx, 3)} | ${fmt(s.spreadPx, 3)} |`,
         );
         if (outDir) {
             const slug = `${clip.replace(/\.mp4$/, "")}-${run.mode}-${run.schedule.replace(/[^a-z0-9]+/gi, "-")}`;
