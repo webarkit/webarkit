@@ -45,16 +45,55 @@
  * the target one pyramid level at a time, optionally filter, estimate a
  * homography, decompose it — and a detection that succeeds locks the tracker
  * on its homography. A frame with a lock runs none of detect, describe or
- * match: it tracks the target's patches from the last two homographies
- * (`trackFrame`). A step that fails drops the lock, says why (`trackLoss`),
- * and the same frame is detected again; a detection that fails is `"LOST"`.
- * With `detectionOnly`, or a target that cannot be tracked, every frame is
- * detected from scratch, exactly as M1 did.
+ * match: it predicts this frame's homography from the last two
+ * (`predictHomography`), aligns the target's patches (§5.7) where the
+ * prediction puts them (`alignPatch`, on a frame pyramid built once and only
+ * as deep as the patches start), fits a homography to them
+ * (`robustHomography`) and judges it (`trackFrame`). A step that fails drops
+ * the lock, says why (`trackLoss`), and the same frame is detected again; a
+ * detection that fails is `"LOST"`.
+ *
+ * **Detection-only.** With `detectionOnly`, or a target that cannot be
+ * tracked — no patches ("the tracker then runs in detection-only mode",
+ * §5.7), fewer than `minTrackedPatches`, or smaller than 3 × 3 — every frame
+ * is detected from scratch and nothing is carried between frames: exactly
+ * M1, which the parity test checks unchanged. `detectionOnly` says which.
+ *
+ * **Known limitation: re-acquisition is synchronous.** A frame that detects
+ * blocks for about the stateless cost — ~109 ms p50 on the reference
+ * device's camera path (docs/benchmarks/README.md, "Webcam: `acquire`
+ * without a video decoder") against a 33 ms frame budget. Asynchronous
+ * detection is M3 (#48's numbering).
+ *
+ * **What tracking survives**, measured on synthetic camera-path frames
+ * (270 × 360, pinball at 0.45; track_frame.test.ts,
+ * tracker_state_machine.test.ts): one step recovers the pose from a
+ * prediction up to 4 px off, 4° of roll or 8% of scale, and refuses — never
+ * accepts wrong — beyond; a sequence survives a sudden change of velocity of
+ * 4 px per frame. The first prediction after a detection has no velocity,
+ * and the second's carries the detection's own error (about 1 px RMS on
+ * those frames), so faster motion re-detects every frame until it slows. As
+ * a target leaves the frame, the last tracked frames fit the few patches
+ * still in view and extrapolate to the rest: up to 1.2 px off at the far
+ * end.
+ *
+ * **Patch levels are the first thing the tuning pass should revisit.** Every
+ * patch of `examples/targets/pinball.wnft` comes from level 0, and on the
+ * camera path the target is seen at about half that scale: each patch is
+ * sharper than the frame it is aligned in. That is why the basin is the
+ * narrow one (90% of alignments converging from 2 px off, 74% from 3), why a
+ * right alignment's gain sits near 0.5, and why its residual cannot tell it
+ * from a wrong one — only its correlation with the patch can
+ * (`DEFAULT_MIN_PATCH_ZNCC`), and that still costs 1.6% of right matches.
+ * Patches at the level the target is viewed at measured a wider basin (97%
+ * from 3 px at σ = 1) and a residual that separates.
  *
  * Portability rules it keeps (ADR-0001 point 7): no DOM, no timers, no
- * `requestAnimationFrame`, no camera access — the application owns the loop
- * and hands in a `GrayImage` and a timestamp; results are explicit
- * `{ ok, ... }` values, never exceptions.
+ * `requestAnimationFrame`, no camera access and no clock — the application
+ * owns the loop, hands in a `GrayImage` and a timestamp, and may hand in a
+ * `clock` to have each result timed; results are explicit `{ ok, ... }`
+ * values, never exceptions (a frame that is not a `GrayImage` while locked,
+ * and options out of their domain, are contract violations, and throw).
  *
  * **On determinism.** Point 7 also asks that every random choice go through an
  * injectable RNG. This class makes none: the one random choice in the pipeline
@@ -63,7 +102,10 @@
  * is deliberately no `rng` option here — it would accept a generator and have
  * nowhere to pass it. When the contract gains the field this class forwards
  * it and the option appears; until then `process` is exactly as reproducible
- * as the backend's RANSAC is, and the tests are explicit about that.
+ * as the backend's RANSAC is, and the tests are explicit about that. The
+ * tracking state draws nothing: a sequence of frames gives the same states
+ * and homographies, bit for bit, for the same RANSAC draws in its
+ * detections.
  */
 
 import type { CvBackend, GrayImage, Keypoint, Mat3, Pose } from "@webarkit/cv-backend-spec";

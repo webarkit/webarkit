@@ -10,17 +10,16 @@ caller, so this package runs on any implementation of it.
 What exists today is the **target layer** — the in-memory shape of a trained
 target, the codec for the `.wnft` files that store one, and
 [`compile-target`](#compiling-a-target), which turns an image into such a file
-— plus **milestone M1** of the tracker itself: `NftTracker`, a per-frame
-`detect → describe → match → estimateHomography → poseFromHomography` with no
-state carried between frames. Repeated detection is not yet tracking; the
-patch tracker and the state machine that make it tracking are M2
+— plus the tracker itself, `NftTracker`, now at **milestone M2**: a
+`LOST → DETECT → TRACK` state machine
 ([ADR-0001](../../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md),
-[#48](https://github.com/webarkit/webarkit/issues/48)). M2's types and
-function signatures are in place, and all of the functions are implemented:
-`selectPatches` (`compile-target` writes its patches), `levelScale`,
-`buildFramePyramid`, `alignPatch`, `robustHomography` and `predictHomography`.
-The state machine that makes them tracking is still to come — see
-[The tracker](#the-tracker).
+[#48](https://github.com/webarkit/webarkit/issues/48)). A frame without a lock
+runs M1's `detect → describe → match → estimateHomography →
+poseFromHomography`; a frame with one tracks the target's patches instead,
+with `predictHomography`, `buildFramePyramid`, `alignPatch` and
+`robustHomography`, and runs none of detect, describe or match. A target
+without patches — anything `buildTargetFromImage` builds — keeps M1's
+behaviour exactly: detection on every frame. See [The tracker](#the-tracker).
 
 ## The `.wnft` codec
 
@@ -301,19 +300,80 @@ when not `ok`, a `reason`, every result carries:
 | `state` | Meaning | `quality`, in `[0, 1]` |
 |---|---|---|
 | `"DETECT"` | Pose from the detection pipeline (`detect`/`describe`/`match`) | `numInliers / numMatches` |
-| `"TRACK"` | Pose from patch tracking. **Not produced yet**: it comes with M2's state machine | Sum of the robust fit's weights ÷ patches passed to `alignPatch` this frame |
+| `"TRACK"` | Pose from patch tracking: `numMatches` are the patch correspondences fitted, `numInliers` those the fit kept, `sceneKeypoints` is empty | Sum of the robust fit's weights ÷ patches passed to `alignPatch` this frame |
 | `"LOST"` | No pose (`ok: false`; `reason` says why) | `0` |
 
-Today every frame runs detection, so a result is only ever `DETECT` or `LOST`.
+**The state machine.** A frame without a lock runs detection, and a detection
+that succeeds locks the tracker on its homography. A frame with a lock predicts
+this frame's homography from the last two, aligns the target's patches where
+the prediction puts them, fits a homography to them and judges it. A step that
+fails drops the lock and says why in `trackLoss` (`"no-prediction"`,
+`"too-few-patches"`, `"fit-failed"`, `"too-many-outliers"` or `"poor-fit"`), and
+the same frame is detected again; a detection that fails is `LOST`. Every
+result also carries `tracking`, the step's patch counts (culled, attempted,
+observed, lost, unconverged, rejected, inliers), and `timings`, when a `clock`
+option is given: the tracker reads no clock of its own, and reports the
+tracking step's time and its frame-pyramid share apart from detection.
 
-### The M2 tracking state: in progress
+**Detection-only.** With `detectionOnly: true`, or a target that cannot be
+tracked — no patches (format spec §5.7), fewer than `minTrackedPatches`, or
+smaller than 3 × 3 — every frame runs detection and nothing is carried between
+frames: exactly M1. `tracker.detectionOnly` says which mode a tracker is in.
+Targets from `buildTargetFromImage` carry no patches; `compile-target` writes
+them.
 
-The functions a tracking-state frame will be built from are defined in
+**Options.** Every threshold of the tracking state is an option, checked at
+construction (a value out of its domain throws a `RangeError` naming it), and
+every default is **provisional until the M2 tuning pass** (#48): each is
+documented, with the measurement behind it, where it is defined in
+[`src/tracker.ts`](./src/tracker.ts).
+
+| Option | Default | What it bounds |
+|---|---|---|
+| `detectionOnly` | `false` | Never track |
+| `maxFrameLevels` | 4 | Frame pyramid levels; fewer are built when the patches start on fewer (one on the camera path) |
+| `alignMaxIterations`, `alignEpsilon` | 30, 0.01 px | `alignPatch`'s cap and convergence step |
+| `photometric` | `true` | Gain and bias estimated per patch |
+| `tukeyC`, `fitMaxIterations`, `fitEpsilon` | 4 px, 20, 1e-6 px | `robustHomography`'s cutoff, cap and tolerance |
+| `minTrackedPatches` | 8 | Fewest correspondences, and fewest inliers, a frame may fit |
+| `maxOutlierShare` | 0.45 | Share of correspondences the fit may weigh 0: #64's breakdown |
+| `maxFitRms` | 0.6 px | The fit's weighted RMS residual |
+| `minPatchZncc` | 0.6 | A converged patch's correlation with its window |
+| `clock` | none | `() => ms`, for `timings` |
+
+**What it survives**, measured on synthetic frames of the camera path (the
+pinball target at 0.45 in 270 × 360; `test/tracking/track_frame.test.ts`,
+`test/tracker_state_machine.test.ts`): one tracking step recovers the pose
+from a prediction up to 4 px, 4° of roll or 8% of scale off, and refuses
+beyond — it never accepts a wrong pose; a sequence holds through a sudden
+velocity change of 4 px per frame, with every tracked frame within 0.1 px; a
+slow hand-held wander tracks every frame after the first, to a median of
+0.079 px.
+
+**Known limitations.**
+
+- **Re-acquisition is synchronous.** A frame that detects blocks for about the
+  stateless cost, ~109 ms p50 on the reference device's camera path
+  ([`docs/benchmarks/README.md`](../../docs/benchmarks/README.md)), against a
+  33 ms frame budget. Asynchronous detection is M3.
+- **A lock starts with no velocity.** The first prediction after a detection
+  is the detection itself, so a target moving faster than about 4 px per frame
+  is detected again on every frame until it slows.
+- **A target leaving the frame** is tracked on the few patches still in view
+  until too few are left; those last frames extrapolate, up to 1.2 px off at
+  the target's far end.
+- **Patch levels** are the first thing the tuning pass should revisit: all of
+  `examples/targets/pinball.wnft`'s patches are level 0, sharper than the frame
+  they are aligned in on the camera path, which narrows the basin.
+
+### The M2 tracking state
+
+The functions a tracking-state frame is built from are defined in
 [`src/tracking/types.ts`](./src/tracking/types.ts) and exported, so that the
 three M2 implementation branches of
-[#48](https://github.com/webarkit/webarkit/issues/48) work against one fixed
-contract. All of them are implemented now; the state machine that calls them
-per frame is not. Each records its own decisions where it is defined: for
+[#48](https://github.com/webarkit/webarkit/issues/48) worked against one fixed
+contract; `NftTracker` puts them together per frame. Each records its own
+decisions where it is defined: for
 `buildFramePyramid` the filter and the Q11 assumption, for `alignPatch` the
 warp, what it estimates, the coarse-to-fine schedule, the convergence test and
 the cap; for `robustHomography` the initialisation, the scale of Tukey's
@@ -374,7 +434,12 @@ camera-path frame, a four-level `∛2` pyramid takes about 1.8 ms, and a
 matched patch about 15 µs at 8 × 8 or 36 µs at `compile-target`'s 16 × 16.
 How that translates to the reference device, where 64 such patches and the
 pyramid together overrun the tracker's ~10 ms, is recorded with its caveats
-in [`docs/benchmarks/README.md`](../../docs/benchmarks/README.md).
+in [`docs/benchmarks/README.md`](../../docs/benchmarks/README.md). The tracker
+builds only the pyramid levels its patches start on, and on the camera path
+pinball's start on level 0 — the frame itself, nothing computed — so there the
+patches are the cost: seen at about half their scale they take more
+iterations, about 64 µs each at 16 × 16 in Node. An on-device measurement of
+a tracking frame is #48's next step.
 
 ## Conformance
 

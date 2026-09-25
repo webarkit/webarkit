@@ -42,10 +42,12 @@
  *
  * This is the seed of the target compiler, and for now it does exactly what
  * the demos do by hand: detect over a pyramid, describe, and lay the result
- * out the way `docs/specs/nft-target-format.md` specifies. Synthetic views,
- * tracking patches and a stored reference image belong to milestone M4; none
- * of them is written here, and every field they would fill is optional in the
- * format precisely so this step can leave them out.
+ * out the way `docs/specs/nft-target-format.md` specifies. Tracking patches
+ * are `compile-target`'s to add (`selectPatches`, M2); synthetic views and a
+ * stored reference image belong to later milestones. None of them is written
+ * here, and every field they would fill is optional in the format precisely
+ * so this step can leave them out — which is also why a target built here
+ * runs `NftTracker` in detection-only mode (§5.7).
  *
  * Nothing here encodes bytes. The `.wnft` codec is a separate component; this
  * produces the decoded shape it would also produce.
