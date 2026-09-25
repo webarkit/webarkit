@@ -96,9 +96,9 @@
  * precondition its own notes state. Without the gate and these rules, 5 of
  * 32 steps from 4 px off are accepted 3.7–10.3 px off the truth, and 9 of 32
  * from 6 px 5.3–14.2 px off; with them, none (track_frame.test.ts). They
- * narrow the wrong fits without separating them, though: past 4° of roll or
- * 8% of scale, fits up to 9.4 px off keep 8–13 inliers and a residual among
- * the right fits' own, and are accepted. Measured on 2 views × 5 renders,
+ * narrow the wrong fits without separating them, though: from 4° of roll,
+ * or past 8% of scale, fits up to 9.4 px off keep 8–13 inliers and a
+ * residual among the right fits' own, and are accepted. Measured on 2 views × 5 renders,
  * 137 predictions each (track_frame.test.ts pins one render): right fits kept
  * at most 0.370 px of residual and at least 12 inliers; of the 38 wrong fits
  * the other rules passed, `maxFitRms` refused 14 and the rest were accepted.

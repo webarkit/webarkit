@@ -327,8 +327,10 @@ them.
 **Options.** Every threshold the tracking state judges a frame by is an
 option, checked at construction (a value out of its domain throws a
 `RangeError` naming it), and every default is **provisional until the M2
-tuning pass** (#48) — `alignPatch`'s floor for a singular patch, a guard
-against degenerate ones, is a constant. Each is
+tuning pass** (#48). The fixed guards against degeneracy are constants, not
+tuning thresholds: `alignPatch`'s floor for a singular patch, and the
+numerical singularity tests in `predictHomography` and `robustHomography`
+(`SINGULAR_RELATIVE_DET`, `SINGULAR_PIVOT_RATIO`). Each option is
 documented, with the measurement behind it, where it is defined in
 [`src/tracker.ts`](./src/tracker.ts).
 
@@ -365,12 +367,14 @@ a median of 0.079 px.
 - **A lock starts with no velocity.** The first prediction after a detection
   is the detection itself, so a target moving faster than about 4 px per frame
   is detected again on every frame until it slows.
-- **A sudden rotation or change of scale can be tracked wrong for a frame.**
+- **A sudden rotation or change of scale can be tracked wrong for a frame or two.**
   From 4° of roll, or past 8% of scale, between two frames — on a step with
   no velocity to predict it, such as a lock's first — one step may accept a
   pose 0.55–1.6 px off (4–5° of roll; −4° already, on both views), up to
   9.4 px off (a target shrinking 8–11%) or 3.65 px off (growing 9%, one
-  view), returned as `"TRACK"` with a quality of 0.12–0.20. After the scale
+  view), returned as `"TRACK"` with a quality of 0.12–0.20 (measured on 5
+  renders × 2 views; the tests pin one render, whose worst is 9.19 px, in
+  `test/tracking/track_frame.test.ts`). After the scale
   and roll changes measured, the next step came within 0.9 px or refused,
   and the one after within 0.25 px or re-detected. Right fits on as few
   patches also reach a quality of 0.20, so quality flags such a pose without

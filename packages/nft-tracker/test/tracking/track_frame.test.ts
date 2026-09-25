@@ -383,7 +383,7 @@ describe("trackFrame", () => {
         }
     });
 
-    it("recovers from 3.5° of roll and 5% of scale on both views; past 4° or 8% it may accept a wrong pose, here up to 9.19 px off", () => {
+    it("recovers from 3.5° of roll and 5% of scale on both views; from 4° of roll or past 8% of scale it may accept a wrong pose, here up to 9.19 px off", () => {
         // On 5 renders of both views, roll to ±3.5° and scale to ±5% recover
         // on every one. Past that the outcome depends on the view and the
         // direction; on this suite's render, per view:

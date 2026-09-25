@@ -41,8 +41,8 @@
 // path: the pinball target at about 0.45 in 270 × 360 frames, each rendered
 // by #63's generator along a motion path. Detections draw from a seeded
 // RANSAC, so a whole sequence is deterministic, and every state string and
-// count below is pinned exactly; errors are pinned below 1.2 × their
-// measured value, which each test states.
+// count below is pinned exactly; errors are pinned below about 1.2–1.3 ×
+// their measured value, which each test states.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import type { CvBackend, GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
