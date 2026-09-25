@@ -164,7 +164,8 @@ fn decodes_the_compiled_pinball_target() {
 
     // §5.7's tracking patches: compile-target's defaults, 64 patches of
     // 16 x 16 cut from the finest three levels, as it chose them for this
-    // image — 63 from level 0 and one from level 1.
+    // image — every one from level 0 (see the `patchPyramid` note below for
+    // the one that moved there).
     let patches = target
         .patches
         .expect("compile-target writes a patches section");
@@ -204,7 +205,7 @@ fn decodes_the_compiled_pinball_target() {
             .fold((u8::MAX, u8::MIN), |(lo, hi), &v| (lo.min(v), hi.max(v)));
         assert!(hi > lo, "patch {i} is flat");
     }
-    assert_eq!(per_level, [63, 1, 0]);
+    assert_eq!(per_level, [64, 0, 0]);
     // The compiler's selection order, and its default minimum score.
     assert!(patches.score.iter().all(|&s| s.is_finite() && s >= 25.0));
     assert!(
@@ -213,10 +214,15 @@ fn decodes_the_compiled_pinball_target() {
     );
 
     // Which pyramid the patches were cut from is provenance, not format: the
-    // level images come from a stand-in filter until the tracker's own
-    // pyramid builder exists (the specification's open question Q11). Once
-    // it does, the file is recompiled, level 1's patch changes, and this
-    // assertion is the one that says so.
+    // specification's open question Q11 asks whether the file should record
+    // it or the specification fix one. compile-target cuts them from
+    // `buildFramePyramid`, the function the tracker builds the live frame's
+    // pyramid with. Before that it used a stand-in box filter, under which
+    // this file's patch 37 was the level-1 window (242, 288), scoring 206.19;
+    // `buildFramePyramid` blurs more, that window scores 189.39, and the
+    // level-0 window (306, 365), 0.87 px away and scoring 195.69 under both,
+    // took its place. This assertion is the one that says which filter the
+    // committed file used.
     let compiler = target
         .info
         .as_ref()
@@ -231,7 +237,7 @@ fn decodes_the_compiled_pinball_target() {
         compiler
             .get("patchPyramid")
             .and_then(|v| v.as_str())
-            .is_some_and(|s| s.starts_with("stand-in")),
+            .is_some_and(|s| s.starts_with("buildFramePyramid")),
         "patchPyramid was {:?}",
         compiler.get("patchPyramid")
     );

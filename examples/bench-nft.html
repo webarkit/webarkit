@@ -251,10 +251,11 @@
       way: <strong>stateless pipeline</strong> re-implements the calls inline (as the
       <a href="./pinball-static-jsfeatnext-backend.html">static demo</a> does; the webcam demo already runs
       <code>NftTracker</code> itself), <strong>NftTracker</strong> runs
-      <code>tracker.process()</code>. Milestone M1 of
-      <a href="../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md">ADR-0001</a> is parity, so the two should
-      report the same numbers here; the point of measuring both is to have a baseline once M2 gives the tracker state
-      of its own.
+      <code>tracker.process()</code>. The target here is built with <code>buildTargetFromImage</code>, which writes no
+      tracking patches, so <code>NftTracker</code> runs detection-only — M1 of
+      <a href="../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md">ADR-0001</a> — and the two should report
+      the same numbers; that is the baseline M2's tracking state, which needs a target with patches, is measured
+      against.
     </p>
 
     <div class="wrap">

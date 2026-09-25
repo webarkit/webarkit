@@ -151,10 +151,10 @@ const MIN_EIGENVALUE = 1;
  *    threshold depends on the target (align_patch_photometric.test.ts).
  *
  * **Assumptions** (format spec Q11, frame_pyramid.ts): the patch was cut
- * from a level `buildFramePyramid` built with `targetScaleStep` — not yet
- * true of `compile-target`'s coarser levels, which come from a stand-in —
- * and the frame's pyramid comes from the same function, ideally with the
- * same step, so a patch and a frame level equally deep are filtered alike.
+ * from a level `buildFramePyramid` built with `targetScaleStep` — as
+ * `compile-target` does — and the frame's pyramid comes from the same
+ * function, ideally with the same step, so a patch and a frame level equally
+ * deep are filtered alike.
  * They are rarely read at equal depth: a patch is aligned on the frame
  * level nearest its scale, usually a shallower one, and the frame carries
  * the camera's blur besides. That difference biases the gain and the
@@ -169,15 +169,79 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
     if (!validOptions(options)) return fail("invalid-options");
     const frameScales = validPyramid(frame);
     if (frameScales === null) return fail("invalid-pyramid");
-    const patch = validPatch(patches, q, targetScaleStep);
-    if (patch === null) return fail("invalid-patch");
-    const H = normalised(prediction);
-    if (H === null) return fail("non-finite-prediction");
-    const centre = project(H, patch.centreX, patch.centreY);
-    if (centre === null) return fail("non-finite-prediction");
-    const warped = warpPatch(H, patch);
-    if (warped === null) return fail("outside-frame");
+    const prepared = preparePatch(patches, q, targetScaleStep, prediction);
+    if (!prepared.ok) return prepared;
+    return alignWarped(frame, frameScales, prepared, options);
+};
 
+/**
+ * Patch `q`, validated, and its window warped by the prediction — everything
+ * {@link alignPatch} computes before it looks at the frame — or the failure
+ * `alignPatch` would report for it.
+ */
+export type PreparedPatch =
+    | {
+          readonly ok: true;
+          readonly q: number;
+          readonly patch: Patch;
+          readonly centre: [number, number];
+          readonly warped: Warped;
+      }
+    | {
+          readonly ok: false;
+          readonly reason: "invalid-patch" | "non-finite-prediction" | "outside-frame";
+      };
+
+/**
+ * The first half of {@link alignPatch}, for a caller that needs the warped
+ * window before it has a pyramid to align in: `trackFrame` sizes the frame's
+ * pyramid by where each window can be read ({@link alignmentStart}), then
+ * aligns the same prepared patches ({@link alignPrepared}), so each window is
+ * warped once a frame. Warping it twice would cost about 19 µs a patch in
+ * Node here, allocation included, of the 65 µs its alignment takes on the
+ * camera path.
+ */
+export function preparePatch(
+    patches: PatchTable,
+    q: number,
+    targetScaleStep: number,
+    prediction: Mat3,
+): PreparedPatch {
+    const patch = validPatch(patches, q, targetScaleStep);
+    if (patch === null) return { ok: false, reason: "invalid-patch" };
+    const H = normalised(prediction);
+    if (H === null) return { ok: false, reason: "non-finite-prediction" };
+    const centre = project(H, patch.centreX, patch.centreY);
+    if (centre === null) return { ok: false, reason: "non-finite-prediction" };
+    const warped = warpPatch(H, patch);
+    if (warped === null) return { ok: false, reason: "outside-frame" };
+    return { ok: true, q, patch, centre, warped };
+}
+
+/**
+ * The second half of {@link alignPatch}: `alignPatch(frame, patches, q,
+ * step, prediction, options)` is `alignPrepared(frame, preparePatch(patches,
+ * q, step, prediction), options)`, result for result, but for which of two
+ * invalid inputs a failure names.
+ */
+export function alignPrepared(
+    frame: FramePyramid,
+    prepared: Extract<PreparedPatch, { ok: true }>,
+    options: AlignPatchOptions,
+): PatchAlignment {
+    if (!validOptions(options)) return fail("invalid-options");
+    const frameScales = validPyramid(frame);
+    if (frameScales === null) return fail("invalid-pyramid");
+    return alignWarped(frame, frameScales, prepared, options);
+}
+
+function alignWarped(
+    frame: FramePyramid,
+    frameScales: Float64Array,
+    prepared: Extract<PreparedPatch, { ok: true }>,
+    options: AlignPatchOptions,
+): PatchAlignment {
+    const { q, patch, centre, warped } = prepared;
     const usable = usableLevels(frame, frameScales, warped);
     if (usable.length === 0) return fail("outside-frame");
 
@@ -325,7 +389,7 @@ export const alignPatch: AlignPatch = (frame, patches, q, targetScaleStep, predi
         gain,
         bias,
     });
-};
+}
 
 /** The most points per axis a footprint is read with. */
 const MAX_FOOTPRINT_POINTS = 16;
@@ -416,7 +480,7 @@ function footprint(
  * usability of every level can be decided before any is read.
  */
 function footprintHalfWidth(
-    frame: FramePyramid,
+    frame: PyramidShape,
     scales: Float64Array,
     l: number,
     warped: Warped,
@@ -520,8 +584,12 @@ function observation(
  * That is the level whose resolution matches the patch's (and its blur, when
  * the two are equally deep: Q11, frame_pyramid.ts): the patch's basin is
  * fixed in patch pixels there, and so in frame pixels it grows with how
- * magnified the patch is. Measured against the alternatives
- * (24 pinball patches, 3 views):
+ * magnified the patch is.
+ *
+ * Exported so `frameLevelsFor` (frame_levels.ts) builds a frame pyramid
+ * exactly as deep as this rule will start on, from one source of truth.
+ *
+ * Measured against the alternatives (24 pinball patches, 3 views):
  *
  * - **The coarsest usable level** wrecked the basin of matched patches (69%
  *   converging from 1 px off, errors past 100 px): a sharp patch against a
@@ -536,7 +604,7 @@ function observation(
  *   pays the footprint's `m²` samples per pixel, where starting here the
  *   first iterations take one.
  */
-function startLevel(usable: number[], scales: Float64Array, scaleAtCentre: number): number {
+export function startLevel(usable: number[], scales: Float64Array, scaleAtCentre: number): number {
     let best = usable[0];
     let bestCost = Infinity;
     for (const l of usable) {
@@ -548,6 +616,32 @@ function startLevel(usable: number[], scales: Float64Array, scaleAtCentre: numbe
         }
     }
     return best;
+}
+
+/**
+ * What decides which levels of a pyramid can hold a window: its step and
+ * each level's size, not its pixels. A {@link FramePyramid} is one.
+ */
+export interface PyramidShape {
+    readonly scaleStep: number;
+    readonly levels: readonly { readonly width: number; readonly height: number }[];
+}
+
+/**
+ * The frame level {@link alignPrepared} starts a prepared patch on, in a
+ * pyramid of this shape with these level scales, or −1 if no level holds its
+ * window. The same two steps `alignPatch` takes to choose it ({@link
+ * usableLevels}, then {@link startLevel}), reading no pixel, so a caller can
+ * size a pyramid by the rule that will read it (`frameLevelsFor`). A patch
+ * `alignPatch` would then refuse as singular still gets its level.
+ */
+export function alignmentStart(
+    shape: PyramidShape,
+    scales: Float64Array,
+    prepared: Extract<PreparedPatch, { ok: true }>,
+): number {
+    const usable = usableLevels(shape, scales, prepared.warped);
+    return usable.length === 0 ? -1 : startLevel(usable, scales, prepared.warped.scaleAtCentre);
 }
 
 /**
@@ -792,7 +886,7 @@ function validPyramid(frame: FramePyramid): Float64Array | null {
 }
 
 /** One patch, validated, with its level scale and its centre in target level-0 coordinates. */
-interface Patch {
+export interface Patch {
     readonly P: number;
     readonly left: number;
     readonly top: number;
@@ -932,7 +1026,7 @@ function project(H: Homography, X: number, Y: number): [number, number] | null {
  * The patch's P × P pixels, each placed where the prediction puts it in
  * frame level-0 coordinates.
  */
-interface Warped {
+export interface Warped {
     /** Frame level-0 position of each sample, row-major like the patch. */
     readonly x: Float64Array;
     readonly y: Float64Array;
@@ -1091,7 +1185,7 @@ function jacobian(
  * everything those reach. The alignment is inverse compositional, so it reads no frame
  * gradients and needs no other border.
  */
-function usableLevels(frame: FramePyramid, scales: Float64Array, warped: Warped): number[] {
+function usableLevels(frame: PyramidShape, scales: Float64Array, warped: Warped): number[] {
     const out: number[] = [];
     for (let l = 0; l < frame.levels.length; l++) {
         if (inside(frame, scales, l, warped, 0, 0, footprintHalfWidth(frame, scales, l, warped))) {
@@ -1107,7 +1201,7 @@ function usableLevels(frame: FramePyramid, scales: Float64Array, warped: Warped)
  * `halfWidth` patch px (0: one point).
  */
 function inside(
-    frame: FramePyramid,
+    frame: PyramidShape,
     scales: Float64Array,
     l: number,
     warped: Warped,

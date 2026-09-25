@@ -49,11 +49,11 @@
  * the demos already make, with the result written to disk instead of kept in
  * memory, so a target can be prepared once and shipped as a file.
  *
- * **Tracking patches** are cut from a target pyramid that
- * `bin/target-pyramid.mjs` builds — a stand-in until `buildFramePyramid`
- * exists; that file says why it matters and what changes when it goes. The
- * five patch options and their defaults are documented where the defaults are
- * defined, below.
+ * **Tracking patches** are cut from the target's pyramid as
+ * `buildFramePyramid` builds it — the function the tracker builds the live
+ * frame's pyramid with, so a stored patch and the frame level it is aligned
+ * on were filtered alike (format spec §11, Q11). The five patch options and
+ * their defaults are documented where the defaults are defined, below.
  *
  * **Determinism is a feature, not a side effect.** The same image and the same
  * options must produce the same bytes, or a compiled target could not be
@@ -84,6 +84,7 @@ import process from "node:process";
 import { createJsfeatNextBackend } from "@webarkit/cv-backend-jsfeatnext";
 
 import {
+    buildFramePyramid,
     buildTargetFromImage,
     DEFAULT_KEYPOINTS_PER_LEVEL,
     DEFAULT_SCALE_STEP,
@@ -94,7 +95,6 @@ import {
     selectPatches,
 } from "../dist/index.js";
 import { grayFromJpegFile } from "./image.mjs";
-import { buildTargetPyramid } from "./target-pyramid.mjs";
 
 /**
  * Default cap on the image's longer side, in pixels.
@@ -133,11 +133,13 @@ const DEFAULT_MAX_PATCHES = 64;
  * How many of the target's pyramid levels patches may come from, finest
  * first. Scores are in level-0 units (`select_patches.ts`), so levels compete
  * on how precisely they localise, and a coarser level rarely wins: on the
- * pinball target, 63 of the 64 patches come from level 0 and one from level
- * 1, and allowing six or all eight levels instead of three selects exactly
- * the same 64. Three levels span a factor `2^(2/3)` ≈ 1.6 at the default
- * step, and keep a patch's footprint local (under 26 level-0 px for P=16);
- * the limit is there for the images where coarse texture would win.
+ * pinball target all 64 patches come from level 0, and allowing six or all
+ * eight levels instead of three selects exactly the same 64. (While a box
+ * filter built the levels, one level-1 window won by a small margin; the
+ * pyramid filter blurs more, and it lost to a level-0 window 0.87 px away.)
+ * Three levels span a factor `2^(2/3)` ≈ 1.6 at the default step, and keep a
+ * patch's footprint local (under 26 level-0 px for P=16); the limit is there
+ * for the images where coarse texture would win.
  */
 const DEFAULT_PATCH_LEVELS = 3;
 
@@ -164,17 +166,16 @@ function defaultPatchSpacing(width, height, maxPatches) {
     return Math.round(0.75 * Math.sqrt((width * height) / maxPatches));
 }
 
-/** What `info.compiler.patchPyramid` records while `target-pyramid.mjs` stands in. */
-const PATCH_PYRAMID = "stand-in: bin/target-pyramid.mjs, area-weighted box";
-
 /**
- * What `info.compiler.patchScore` records: which quantity `patches.score`
- * holds, in which units. §5.7 fixes the quantity (Shi–Tomasi's minimum
- * eigenvalue) but not its normalisation, so without this a score — and
- * `patchMinScore` beside it — cannot be read by anyone who did not also read
- * `select_patches.ts`, and a compiler that normalised differently would
- * write numbers on another scale into the same field unnoticed.
+ * What `info.compiler.patchPyramid` records: the filter that built the level
+ * images patches are cut from. §5.7 does not say (open question Q11), so the
+ * file carries it as provenance; `crates/wnft-format/tests/real_target.rs`
+ * asserts it on the committed demo target.
  */
+const PATCH_PYRAMID =
+    "buildFramePyramid (@webarkit/nft-tracker): a box of width r over the bilinear " +
+    "reconstruction, rounded to nearest";
+
 /**
  * The most patch windows `compile-target` lets `selectPatches` score: 2^23.
  *
@@ -213,6 +214,14 @@ function patchWindows(width, height, scaleStep, patchLevels, P) {
     return windows;
 }
 
+/**
+ * What `info.compiler.patchScore` records: which quantity `patches.score`
+ * holds, in which units. §5.7 fixes the quantity (Shi–Tomasi's minimum
+ * eigenvalue) but not its normalisation, so without this a score — and
+ * `patchMinScore` beside it — cannot be read by anyone who did not also read
+ * `select_patches.ts`, and a compiler that normalised differently would
+ * write numbers on another scale into the same field unnoticed.
+ */
 const PATCH_SCORE =
     "lambda-min of the mean structure tensor over the window interior, " +
     "central differences, (grey levels / level-0 px)^2";
@@ -562,17 +571,29 @@ async function main(argv) {
         // name a level the file lacks and must be bounds-checked against the
         // file's own sizes (§5.7, INCONSISTENT_DATA); a prefix at the file's
         // sizes guarantees both. It is also the only way to limit the levels:
-        // SelectPatchesOptions has no such knob, and types.ts is fixed for
-        // this branch. Aligning the wording ("the first k ≤ L levels, each of
-        // exactly the file's size") is a coordinated change to types.ts
-        // across the three #48 branches, not one to make here.
+        // SelectPatchesOptions has no such knob. Aligning the wording ("the
+        // first k ≤ L levels, each of exactly the file's size") is a change
+        // to types.ts, the contract the tracking modules share, and not one
+        // to make here.
         const { scaleStep, levelSizes } = db.pyramid;
-        const pyramid = buildTargetPyramid(
-            image,
-            scaleStep,
-            levelSizes.slice(0, options.patchLevels),
-        );
-        const selected = selectPatches(pyramid, {
+        const levels = Math.min(options.patchLevels, levelSizes.length);
+        const built = buildFramePyramid(image, { levels, scaleStep });
+        if (!built.ok) {
+            throw new Error(`buildFramePyramid refused the target image: ${built.reason}`);
+        }
+        // buildFramePyramid computes its sizes by the rule the file records
+        // (§5.4), and a patch is in bounds only against the file's sizes, so
+        // the two are compared rather than assumed equal.
+        built.pyramid.levels.forEach((level, l) => {
+            const [w, h] = levelSizes[l];
+            if (level.width !== w || level.height !== h) {
+                throw new Error(
+                    `pyramid level ${l} is ${level.width}x${level.height}, ` +
+                        `but the target records ${w}x${h}`,
+                );
+            }
+        });
+        const selected = selectPatches(built.pyramid, {
             patchSize: options.patchSize,
             maxPatches: options.maxPatches,
             minScore: options.patchMinScore,

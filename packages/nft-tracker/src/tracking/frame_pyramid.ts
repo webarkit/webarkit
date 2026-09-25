@@ -125,11 +125,11 @@ export function pyramidScales(scaleStep: number, count: number): Float64Array | 
  * the same number of steps below their level 0 have been filtered alike. Two
  * things qualify it:
  *
- * - **`compile-target` does not do this yet.** It cuts patches from a
- *   stand-in, an area-weighted box pyramid (`bin/target-pyramid.mjs`), until
- *   it is switched to this function, and every file it produced names that
- *   filter in `info.compiler.patchPyramid`. Level-0 patches, which no filter
- *   touches, are unaffected: 63 of `examples/targets/pinball.wnft`'s 64.
+ * - **`compile-target` does this**, at the target's own `scaleStep`, and
+ *   names this function in `info.compiler.patchPyramid`; files compiled
+ *   before it did name a stand-in box filter there instead. On
+ *   `examples/targets/pinball.wnft` the point is moot for now: all 64 of
+ *   its patches come from level 0, which no filter touches.
  * - **Filtered alike is not blurred alike.** Alignment reads a patch on the
  *   frame level nearest its scale, usually a shallower one — a level-3 patch
  *   on frame level 0 — and the frame carries its camera's blur besides,
