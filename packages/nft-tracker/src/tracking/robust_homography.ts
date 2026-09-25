@@ -230,12 +230,17 @@ function countPositive(weights: Float64Array): number {
  * centroid and scaled to a weighted mean distance of `√2` from it. The
  * normalised H̃ is solved with `h̃₉ = 1`, as the 8×8 normal system, by
  * Cholesky — a direct solve, so the only loop here that iterates to
- * convergence is the IRLS one. Fixing `h̃₉` is safe: it is the projective
- * depth H gives the weighted centroid of `src`, which is 0 only when that
- * point maps to infinity.
+ * convergence is the IRLS one. Fixing `h̃₉` loses nothing a camera can
+ * produce: it is the projective depth H gives the weighted centroid of `src`
+ * — the weighted mean of the points' own depths, positive when all of them
+ * are in front of the camera. It is 0 only for a set straddling the vanishing
+ * line, some of it behind the camera; no view of a plane produces one, and
+ * its normal system is singular, so it is reported as such rather than
+ * fitted.
  *
  * `null` when the fit is singular: the weighted points of `src` or `dst` all
- * coincide; the normal system is singular ({@link choleskySolve}); or the
+ * coincide; the normal system is singular ({@link choleskySolve}) — a set
+ * whose weighted centroid H would send to infinity among them; or the
  * solution is — H̃ with a relative determinant at or below
  * `SINGULAR_RELATIVE_DET` (`mat3.ts`), which is how three collinear points
  * among four, or a target seen edge-on, come out: the normal system is

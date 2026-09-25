@@ -367,6 +367,27 @@ describe("robustHomography degenerate input", () => {
         expect(robustHomography(src, dst, H_TRUE, { ...OPTIONS, tukeyC: 1000 })).toEqual(SINGULAR);
     });
 
+    it("reports as singular a set whose centroid the fit would send to infinity", () => {
+        // w = 1 − x/512. Six points straddle x = 512 with their centroid on
+        // it, so the fit sends that centroid to infinity: h̃₉, its projective
+        // depth, is 0, which the h̃₉ = 1 solve cannot represent. That takes
+        // points on both sides of the vanishing line — three of them behind
+        // the camera — which no view of a plane produces. The same H is fitted
+        // from six points in front of the camera.
+        const H: Mat3 = Float64Array.from([1, 0, 0, 0, 1, 0, -1 / 512, 0, 1]);
+        const straddling = Float64Array.from([
+            412, 0, 462, 100, 412, 200, 612, 0, 562, 100, 612, 200,
+        ]);
+        expect(robustHomography(straddling, projectAll(H, straddling), H, OPTIONS)).toEqual(
+            SINGULAR,
+        );
+        const inFront = Float64Array.from([112, 0, 162, 100, 112, 200, 312, 0, 262, 100, 312, 200]);
+        const r = robustHomography(inFront, projectAll(H, inFront), H, OPTIONS);
+        expect(r.ok).toBe(true);
+        if (!r.ok) return;
+        expect(maxTransferGap(r.H, H, inFront)).toBeLessThan(EXACT_PX);
+    });
+
     it("fails on coincident points", () => {
         const src = Float64Array.from([320, 240, 320, 240, 320, 240, 320, 240, 320, 240]);
         expect(robustHomography(src, projectAll(H_TRUE, src), H_TRUE, OPTIONS)).toEqual(SINGULAR);
