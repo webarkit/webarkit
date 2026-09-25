@@ -240,6 +240,22 @@ describe("alignPatch: the convergence basin", () => {
         expect(successFrom(minified, 2, true)).toBeGreaterThanOrEqual(0.8);
     }, 30_000);
 
+    it("matches gain and bias by moments once per alignment: from 1 px off, magnified patches take a median of 7 iterations (95th percentile 8) with them", () => {
+        // The moment phase runs until the translation first converges, on
+        // the start level; the refinement level starts from that estimate,
+        // inside the joint phase's basin (align_patch.ts). Matching moments
+        // again there changed no rate (82.5% against 82.6% from 8 px) and
+        // took a 95th percentile of 9 iterations.
+        const onePx = Array.from({ length: 8 }, (_, k) => {
+            const a = (k * Math.PI) / 4;
+            return () => translation(Math.cos(a), Math.sin(a));
+        });
+        const { iterations, rate } = trials(magnified, onePx, { ...OPTIONS, photometric: true });
+        expect(rate).toBe(1);
+        expect(quantile(iterations, 0.5)).toBeLessThanOrEqual(7);
+        expect(quantile(iterations, 0.95)).toBeLessThanOrEqual(8);
+    });
+
     it("needs the predicted rotation within about 10° (94% converge) and scale within 10% (100%); at 20°, most do not (30%)", () => {
         // The alignment estimates a translation only: rotation and scale come
         // from the prediction. Errors about the patch's true centre, both signs.

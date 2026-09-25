@@ -142,14 +142,22 @@ function frameOf(render: Partial<RenderOptions>): FramePyramid {
     return pyramidOf(renderWarp(target, H, { ...FRAME, ...render }), 5);
 }
 
-/** Every patch aligned with gain and bias from `d` px off, in `directions` directions. */
-function fromOff(frame: FramePyramid, d: number, directions: number) {
+/**
+ * Every patch aligned with gain and bias from `d` px off, in `directions`
+ * directions: by default this suite's patches in the view `H`.
+ */
+function fromOff(
+    frame: FramePyramid,
+    d: number,
+    directions: number,
+    setup = { patches, truths, view: H },
+) {
     const results: { r: PatchAlignment; error: number }[] = [];
-    truths.forEach(([tx, ty], q) => {
+    setup.truths.forEach(([tx, ty], q) => {
         for (let k = 0; k < directions; k++) {
             const a = (2 * k * Math.PI) / directions;
             const off = translation(d * Math.cos(a), d * Math.sin(a));
-            const r = alignPatch(frame, patches, q, STEP, mat3Mul(off, H), ON);
+            const r = alignPatch(frame, setup.patches, q, STEP, mat3Mul(off, setup.view), ON);
             const error = r.ok ? Math.hypot(r.observation.x - tx, r.observation.y - ty) : Infinity;
             results.push({ r, error });
         }
@@ -179,8 +187,9 @@ describe("alignPatch: gain and bias", () => {
 
     it("keeps the clean-warp accuracy (median below 0.05 px) under brightness/contrast changes, carrying the unchanged frame's estimate over: gain within 0.01·g of g·gain₀, bias within 1 grey level of g·bias₀ + b", () => {
         // Measured: median errors 0.016–0.020 px; gain within 0.0024·g, bias
-        // within 0.19 grey levels. A level converges twice with gain and bias
-        // (align_patch.ts): a median of 5 iterations, 95th percentile 6.
+        // within 0.19 grey levels. These patches align on one level, which
+        // with gain and bias converges twice, under matched moments and then
+        // jointly (align_patch.ts): a median of 5 iterations, 95th percentile 6.
         expect(unchanged.converged).toBe(true);
         expect(median(unchanged.errors)).toBeLessThan(0.05);
         const iterations = unchanged.observations.map((o) => o.iterations).sort((a, c) => a - c);
@@ -198,8 +207,8 @@ describe("alignPatch: gain and bias", () => {
     it("keeps the basin under every change: from 2 px off all converge, from 3 px 96% (asserted ≥ 90%), and at most 1.6% elsewhere (≤ 2%)", () => {
         // 24 patches × 8 directions per change. Estimating gain and bias by
         // least squares from the first iteration, as the simultaneous
-        // algorithm alone does, converged only 45–48% from 3 px (84–92% from
-        // 2 px), and 3–6% of alignments converged away from the truth: a
+        // algorithm alone does, converged only 46–47% from 3 px (84–93% from
+        // 2 px), and 1.6–5.2% of alignments converged away from the truth: a
         // window that far off matches the patch poorly, so the fitted gain
         // collapses towards 0 and the translation step, divided by it,
         // overshoots. Matching gain and bias by moments until the translation
@@ -218,32 +227,69 @@ describe("alignPatch: gain and bias", () => {
         }
     }, 30_000);
 
-    it("tells a wrong convergence by its residual: from 3 to 8 px off, residual / gain is at most 3.8 grey levels when right and at least 6.1 when wrong", () => {
+    it("ends lost alignments singular or tells them by their residual: for level-3 patches, residual / gain at most 3.8 grey levels when right and at least 6.1 when wrong; for level-0 patches the two overlap", () => {
         // Beyond the basin an alignment can converge in the wrong place, as
-        // any local method's can; rejecting it is the robust fit's job
-        // (align_patch.ts, point 6), and this is its signal. Four changes,
-        // σ = 2 grey levels of noise, 24 patches × 16 directions × 4
-        // offsets: 3521 right convergences and 778 wrong ones, measured.
-        const right: number[] = [];
-        const wrong: number[] = [];
-        for (const [g, b] of [
+        // any local method's can (align_patch.ts, point 6). Four changes,
+        // σ = 2 grey levels of noise, 24 patches × 16 directions from 3, 4, 6
+        // and 8 px off. Measured, level 3 (this suite's patches): 346 of 6144
+        // end singular (none from 3 px, 149 of 1536 from 8); of the converged
+        // ones 3521 are right and 778 wrong, and residual / gain separates
+        // them. Level-0 patches, in views at their own scale, are sharper than
+        // the frame, so a right convergence keeps a residual: right up to
+        // 16.2, wrong from 11.2, and no threshold separates them.
+        const CHANGED: [number, number][] = [
             [1, 0],
             [0.6, 0],
             [1.3, 0],
             [0.7, 30],
-        ]) {
-            const frame = frameOf({ gain: g, bias: b, noiseSigma: 2, seed: 5 });
+        ];
+        const noisy = (g: number, b: number) => ({ gain: g, bias: b, noiseSigma: 2, seed: 5 });
+        const right: number[] = [];
+        const wrong: number[] = [];
+        const singular = new Map<number, number>();
+        for (const [g, b] of CHANGED) {
+            const frame = frameOf(noisy(g, b));
             for (const d of [3, 4, 6, 8]) {
                 for (const { r, error } of fromOff(frame, d, 16)) {
+                    if (!r.ok && r.reason === "singular") {
+                        singular.set(d, (singular.get(d) ?? 0) + 1);
+                    }
                     if (!(r.ok && r.observation.converged)) continue;
                     (error < 0.5 ? right : wrong).push(r.observation.residual / r.observation.gain);
                 }
             }
         }
+        expect(singular.get(3) ?? 0).toBe(0);
+        expect(singular.get(8) ?? 0).toBeGreaterThan(100);
         expect(wrong.length).toBeGreaterThan(100);
         expect(Math.max(...right)).toBeLessThan(4);
         expect(Math.min(...wrong)).toBeGreaterThan(6);
-    }, 30_000);
+
+        const sites0 = texturedSites(targetPyramid, P, 0, 24, { minSpacing: 12, margin: 4 });
+        const view0 = view({ target, frame: FRAME, scale: 1, angle: 0.3 });
+        const level0 = {
+            patches: cutPatches(targetPyramid, P, sites0),
+            truths: sites0.map((site) => {
+                const [X, Y] = patchCentre(site, P, STEP);
+                return project(view0, X, Y);
+            }),
+            view: view0,
+        };
+        const right0: number[] = [];
+        const wrong0: number[] = [];
+        for (const [g, b] of CHANGED) {
+            const frame = pyramidOf(renderWarp(target, view0, { ...FRAME, ...noisy(g, b) }), 5);
+            for (const d of [3, 4, 6, 8]) {
+                for (const { r, error } of fromOff(frame, d, 16, level0)) {
+                    if (!(r.ok && r.observation.converged)) continue;
+                    (error < 0.5 ? right0 : wrong0).push(
+                        r.observation.residual / r.observation.gain,
+                    );
+                }
+            }
+        }
+        expect(Math.max(...right0)).toBeGreaterThan(Math.min(...wrong0));
+    }, 60_000);
 
     it("is what the changes need: without it, errors grow 14× to over 2000×, except for a change that pivots at the patches' mean grey level (2.2×)", () => {
         // Measured, median error off / on: 2157× (gain 0.6: uncompensated
