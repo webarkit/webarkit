@@ -72,7 +72,7 @@ const OPTIONS: TrackFrameOptions = {
     minTrackedPatches: 8,
     maxOutlierShare: 0.45,
     maxFitRms: 0.6,
-    maxPatchResidual: Infinity,
+    minPatchZncc: 0.6,
 };
 const VIEWS: Mat3[] = [
     view({ target: image, frame: CAMERA, scale: 0.45 }),
@@ -186,23 +186,33 @@ function sweep(errors: Mat3[], options: TrackFrameOptions = OPTIONS): Sweep {
 }
 
 describe("trackFrame", () => {
-    it("tracks from the exact pose, keeping its books: 61 of 64 patches observed, H 0.064 px off", () => {
-        // Measured. View 0: 64 attempted, 61 observed, 3 unconverged, a fit
-        // residual of 0.258 px, H 0.064 px RMS from the truth at the patch
-        // centres, quality 0.945. View 1 (15°, tilted): 5 culled, 55 of 59
-        // observed, residual 0.236 px, H 0.092 px off, quality 0.926.
+    it("tracks from the exact pose, keeping its books: 57 of 64 patches observed, H 0.073 px off", () => {
+        // Measured. View 0: 64 attempted, 57 observed, 3 unconverged, 4
+        // rejected by the ZNCC gate, a fit residual of 0.261 px, H 0.073 px
+        // RMS from the truth at the patch centres, quality 0.883. View 1
+        // (15°, tilted): 5 culled, 54 of 59 observed, 4 unconverged, 1
+        // rejected, residual 0.238 px, H 0.088 px off, quality 0.909.
         const expected = [
             {
                 culled: 0,
                 attempted: 64,
-                observed: 61,
+                observed: 57,
                 unconverged: 3,
-                residual: 0.31,
-                error: 0.078,
+                rejected: 4,
+                residual: 0.32,
+                error: 0.088,
             },
-            { culled: 5, attempted: 59, observed: 55, unconverged: 4, residual: 0.29, error: 0.11 },
+            {
+                culled: 5,
+                attempted: 59,
+                observed: 54,
+                unconverged: 4,
+                rejected: 1,
+                residual: 0.29,
+                error: 0.11,
+            },
         ];
-        const quality = [0.945, 0.9256];
+        const quality = [0.8828, 0.9087];
         VIEWS.forEach((H, v) => {
             const r = track(FRAMES[v], H);
             expect(r.ok).toBe(true);
@@ -216,7 +226,7 @@ describe("trackFrame", () => {
                 observed: e.observed,
                 lost: 0,
                 unconverged: e.unconverged,
-                rejected: 0,
+                rejected: e.rejected,
                 failed: 0,
                 inliers: e.observed,
             });
@@ -237,10 +247,17 @@ describe("trackFrame", () => {
             );
             expect(r.outcomes[q] === PatchOutcome.Culled).toBe(!inside);
         }
-        // Measured: 30 culled, 31 of the other 34 observed, H 0.134 px off.
-        expect(r.stats).toMatchObject({ culled: 30, attempted: 34, observed: 31, unconverged: 3 });
+        // Measured: 30 culled, 29 of the other 34 observed (3 unconverged,
+        // 2 rejected), H 0.190 px off.
+        expect(r.stats).toMatchObject({
+            culled: 30,
+            attempted: 34,
+            observed: 29,
+            unconverged: 3,
+            rejected: 2,
+        });
         expect(r.ok).toBe(true);
-        if (r.ok) expect(centreRms(r.H, H)).toBeLessThan(0.17);
+        if (r.ok) expect(centreRms(r.H, H)).toBeLessThan(0.23);
     });
 
     it("counts a patch whose window is covered as lost (singular), and none of them reaches the fit", () => {
@@ -270,15 +287,21 @@ describe("trackFrame", () => {
             }
         }
         // Measured: 17 patches wholly covered, all lost; 2 straddle the
-        // block's edge. The frame still tracks on 44, H 0.085 px off, and
-        // quality falls from 0.945 (unoccluded) to 0.6825, about 47/64 of it.
+        // block's edge. The frame still tracks on 41, H 0.109 px off, and
+        // quality falls from 0.883 (unoccluded) to 0.636, about 47/64 of it.
         expect(covered).toBe(17);
         expect(straddling).toBe(2);
-        expect(r.stats).toMatchObject({ attempted: 64, observed: 44, lost: 17, unconverged: 3 });
+        expect(r.stats).toMatchObject({
+            attempted: 64,
+            observed: 41,
+            lost: 17,
+            unconverged: 3,
+            rejected: 3,
+        });
         expect(r.ok).toBe(true);
         if (!r.ok) return;
-        expect(centreRms(r.H, H)).toBeLessThan(0.11);
-        expect(r.quality).toBeCloseTo(0.6825, 3);
+        expect(centreRms(r.H, H)).toBeLessThan(0.14);
+        expect(r.quality).toBeCloseTo(0.636, 3);
     });
 
     it("loses every patch of a flat frame, and the frame with them", () => {
@@ -295,20 +318,24 @@ describe("trackFrame", () => {
         expect(r.stats.rmsError).toBeNull();
     });
 
-    it("survives a prediction up to 3.5 px off (32/32 within 0.5 px); at 4 px 27/32, at 4.5 px 5/32, at 6 px none, and never accepts a wrong fit", () => {
+    it("survives a prediction up to 4 px off (32/32 within 0.5 px); at 4.25 px 1/32, at 4.5 and 6 px none, and never accepts a wrong fit", () => {
         // 16 directions × 2 views per distance. Past the basin a step may
         // fail, but it never accepts a wrong H: an accepted fit this far off
-        // would become the next frame's prediction. Without the inlier and
-        // residual rules, 4 fits at 4 px were accepted 3.7–6.9 px off.
+        // would become the next frame's prediction. Past 4 px the right
+        // correspondences start outside tukeyC and the ZNCC gate has turned
+        // away the wrong ones near the prediction, so the fit fails cleanly.
+        // Without the inlier, residual and ZNCC rules, 4 fits at 4 px were
+        // accepted 3.7–6.9 px off.
         const expected: [number, number, Record<string, number>][] = [
             [0, 32, {}],
             [1, 32, {}],
             [2, 32, {}],
             [3, 32, {}],
             [3.5, 32, {}],
-            [4, 27, { "poor-fit": 4, "too-many-outliers": 1 }],
-            [4.5, 5, { "too-many-outliers": 12, "fit-failed": 10, "poor-fit": 5 }],
-            [6, 0, { "too-many-outliers": 16, "fit-failed": 12, "poor-fit": 4 }],
+            [4, 32, {}],
+            [4.25, 1, { "too-many-outliers": 3, "fit-failed": 28 }],
+            [4.5, 0, { "fit-failed": 32 }],
+            [6, 0, { "too-many-outliers": 1, "fit-failed": 31 }],
         ];
         for (const [d, recovered, losses] of expected) {
             const s = sweep(shifts(d));
@@ -318,54 +345,83 @@ describe("trackFrame", () => {
         }
     });
 
-    it("survives 3° of roll and 5% of scale in the prediction; 4° and 6% are refused as poor fits", () => {
-        // Measured: every recovered H within 0.251 px; the four refused fits
-        // had residuals of 0.76–1.17 px (and were 3.5–6.7 px off before the
-        // residual rule existed).
+    it("survives 4° of roll and 8% of scale in the prediction; 5° is refused", () => {
+        // Measured: every recovered H within 0.546 px (at −4°, on 13
+        // inliers); both 5° cases end with fewer than 8 inliers.
         const deg = (a: number) => (a * Math.PI) / 180;
         for (const [E, outcome] of [
             [rotation(deg(2)), "ok"],
             [rotation(deg(-2)), "ok"],
             [rotation(deg(3)), "ok"],
             [rotation(deg(-3)), "ok"],
-            [rotation(deg(4)), "poor-fit"],
-            [rotation(deg(-4)), "poor-fit"],
-            [scaling(1 / 1.06), "poor-fit"],
+            [rotation(deg(4)), "ok"],
+            [rotation(deg(-4)), "ok"],
+            [rotation(deg(5)), "too-few-patches"],
+            [rotation(deg(-5)), "too-few-patches"],
+            [scaling(1 / 1.08), "ok"],
+            [scaling(1 / 1.06), "ok"],
             [scaling(1 / 1.05), "ok"],
             [scaling(1.05), "ok"],
-            [scaling(1.06), "poor-fit"],
+            [scaling(1.06), "ok"],
+            [scaling(1.08), "ok"],
         ] as const) {
             const r = track(FRAMES[0], about(E, VIEWS[0]));
             expectConsistent(r);
             expect(r.ok ? "ok" : r.loss).toBe(outcome);
-            if (r.ok) expect(centreRms(r.H, VIEWS[0])).toBeLessThan(0.31);
+            if (r.ok) expect(centreRms(r.H, VIEWS[0])).toBeLessThan(0.66);
         }
     });
 
-    it("the outlier and residual rules turn away what they should", () => {
-        // With no zero weight allowed, all 32 trials at 4 px are refused:
-        // each of those fits weighs at least one correspondence 0, so the
-        // rule is exercised.
+    it("the outlier rule is exercised, and the ZNCC gate and the outlier and residual rules each turn away the wrong fits", () => {
+        // With no zero weight allowed, 17 of the 32 trials at 4 px are
+        // refused: those fits weigh at least one correspondence 0.
         const strict = sweep(shifts(4), { ...OPTIONS, maxOutlierShare: 0 });
-        expect(strict.recovered).toBe(0);
-        expect(strict.losses).toEqual({ "too-many-outliers": 32 });
-        // Without the outlier and residual rules, 9 of the 32 trials at 6 px
-        // are accepted 5.3–14.2 px off the truth: what the two rules refuse.
-        const lax = sweep(shifts(6), {
+        expect(strict.recovered).toBe(15);
+        expect(strict.losses).toEqual({ "too-many-outliers": 17 });
+        // At 6 px, without the ZNCC gate and the outlier and residual rules,
+        // 9 of the 32 trials are accepted 5.3–14.2 px off the truth. Either
+        // the gate alone or the two rules alone refuse all nine.
+        const none = sweep(shifts(6), {
+            ...OPTIONS,
+            maxOutlierShare: 1 - 1e-12,
+            maxFitRms: Infinity,
+            minPatchZncc: 0,
+        });
+        expect(none.recovered).toBe(0);
+        expect(none.losses).toEqual({ "too-few-patches": 11, "fit-failed": 12 });
+        expect(none.wrong.length).toBe(9);
+        expect(Math.min(...none.wrong)).toBeGreaterThan(5);
+        const gateOnly = sweep(shifts(6), {
             ...OPTIONS,
             maxOutlierShare: 1 - 1e-12,
             maxFitRms: Infinity,
         });
-        expect(lax.recovered).toBe(0);
-        expect(lax.losses).toEqual({ "too-few-patches": 11, "fit-failed": 12 });
-        expect(lax.wrong.length).toBe(9);
-        expect(Math.min(...lax.wrong)).toBeGreaterThan(5);
+        expect(gateOnly.wrong).toEqual([]);
+        expect(gateOnly.losses).toEqual({ "too-few-patches": 1, "fit-failed": 31 });
+        const rulesOnly = sweep(shifts(6), { ...OPTIONS, minPatchZncc: 0 });
+        expect(rulesOnly.wrong).toEqual([]);
+        expect(rulesOnly.losses).toEqual({
+            "too-many-outliers": 16,
+            "poor-fit": 4,
+            "fit-failed": 12,
+        });
     });
 
-    it("rejects nothing by default; a residual gate of 20 rejects 37 of 64 and keeps them out of the fit", () => {
-        for (const [v, H] of VIEWS.entries()) expect(track(FRAMES[v], H).stats.rejected).toBe(0);
+    it("rejects a match that correlates poorly with its patch (at 0.9, 38 of 64), and keeps it out of the fit", () => {
+        // A converged alignment's zero-normalised cross-correlation with its
+        // patch, from what alignPatch returns: with gain g and residual r,
+        // ZNCC = 1 / √(1 + (r / (g · σ_T))²), σ_T the patch's own spread.
+        // Recomputed here, independently, for every rejected patch.
+        const spread = (q: number) => {
+            const P = patches.patchSize;
+            const px = patches.pixels.subarray(q * P * P, (q + 1) * P * P);
+            const m = px.reduce((a, v) => a + v, 0) / px.length;
+            return Math.sqrt(px.reduce((a, v) => a + (v - m) ** 2, 0) / px.length);
+        };
         const H = VIEWS[0];
-        const r = track(FRAMES[0], H, { ...OPTIONS, maxPatchResidual: 20 });
+        const off = track(FRAMES[0], H, { ...OPTIONS, minPatchZncc: 0 });
+        expect(off.stats.rejected).toBe(0);
+        const r = track(FRAMES[0], H, { ...OPTIONS, minPatchZncc: 0.9 });
         expectConsistent(r);
         expect(r.stats.rejected).toBeGreaterThan(0);
         const built = buildFramePyramid(FRAMES[0], {
@@ -374,13 +430,16 @@ describe("trackFrame", () => {
         });
         if (!built.ok) throw new Error(built.reason);
         for (let q = 0; q < patches.count; q++) {
-            if (r.outcomes[q] !== PatchOutcome.Rejected) continue;
             const a = alignPatch(built.pyramid, patches, q, PINBALL_STEP, H, OPTIONS.align);
-            expect(a.ok && a.observation.converged).toBe(true);
-            if (a.ok) expect(a.observation.residual / a.observation.gain).toBeGreaterThan(20);
+            if (!a.ok || !a.observation.converged) continue;
+            const o = a.observation;
+            const zncc = 1 / Math.sqrt(1 + (o.residual / (o.gain * spread(q))) ** 2);
+            expect(r.outcomes[q]).toBe(zncc < 0.9 ? PatchOutcome.Rejected : PatchOutcome.Observed);
         }
-        // Measured: 37 rejected, 24 observed (and fitted), 3 unconverged.
-        expect(r.stats).toMatchObject({ observed: 24, unconverged: 3, rejected: 37 });
+        // Measured: at 0.9, 38 of the 64 rejected and 23 fitted, 3
+        // unconverged; with the gate off, none rejected and 61 fitted.
+        expect(r.stats).toMatchObject({ observed: 23, unconverged: 3, rejected: 38 });
+        expect(off.stats).toMatchObject({ observed: 61, rejected: 0 });
         expect(r.ok).toBe(true);
     });
 

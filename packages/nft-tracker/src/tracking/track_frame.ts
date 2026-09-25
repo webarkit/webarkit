@@ -55,6 +55,24 @@
  *   those positions to the fit left translation survival unchanged but broke
  *   it at 3° of rotation and 5% of scale.
  * - Any other failure is **failed**; with the cull below it is rare.
+ * - A converged alignment whose zero-normalised cross-correlation with its
+ *   patch is below `minPatchZncc` is **rejected**: it converged, but on
+ *   something that does not look like the patch. With gain `g` and residual
+ *   `r` from `alignPatch`, and `σ_T` the patch's own spread, the ZNCC of the
+ *   window with `g · T + bias` is `1 / √(1 + (r / (g · σ_T))²)` — the
+ *   residual relative to the contrast the fit found, which the bare
+ *   `r / g` is not. Its purpose is the window that holds nothing: on flat,
+ *   noisy background the gain collapses towards 0 without reaching
+ *   `"singular"`, the patch "converges" where it was put, and a set of such
+ *   patches agrees with whatever prediction put them there.
+ *
+ *   Measured over 4 views × 3 renders of pinball, predictions up to 6 px
+ *   and 4° off: right alignments (21 107) had a ZNCC of 0.93 at the median,
+ *   0.71 at the 5th percentile and 0.53 at the 1st; alignments that
+ *   converged on background had 0.38 at the median. In a leave-and-return
+ *   sequence, a detection 200 px off on a half-visible target was then
+ *   "tracked" 232 px off on twelve such patches, gains 0.001–0.11, with a
+ *   fit residual of 0.57 px — under `maxFitRms`, which it could not catch.
  *
  * **Culled** patches — whose four corner samples the prediction does not put
  * inside the frame, where no frame level could hold them — are never passed
@@ -101,26 +119,38 @@ export interface TrackTarget {
     readonly centres: Float64Array;
     /** `s_l` of every patch's level. */
     readonly patchScales: Float64Array;
+    /** Every patch's own intensity spread `σ_T`, grey levels: the ZNCC's scale. */
+    readonly patchSpreads: Float64Array;
 }
 
 /**
  * The geometry of `patches`, once. Centres follow types.ts's rule for a
  * correspondence's target-side point, `((left + (P − 1)/2) / s_l, …)`, with
  * `s_l` from `levelScale` (which throws on a step it cannot use: a target
- * that reaches here has been decoded or built, so its step is valid).
+ * that reaches here has been decoded or built, so its step is valid). Each
+ * patch's spread is the standard deviation of its `P²` stored pixels.
  */
 export function trackTarget(patches: PatchTable, scaleStep: number): TrackTarget {
     const Q = patches.count;
-    const half = (patches.patchSize - 1) / 2;
+    const P = patches.patchSize;
+    const n = P * P;
+    const half = (P - 1) / 2;
     const centres = new Float64Array(2 * Q);
     const patchScales = new Float64Array(Q);
+    const patchSpreads = new Float64Array(Q);
     for (let q = 0; q < Q; q++) {
         const s = levelScale(scaleStep, patches.level[q]);
         patchScales[q] = s;
         centres[2 * q] = (patches.left[q] + half) / s;
         centres[2 * q + 1] = (patches.top[q] + half) / s;
+        let sum = 0;
+        for (let i = 0; i < n; i++) sum += patches.pixels[q * n + i];
+        const mean = sum / n;
+        let squares = 0;
+        for (let i = 0; i < n; i++) squares += (patches.pixels[q * n + i] - mean) ** 2;
+        patchSpreads[q] = Math.sqrt(squares / n);
     }
-    return { patches, scaleStep, centres, patchScales };
+    return { patches, scaleStep, centres, patchScales, patchSpreads };
 }
 
 /** What happened to each patch this frame, one code per patch in `outcomes`. */
@@ -133,7 +163,7 @@ export const PatchOutcome = {
     Unconverged: 2,
     /** `alignPatch` said `"singular"`: the patch lost its target this frame. */
     Lost: 3,
-    /** Converged, but `residual / gain` above `maxPatchResidual`. */
+    /** Converged, but correlating with its patch below `minPatchZncc`. */
     Rejected: 4,
     /** Any other `alignPatch` failure. */
     Failed: 5,
@@ -192,7 +222,7 @@ export interface TrackFrameOptions {
     readonly minTrackedPatches: number;
     readonly maxOutlierShare: number;
     readonly maxFitRms: number;
-    readonly maxPatchResidual: number;
+    readonly minPatchZncc: number;
 }
 
 export type TrackFrameResult =
@@ -310,7 +340,8 @@ export function trackFrame(
             counts.unconverged++;
             continue;
         }
-        if (o.residual / o.gain > options.maxPatchResidual) {
+        const contrast = o.residual / (o.gain * target.patchSpreads[q]);
+        if (1 / Math.sqrt(1 + contrast * contrast) < options.minPatchZncc) {
             outcomes[q] = PatchOutcome.Rejected;
             counts.rejected++;
             continue;

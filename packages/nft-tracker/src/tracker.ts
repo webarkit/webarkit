@@ -131,7 +131,7 @@ export const DEFAULT_PHOTOMETRIC = true;
 /**
  * Tukey's cutoff, frame px: the detection state's RANSAC threshold, and #64's
  * configuration for its 45% breakdown. It also bounds the prediction error a
- * step survives: 3.5 px measured on the camera path (track_frame.test.ts),
+ * step survives: 4 px measured on the camera path (track_frame.test.ts),
  * since `robustHomography` starts weighting at the prediction. Provisional
  * until the M2 tuning pass.
  */
@@ -174,15 +174,17 @@ export const DEFAULT_MAX_OUTLIER_SHARE = 0.45;
 export const DEFAULT_MAX_FIT_RMS = 0.6;
 
 /**
- * Largest `residual / gain` (grey levels) a converged patch may have and
- * still reach the fit. Off: measured on pinball at the camera path's scale
- * (σ ≈ 0.45), right and wrong alignments overlap — the best threshold keeps
- * 66% of right ones and still passes 15% of wrong ones — because level-0
- * patches are far sharper than the frame there (median gain 0.51). At σ = 1
- * a gate at 35 keeps every right alignment and rejects 94% of wrong ones:
- * the tuning pass should set this together with patch levels. Provisional.
+ * Smallest zero-normalised cross-correlation a converged patch may have with
+ * its window and still reach the fit (track_frame.ts), for a patch that
+ * "converged" on something unlike it — above all on flat background, where
+ * its gain collapses without reaching `"singular"`. Measured on pinball at
+ * the camera path's scale (4 views × 3 renders): 0.6 turns away 1.6% of
+ * right alignments, 42% of wrong ones and 79% of those on background. On the
+ * leave-and-return sequence it is what refuses a pose 232 px off; 0.5 and
+ * 0.7 left TRACK frames 2.1 and 2.3 px off, 0.6 at most 1.2 px
+ * (tracker_state_machine.test.ts). Provisional until the M2 tuning pass.
  */
-export const DEFAULT_MAX_PATCH_RESIDUAL = Infinity;
+export const DEFAULT_MIN_PATCH_ZNCC = 0.6;
 
 /** Why a frame produced no homography. */
 export type TrackFailure =
@@ -222,8 +224,8 @@ export interface NftTrackerOptions {
     readonly maxOutlierShare?: number;
     /** See {@link DEFAULT_MAX_FIT_RMS}. Finite, `> 0`. */
     readonly maxFitRms?: number;
-    /** See {@link DEFAULT_MAX_PATCH_RESIDUAL}. `> 0`, `Infinity` allowed. */
-    readonly maxPatchResidual?: number;
+    /** See {@link DEFAULT_MIN_PATCH_ZNCC}. In `[0, 1)`; 0 turns the gate off. */
+    readonly minPatchZncc?: number;
     /**
      * A clock in milliseconds, e.g. `() => performance.now()`. When given,
      * every result carries {@link TrackTimings}; the tracker reads no clock of
@@ -565,10 +567,15 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
         }
         return v;
     };
-    const positive = (name: string, v: number, allowInfinity = false): number => {
-        if (!(v > 0 && (allowInfinity || Number.isFinite(v)))) {
-            const what = allowInfinity ? "> 0" : "finite and > 0";
-            throw new RangeError(`NftTracker: ${name} must be ${what}, got ${v}`);
+    const positive = (name: string, v: number): number => {
+        if (!(v > 0 && Number.isFinite(v))) {
+            throw new RangeError(`NftTracker: ${name} must be finite and > 0, got ${v}`);
+        }
+        return v;
+    };
+    const fraction = (name: string, v: number): number => {
+        if (!(v >= 0 && v < 1)) {
+            throw new RangeError(`NftTracker: ${name} must be in [0, 1), got ${v}`);
         }
         return v;
     };
@@ -578,10 +585,6 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
         }
         return v;
     };
-    const share = o.maxOutlierShare ?? DEFAULT_MAX_OUTLIER_SHARE;
-    if (!(share >= 0 && share < 1)) {
-        throw new RangeError(`NftTracker: maxOutlierShare must be in [0, 1), got ${share}`);
-    }
     if (o.clock !== undefined && typeof o.clock !== "function") {
         throw new RangeError(`NftTracker: clock must be a function, got ${String(o.clock)}`);
     }
@@ -618,13 +621,12 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
                 o.minTrackedPatches ?? DEFAULT_MIN_TRACKED_PATCHES,
                 4,
             ),
-            maxOutlierShare: share,
-            maxFitRms: positive("maxFitRms", o.maxFitRms ?? DEFAULT_MAX_FIT_RMS),
-            maxPatchResidual: positive(
-                "maxPatchResidual",
-                o.maxPatchResidual ?? DEFAULT_MAX_PATCH_RESIDUAL,
-                true,
+            maxOutlierShare: fraction(
+                "maxOutlierShare",
+                o.maxOutlierShare ?? DEFAULT_MAX_OUTLIER_SHARE,
             ),
+            maxFitRms: positive("maxFitRms", o.maxFitRms ?? DEFAULT_MAX_FIT_RMS),
+            minPatchZncc: fraction("minPatchZncc", o.minPatchZncc ?? DEFAULT_MIN_PATCH_ZNCC),
         },
     };
 }
