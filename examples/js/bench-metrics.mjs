@@ -371,3 +371,59 @@ export function summarizeRun(frames) {
         ...cornerJitter(frames),
     };
 }
+
+/** A media time as the key two exports are matched on: microseconds, as `requestVideoFrameCallback` reports them. */
+export const mediaKey = (seconds) => Math.round(seconds * 1e6);
+
+/**
+ * Two exports of the same footage, aligned as `DEFINITIONS.alignment` says,
+ * and {@link cornerJitter} of each. Two runs never process the same frames —
+ * the main thread skips the ones it is too busy for, and two modes skip
+ * different ones — so this is the comparison on common footage that their
+ * arrays' indices cannot give. Throws on exports that cannot be aligned,
+ * saying why.
+ */
+export function compareExports(first, second) {
+    const refuse = (why) => {
+        throw new Error(`cannot compare these exports: ${why}`);
+    };
+    for (const [name, e] of [
+        ["the first", first],
+        ["the second", second],
+    ]) {
+        if (!Array.isArray(e?.frames)) refuse(`${name} has no frames`);
+        if (e.source === "webcam") {
+            refuse(
+                `${name} is a webcam run, whose mediaTimeSeconds is time since its stream started, not a position in a clip`,
+            );
+        }
+        if (e.metricsVersion !== METRICS_VERSION) {
+            refuse(
+                `${name} has metricsVersion ${e.metricsVersion ?? "(none)"}, not ${METRICS_VERSION}: its frames do not carry corners as defined here`,
+            );
+        }
+    }
+    if (first.source !== second.source || first.bundledClip !== second.bundledClip) {
+        refuse(
+            `they ran on different footage (${first.bundledClip ?? first.source}, ${second.bundledClip ?? second.source})`,
+        );
+    }
+    const a = first.processingResolution;
+    const b = second.processingResolution;
+    if (a?.width !== b?.width || a?.height !== b?.height) {
+        refuse(
+            `their corners are in different frame sizes (${a?.width}x${a?.height}, ${b?.width}x${b?.height})`,
+        );
+    }
+    const posed = (e) =>
+        new Set(e.frames.filter((f) => f.corners).map((f) => mediaKey(f.mediaTimeSeconds)));
+    const inFirst = posed(first);
+    const common = new Set([...posed(second)].filter((k) => inFirst.has(k)));
+    const restrict = (e) =>
+        e.frames.filter((f) => f.corners && common.has(mediaKey(f.mediaTimeSeconds)));
+    return {
+        commonMediaTimes: common.size,
+        first: cornerJitter(restrict(first)),
+        second: cornerJitter(restrict(second)),
+    };
+}
