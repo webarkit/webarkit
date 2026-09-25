@@ -70,21 +70,24 @@
  * tracker_state_machine.test.ts). One step recovers the pose — within 0.5 px
  * RMS at the patch centres — from a prediction up to 4 px, 3.5° of roll or 5%
  * of scale off, on every render measured. Past 4 px of translation it refuses
- * rather than accept a wrong pose (pinned to 6 px, measured to 20 px). Past
- * 4° of roll or 8% of scale it may accept one: 0.55–1.6 px off at 4–5° of
- * roll, and up to 9.4 px off when the target shrinks 8–11% in one frame.
- * That takes such a change on a step with no velocity to predict it — a
- * lock's first — and the next step corrects the pose or refuses (within
- * 0.9 px, and 0.25 px on the step after, over 5 renders), but the wrong pose
- * is returned as `"TRACK"` meanwhile, with a quality of 0.12–0.20: right fits
- * on as few patches reach 0.20, so quality flags it without separating it
- * ({@link DEFAULT_MAX_FIT_RMS} says what would). A sequence survives a
- * sudden change of velocity of 4 px per frame. The first prediction after a
- * detection has no velocity, and the second's carries the detection's own
- * error (about 1 px RMS on those frames), so faster motion re-detects every
- * frame until it slows. As a target leaves the frame, the last tracked frames
- * fit the few patches still in view and extrapolate to the rest: up to 1.2 px
- * RMS off over the patch centres, 2.5 px at the far end.
+ * rather than accept a wrong pose (pinned to 6 px, measured to 20 px). From
+ * 4° of roll, or past 8% of scale, it may accept one: 0.55–1.6 px off at
+ * 4–5° of roll (−4° already, on both views), up to 9.4 px off when the
+ * target shrinks 8–11% in one frame, and 3.65 px off when it grows 9% (one
+ * view). That takes such a change on a step with no velocity to predict it —
+ * a lock's first. After the 8–10% changes of scale and −4.5° of roll
+ * measured (5 renders × 2 views), the next step came within 0.9 px or
+ * refused, and the one after within 0.25 px or re-detected; but the wrong
+ * pose is returned as `"TRACK"` meanwhile, with a quality of 0.12–0.20. Right
+ * fits on as few patches reach 0.20, so quality flags it without separating
+ * it, and so far no rule does ({@link DEFAULT_MAX_FIT_RMS} has the
+ * measurements). A sequence survives a sudden change of velocity of 4 px per
+ * frame. The first prediction after a detection has no velocity, and the
+ * second's carries the detection's own error (about 1 px RMS on those
+ * frames), so faster motion re-detects every frame until it slows. As a
+ * target leaves the frame, the last tracked frames fit the few patches still
+ * in view and extrapolate to the rest: up to 1.2 px RMS off over the patch
+ * centres, 2.5 px at the far end.
  *
  * **Patch levels are the first thing the tuning pass should revisit.** Every
  * patch of `examples/targets/pinball.wnft` comes from level 0, and on the
@@ -205,9 +208,12 @@ export const DEFAULT_FIT_EPSILON = 1e-6;
 /**
  * Fewest correspondences a tracking frame may fit, and fewest the fit may
  * keep with a weight. The second is the bound that decides: every accepted
- * fit keeps at least 8 inliers, twice the 4 a homography needs, and below 15
+ * fit keeps at least 8 inliers, twice the 4 a homography needs. Up to 12
  * correspondences it refuses before {@link DEFAULT_MAX_OUTLIER_SHARE} would
- * (10 with 3 weighed 0 ends `"too-few-patches"`, not `"too-many-outliers"`).
+ * (10 with 3 weighed 0 ends `"too-few-patches"`, not `"too-many-outliers"`);
+ * at 13 and 14 the two refuse at the same count, reported as
+ * `"too-many-outliers"`, which is checked first; from 15 the share binds
+ * first.
  * Measured with every rule in place, on pinball at the camera path's scale
  * (2 views × 5 renders, predictions to 8 px, 6° and 12% off;
  * track_frame.test.ts pins one render): right fits kept 12 inliers or more,
