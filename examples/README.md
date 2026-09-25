@@ -96,11 +96,15 @@ either example's. Neither demo attempts it.
 
 The same pipeline, live, through `NftTracker` — the page calls
 `tracker.process(frame, timestampMs)` once per tick and draws what comes
-back. Milestone M1 of
-[ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) is
-parity, so the tracker still carries **no state between ticks**: each frame is
-detected, matched and pose-estimated from nothing, and a tick that fails to
-lock on has no memory of the tick before it that did. The page still owns the
+back. `NftTracker` carries state between ticks only for a target with
+tracking patches (milestone M2 of
+[#48](https://github.com/webarkit/webarkit/issues/48)); this page builds its
+target with `buildTargetFromImage`, which writes none, so the tracker runs
+detection-only — M1 of
+[ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) — and
+carries **no state between ticks**: each frame is detected, matched and
+pose-estimated from nothing, and a tick that fails to lock on has no memory of
+the tick before it that did. The page still owns the
 camera, the loop and the canvas; the package owns none of them (ADR point 7).
 
 Parameters, chosen from measurements taken directly against these images (see
@@ -200,13 +204,15 @@ because, on the file path, frame rate measurably changed `acquire` (see
 
 Both modes are timed by wrapping the `CvBackend` instance passed to whichever
 one is active, so the stage split is available for `NftTracker` even though
-`process()` does not expose it itself. Milestone M1 of
-[ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) is
-parity, so the two modes are expected to report the same match/inlier counts
-here; the point of measuring both under one roof is to have a timing baseline
-in place *before* M2 gives the tracker state of its own, so that whatever
-that costs is visible as a change against this page rather than a number with
-nothing to compare it to.
+`process()` does not expose it itself. The page builds its target with
+`buildTargetFromImage`, which writes no tracking patches, so `NftTracker` runs
+detection-only here — M1 of
+[ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md), the
+same pipeline as the stateless mode — and the two modes are expected to report
+the same match/inlier counts. That makes this page the baseline for M2's
+tracking state, which needs a target with patches (a compiled `.wnft`, not yet
+an option here): whatever tracking costs or saves shows as a change against
+these numbers rather than a number with nothing to compare it to.
 
 **Comparing the two modes on the same footage.** `timestampMs` passed to each
 tick is `performance.now()`, not `video.currentTime`, so two separate Start

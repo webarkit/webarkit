@@ -176,6 +176,17 @@ function centreRms(A: Mat3, B: Mat3): number {
     return Math.sqrt(s / (patchCentres.length / 2));
 }
 
+/** The largest distance, frame px, between where `A` and `B` put one patch centre. */
+function centreMax(A: Mat3, B: Mat3): number {
+    let worst = 0;
+    for (let i = 0; i < patchCentres.length; i += 2) {
+        const [ax, ay] = project(A, patchCentres[i], patchCentres[i + 1]);
+        const [bx, by] = project(B, patchCentres[i], patchCentres[i + 1]);
+        worst = Math.max(worst, Math.hypot(ax - bx, ay - by));
+    }
+    return worst;
+}
+
 function median(values: number[]): number {
     const s = [...values].sort((a, b) => a - b);
     return s[Math.floor(s.length / 2)];
@@ -253,11 +264,17 @@ describe("NftTracker on camera-path sequences", () => {
         const { results, truths, states } = run(target, leaveAndReturn, 106);
         // A TRACK result is a pose the tracker vouches for: never one several
         // px off, whatever a detection seeded it with. Measured: at most
-        // 1.196 px, on the last frames before the target leaves, which fit
-        // the few patches still in view and extrapolate to the rest.
+        // 1.196 px RMS over the patch centres, and 2.485 px at the worst one,
+        // on the last frames before the target leaves, which fit the few
+        // patches still in view and extrapolate to the rest — the worst is
+        // at the far end, outside the frame.
         const e = errors(results, truths);
         const trackErrors = results.flatMap((r, i) => (r.state === "TRACK" ? [e[i]!] : []));
         expect(Math.max(...trackErrors)).toBeLessThan(1.5);
+        const worst = results.flatMap((r, i) =>
+            r.ok && r.state === "TRACK" ? [centreMax(r.H, truths[i])] : [],
+        );
+        expect(Math.max(...worst)).toBeLessThan(3);
         expect(states[0]).toBe("D");
         expect(states.slice(1, 10)).toBe("TTTTTTTTT");
         // The target is out of the frame from frame 47 to 58.

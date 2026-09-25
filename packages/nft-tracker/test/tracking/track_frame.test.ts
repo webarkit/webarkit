@@ -48,7 +48,11 @@ import { describe, it, expect } from "vitest";
 import type { GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
 import { alignPatch, buildFramePyramid } from "../../src/index.js";
 import { PatchOutcome, trackFrame, trackTarget } from "../../src/tracking/track_frame.js";
-import type { TrackFrameOptions, TrackFrameResult } from "../../src/tracking/track_frame.js";
+import type {
+    TrackFrameOptions,
+    TrackFrameResult,
+    TrackLoss,
+} from "../../src/tracking/track_frame.js";
 import { PINBALL_STEP, pinballPatches } from "../fixtures/tracking_target.js";
 import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
 import {
@@ -166,6 +170,24 @@ interface Sweep {
     losses: Record<string, number>;
 }
 
+/**
+ * The one classification every survival test uses: a step is **recovered**
+ * when it ends `ok` within 0.5 px RMS of the truth at the patch centres,
+ * **wrong** when it ends `ok` further off — an accepted wrong fit, which
+ * becomes the next frame's prediction — and otherwise refused, by its loss.
+ */
+type Outcome =
+    | { kind: "recovered"; error: number }
+    | { kind: "wrong"; error: number; quality: number; inliers: number }
+    | { kind: TrackLoss };
+
+function classify(r: TrackFrameResult, truth: Mat3): Outcome {
+    if (!r.ok) return { kind: r.loss };
+    const error = centreRms(r.H, truth);
+    if (error < 0.5) return { kind: "recovered", error };
+    return { kind: "wrong", error, quality: r.quality, inliers: r.stats.inliers };
+}
+
 /** Every view, every one of `errors` applied about the target centre. */
 function sweep(errors: Mat3[], options: TrackFrameOptions = OPTIONS): Sweep {
     const out: Sweep = { recovered: 0, wrong: [], losses: {} };
@@ -173,13 +195,10 @@ function sweep(errors: Mat3[], options: TrackFrameOptions = OPTIONS): Sweep {
         for (const E of errors) {
             const r = track(FRAMES[v], about(E, H), options);
             expectConsistent(r);
-            if (!r.ok) {
-                out.losses[r.loss] = (out.losses[r.loss] ?? 0) + 1;
-                continue;
-            }
-            const e = centreRms(r.H, H);
-            if (e < 0.5) out.recovered++;
-            else out.wrong.push(e);
+            const o = classify(r, H);
+            if (o.kind === "recovered") out.recovered++;
+            else if (o.kind === "wrong") out.wrong.push(o.error);
+            else out.losses[o.kind] = (out.losses[o.kind] ?? 0) + 1;
         }
     });
     return out;
@@ -343,8 +362,8 @@ describe("trackFrame", () => {
         // would become the next frame's prediction. Past 4 px the right
         // correspondences start outside tukeyC and the ZNCC gate has turned
         // away the wrong ones near the prediction, so the fit fails cleanly.
-        // Without the inlier, residual and ZNCC rules, 4 fits at 4 px were
-        // accepted 3.7–6.9 px off.
+        // Without the inlier, residual and ZNCC rules, 5 fits at 4 px are
+        // accepted 3.7–10.3 px off (the rules' test below).
         const expected: [number, number, Record<string, number>][] = [
             [0, 32, {}],
             [1, 32, {}],
@@ -364,31 +383,109 @@ describe("trackFrame", () => {
         }
     });
 
-    it("survives 4° of roll and 8% of scale in the prediction; 5° is refused", () => {
-        // Measured: every recovered H within 0.546 px (at −4°, on 13
-        // inliers); both 5° cases end with fewer than 8 inliers.
+    it("recovers from 3.5° of roll and 5% of scale on both views; past 4° or 8% it may accept a wrong pose, here up to 9.19 px off", () => {
+        // On 5 renders of both views, roll to ±3.5° and scale to ±5% recover
+        // on every one. Past that the outcome depends on the view and the
+        // direction; on this suite's render, per view:
         const deg = (a: number) => (a * Math.PI) / 180;
-        for (const [E, outcome] of [
-            [rotation(deg(2)), "ok"],
-            [rotation(deg(-2)), "ok"],
-            [rotation(deg(3)), "ok"],
-            [rotation(deg(-3)), "ok"],
-            [rotation(deg(4)), "ok"],
-            [rotation(deg(-4)), "ok"],
-            [rotation(deg(5)), "too-few-patches"],
-            [rotation(deg(-5)), "too-few-patches"],
-            [scaling(1 / 1.08), "ok"],
-            [scaling(1 / 1.06), "ok"],
-            [scaling(1 / 1.05), "ok"],
-            [scaling(1.05), "ok"],
-            [scaling(1.06), "ok"],
-            [scaling(1.08), "ok"],
-        ] as const) {
-            const r = track(FRAMES[0], about(E, VIEWS[0]));
-            expectConsistent(r);
-            expect(r.ok ? "ok" : r.loss).toBe(outcome);
-            if (r.ok) expect(centreRms(r.H, VIEWS[0])).toBeLessThan(0.66);
+        const within = sweep([
+            ...[2, -2, 3, -3, 3.5, -3.5].map((a) => rotation(deg(a))),
+            scaling(1.05),
+            scaling(1 / 1.05),
+        ]);
+        expect(within).toEqual({ recovered: 16, wrong: [], losses: {} });
+        const past: [Mat3, string, string][] = [
+            [rotation(deg(4)), "recovered", "recovered"],
+            [rotation(deg(-4)), "wrong", "wrong"],
+            [rotation(deg(4.5)), "recovered", "recovered"],
+            [rotation(deg(-4.5)), "wrong", "wrong"],
+            [rotation(deg(5)), "too-few-patches", "wrong"],
+            [rotation(deg(-5)), "too-few-patches", "too-few-patches"],
+            [scaling(1.06), "recovered", "recovered"],
+            [scaling(1 / 1.06), "recovered", "poor-fit"],
+            [scaling(1.08), "recovered", "recovered"],
+            [scaling(1 / 1.08), "recovered", "poor-fit"],
+            [scaling(1.09), "wrong", "wrong"],
+            [scaling(1 / 1.09), "too-many-outliers", "wrong"],
+            [scaling(1.1), "wrong", "wrong"],
+            [scaling(1 / 1.1), "too-few-patches", "too-many-outliers"],
+        ];
+        const wrong: { error: number; quality: number; inliers: number }[] = [];
+        for (const [E, ...expected] of past) {
+            VIEWS.forEach((H, v) => {
+                const r = track(FRAMES[v], about(E, H));
+                expectConsistent(r);
+                const o = classify(r, H);
+                expect(o.kind).toBe(expected[v]);
+                if (o.kind === "wrong") wrong.push(o);
+            });
         }
+        // Measured: −4° 0.55 and 0.57 px off, −4.5° 1.12 and 1.53, 5° 1.49;
+        // a prediction 9–10% too large 7.99, 9.19 (view 0) and 1.04, 7.69
+        // (view 1), 9% too small 3.65. Every one fitted 8–13 inliers, a
+        // quality of 0.12–0.20 — but right fits reach down to 0.20 too, so
+        // quality does not separate them (next test).
+        expect(wrong.length).toBe(10);
+        expect(Math.max(...wrong.map((w) => w.error))).toBeLessThan(9.2);
+        expect(Math.max(...wrong.map((w) => w.inliers))).toBe(13);
+        expect(Math.max(...wrong.map((w) => w.quality))).toBeLessThan(0.21);
+    }, 30_000);
+
+    it("the judgement's margins on this suite's frames: right fits keep at most 0.37 px of residual and 13 inliers; maxFitRms refuses 2 of the 7 wrong fits the other rules pass", () => {
+        // maxFitRms off, 137 predictions per view: translations to 8 px in
+        // 16 directions, roll to ±6°, scale to ±12%. Measured on 5 renders
+        // (1370 steps): 787 right fits, residual ≤ 0.370 px, ≥ 12 inliers,
+        // quality ≥ 0.20; 38 wrong, 0.52–10.9 px off, 14 of them with a
+        // residual over 0.6 px. The other 24 sit at 0.23–0.56 px, among the
+        // right fits' residuals: this rule, like the inlier bound and the
+        // quality, narrows the wrong fits but does not separate them.
+        const deg = (a: number) => (a * Math.PI) / 180;
+        const errors: Mat3[] = [translation(0, 0)];
+        for (const d of [1, 2, 3, 4, 5, 6, 8]) errors.push(...shifts(d));
+        for (const a of [1, 2, 3, 4, 5, 6]) errors.push(rotation(deg(a)), rotation(deg(-a)));
+        for (const f of [1.02, 1.04, 1.06, 1.08, 1.1, 1.12])
+            errors.push(scaling(f), scaling(1 / f));
+        expect(errors.length).toBe(137);
+        const right: { rms: number; inliers: number }[] = [];
+        const wrong: { error: number; rms: number }[] = [];
+        VIEWS.forEach((H, v) => {
+            for (const E of errors) {
+                const r = track(FRAMES[v], about(E, H), { ...OPTIONS, maxFitRms: Infinity });
+                if (!r.ok) continue;
+                const error = centreRms(r.H, H);
+                if (error < 0.5) right.push({ rms: r.stats.rmsError!, inliers: r.stats.inliers });
+                else wrong.push({ error, rms: r.stats.rmsError! });
+            }
+        });
+        expect(right.length).toBe(158);
+        expect(Math.max(...right.map((f) => f.rms))).toBeLessThan(0.371);
+        expect(Math.min(...right.map((f) => f.inliers))).toBe(13);
+        expect(wrong.length).toBe(7);
+        expect(wrong.filter((f) => f.rms > OPTIONS.maxFitRms).length).toBe(2);
+    }, 30_000);
+
+    it("does not keep a wrong pose: the steps after one correct it (a target that shrank 9% in one frame, then holds still)", () => {
+        // A lock's first step has no velocity: predicted 10% larger than the
+        // target now is, view 0 is accepted 9.19 px off (the test above).
+        // The next step predicts from that and the pose before it. Measured
+        // over 5 renders × 2 views of such changes (8–10% of scale or −4.5°
+        // of roll, then still or continuing): every wrong pose was followed
+        // by one within 0.9 px or a refusal, and the next within 0.25 px or
+        // a re-detection.
+        const before = about(scaling(1.1), VIEWS[0]);
+        const render = (seed: number) => renderWarp(image, VIEWS[0], { ...RENDER, seed });
+        const r1 = trackFrame(FRAMES[0], target, null, before, OPTIONS, null);
+        expect(r1.ok).toBe(true);
+        if (!r1.ok) return;
+        expect(centreRms(r1.H, VIEWS[0])).toBeGreaterThan(9.1);
+        const r2 = trackFrame(render(23), target, before, r1.H, OPTIONS, null);
+        expect(r2.ok).toBe(true);
+        if (!r2.ok) return;
+        expect(centreRms(r2.H, VIEWS[0])).toBeLessThan(0.9);
+        const r3 = trackFrame(render(33), target, r1.H, r2.H, OPTIONS, null);
+        expect(r3.ok).toBe(true);
+        if (!r3.ok) return;
+        expect(centreRms(r3.H, VIEWS[0])).toBeLessThan(0.2);
     });
 
     it("the outlier rule is exercised, and the ZNCC gate and the outlier and residual rules each turn away the wrong fits", () => {
@@ -397,15 +494,22 @@ describe("trackFrame", () => {
         const strict = sweep(shifts(4), { ...OPTIONS, maxOutlierShare: 0 });
         expect(strict.recovered).toBe(15);
         expect(strict.losses).toEqual({ "too-many-outliers": 17 });
-        // At 6 px, without the ZNCC gate and the outlier and residual rules,
-        // 9 of the 32 trials are accepted 5.3–14.2 px off the truth. Either
-        // the gate alone or the two rules alone refuse all nine.
-        const none = sweep(shifts(6), {
+        // Without the ZNCC gate and the outlier and residual rules, 5 of the
+        // 32 trials at 4 px are accepted 3.7–10.3 px off the truth, and 9 at
+        // 6 px 5.3–14.2 px off. Either the gate alone or the two rules alone
+        // refuse all nine at 6 px.
+        const noRules = {
             ...OPTIONS,
             maxOutlierShare: 1 - 1e-12,
             maxFitRms: Infinity,
             minPatchZncc: 0,
-        });
+        };
+        const none4 = sweep(shifts(4), noRules);
+        expect(none4.recovered).toBe(27);
+        expect(none4.wrong.length).toBe(5);
+        expect(Math.min(...none4.wrong)).toBeGreaterThan(3.7);
+        expect(Math.max(...none4.wrong)).toBeLessThan(10.4);
+        const none = sweep(shifts(6), noRules);
         expect(none.recovered).toBe(0);
         expect(none.losses).toEqual({ "too-few-patches": 11, "fit-failed": 12 });
         expect(none.wrong.length).toBe(9);

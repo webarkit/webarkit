@@ -67,26 +67,38 @@
  *
  * **What tracking survives**, measured on synthetic camera-path frames
  * (270 × 360, pinball at 0.45; track_frame.test.ts,
- * tracker_state_machine.test.ts): one step recovers the pose from a
- * prediction up to 4 px off, 4° of roll or 8% of scale, and refuses — never
- * accepts wrong — beyond; a sequence survives a sudden change of velocity of
- * 4 px per frame. The first prediction after a detection has no velocity,
- * and the second's carries the detection's own error (about 1 px RMS on
- * those frames), so faster motion re-detects every frame until it slows. As
- * a target leaves the frame, the last tracked frames fit the few patches
- * still in view and extrapolate to the rest: up to 1.2 px off at the far
- * end.
+ * tracker_state_machine.test.ts). One step recovers the pose — within 0.5 px
+ * RMS at the patch centres — from a prediction up to 4 px, 3.5° of roll or 5%
+ * of scale off, on every render measured. Past 4 px of translation it refuses
+ * rather than accept a wrong pose (pinned to 6 px, measured to 20 px). Past
+ * 4° of roll or 8% of scale it may accept one: 0.55–1.6 px off at 4–5° of
+ * roll, and up to 9.4 px off when the target shrinks 8–11% in one frame.
+ * That takes such a change on a step with no velocity to predict it — a
+ * lock's first — and the next step corrects the pose or refuses (within
+ * 0.9 px, and 0.25 px on the step after, over 5 renders), but the wrong pose
+ * is returned as `"TRACK"` meanwhile, with a quality of 0.12–0.20: right fits
+ * on as few patches reach 0.20, so quality flags it without separating it
+ * ({@link DEFAULT_MAX_FIT_RMS} says what would). A sequence survives a
+ * sudden change of velocity of 4 px per frame. The first prediction after a
+ * detection has no velocity, and the second's carries the detection's own
+ * error (about 1 px RMS on those frames), so faster motion re-detects every
+ * frame until it slows. As a target leaves the frame, the last tracked frames
+ * fit the few patches still in view and extrapolate to the rest: up to 1.2 px
+ * RMS off over the patch centres, 2.5 px at the far end.
  *
  * **Patch levels are the first thing the tuning pass should revisit.** Every
  * patch of `examples/targets/pinball.wnft` comes from level 0, and on the
  * camera path the target is seen at about half that scale: each patch is
  * sharper than the frame it is aligned in. That is why the basin is the
- * narrow one (90% of alignments converging from 2 px off, 74% from 3), why a
- * right alignment's gain sits near 0.5, and why its residual cannot tell it
- * from a wrong one — only its correlation with the patch can
- * (`DEFAULT_MIN_PATCH_ZNCC`), and that still costs 1.6% of right matches.
- * Patches at the level the target is viewed at measured a wider basin (97%
- * from 3 px at σ = 1) and a residual that separates.
+ * narrow one — on this suite's frames (one blur pass, noise σ = 2), 84% of
+ * alignments converge from 2 px off and 68% from 3, 78% and 61% within
+ * 0.5 px of the truth; unblurred, 92% and 72% (measured in review, not
+ * pinned) — why a right alignment's gain sits near 0.5, and why its residual
+ * cannot tell it from a wrong one — only its correlation with the patch can
+ * (`DEFAULT_MIN_PATCH_ZNCC`), and that still costs 1% of right alignments.
+ * Patches at the level the target is viewed at measured a wider basin on
+ * unblurred frames (97% from 3 px at σ = 1; align_patch_basin.test.ts) and a
+ * residual that separates.
  *
  * Portability rules it keeps (ADR-0001 point 7): no DOM, no timers, no
  * `requestAnimationFrame`, no camera access and no clock — the application
@@ -192,12 +204,17 @@ export const DEFAULT_FIT_EPSILON = 1e-6;
 
 /**
  * Fewest correspondences a tracking frame may fit, and fewest the fit may
- * keep with a weight. With {@link DEFAULT_MAX_OUTLIER_SHARE}, 8 is the
- * smallest count at which every accepted fit is over-determined (at least 5
- * of 8 kept, a homography needing 4). Bounding the inliers as well as the
- * correspondences refused the one wrong fit, 10.9 px off, that
- * {@link DEFAULT_MAX_FIT_RMS} let through in the measurement behind it.
- * Provisional until the M2 tuning pass.
+ * keep with a weight. The second is the bound that decides: every accepted
+ * fit keeps at least 8 inliers, twice the 4 a homography needs, and below 15
+ * correspondences it refuses before {@link DEFAULT_MAX_OUTLIER_SHARE} would
+ * (10 with 3 weighed 0 ends `"too-few-patches"`, not `"too-many-outliers"`).
+ * Measured with every rule in place, on pinball at the camera path's scale
+ * (2 views × 5 renders, predictions to 8 px, 6° and 12% off;
+ * track_frame.test.ts pins one render): right fits kept 12 inliers or more,
+ * and the wrong fits the rules let through 8–13. So 8 narrows the wrong fits
+ * without separating them; 12 would refuse 15 of those 24, every one over
+ * 1.6 px off among them, at no margin to the right fits — the tuning pass's
+ * call, on real frames. Provisional until the M2 tuning pass.
  */
 export const DEFAULT_MIN_TRACKED_PATCHES = 8;
 
@@ -210,13 +227,20 @@ export const DEFAULT_MIN_TRACKED_PATCHES = 8;
 export const DEFAULT_MAX_OUTLIER_SHARE = 0.45;
 
 /**
- * Largest weighted RMS residual, frame px, of a fit the frame may keep.
- * Measured on pinball at the camera path's scale (3 views, 2 renders, 634
- * fits from predictions up to 8 px, 5° and 8% off): every right fit had at
- * most 0.557 px; every wrong one with 8 inliers or more had over 0.6 px. A
+ * Largest weighted RMS residual, frame px, of a fit the frame may keep. A
  * wrong fit's correspondences are mostly right, which is why this and not the
- * outlier share catches it (track_frame.ts). It scales with the alignment
- * noise, so real frames may need more. Provisional until the M2 tuning pass.
+ * outlier share catches it (track_frame.ts). Measured with the ZNCC gate and
+ * the other rules in place, on pinball at the camera path's scale (2 views ×
+ * 5 renders, 137 predictions each, to 8 px, 6° and 12% off;
+ * track_frame.test.ts pins one render): right fits had at most 0.370 px. Of
+ * the 38 wrong fits the other rules let through, 0.52–10.9 px off, this
+ * refuses the 14 over 0.6 px; the other 24 had 0.23–0.56 px, among the
+ * right fits' own, and are accepted — up to 9.4 px off, from a prediction
+ * 9–10% too large in scale. 0.4 px would have refused every one more than
+ * 1.5 px off, 0.03 px above the right fits: too thin a margin to set on
+ * synthetic frames, since the residual scales with the alignment noise and
+ * real frames may need more. The tuning pass sets it on real ones.
+ * Provisional until then.
  */
 export const DEFAULT_MAX_FIT_RMS = 0.6;
 
@@ -225,11 +249,20 @@ export const DEFAULT_MAX_FIT_RMS = 0.6;
  * its window and still reach the fit (track_frame.ts), for a patch that
  * "converged" on something unlike it — above all on flat background, where
  * its gain collapses without reaching `"singular"`. Measured on pinball at
- * the camera path's scale (4 views × 3 renders): 0.6 turns away 1.6% of
- * right alignments, 42% of wrong ones and 79% of those on background. On the
- * leave-and-return sequence it is what refuses a pose 232 px off; 0.5 and
- * 0.7 left TRACK frames 2.1 and 2.3 px off, 0.6 at most 1.2 px
- * (tracker_state_machine.test.ts). Provisional until the M2 tuning pass.
+ * the camera path's scale (2 views × 5 renders, predictions to 6 px, 4° and
+ * 8% off; not pinned): 0.6 turns away 1.0% of right alignments (within
+ * 0.5 px of the truth) and 72% of those more than 2 px off; from the exact
+ * pose, where weak patches converge too, 4.5% of right ones. On the
+ * leave-and-return sequence it is what refuses a pose 232 px off, and holds
+ * every TRACK frame to 1.2 px RMS (tracker_state_machine.test.ts); 0.5 and
+ * 0.7 left TRACK frames 2.1 and 2.3 px RMS off there (measured once, not
+ * pinned). The right alignments it turns away cost some accuracy: from the
+ * exact pose, the suite's H went from 0.064 to 0.073 px off on one view, 0.134
+ * to 0.190 px with half the patches culled, and 0.085 to 0.109 px with some
+ * covered (track_frame.test.ts pins the values with the gate). It reads the
+ * alignment's gain and bias as least-squares estimates, so with
+ * `photometric: false` it is not a correlation. Provisional until the M2
+ * tuning pass.
  */
 export const DEFAULT_MIN_PATCH_ZNCC = 0.6;
 

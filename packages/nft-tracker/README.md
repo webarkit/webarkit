@@ -324,9 +324,11 @@ frames: exactly M1. `tracker.detectionOnly` says which mode a tracker is in.
 Targets from `buildTargetFromImage` carry no patches; `compile-target` writes
 them.
 
-**Options.** Every threshold of the tracking state is an option, checked at
-construction (a value out of its domain throws a `RangeError` naming it), and
-every default is **provisional until the M2 tuning pass** (#48): each is
+**Options.** Every threshold the tracking state judges a frame by is an
+option, checked at construction (a value out of its domain throws a
+`RangeError` naming it), and every default is **provisional until the M2
+tuning pass** (#48) — `alignPatch`'s floor for a singular patch, a guard
+against degenerate ones, is a constant. Each is
 documented, with the measurement behind it, where it is defined in
 [`src/tracker.ts`](./src/tracker.ts).
 
@@ -337,7 +339,7 @@ documented, with the measurement behind it, where it is defined in
 | `alignMaxIterations`, `alignEpsilon` | 30, 0.01 px | `alignPatch`'s cap and convergence step |
 | `photometric` | `true` | Gain and bias estimated per patch |
 | `tukeyC`, `fitMaxIterations`, `fitEpsilon` | 4 px, 20, 1e-6 px | `robustHomography`'s cutoff, cap and tolerance |
-| `minTrackedPatches` | 8 | Fewest correspondences, and fewest inliers, a frame may fit |
+| `minTrackedPatches` | 8 | Fewest correspondences, and fewest inliers, a frame may fit; below 15 correspondences the inlier bound refuses before `maxOutlierShare` does |
 | `maxOutlierShare` | 0.45 | Share of correspondences the fit may weigh 0: #64's breakdown |
 | `maxFitRms` | 0.6 px | The fit's weighted RMS residual |
 | `minPatchZncc` | 0.6 | A converged patch's correlation with its window |
@@ -345,25 +347,43 @@ documented, with the measurement behind it, where it is defined in
 
 **What it survives**, measured on synthetic frames of the camera path (the
 pinball target at 0.45 in 270 × 360; `test/tracking/track_frame.test.ts`,
-`test/tracker_state_machine.test.ts`): one tracking step recovers the pose
-from a prediction up to 4 px, 4° of roll or 8% of scale off, and refuses
-beyond — it never accepts a wrong pose; a sequence holds through a sudden
-velocity change of 4 px per frame, with every tracked frame within 0.1 px; a
-slow hand-held wander tracks every frame after the first, to a median of
-0.079 px.
+`test/tracker_state_machine.test.ts`): one tracking step recovers the pose,
+within 0.5 px RMS at the patch centres, from a prediction up to 4 px, 3.5° of
+roll or 5% of scale off on every render measured, and refuses a prediction
+further off in translation rather than accept a wrong pose. A sequence holds
+through a sudden velocity change of 4 px per frame, with every tracked frame
+within 0.1 px; a slow hand-held wander tracks every frame after the first, to
+a median of 0.079 px.
 
 **Known limitations.**
 
 - **Re-acquisition is synchronous.** A frame that detects blocks for about the
   stateless cost, ~109 ms p50 on the reference device's camera path
   ([`docs/benchmarks/README.md`](../../docs/benchmarks/README.md)), against a
-  33 ms frame budget. Asynchronous detection is M3.
+  33 ms frame budget. Asynchronous detection is M3 in #48's numbering
+  (ADR-0001's action items use an older one).
 - **A lock starts with no velocity.** The first prediction after a detection
   is the detection itself, so a target moving faster than about 4 px per frame
   is detected again on every frame until it slows.
+- **A sudden rotation or change of scale can be tracked wrong for a frame.**
+  Past 4° of roll or 8% of scale between two frames — on a step with no
+  velocity to predict it, such as a lock's first — one step may accept a pose
+  0.55–1.6 px off (4–5° of roll) or up to 9.4 px off (a target shrinking
+  8–11%), returned as `"TRACK"` with a quality of 0.12–0.20. The next step
+  corrects it or refuses it (within 0.9 px, then 0.25 px, on the frames
+  measured). Right fits on as few patches also reach a quality of 0.20, so
+  quality flags such a pose without separating it; which rule should is the
+  tuning pass's question (`DEFAULT_MAX_FIT_RMS` in `src/tracker.ts` has the
+  measurements).
 - **A target leaving the frame** is tracked on the few patches still in view
-  until too few are left; those last frames extrapolate, up to 1.2 px off at
-  the target's far end.
+  until too few are left; those last frames extrapolate, up to 1.2 px RMS off
+  over the patch centres and 2.5 px at the target's far end.
+- **Detection on a partly visible target can succeed far off.** That is M1's
+  pipeline, unchanged: on the leave-and-return sequence, a target half out of
+  the frame was detected `ok` 10–300 px RMS off, and once 61,615 px off
+  (measured in review, not pinned). Tracking never carries such a pose: the
+  lock it seeds is refused on the next step (`tracker_state_machine.test.ts`),
+  but the `"DETECT"` result itself is returned.
 - **Patch levels** are the first thing the tuning pass should revisit: all of
   `examples/targets/pinball.wnft`'s patches are level 0, sharper than the frame
   they are aligned in on the camera path, which narrows the basin.

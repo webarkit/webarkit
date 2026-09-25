@@ -66,10 +66,11 @@
  *   `"singular"`, the patch "converges" where it was put, and a set of such
  *   patches agrees with whatever prediction put them there.
  *
- *   Measured over 4 views × 3 renders of pinball, predictions up to 6 px
- *   and 4° off: right alignments (21 107) had a ZNCC of 0.93 at the median,
- *   0.71 at the 5th percentile and 0.53 at the 1st; alignments that
- *   converged on background had 0.38 at the median. In a leave-and-return
+ *   Measured over 2 views × 5 renders of pinball, predictions up to 6 px,
+ *   4° and 8% off: right alignments (35 258) had a ZNCC of 0.91 at the
+ *   median, 0.71 at the 5th percentile and 0.62 at the 1st; an earlier
+ *   measurement found those that converged on background at 0.38 at the
+ *   median. In a leave-and-return
  *   sequence, a detection 200 px off on a half-visible target was then
  *   "tracked" 232 px off on twelve such patches, gains 0.001–0.11, with a
  *   fit residual of 0.57 px — under `maxFitRms`, which it could not catch.
@@ -87,17 +88,22 @@
  * fewer than `minTrackedPatches` of them keep a weight; or when their
  * weighted RMS residual is above `maxFitRms`.
  *
- * The last two catch what the first three cannot: a fit that is wrong
- * although most of its correspondences are right. `robustHomography` starts
- * weighting at the prediction, so once the prediction is about `tukeyC` off,
- * the right correspondences start near weight 0 and a few wrong ones near the
- * prediction decide the fit — the precondition its own notes state. Measured
- * on pinball at the camera path's scale (3 views, 2 renders, 634 accepted
- * fits, predictions up to 8 px, 5° and 8% off): without these two, fits
- * 1.8–21 px off the truth were accepted from 3.5 px of prediction error on,
- * each with most of its correspondences within 0.5 px of the truth. Every
- * right fit had a residual of at most 0.557 px and at least 8 inliers; every
- * wrong one failed one of the two (track_frame.test.ts pins the sweep).
+ * The last two, and the ZNCC gate, catch what the first three cannot: a fit
+ * that is wrong although most of its correspondences are right.
+ * `robustHomography` starts weighting at the prediction, so once the
+ * prediction is about `tukeyC` off, the right correspondences start near
+ * weight 0 and a few wrong ones near the prediction decide the fit — the
+ * precondition its own notes state. Without the gate and these rules, 5 of
+ * 32 steps from 4 px off are accepted 3.7–10.3 px off the truth, and 9 of 32
+ * from 6 px 5.3–14.2 px off; with them, none (track_frame.test.ts). They
+ * narrow the wrong fits without separating them, though: past 4° of roll or
+ * 8% of scale, fits up to 9.4 px off keep 8–13 inliers and a residual among
+ * the right fits' own, and are accepted. Measured on 2 views × 5 renders,
+ * 137 predictions each (track_frame.test.ts pins one render): right fits kept
+ * at most 0.370 px of residual and at least 12 inliers; of the 38 wrong fits
+ * the other rules passed, `maxFitRms` refused 14 and the rest were accepted.
+ * `tracker.ts` gives what tighter values would cost; the tuning pass sets
+ * them.
  */
 
 import type { GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
