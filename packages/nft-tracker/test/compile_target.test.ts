@@ -211,6 +211,13 @@ describe("compile-target", () => {
             expect(existsSync(join(PACKAGE_DIR, relativeOut))).toBe(false);
         });
 
+        // Slow by construction, and allowed the same 30 s as the oversized-image
+        // refusal below: it spawns a real `npm run`, so it pays npm's own
+        // start-up (through a shell on Windows) on top of a full compile.
+        // Measured on Windows: 2.5 s alone, up to 5.4 s while the rest of the
+        // suite runs beside it — past vitest's 5 s default. What it checks is
+        // that the script writes a valid target where it was asked to, not
+        // how fast.
         it("works through the real npm script, from the repository root", () => {
             const relativeOut = ".tmp-compile-target/from-npm.wnft";
             execFileSync(
@@ -243,7 +250,7 @@ describe("compile-target", () => {
 
             expect(existsSync(join(outDir, "from-npm.wnft"))).toBe(true);
             expect(existsSync(join(PACKAGE_DIR, relativeOut))).toBe(false);
-        });
+        }, 30000);
     });
 
     it("refuses to run without an output path", () => {
