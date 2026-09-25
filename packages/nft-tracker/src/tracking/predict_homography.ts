@@ -37,14 +37,82 @@
  *
  */
 
-import type { PredictHomography, Stub } from "./types.js";
+import {
+    adjugate3,
+    isFiniteMat3,
+    isInvertible,
+    mul3,
+    scaledToUnitCorner,
+    scaledToUnitMax,
+} from "./mat3.js";
+import type { PredictHomography } from "./types.js";
 
 /**
- * Stub — see {@link PredictHomography}. Branch C implements it here and changes
- * the annotation from `Stub<PredictHomography>` to `PredictHomography`; nothing else in the
- * package needs to change.
+ * Constant-velocity prediction of the next frame's H — see
+ * {@link PredictHomography} for the contract.
+ *
+ * **What "velocity" is for a homography.** The motion between the last two
+ * frames as a homography of its own, `V = current · previous⁻¹` (frame t−1 →
+ * frame t), and the prediction applies it once more: `V · current`. Velocity
+ * lives in the group of homographies, composed by multiplication, rather than
+ * in the nine entries, because:
+ *
+ * - **It does not depend on the arbitrary scale of a homography.** `λH` is the
+ *   same homography as `H`. Scaling `previous` by `β` and `current` by `α`
+ *   scales `V · current` by `α²/β`, which the rescale to `H[8] = 1` removes.
+ *   The additive extrapolation `2·current − previous` changes with `α/β`, so
+ *   it would predict a different pose for the same two poses.
+ * - **It is exact for the motion a hand-held camera makes most: rotating
+ *   about its own centre.** A camera rotation `R` per frame moves every image
+ *   point by the same homography `K R K⁻¹`, whatever the scene, so `V` is
+ *   constant and `V · current` is the next pose exactly. The additive form
+ *   adds a spurious zoom of order `θ²` to every rotation by `θ` it predicts.
+ * - **It is the constant-velocity model of a Lie group, without the
+ *   logarithm.** For steps of one frame, `exp(ξ) · current` with
+ *   `exp(ξ) = V` is `V · current`. `log`/`exp` would only be needed to scale
+ *   the velocity by a ratio of frame intervals, which this model, being
+ *   frame-indexed, does not do (see {@link PredictHomography}).
+ *
+ * Measuring the velocity on the target side instead, `U = previous⁻¹ ·
+ * current`, predicts the same thing: `current · U` and `V · current` are both
+ * `current · previous⁻¹ · current`.
+ *
+ * **The first frames after a lock.** There is one pose and no motion yet:
+ * the caller passes `previous = null`, and the prediction is `current` itself
+ * — zero velocity. The caller does this on the first frame after every
+ * detection, so a velocity measured before the target was lost never
+ * carries over into the new lock. From the second frame on, `previous` is the
+ * detection's H, so the first velocity also carries that estimate's error
+ * into the prediction.
+ *
+ * **Arithmetic.** `previous⁻¹` is taken as the adjugate: the two differ only
+ * by the scalar `det(previous)`, which the final rescale removes. Both inputs
+ * are first rescaled to unit max-norm, since the contract accepts them at any
+ * scale and a triple product of homographies at `1e200` would overflow.
+ *
+ * **Failures.** `"non-finite"`: an input that is not nine finite numbers
+ * (the union has no other name for a wrong length), or a prediction beyond
+ * the float range once rescaled to `H[8] = 1`. `"singular"`: `previous` is
+ * not invertible; or the prediction is not — which is what a singular
+ * `current` produces; or the prediction has `H[8] = 0`, so it cannot be
+ * rescaled. "Not invertible" is `isInvertible` in `mat3.ts`: a relative
+ * determinant at or below `SINGULAR_RELATIVE_DET` (1e-10), whose measured
+ * margins are documented there.
  */
-export const predictHomography: Stub<PredictHomography> = () => ({
-    ok: false,
-    reason: "not-implemented",
-});
+export const predictHomography: PredictHomography = (previous, current) => {
+    if (!isFiniteMat3(current) || (previous !== null && !isFiniteMat3(previous))) {
+        return { ok: false, reason: "non-finite" };
+    }
+    if (previous !== null && !isInvertible(previous)) return { ok: false, reason: "singular" };
+    let prediction = current;
+    if (previous !== null) {
+        const cur = scaledToUnitMax(current);
+        prediction = mul3(mul3(cur, adjugate3(scaledToUnitMax(previous))), cur);
+    }
+    if (!isInvertible(prediction) || prediction[8] === 0) {
+        return { ok: false, reason: "singular" };
+    }
+    const H = scaledToUnitCorner(prediction);
+    if (!isFiniteMat3(H)) return { ok: false, reason: "non-finite" };
+    return { ok: true, H };
+};
