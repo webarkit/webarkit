@@ -520,8 +520,12 @@ function observation(
  * That is the level whose resolution matches the patch's (and its blur, when
  * the two are equally deep: Q11, frame_pyramid.ts): the patch's basin is
  * fixed in patch pixels there, and so in frame pixels it grows with how
- * magnified the patch is. Measured against the alternatives
- * (24 pinball patches, 3 views):
+ * magnified the patch is.
+ *
+ * Exported so `frameLevelsFor` (frame_levels.ts) builds a frame pyramid
+ * exactly as deep as this rule will start on, from one source of truth.
+ *
+ * Measured against the alternatives (24 pinball patches, 3 views):
  *
  * - **The coarsest usable level** wrecked the basin of matched patches (69%
  *   converging from 1 px off, errors past 100 px): a sharp patch against a
@@ -536,7 +540,7 @@ function observation(
  *   pays the footprint's `m²` samples per pixel, where starting here the
  *   first iterations take one.
  */
-function startLevel(usable: number[], scales: Float64Array, scaleAtCentre: number): number {
+export function startLevel(usable: number[], scales: Float64Array, scaleAtCentre: number): number {
     let best = usable[0];
     let bestCost = Infinity;
     for (const l of usable) {
