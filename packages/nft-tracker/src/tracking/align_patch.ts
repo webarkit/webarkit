@@ -749,10 +749,15 @@ function cholesky(A: Float64Array, n: number, L: Float64Array): boolean {
     return true;
 }
 
+/**
+ * The domain types.ts states for each option. `epsilon` must also be finite
+ * (rule 3): an infinite tolerance would report any first step as converged.
+ */
 function validOptions(o: AlignPatchOptions): boolean {
     return (
         Number.isInteger(o.maxIterations) &&
         o.maxIterations >= 1 &&
+        Number.isFinite(o.epsilon) &&
         o.epsilon > 0 &&
         typeof o.photometric === "boolean"
     );
@@ -762,18 +767,26 @@ function validOptions(o: AlignPatchOptions): boolean {
  * The frame's level scales, or `null` if the pyramid is not valid: 1 to 256
  * levels, a step that is finite, `> 1` and whose deepest level's scale does
  * not underflow, and every level a positive-integer size holding
- * `width · height` pixels. Nothing here reads a pixel.
+ * `width · height` pixels — for level `l > 0`, the size `ImagePyramid`
+ * defines, `(w0 · s_l) | 0` × `(h0 · s_l) | 0`, since the alignment maps
+ * level-0 coordinates onto level `l` by `s_l` (as `selectPatches` checks).
+ * Nothing here reads a pixel.
  */
 function validPyramid(frame: FramePyramid): Float64Array | null {
     const count = frame.levels.length;
     const scales = pyramidScales(frame.scaleStep, count);
     if (scales === null) return null;
-    for (const level of frame.levels) {
-        const { width, height } = level;
+    for (let l = 0; l < count; l++) {
+        const { width, height, data } = frame.levels[l];
         if (!(Number.isInteger(width) && width > 0 && Number.isInteger(height) && height > 0)) {
             return null;
         }
-        if (level.data.length !== width * height) return null;
+        if (data.length !== width * height) return null;
+        const w0 = frame.levels[0].width;
+        const h0 = frame.levels[0].height;
+        if (l > 0 && (width !== ((w0 * scales[l]) | 0) || height !== ((h0 * scales[l]) | 0))) {
+            return null;
+        }
     }
     return scales;
 }

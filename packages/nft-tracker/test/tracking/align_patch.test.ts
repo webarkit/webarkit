@@ -121,6 +121,9 @@ describe("alignPatch: input validation", () => {
             { ...OPTIONS, epsilon: 0 },
             { ...OPTIONS, epsilon: -0.01 },
             { ...OPTIONS, epsilon: Number.NaN },
+            // Non-finite input fails (types.ts rule 3): an infinite tolerance
+            // would report any first step as converged.
+            { ...OPTIONS, epsilon: Number.POSITIVE_INFINITY },
             { ...OPTIONS, photometric: "yes" as unknown as boolean },
         ];
         for (const options of bad) {
@@ -130,8 +133,13 @@ describe("alignPatch: input validation", () => {
         }
     });
 
-    it("rejects an invalid pyramid before reading a level, including a step that underflows", () => {
+    it("rejects an invalid pyramid before reading a level, including a step that underflows and a level of the wrong size", () => {
         const one: GrayImage = { data: new Uint8Array(1), width: 1, height: 1 };
+        /** A blank level `dw` × `dh` px larger than `level`. */
+        const resized = (level: GrayImage, dw: number, dh: number): GrayImage => {
+            const [width, height] = [level.width + dw, level.height + dh];
+            return { data: new Uint8Array(width * height), width, height };
+        };
         const bad: FramePyramid[] = [
             { scaleStep: STEP, levels: [] },
             { scaleStep: STEP, levels: new Array<GrayImage>(257).fill(one) },
@@ -143,6 +151,10 @@ describe("alignPatch: input validation", () => {
             { scaleStep: STEP, levels: [{ data: new Uint8Array(3), width: 1.5, height: 2 }] },
             // Level 2's scale is 2^-1076, which underflows: levelScale would throw.
             { scaleStep: 2 ** 538, levels: [one, one, one] },
+            // ImagePyramid's size rule: level l is (w0 · s_l) | 0 × (h0 · s_l) | 0.
+            { scaleStep: STEP, levels: [frame.levels[0], frame.levels[0]] },
+            { scaleStep: STEP, levels: [frame.levels[0], resized(frame.levels[1], 1, 0)] },
+            { scaleStep: STEP, levels: [frame.levels[0], resized(frame.levels[1], 0, -1)] },
         ];
         for (const pyramid of bad) {
             expect(reason(alignPatch(pyramid, table, 0, STEP, IDENTITY, OPTIONS))).toBe(
