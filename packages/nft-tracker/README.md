@@ -311,7 +311,9 @@ fails drops the lock and says why in `trackLoss` (`"no-prediction"`,
 `"too-few-patches"`, `"fit-failed"`, `"too-many-outliers"` or `"poor-fit"`), and
 the same frame is detected again; a detection that fails is `LOST`. Every
 result also carries `tracking`, the step's patch counts (culled, attempted,
-observed, lost, unconverged, rejected, inliers), and `timings`, when a `clock`
+observed, lost, unconverged, rejected, failed) and its fit's outcome (inliers,
+`rmsError`, `fitIterations`, and `fitConverged`, false when the fit stopped at
+its iteration cap), and `timings`, when a `clock`
 option is given: the tracker reads no clock of its own, and reports the
 tracking step's time and its frame-pyramid share apart from detection.
 

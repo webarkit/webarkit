@@ -204,7 +204,23 @@ export interface TrackStats {
     readonly inliers: number;
     /** The fit's weighted RMS residual, frame px; `null` when no fit ran or it failed. */
     readonly rmsError: number | null;
+    /** The fit's IRLS iterations; 0 when no fit ran or it failed. */
+    readonly fitIterations: number;
+    /**
+     * Whether the fit stopped by converging rather than at `fit.maxIterations`;
+     * `null` when no fit ran or it failed. A fit stopped at the cap is still a
+     * weighted least-squares H, and is judged by the same rules as any other:
+     * they read its weights and residual, not how it got there. Measured on
+     * the camera path's two views, 3 renders each, predictions 0–6 px off in
+     * 16 directions: 1 of 484 fits reached the default cap of 20, from 6 px
+     * off, and was refused as poor-fit — as it still was converging after 31
+     * iterations with a cap of 200. Every accepted fit converged within 10.
+     */
+    readonly fitConverged: boolean | null;
 }
+
+/** The fit's share of {@link TrackStats}. */
+type FitStats = Pick<TrackStats, "inliers" | "rmsError" | "fitIterations" | "fitConverged">;
 
 /** Where a step's time went, ms, by the injected clock. */
 export interface TrackStepTimings {
@@ -279,14 +295,11 @@ export function trackFrame(
     let fitMs = 0;
     const timings = (): TrackStepTimings | null =>
         clock === null ? null : { trackMs: now() - start, pyramidMs, alignMs, fitMs };
-    const lose = (
-        loss: TrackLoss,
-        inliers = 0,
-        rmsError: number | null = null,
-    ): TrackFrameResult => ({
+    const noFit = { inliers: 0, rmsError: null, fitIterations: 0, fitConverged: null };
+    const lose = (loss: TrackLoss, fitStats: FitStats = noFit): TrackFrameResult => ({
         ok: false,
         loss,
-        stats: { ...counts, inliers, rmsError },
+        stats: { ...counts, ...fitStats },
         outcomes,
         timings: timings(),
     });
@@ -364,16 +377,18 @@ export function trackFrame(
     );
     fitMs = now() - fitStart;
     if (!fit.ok) return lose("fit-failed");
+    const fitStats: FitStats = {
+        inliers: fit.numInliers,
+        rmsError: fit.rmsError,
+        fitIterations: fit.iterations,
+        fitConverged: fit.converged,
+    };
     const outliers = counts.observed - fit.numInliers;
     if (outliers / counts.observed > options.maxOutlierShare) {
-        return lose("too-many-outliers", fit.numInliers, fit.rmsError);
+        return lose("too-many-outliers", fitStats);
     }
-    if (fit.numInliers < options.minTrackedPatches) {
-        return lose("too-few-patches", fit.numInliers, fit.rmsError);
-    }
-    if (fit.rmsError > options.maxFitRms) {
-        return lose("poor-fit", fit.numInliers, fit.rmsError);
-    }
+    if (fit.numInliers < options.minTrackedPatches) return lose("too-few-patches", fitStats);
+    if (fit.rmsError > options.maxFitRms) return lose("poor-fit", fitStats);
     let sum = 0;
     for (let i = 0; i < fit.weights.length; i++) sum += fit.weights[i];
     return {
@@ -381,7 +396,7 @@ export function trackFrame(
         H: fit.H,
         quality: sum / counts.attempted,
         weights: fit.weights,
-        stats: { ...counts, inliers: fit.numInliers, rmsError: fit.rmsError },
+        stats: { ...counts, ...fitStats },
         outcomes,
         timings: timings(),
     };

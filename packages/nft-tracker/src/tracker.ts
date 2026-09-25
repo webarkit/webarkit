@@ -179,7 +179,12 @@ export const DEFAULT_PHOTOMETRIC = true;
  */
 export const DEFAULT_TUKEY_C = 4;
 
-/** `robustHomography`'s iteration cap: #64's measured configuration. Provisional until the M2 tuning pass. */
+/**
+ * `robustHomography`'s iteration cap: #64's measured configuration. A fit that
+ * reaches it is reported (`TrackStats.fitConverged`), not refused; on the
+ * camera path only a fit the other rules refused has (`TrackStats`).
+ * Provisional until the M2 tuning pass.
+ */
 export const DEFAULT_FIT_MAX_ITERATIONS = 20;
 
 /** `robustHomography`'s convergence tolerance, px: #64's measured configuration. Provisional until the M2 tuning pass. */

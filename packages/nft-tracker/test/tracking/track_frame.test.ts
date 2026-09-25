@@ -316,6 +316,25 @@ describe("trackFrame", () => {
         expect(r.stats.observed).toBe(0);
         expect(r.stats.inliers).toBe(0);
         expect(r.stats.rmsError).toBeNull();
+        expect(r.stats.fitIterations).toBe(0);
+        expect(r.stats.fitConverged).toBeNull();
+    });
+
+    it("reports how the fit ended: its iterations, and whether it stopped at the cap", () => {
+        // Found in review: a fit that reached fit.maxIterations was judged
+        // and returned with nothing saying so. From the exact pose the
+        // default cap is never reached; a cap of 1 is, and is reported.
+        const r = track(FRAMES[0], VIEWS[0]);
+        expect(r.ok).toBe(true);
+        expect(r.stats.fitConverged).toBe(true);
+        expect(r.stats.fitIterations).toBeGreaterThan(0);
+        expect(r.stats.fitIterations).toBeLessThan(OPTIONS.fit.maxIterations);
+        const capped = track(FRAMES[0], VIEWS[0], {
+            ...OPTIONS,
+            fit: { ...OPTIONS.fit, maxIterations: 1 },
+        });
+        expect(capped.stats.fitIterations).toBe(1);
+        expect(capped.stats.fitConverged).toBe(false);
     });
 
     it("survives a prediction up to 4 px off (32/32 within 0.5 px); at 4.25 px 1/32, at 4.5 and 6 px none, and never accepts a wrong fit", () => {
