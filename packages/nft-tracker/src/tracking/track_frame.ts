@@ -102,7 +102,7 @@
 
 import type { GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
 import type { PatchTable } from "../target/types.js";
-import { alignPatch } from "./align_patch.js";
+import { alignPrepared, preparePatch } from "./align_patch.js";
 import { frameLevelsFor } from "./frame_levels.js";
 import { buildFramePyramid } from "./frame_pyramid.js";
 import { levelScale } from "./level_scale.js";
@@ -302,15 +302,12 @@ export function trackFrame(
     counts.attempted = candidates.length;
     counts.culled = patches.count - candidates.length;
 
-    const levels = frameLevelsFor(
-        H,
-        target.centres,
-        target.patchScales,
-        candidates,
-        target.scaleStep,
-        frame,
-        options.maxFrameLevels,
-    );
+    // Each window is warped once, here: frameLevelsFor reads where it can be
+    // sampled, and the alignment below reads the same warp.
+    const prepareStart = now();
+    const prepared = candidates.map((q) => preparePatch(patches, q, target.scaleStep, H));
+    const levels = frameLevelsFor(prepared, target.scaleStep, frame, options.maxFrameLevels);
+    alignMs = now() - prepareStart;
     const pyramidStart = now();
     const built = buildFramePyramid(frame, { levels, scaleStep: target.scaleStep });
     pyramidMs = now() - pyramidStart;
@@ -322,8 +319,10 @@ export function trackFrame(
     const src = new Float64Array(2 * candidates.length);
     const dst = new Float64Array(2 * candidates.length);
     const alignStart = now();
-    for (const q of candidates) {
-        const r = alignPatch(built.pyramid, patches, q, target.scaleStep, H, options.align);
+    for (let c = 0; c < candidates.length; c++) {
+        const q = candidates[c];
+        const p = prepared[c];
+        const r = p.ok ? alignPrepared(built.pyramid, p, options.align) : p;
         if (!r.ok) {
             if (r.reason === "singular") {
                 outcomes[q] = PatchOutcome.Lost;
@@ -353,7 +352,7 @@ export function trackFrame(
         dst[2 * k] = o.x;
         dst[2 * k + 1] = o.y;
     }
-    alignMs = now() - alignStart;
+    alignMs += now() - alignStart;
 
     if (counts.observed < options.minTrackedPatches) return lose("too-few-patches");
     const fitStart = now();
