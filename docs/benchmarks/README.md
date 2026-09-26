@@ -1391,10 +1391,13 @@ tuning pass and M3 to work from, not decisions:
   wall clip's frame time, and about 40% of the table clip's, from 22–24% of
   its frames (on the Oppo, 67% and 50%). A 300-frame window held
   49–118 re-acquisitions on the tablet (75–123 on the Oppo). Most were refused
-  at the first step, and each cost a full detection: 79.2 ms p50 on the tablet
-  (87.8 p95; 421 frames), 90.3 ms on the Oppo. This is the cost that
-  asynchronous detection (M3), and confirming a detection before its first
-  step, would take off the frame.
+  at the first step, and each cost a full detection: a frame that ran one,
+  `acquire`, `gray` and any failed tracking step included, took 126.8 ms p50
+  in `total` on the tablet (154.0 p95; 421 frames) and 146.6 ms on the Oppo;
+  the detection pipeline alone (the tracker's `detectMs`, detect through
+  pose) took 79.2 ms p50 on the tablet (87.8 p95) and 90.3 ms on the Oppo.
+  The pipeline's cost is the one that asynchronous detection (M3), and
+  confirming a detection before its first step, would take off the frame.
 
 **Limits of this result:**
 
