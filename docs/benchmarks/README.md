@@ -1192,3 +1192,220 @@ Tab9's; jitter on the static clip within the same bands as prediction 3.
   `packages/nft-tracker`'s tests.
 - **Tuning.** Every threshold stays at its provisional default; these runs
   supply the tuning pass's inputs (#48), not its decisions.
+
+### Results (2026-09-26)
+
+Run on 2026-09-26: 11 runs on `Tab_9_WiFi` (11:38–12:13 UTC), then 7 on the
+Oppo A72 (12:18–12:36 UTC). Each ran in the device's own Chrome
+(`Chrome/153.0.0.0`, `Android 10; K`; the phone's `userAgent` adds `Mobile`),
+reached over USB through `adb reverse`. The exports are committed as saved,
+as `2026-09-26-<tab9|oppo-a72>-ondevice-<mode>-<clip>.json`, beside
+`…-pyramid-probe.json` for each device, the tablet's three
+`…-tracking-<clip>-repeat.json` (runs 7–9) and its `…-tracking-camera.json`.
+
+**How the runs were made, and where that departs from the plan:**
+
+- **Before the merge, not after.** They ran from #67's head (`f036cbb`),
+  just before #67 merged, so the code under test is what #67 merged.
+- **By script, not by hand.** A script drove each device's Chrome over the
+  DevTools protocol, as the `maxKeypoints` sweep's did. For each run it:
+  - opened the page fresh, with the run's URL parameters from the table
+    above;
+  - pressed Start;
+  - waited for the window to fill, then for at least 50 more frames (timed
+    from the page's own fps; 59–130 in practice);
+  - pressed Stop and saved the page's export unchanged.
+
+  Between runs the tab sat for 120 s on an idle page holding a screen wake
+  lock. The Oppo was driven the same way, with its owner's agreement.
+- **The camera run (10)** was started by the script and held by hand, with
+  the printed target in view throughout. It ran last on `Tab_9_WiFi`, after
+  the pyramid probe (11), where the plan puts it before.
+- **The server** was a Node static server with range support, on port 8093
+  because 8080 was taken. The Python server used for the earlier sweeps reset
+  connections on larger files, which is the likeliest cause of the start-up
+  stalls recorded there.
+- Every run succeeded at its first attempt.
+
+**Validity checks: all pass.**
+
+1. Every export's `userAgent` contains `Android`, and its device label is the
+   planned one.
+2. Every run export's mode is the planned one. Its target is
+   `targets/pinball.wnft`, with the same SHA-256 in all 16 (`4af6a7fb…`). The
+   two pyramid-probe exports carry no mode, target or frames.
+3. Every tracking run records `tracker.detectionOnly: false`.
+4. Each run export has 300 frames, and `ticks − 300` is 59–130, so no window
+   holds a cold-JIT frame. Every file run saw 1–5 loop wraps.
+5. The `Tab_9_WiFi` repeats moved `trackStepMs` p50 by +0.8% (static), −3.4%
+   (wall) and +2.8% (table), and TRACK share by 0.0, −3.3 and −1.7 points.
+   All are within ±10% and ±10 points.
+6. `clockResolutionMs` is 0.1 on both devices.
+7. Static-clip `spreadPx` is 0.88–1.04 px, under 2 px, so no pose on the
+   static clip is grossly wrong, and prediction 3 can be read.
+
+**`Tab_9_WiFi`, per run** (ms at p50 unless marked; `total` over every frame,
+then over TRACK frames alone):
+
+| run | TRACK share | re-acquisitions (at wraps) | first steps confirmed | held-lock steps lost (at wraps) | `trackStepMs` p50 / p95 | capped / fits | `acquire` | `total` (TRACK frames) | `jitterPx` | `spreadPx` |
+|---|---|---|---|---|---|---|---|---|---|---|
+| tracking, static | 100.0% | 0 (0) | 0 / 0 | 0 / 299 (0) | 12.2 / 20.4 | 0 / 300 | 36.6 | 50.2 (50.2) | 0.156 | 0.883 |
+| tracking, static, repeat | 100.0% | 0 (0) | 0 / 0 | 0 / 299 (0) | 12.3 / 20.5 | 0 / 300 | 37.0 | 50.8 (50.8) | 0.158 | 0.884 |
+| tracking, wall | 54.7% | 106 (3) | 18 / 110 | 15 / 164 (3) | 20.4 / 25.0 | 4 / 180 | 21.9 | 51.4 (44.8) | — | — |
+| tracking, wall, repeat | 51.3% | 118 (3) | 19 / 121 | 19 / 154 (1) | 19.7 / 25.2 | 7 / 178 | 22.4 | 55.1 (44.2) | — | — |
+| tracking, table | 77.7% | 51 (3) | 12 / 54 | 9 / 232 (3) | 17.8 / 24.2 | 6 / 247 | 40.8 | 61.5 (59.4) | — | — |
+| tracking, table, repeat | 76.0% | 49 (3) | 10 / 51 | 8 / 228 (3) | 18.3 / 25.6 | 9 / 240 | 41.9 | 63.1 (61.3) | — | — |
+| tracking, rear camera | 100.0% | 0 (0) | 0 / 0 | 0 / 299 (0) | 14.2 / 21.3 | 0 / 300 | 24.0 | 41.2 (41.2) | 2.464 | 17.086 |
+| stateless, static | — | — | — | — | — | — | 38.3 | 121.0 | 0.476 | 1.036 |
+| stateless, wall | — | — | — | — | — | — | 22.4 | 104.4 | — | — |
+| stateless, table | — | — | — | — | — | — | 43.6 | 125.5 | — | — |
+
+Jitter and spread are read on the static clip only. On the moving clips the
+target moves, and some detections are wrong. The camera run was hand-held,
+so its spread is the hand's motion. On every tracking run, on both devices:
+
+- the frame pyramid built one level on every TRACK frame, and `pyramidMs`
+  p95 was 0.1 ms;
+- patch alignment was 94–98% of `trackStepMs` (`alignMs` p50 ÷
+  `trackStepMs` p50);
+- the fit took 0.3–0.4 ms at p50 on `Tab_9_WiFi`, and 0.3–0.5 ms on the
+  Oppo.
+
+**Against the plan's predictions:**
+
+1. **Point 5: holds.** `trackStepMs` p95 was 20.4 / 25.0 / 24.2 ms on the
+   static / wall / table clips (repeats 20.5 / 25.2 / 25.6), 2.6–3.2× the
+   8 ms threshold. Its p50 was 12.2–12.3 / 19.7–20.4 / 17.8–18.3 ms, against
+   the expected 12–18 / 20–31 / 15–26; the wall repeat's 19.7 is just under
+   its range, and the verdict rests on p95. ADR-0001 point 5's tracker-side
+   condition is therefore met on the reference device. By point 5 that
+   triggers nothing yet: point 3 comes first. The step to move is patch
+   alignment, not the pyramid (see 2).
+   - **The ~10 ms, on the camera run: holds.** 33 − `acquire` 24.0 −
+     `gray` 1.3 leaves 7.7 ms, and the tracking step alone took 14.2 ms p50
+     (21.3 p95). A TRACK frame's `total` p50 was 41.2 ms, over the 33 ms
+     frame (predicted 36–42).
+   - **The proxy, on the same frames: inconclusive, at the edge of "holds".**
+     The ratio is device p50 ÷ `--sequence` replay p50, the median of three
+     replays each time:
+
+     | clip | ratio, first export | ratio, repeat export |
+     |---|---|---|
+     | wall | 2.98 | 2.99 |
+     | table | 3.01 | 3.02 |
+     | static | 2.47, then 3.13 and 3.09 on reruns | 3.16, then 3.27 and 3.06 |
+
+     Wall and table are just under the band, so inconclusive. The first
+     static replay gave 2.47, under 2.5, which would read as "wrong". But
+     its own p95 (10.69 ms, against 4.7–5.1 ms in the static clip's five
+     other replays) shows this desktop was disturbed during it, and its two
+     reruns gave 3.13 and 3.09. All ten replays are in
+     [`2026-09-26-tab9-proxy-replays.md`](./2026-09-26-tab9-proxy-replays.md).
+     So the device runs the tracking step 3.0–3.3× slower than this
+     desktop. That straddles the low end of #63's 3.1–4.1× (six of the nine
+     undisturbed replays fall just under it), and is under the 3.4–3.8× this
+     desktop's own `gray`-loop proxy gave. The proxy was not wrong, but it
+     slightly overestimated the device's cost.
+2. **`pyramidMs`: holds.** One level was built on all 1,679 TRACK frames of
+   the seven tracking runs, and `pyramidMs` p95 was 0.1 ms, one clock step.
+   - The probe measured #63's estimate directly. At 270×360 and 2 / 3 / 4 /
+     5 / 6 levels it gave 3.1 / 5.1 / 6.4 / 7.2 / 7.8 ms, each inside #63's
+     2.7–3.7 / 4.5–6.0 / 5.6–7.5 / 6.4–8.5 / 6.8–9.1.
+   - **The four-level figure, 6.4 ms, is inside 5.6–7.5: #63's proxy was
+     right for the pyramid.**
+   - The other sizes: 480×270 gave 4.1 / 6.6 / 8.3 / 9.4 / 10.1 ms, and
+     640×480 gave 9.4 / 15.3 / 19.1 / 21.6 / 23.2 ms.
+   - On these paths the pyramid costs nothing. Moving it into the backend
+     would save nothing until patches from deeper levels make the tracker
+     build more.
+3. **Jitter: holds.** On the static clip, over 161 media times both runs
+   posed, `jitterPx` was 0.149 px tracked against 0.440 px stateless:
+   **2.95× steadier**, where holding needs 2. `spreadPx` was 0.907 against
+   1.024, which is the clip's drift and is not tested. Tracking's 0.149 px
+   and the ratio 2.95 are the numbers M3 and M4 compare against.
+4. **Lock share: holds on all three clips.**
+   - **static:** 100% on both runs, and no held lock lost (0 of 299). Each
+     window began after the first lock (117 frames of warm-up), so it holds
+     no first step to refuse.
+   - **wall:** a TRACK tick costs about 43.9 ms (`acquire` 21.9 + `gray`
+     1.6 + step 20.4). That does not keep up with the clip's 40.1 ms, so the
+     50–65% band applies:
+     - TRACK share 54.7% and 51.3%;
+     - held locks lost 9.1% and 12.3% of steps, under the 20% bound;
+     - first steps confirmed 16.4% and 15.7%, under 30%.
+   - **table:**
+     - TRACK share 77.7% and 76.0%, inside 70–90%;
+     - held locks lost 3.9% and 3.5%, under 5%;
+     - first steps confirmed 22.2% and 19.6%.
+
+   As predicted, a held lock rarely fails, and lock share on the moving clips
+   is set by the detections the first step refuses: 78–84% of first steps are
+   refused. Each loop wrap on a moving clip costs a held lock or a
+   re-detection, counted apart.
+   - `lowQualityTrackFrames` (quality ≤ 0.20) was 0 on the static clip, 10
+     and 5 on the wall clip, and 3 and 6 on the table clip.
+   - The camera run (reported, not tested) was in TRACK for all 300 frames,
+     hand-held.
+5. **Fit health: as predicted.** Capped fits were 0–3.9% of fits on every
+   `Tab_9_WiFi` run (static 0 / 0, wall 2.2 / 3.9, table 2.4 / 3.8, camera
+   0%), under 4%.
+6. **The Oppo A72** (reported, not tested):
+
+   | run | TRACK share | `trackStepMs` p50 / p95 | `acquire` | `total` (TRACK frames) | `jitterPx` |
+   |---|---|---|---|---|---|
+   | tracking, static | 100.0% | 14.8 / 37.0 | 31.4 | 49.0 (49.0) | 0.153 |
+   | tracking, wall | 52.3% | 27.6 / 40.1 | 23.4 | 71.9 (53.2) | — |
+   | tracking, table | 71.3% | 24.6 / 38.3 | 37.2 | 67.3 (62.8) | — |
+   | stateless, static | — | — | 32.2 | 129.5 | 0.518 |
+   | stateless, wall | — | — | 23.4 | 118.8 | — |
+   | stateless, table | — | — | 42.9 | 143.8 | — |
+
+   - **`trackStepMs` p50** was 1.20–1.21× the tablet's on the static clip,
+     1.35–1.40× on the wall clip and 1.34–1.38× on the table clip, inside the
+     expected 1.2–1.7×. Its p95 tail is longer: 37–40 ms, 1.5–1.8× the
+     tablet's.
+   - **TRACK share** was within the tablet's range on the wall clip (52.3%
+     against 51.3–54.7%) and below it on the table clip (71.3% against
+     76.0–77.7%). Its slower TRACK frames (53–63 ms) skip more of the clip:
+     on the table clip, held locks lost 8.9% of their steps, against the
+     tablet's 3.5–3.9%.
+   - **Jitter** on the static clip was 0.153 px tracked against 0.460 px, over
+     151 common media times: 3.00× steadier, inside prediction 3's bands.
+   - **The pyramid probe's** four levels of 270×360 took 7.4 ms, 1.16× the
+     tablet's.
+   - **Capped fits** were 4.6% of fits on both moving clips: above item 5's
+     4%, but under the 5% at which it would be a finding.
+
+**What the numbers show beyond the predictions.** These are facts for the
+tuning pass and M3 to work from, not decisions:
+
+- **Tracking roughly halves the cost of a frame, but still misses 33 ms.** On
+  `Tab_9_WiFi` a TRACK frame costs 44–61 ms on the file clips, against
+  104–126 ms stateless, and 41 ms on the camera path. `acquire` alone is
+  22–42 ms on the files and 24 ms on the camera.
+- **The tracking step is almost all patch alignment:** 64 level-0 patches of
+  16 × 16, seen below their own scale, take 12–20 ms p50 on `Tab_9_WiFi`
+  depending on the clip (15–28 ms on the Oppo). The pyramid is free here, and
+  the fit costs 0.3–0.5 ms.
+- **Re-detection dominates the wall clip.** On the tablet it is 65–69% of the
+  wall clip's frame time, and about 40% of the table clip's, from 22–24% of
+  its frames (on the Oppo, 67% and 50%). A 300-frame window held
+  49–118 re-acquisitions on the tablet (75–123 on the Oppo). Most were refused
+  at the first step, and each cost a full detection: 79.2 ms p50 on the tablet
+  (87.8 p95; 421 frames), 90.3 ms on the Oppo. This is the cost that
+  asynchronous detection (M3), and confirming a detection before its first
+  step, would take off the frame.
+
+**Limits of this result:**
+
+- one session per device;
+- the repeats moved `trackStepMs` p50 by 0.8–3.4% and TRACK share by up to
+  3.3 points, but other figures moved more: up to 7% for a timing (the wall
+  clip's whole-run `total` p50) and 11% for the wall clip's re-acquisitions;
+- the camera run cannot be reproduced;
+- the Oppo is not the reference device;
+- the proxy check rests on this desktop's timing, and one of its ten replays
+  was disturbed.
+
+All 18 exports are committed (about 6.2 MB). The Oppo's are the evidence for
+item 6.
