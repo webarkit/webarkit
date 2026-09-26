@@ -38,7 +38,12 @@
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { DescriptorMismatchError, UnsupportedCapabilityError, type CvBackend, type GrayImage } from "@webarkit/cv-backend-spec";
+import {
+    DescriptorMismatchError,
+    UnsupportedCapabilityError,
+    type CvBackend,
+    type GrayImage,
+} from "@webarkit/cv-backend-spec";
 import { createJsfeatNextBackend, intrinsics } from "../src/index";
 import jsfeatNext from "@webarkit/jsfeat-next";
 
@@ -164,7 +169,9 @@ describe("detect", () => {
         // the whole budget to level 0, since fine-level corners score highest,
         // and the coarse levels that make cross-scale matching work would never
         // appear at all.
-        const levels = new Set(cv.detect(render(), { maxKeypoints: 12, levels: 4 }).map((k) => k.level));
+        const levels = new Set(
+            cv.detect(render(), { maxKeypoints: 12, levels: 4 }).map((k) => k.level),
+        );
         expect(levels.size).toBeGreaterThan(1);
     });
 
@@ -180,7 +187,9 @@ describe("detect", () => {
     });
 
     it("levels: 1 reports only level 0, and more levels reach coarser ones", () => {
-        expect(new Set(cv.detect(render(), { levels: 1 }).map((k) => k.level))).toEqual(new Set([0]));
+        expect(new Set(cv.detect(render(), { levels: 1 }).map((k) => k.level))).toEqual(
+            new Set([0]),
+        );
         const many = new Set(cv.detect(render(), { levels: 5 }).map((k) => k.level));
         expect(many.size).toBeGreaterThan(1);
     });
@@ -390,7 +399,10 @@ describe("estimateHomography", () => {
 
     it("throws when the two point lists disagree in length", () => {
         expect(() =>
-            cv.estimateHomography(new Float64Array([0, 0, 1, 1]), new Float64Array([0, 0, 1, 1, 2, 2]))
+            cv.estimateHomography(
+                new Float64Array([0, 0, 1, 1]),
+                new Float64Array([0, 0, 1, 1, 2, 2]),
+            ),
         ).toThrow(/same number of points/);
     });
 
@@ -545,7 +557,7 @@ describe("the full pipeline composes through the interface (issue #96)", () => {
             matches = cv.filterMatches(
                 matches,
                 { keypoints: ka, width: W, height: H },
-                { keypoints: kb, width: W, height: H }
+                { keypoints: kb, width: W, height: H },
             );
         }
 

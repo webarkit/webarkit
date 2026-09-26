@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "fixtures": "npm run build && node scripts/generate-fixtures.mjs",
-    "compile-target": "node bin/compile-target.mjs"
+    "compile-target": "node bin/compile-target.mjs",
+    "validate-target": "node bin/validate-target.mjs"
   },
   "keywords": [
     "webarkit",

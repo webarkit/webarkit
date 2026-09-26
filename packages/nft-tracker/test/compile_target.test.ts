@@ -53,14 +53,18 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import jpeg from "jpeg-js";
 
 import { decode } from "../src/target/format/decode.js";
 import type { DecodeResult } from "../src/target/format/errors.js";
+import { buildFramePyramid, levelScale } from "../src/index.js";
+import type { PatchTable } from "../src/index.js";
+import { readPgm, TARGET_FIXTURE } from "./fixtures/pgm.js";
 
 const SCRIPT = fileURLToPath(new URL("../bin/compile-target.mjs", import.meta.url));
 const IMAGE = fileURLToPath(new URL("../../../examples/images/pinball.jpg", import.meta.url));
@@ -138,7 +142,9 @@ describe("compile-target", () => {
         expect(target.meta.physicalSizeMm).toEqual([210, 297]);
         // The seed is provenance: it is recorded so a file can be rebuilt, and
         // the next test is what shows the build honours it.
-        expect((target.info as { compiler?: { seed?: number; levels?: number } })?.compiler).toMatchObject({
+        expect(
+            (target.info as { compiler?: { seed?: number; levels?: number } })?.compiler,
+        ).toMatchObject({
             seed: 7,
             levels: 4,
         });
@@ -187,13 +193,17 @@ describe("compile-target", () => {
 
         it("resolves them against INIT_CWD, as npm sets it", () => {
             const relativeOut = ".tmp-compile-target/from-env.wnft";
-            execFileSync(process.execPath, [SCRIPT, RELATIVE_IMAGE, "-o", relativeOut, "--levels", "2"], {
-                encoding: "utf8",
-                stdio: ["ignore", "pipe", "pipe"],
-                // Exactly what npm hands a workspace script.
-                cwd: PACKAGE_DIR,
-                env: { ...process.env, INIT_CWD: REPO_ROOT },
-            });
+            execFileSync(
+                process.execPath,
+                [SCRIPT, RELATIVE_IMAGE, "-o", relativeOut, "--levels", "2"],
+                {
+                    encoding: "utf8",
+                    stdio: ["ignore", "pipe", "pipe"],
+                    // Exactly what npm hands a workspace script.
+                    cwd: PACKAGE_DIR,
+                    env: { ...process.env, INIT_CWD: REPO_ROOT },
+                },
+            );
 
             expect(existsSync(join(outDir, "from-env.wnft"))).toBe(true);
             // The bug this replaces was silent: it reported success while
@@ -201,12 +211,30 @@ describe("compile-target", () => {
             expect(existsSync(join(PACKAGE_DIR, relativeOut))).toBe(false);
         });
 
+        // Slow by construction, and allowed the same 30 s as the oversized-image
+        // refusal below: it spawns a real `npm run`, so it pays npm's own
+        // start-up (through a shell on Windows) on top of a full compile.
+        // Measured on Windows: 2.5 s alone, up to 5.4 s while the rest of the
+        // suite runs beside it — past vitest's 5 s default. What it checks is
+        // that the script writes a valid target where it was asked to, not
+        // how fast.
         it("works through the real npm script, from the repository root", () => {
             const relativeOut = ".tmp-compile-target/from-npm.wnft";
             execFileSync(
                 "npm",
-                ["run", "--silent", "compile-target", "-w", "@webarkit/nft-tracker", "--",
-                 RELATIVE_IMAGE, "-o", relativeOut, "--levels", "2"],
+                [
+                    "run",
+                    "--silent",
+                    "compile-target",
+                    "-w",
+                    "@webarkit/nft-tracker",
+                    "--",
+                    RELATIVE_IMAGE,
+                    "-o",
+                    relativeOut,
+                    "--levels",
+                    "2",
+                ],
                 {
                     encoding: "utf8",
                     stdio: ["ignore", "pipe", "pipe"],
@@ -217,12 +245,12 @@ describe("compile-target", () => {
                     // metacharacter, so this is a launcher detail and not an
                     // injection surface.
                     shell: process.platform === "win32",
-                }
+                },
             );
 
             expect(existsSync(join(outDir, "from-npm.wnft"))).toBe(true);
             expect(existsSync(join(PACKAGE_DIR, relativeOut))).toBe(false);
-        });
+        }, 30000);
     });
 
     it("refuses to run without an output path", () => {
@@ -274,5 +302,234 @@ describe("compile-target", () => {
         const failure = compileExpectingFailure([IMAGE, "-o", out, "--physical-size", "210x0"]);
         expect(failure.status).toBe(2);
         expect(failure.stderr).toMatch(/--physical-size/);
+    });
+
+    describe("tracking patches (§5.7)", () => {
+        interface CompilerInfo {
+            maxPatches?: number;
+            patchSize?: number;
+            patchLevels?: number;
+            patchMinScore?: number;
+            patchSpacing?: number;
+            patchPyramid?: string;
+            patchScore?: string;
+        }
+        const compilerInfo = (info: unknown) =>
+            (info as { compiler?: CompilerInfo } | undefined)?.compiler ?? {};
+
+        function centresOf(scaleStep: number, t: PatchTable): [number, number][] {
+            const half = (t.patchSize - 1) / 2;
+            return Array.from({ length: t.count }, (_, q) => {
+                const s = levelScale(scaleStep, t.level[q]);
+                return [(t.left[q] + half) / s, (t.top[q] + half) / s];
+            });
+        }
+
+        it("writes the documented defaults, every patch exactly its level's pixels", () => {
+            const out = join(work, "patches-default.wnft");
+            const stdout = compile([IMAGE, "-o", out]);
+            expect(stdout).toContain("64 patches");
+
+            const { target, warnings } = decodeFile(out);
+            expect(warnings).toEqual([]);
+            const patches = target.patches!;
+            expect(patches.patchSize).toBe(16);
+            expect(patches.count).toBe(64);
+            expect(Math.max(...patches.level)).toBeLessThan(3);
+            expect(compilerInfo(target.info)).toMatchObject({
+                maxPatches: 64,
+                patchSize: 16,
+                patchLevels: 3,
+                patchMinScore: 25,
+                // 0.75 * sqrt(512 * 640 / 64), rounded.
+                patchSpacing: 54,
+                // The function the tracker builds the live frame's pyramid
+                // with (format spec §11, Q11), named so a reader can tell.
+                patchPyramid: expect.stringMatching(/^buildFramePyramid/),
+                // §5.7 leaves the score's units open; the file says which.
+                patchScore: expect.stringContaining("level-0 px"),
+            });
+
+            // The pixels a reader decodes are the pixels of the level the
+            // compiler cut them from, at (left, top), in the pyramid
+            // buildFramePyramid builds at the file's own step and sizes. The
+            // fixture PGM is the same 512 x 640 image compile-target decodes
+            // from pinball.jpg.
+            const built = buildFramePyramid(readPgm(TARGET_FIXTURE), {
+                levels: 3,
+                scaleStep: target.pyramid.scaleStep,
+            });
+            if (!built.ok) throw new Error(`buildFramePyramid: ${built.reason}`);
+            const pyramid = built.pyramid;
+            expect(pyramid.levels.map((l) => [l.width, l.height])).toEqual(
+                target.pyramid.levelSizes.slice(0, 3),
+            );
+            const P = patches.patchSize;
+            for (let q = 0; q < patches.count; q++) {
+                const level = pyramid.levels[patches.level[q]];
+                const expected = new Uint8Array(P * P);
+                for (let i = 0; i < P; i++) {
+                    const start = (patches.top[q] + i) * level.width + patches.left[q];
+                    expected.set(level.data.subarray(start, start + P), i * P);
+                }
+                expect(patches.pixels.subarray(q * P * P, (q + 1) * P * P)).toEqual(expected);
+            }
+        });
+
+        it("honours the patch options", () => {
+            const out = join(work, "patches-options.wnft");
+            compile([
+                IMAGE,
+                "-o",
+                out,
+                "--levels",
+                "3",
+                "--patches",
+                "12",
+                "--patch-size",
+                "9",
+                "--patch-levels",
+                "1",
+                "--patch-min-score",
+                "40",
+                "--patch-spacing",
+                "80",
+            ]);
+
+            const { target } = decodeFile(out);
+            const patches = target.patches!;
+            expect(patches.patchSize).toBe(9);
+            expect(patches.count).toBeGreaterThanOrEqual(4);
+            expect(patches.count).toBeLessThanOrEqual(12);
+            expect(Array.from(patches.level).every((l) => l === 0)).toBe(true);
+            expect(Math.min(...patches.score)).toBeGreaterThanOrEqual(40);
+            const centres = centresOf(target.pyramid.scaleStep, patches);
+            for (let p = 0; p < centres.length; p++) {
+                for (let q = p + 1; q < centres.length; q++) {
+                    const [a, b] = [centres[p], centres[q]];
+                    expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeGreaterThanOrEqual(80);
+                }
+            }
+            expect(compilerInfo(target.info)).toMatchObject({
+                maxPatches: 12,
+                patchSize: 9,
+                patchLevels: 1,
+                patchMinScore: 40,
+                patchSpacing: 80,
+            });
+        });
+
+        it("records the levels it used, not more than the target has", () => {
+            const out = join(work, "patches-few-levels.wnft");
+            compile([IMAGE, "-o", out, "--levels", "2", "--patch-levels", "9"]);
+
+            const { target } = decodeFile(out);
+            expect(target.pyramid.levelSizes.length).toBeLessThanOrEqual(2);
+            expect(compilerInfo(target.info).patchLevels).toBe(target.pyramid.levelSizes.length);
+            expect(Math.max(...target.patches!.level)).toBeLessThan(
+                target.pyramid.levelSizes.length,
+            );
+        });
+
+        it("--patches 0 compiles a detection-only target, with no patches section", () => {
+            const out = join(work, "patches-none.wnft");
+            expect(compile([IMAGE, "-o", out, "--levels", "3", "--patches", "0"])).toContain(
+                "0 patches",
+            );
+
+            const { target } = decodeFile(out);
+            expect(target.patches).toBeUndefined();
+            expect(compilerInfo(target.info)).toEqual(
+                expect.not.objectContaining({ patchSize: expect.anything() }),
+            );
+            expect(compilerInfo(target.info).maxPatches).toBe(0);
+        });
+
+        it("refuses, before any detection, an image too large to score every window of", () => {
+            // 3000 x 3000 at --patch-levels 3 is ~18 M windows, over the 2^23
+            // cap. Noise, so no --patch-min-score could be relied on to thin
+            // it: every window can qualify. The refusal comes before the
+            // backend runs, so it is quick even though the image is not.
+            const side = 3000;
+            const rgba = new Uint8Array(side * side * 4);
+            let a = 1;
+            for (let i = 0; i < rgba.length; i += 4) {
+                a = (Math.imul(a, 1103515245) + 12345) >>> 0;
+                rgba[i] = rgba[i + 1] = rgba[i + 2] = a >>> 24;
+                rgba[i + 3] = 255;
+            }
+            const big = join(work, "big.jpg");
+            writeFileSync(big, jpeg.encode({ data: rgba, width: side, height: side }, 90).data);
+
+            const out = join(work, "never-written.wnft");
+            const failure = compileExpectingFailure([big, "-o", out, "--max-side", "3000"]);
+            expect(failure.status).toBe(2);
+            // Names the combination and the limit...
+            expect(failure.stderr).toContain("3000x3000");
+            expect(failure.stderr).toContain("--patch-levels 3");
+            expect(failure.stderr).toContain("--patch-size 16");
+            expect(failure.stderr).toContain("8388608");
+            // ...and what to change.
+            expect(failure.stderr).toContain("--max-side");
+            expect(failure.stderr).toContain("--patch-min-score");
+            expect(existsSync(out)).toBe(false);
+
+            // One level of it is still ~8.9 M windows, over the cap: the
+            // window count decides, not any one flag.
+            const oneLevel = compileExpectingFailure([
+                big,
+                "-o",
+                out,
+                "--max-side",
+                "3000",
+                "--patch-levels",
+                "1",
+            ]);
+            expect(oneLevel.status).toBe(2);
+            expect(oneLevel.stderr).toContain("--patch-levels 1");
+        }, 30000);
+
+        it("fails, naming the way out, when too few windows qualify", () => {
+            const out = join(work, "never-written.wnft");
+            const failure = compileExpectingFailure([
+                IMAGE,
+                "-o",
+                out,
+                "--levels",
+                "2",
+                "--patch-min-score",
+                "1e9",
+            ]);
+            expect(failure.status).toBe(1);
+            expect(failure.stderr).toContain("too-few-patches");
+            expect(failure.stderr).toContain("--patches 0");
+            expect(existsSync(out)).toBe(false);
+        });
+
+        it.each([
+            ["--patches", "3"],
+            ["--patches", "-1"],
+            ["--patch-size", "2"],
+            ["--patch-size", "4.5"],
+            ["--patch-levels", "0"],
+            ["--patch-min-score", "-1"],
+            ["--patch-spacing", "nope"],
+            // §6.4's default decoder limits: past them, compile-target would
+            // write a file its own decoder refuses with LIMIT_EXCEEDED.
+            ["--patch-size", "65"],
+            ["--patches", "65537"],
+        ])("refuses %s %s", (flag, value) => {
+            const failure = compileExpectingFailure([
+                IMAGE,
+                "-o",
+                join(work, "never-written.wnft"),
+                flag,
+                value,
+            ]);
+            expect(failure.status).toBe(2);
+            expect(failure.stderr).toContain(flag);
+            // Refused for its value, not for being a flag nobody knows.
+            expect(failure.stderr).not.toContain("unknown option");
+        });
     });
 });

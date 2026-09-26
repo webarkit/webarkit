@@ -142,6 +142,17 @@ The expected cost of Option A on a WASM backend is small but unmeasured: trackin
   clip is worse still: 119.3 ms p50, roughly 3.6× the budget, with `acquire`
   alone roughly doubling on the larger native frame — see that same
   benchmarks file's follow-on section.
+- Point 5's tracker-side condition, first measured **on the reference device**,
+  `Tab_9_WiFi` ([`docs/benchmarks/README.md`](../benchmarks/README.md#results-2026-09-26)):
+  tracking-state compute (`trackStepMs`) was 20.4 / 25.0 / 24.2 ms at p95 on
+  the static / wall / table clips (repeats 20.5 / 25.2 / 25.6), against 8 ms,
+  so the condition is met. That alone does not trigger the port: point 5 also
+  requires that moving steps into the backend (point 3) has not brought that
+  compute back under 8 ms, and no step has been moved yet. The step to move is
+  patch alignment, point 3's last candidate, at 94–98% of `trackStepMs` p50.
+  The frame pyramid, its first, was one level on every tracking-state frame
+  (`pyramidMs` p95 0.1 ms); the pyramid probe put four levels of 270×360 at
+  6.4 ms, a cost the tracker pays only when it builds them.
 
 ## Action items
 

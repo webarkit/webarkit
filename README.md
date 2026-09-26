@@ -2,6 +2,9 @@
 
 [![CI](https://github.com/webarkit/webarkit/actions/workflows/CI.yml/badge.svg)](https://github.com/webarkit/webarkit/actions/workflows/CI.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Rust](https://img.shields.io/badge/Rust-2024-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![no_std](https://img.shields.io/badge/no__std-forbid(unsafe__code)-success)](./crates/wnft-format)
+[![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg)](https://prettier.io/)
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/webarkit/webarkit.svg?style=social)](https://github.com/webarkit/webarkit/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/webarkit/webarkit.svg?style=social)](https://github.com/webarkit/webarkit/network/members)
@@ -36,7 +39,7 @@ If you're deciding where to plug in: **jsfeatNext** is the place to start today 
 |---|---|
 | [`@webarkit/cv-backend-spec`](./packages/cv-backend-spec) | Minimal stateless CV backend interface (`detect`, `describe`, `match`, `estimateHomography`, `poseFromHomography`) implemented by jsfeatNext and (future) WebARKitLib-rs. |
 | [`@webarkit/cv-backend-jsfeatnext`](./packages/cv-backend-jsfeatnext) | The jsfeatNext implementation of that contract. Depends on the spec **and** on `@webarkit/jsfeat-next` (>= 0.17.0); neither of those depends on it. |
-| [`@webarkit/nft-tracker`](./packages/nft-tracker) | Natural-feature tracking for planar image targets, written **above** the contract. Depends on the spec alone — the backend is injected by the caller, so it runs on any implementation. Currently the target layer — the in-memory target types, the `.wnft` codec (`decode`/`encode`) for the files that store one, an image-to-target builder — plus per-pyramid-level matching and a detection-only `NftTracker` (milestone M1). See [ADR-0001](./docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) and the [target format spec](./docs/specs/nft-target-format.md). |
+| [`@webarkit/nft-tracker`](./packages/nft-tracker) | Natural-feature tracking for planar image targets, written **above** the contract. Depends on the spec alone — the backend is injected by the caller, so it runs on any implementation. Currently the target layer — the in-memory target types, the `.wnft` codec (`decode`/`encode`) for the files that store one, an image-to-target builder — plus per-pyramid-level matching and `NftTracker`, whose per-frame result reports a `state` (`DETECT`, `TRACK` or `LOST`) and a `quality`. At milestone M2 it is a `LOST → DETECT → TRACK` state machine ([#48](https://github.com/webarkit/webarkit/issues/48)): a detection locks on the target, and the frames after it track the target's patches — patch selection (`compile-target` writes them into the `.wnft`), frame pyramid, IC-LK patch alignment, IRLS homography, constant-velocity prediction — without running detect, describe or match. A target without patches keeps M1's detection-only behaviour; re-acquisition is still synchronous, and asynchronous detection is M3 in #48's numbering (ADR-0001's action items use an older one). See [ADR-0001](./docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md) and the [target format spec](./docs/specs/nft-target-format.md). |
 
 None of the three is published to npm yet — see [Getting started](#-getting-started) for installing from source. `nft-tracker` is `private` and pre-0.1.
 
@@ -114,12 +117,28 @@ The static demo's **"target from"** selector runs the same pipeline either way,
 which is how you can see that the file carries a target rather than merely
 storing one.
 
+To check one — a file you were given, or one that refuses to track:
+
+```bash
+node packages/nft-tracker/bin/validate-target.mjs examples/targets/pinball.wnft
+```
+
+It answers two questions, and they are not the same one. **Is the file valid?**
+against the specification, with a §6.2 error code when it is not. **Can a
+backend use it?** by running §6.3's descriptor-set selection against a real
+backend's capabilities — because a perfectly valid file can still be unusable,
+and decoding alone never says so. Exit `0` valid and usable, `1` neither, `2`
+bad usage; `--decode-only` checks the file without loading a backend, `--json`
+for scripts.
+
 ### What it buys you
 
 Preparing this target costs roughly **200× more than loading it**. Measured on
 one development machine (Node as pinned in [`.nvmrc`](./.nvmrc), jsfeatNext
 backend, `examples/images/pinball.jpg` at 512×640 → 2062 keypoints over 8 levels,
-a 110,600-byte file), median of 30 runs after warm-up:
+a 110,600-byte file), median of 30 runs after warm-up. That file predates the
+tracking patches; the committed one now also carries 64 of them and is 128,208
+bytes, and has not been re-measured:
 
 | | median | min–max |
 |---|---|---|
@@ -137,7 +156,8 @@ Three things that table says, which a single ratio would not:
   levels; decoding grows with file size, at a tiny constant. Raising `--levels`
   or `--max-side` widens the gap rather than closing it.
 - **The demo's own "target prepared in" row shows a much smaller gap** (~25 ms
-  for the file path) because it times the `fetch()` of those 110 KB along with
+  for the file path) because it times the `fetch()` of the file (110 KB when
+  measured, 128 KB with today's patches) along with
   the decode. That is the honest answer to "what did it cost to get a target
   here?", and it is dominated by the network, not by the format.
 

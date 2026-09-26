@@ -147,8 +147,7 @@ export function scanIJson(text: string): IJsonViolation | null {
     let i = 0;
     const stack: Frame[] = [];
 
-    const here = (): string =>
-        stack.length === 0 ? "$" : stack[stack.length - 1]!.member;
+    const here = (): string => (stack.length === 0 ? "$" : stack[stack.length - 1]!.member);
     const bad = (reason: string): IJsonViolation => ({ path: here(), reason });
 
     const skipWs = (): void => {

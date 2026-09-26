@@ -52,27 +52,14 @@
  * lets a caller treat a hostile file as data rather than as an incident.
  */
 
-import type {
-    DescriptorSet,
-    KeypointTable,
-    PatchTable,
-    TargetDb,
-} from "../types.js";
+import type { DescriptorSet, KeypointTable, PatchTable, TargetDb } from "../types.js";
 import { materialise, type AccessorArray } from "./arrays.js";
-import {
-    checkConsistency,
-    type SetArrays,
-    type TargetArrays,
-} from "./consistency.js";
+import { checkConsistency, type SetArrays, type TargetArrays } from "./consistency.js";
 import { parseContainer } from "./container.js";
 import type { DecodeResult, Warning } from "./errors.js";
 import { SUPPORTED_FORMAT_VERSION } from "./known.js";
 import { resolveLimits, type DecodeOptions } from "./limits.js";
-import {
-    decodeManifest,
-    validateManifest,
-    type ManifestSpec,
-} from "./manifest.js";
+import { decodeManifest, validateManifest, type ManifestSpec } from "./manifest.js";
 
 /** Materialise every array a validated manifest references. */
 function materialiseAll(
@@ -80,8 +67,26 @@ function materialiseAll(
     binStart: number,
     spec: ManifestSpec,
 ): TargetArrays {
-    const get = (index: number): AccessorArray =>
-        materialise(buffer, binStart, spec.accessors[index]!);
+    // §6.1: a reader's total materialised accessor bytes MUST NOT exceed the
+    // BIN chunk's length. Accessors do not overlap (§5.2), but nothing there
+    // limits how many manifest *fields* may name one, so this cache is what
+    // holds the bound: each distinct accessor is materialised once and every
+    // field naming it is handed the same array.
+    //
+    // Viewing is not enough on its own. materialise() falls back to copying
+    // when the absolute offset is not a multiple of the element size (§3) —
+    // which is exactly a `.wnft` sitting at a non-8-aligned `byteOffset`
+    // inside a larger ArrayBuffer, the case §3's fallback exists for — and
+    // without the cache that copy is paid once per reference. Sixteen sets
+    // naming one large `data` accessor then decode to sixteen copies of it.
+    const cache = new Map<number, AccessorArray>();
+    const get = (index: number): AccessorArray => {
+        const hit = cache.get(index);
+        if (hit !== undefined) return hit;
+        const array = materialise(buffer, binStart, spec.accessors[index]!);
+        cache.set(index, array);
+        return array;
+    };
 
     const kp = spec.keypoints;
     const sets: SetArrays[] = spec.descriptorSets.map((s) => ({
@@ -134,9 +139,7 @@ function buildTarget(spec: ManifestSpec, arrays: TargetArrays): TargetDb {
         y: arrays.keypoints.y,
         angle: arrays.keypoints.angle,
         score: arrays.keypoints.score,
-        ...(arrays.keypoints.size === undefined
-            ? {}
-            : { size: arrays.keypoints.size }),
+        ...(arrays.keypoints.size === undefined ? {} : { size: arrays.keypoints.size }),
         level: arrays.keypoints.level,
     };
 
@@ -175,9 +178,7 @@ function buildTarget(spec: ManifestSpec, arrays: TargetArrays): TargetDb {
 
     return {
         formatVersion: SUPPORTED_FORMAT_VERSION,
-        ...(spec.head.generator === undefined
-            ? {}
-            : { generator: spec.head.generator }),
+        ...(spec.head.generator === undefined ? {} : { generator: spec.head.generator }),
         extensionsUsed: spec.head.extensionsUsed,
         extensionsRequired: spec.head.extensionsRequired,
         meta: spec.meta,

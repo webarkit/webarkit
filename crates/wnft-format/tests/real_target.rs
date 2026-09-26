@@ -27,7 +27,7 @@
 
 //! `examples/targets/pinball.wnft` — the first **real** target both codecs read.
 //!
-//! Everything in `fixtures/nft-target/0.2/` is synthetic: each file was built
+//! Everything in `fixtures/nft-target/0.3/` is synthetic: each file was built
 //! to exercise one rule, with values computed from an index so the corpus
 //! reproduces byte for byte. That is exactly what a conformance corpus should
 //! be, and it is also its blind spot. A synthetic file never has 2062
@@ -86,7 +86,7 @@ fn decodes_the_compiled_pinball_target() {
     );
 
     let target = decoded.target;
-    assert_eq!(target.format_version, "0.2");
+    assert_eq!(target.format_version, "0.3");
 
     // 614 x 768, capped to a 640 longer side by compile-target's `--max-side`.
     assert_eq!(target.meta.width_px, 512);
@@ -161,6 +161,97 @@ fn decodes_the_compiled_pinball_target() {
         }
         other => panic!("expected a `bits` set, got `{}`", other.element_type()),
     }
+
+    // §5.7's tracking patches: compile-target's defaults, 64 patches of
+    // 16 x 16 cut from the finest three levels, as it chose them for this
+    // image — every one from level 0 (see the `patchPyramid` note below for
+    // the one that moved there).
+    let patches = target
+        .patches
+        .expect("compile-target writes a patches section");
+    assert_eq!(patches.patch_size, 16);
+    assert_eq!(patches.count, 64);
+    let p = patches.patch_size as usize;
+    let q = patches.count as usize;
+    assert_eq!(patches.score.len(), q);
+    assert_eq!(patches.left.len(), q);
+    assert_eq!(patches.top.len(), q);
+    assert_eq!(patches.level.len(), q);
+    assert_eq!(patches.pixels.len(), q * p * p);
+    let mut per_level = [0usize; 3];
+    for i in 0..q {
+        let level = patches.level[i] as usize;
+        assert!(
+            level < 3,
+            "patch {i} is from level {level}, beyond --patch-levels 3"
+        );
+        per_level[level] += 1;
+        // §5.7's bounds rule, on the level sizes this file records. The
+        // decoder has already enforced it; asserting it here says the real
+        // distribution reaches the edges it is allowed to and no further.
+        let [w, h] = target.pyramid.level_sizes[level];
+        assert!(
+            patches.left[i] as usize + p <= w as usize,
+            "patch {i} past the right edge"
+        );
+        assert!(
+            patches.top[i] as usize + p <= h as usize,
+            "patch {i} past the bottom edge"
+        );
+        // No flat patch: every one was selected for its texture.
+        let window = &patches.pixels[i * p * p..(i + 1) * p * p];
+        let (lo, hi) = window
+            .iter()
+            .fold((u8::MAX, u8::MIN), |(lo, hi), &v| (lo.min(v), hi.max(v)));
+        assert!(hi > lo, "patch {i} is flat");
+    }
+    assert_eq!(per_level, [64, 0, 0]);
+    // The compiler's selection order, and its default minimum score.
+    assert!(patches.score.iter().all(|&s| s.is_finite() && s >= 25.0));
+    assert!(
+        patches.score.windows(2).all(|w| w[0] >= w[1]),
+        "patches are stored best score first"
+    );
+
+    // Which pyramid the patches were cut from is provenance, not format: the
+    // specification's open question Q11 asks whether the file should record
+    // it or the specification fix one. compile-target cuts them from
+    // `buildFramePyramid`, the function the tracker builds the live frame's
+    // pyramid with. Before that it used a stand-in box filter, under which
+    // this file's patch 37 was the level-1 window (242, 288), scoring 206.19;
+    // `buildFramePyramid` blurs more, that window scores 189.39, and the
+    // level-0 window (306, 365), 0.87 px away and scoring 195.69 under both,
+    // took its place. This assertion is the one that says which filter the
+    // committed file used.
+    let compiler = target
+        .info
+        .as_ref()
+        .and_then(|info| info.get("compiler"))
+        .and_then(|c| c.as_object())
+        .expect("compile-target records info.compiler");
+    assert_eq!(
+        compiler.get("maxPatches").and_then(|v| v.as_u64()),
+        Some(64)
+    );
+    assert!(
+        compiler
+            .get("patchPyramid")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| s.starts_with("buildFramePyramid")),
+        "patchPyramid was {:?}",
+        compiler.get("patchPyramid")
+    );
+    // §5.7 names the score's quantity but not its units, so the `>= 25.0`
+    // above means something only together with the definition the compiler
+    // recorded beside it.
+    assert!(
+        compiler
+            .get("patchScore")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| s.contains("level-0 px")),
+        "patchScore was {:?}",
+        compiler.get("patchScore")
+    );
 }
 
 #[test]

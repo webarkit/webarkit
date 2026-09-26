@@ -53,16 +53,8 @@
  */
 
 import type { JsonValue, TargetDb } from "../types.js";
-import {
-    hasNoncharacter,
-    hasUnpairedSurrogate,
-    MAX_EXACT_INTEGER,
-} from "./ijson.js";
-import {
-    IMPLEMENTED_EXTENSIONS,
-    KNOWN_ELEMENT_TYPES,
-    SUPPORTED_FORMAT_VERSION,
-} from "./known.js";
+import { hasNoncharacter, hasUnpairedSurrogate, MAX_EXACT_INTEGER } from "./ijson.js";
+import { IMPLEMENTED_EXTENSIONS, KNOWN_ELEMENT_TYPES, SUPPORTED_FORMAT_VERSION } from "./known.js";
 
 export interface TargetViolation {
     /** The offending field path, e.g. `descriptorSets[1].params.seed` (§7.3). */
@@ -72,8 +64,7 @@ export interface TargetViolation {
 const U16_MAX = 0xffff;
 const U32_MAX = 0xffffffff;
 
-const isU32 = (v: number): boolean =>
-    Number.isInteger(v) && v >= 0 && v <= U32_MAX;
+const isU32 = (v: number): boolean => Number.isInteger(v) && v >= 0 && v <= U32_MAX;
 
 /**
  * The four I-JSON checks that survive into memory, applied to `params` and
@@ -286,12 +277,7 @@ export function validateTarget(target: TargetDb): TargetViolation | null {
 
         // The same key the reader builds, constructed the same way, so
         // the two agree on 5.6's uniqueness rule by construction.
-        const key = JSON.stringify([
-            set.kind,
-            set.norm,
-            set.dimensions,
-            set.producer,
-        ]);
+        const key = JSON.stringify([set.kind, set.norm, set.dimensions, set.producer]);
         if (seenKeys.has(key)) return at(what);
         seenKeys.add(key);
 

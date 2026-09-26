@@ -1,0 +1,17 @@
+# Build output and dependencies.
+dist/
+node_modules/
+
+# Generated, and byte-exact by contract. `fixtures/nft-target/` is produced by
+# packages/nft-tracker/scripts/generate-fixtures.mjs and compared byte for byte
+# by both codecs; released versions there are frozen under the specification's
+# §8.3. Formatting anything in it would rewrite files a test exists to hold
+# still.
+fixtures/
+examples/targets/
+
+# Not in the agreed scope of the reformat, and each for its own reason:
+# `examples/` is demo pages where the HTML and its inline script are read
+# together, and `docs/benchmarks/` is machine-written measurement data.
+examples/
+docs/

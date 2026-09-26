@@ -262,16 +262,16 @@ fn the_writer_refuses_a_non_finite_number() {
 
 #[test]
 fn a_later_minor_is_rejected() {
-    // §8.3's first bullet, from the writer's side: a target claiming 0.3 is one
+    // §8.3's first bullet, from the writer's side: a target claiming 0.4 is one
     // this build cannot write, because it would be claiming a meaning it does
     // not implement.
     let mut target = decode(&common::read("valid/minimal.wnft"), &DEFAULT_LIMITS)
         .expect("must decode")
         .target;
     assert!(encode(&target).is_ok());
-    target.format_version = "0.3".to_string();
+    target.format_version = "0.4".to_string();
     assert_eq!(
-        encode(&target).expect_err("0.3 must be refused").code,
+        encode(&target).expect_err("0.4 must be refused").code,
         ErrorCode::InvalidTarget
     );
 }

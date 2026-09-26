@@ -78,7 +78,9 @@ describe("NftTracker.process", () => {
 
     it("echoes the timestamp it was handed, and keeps no clock of its own", () => {
         const tracker = new NftTracker(cv, target, K, { maxSceneKeypoints: 900 });
-        expect(withSeededRandom(1, () => tracker.process(scene, 1234.5)).value.timestampMs).toBe(1234.5);
+        expect(withSeededRandom(1, () => tracker.process(scene, 1234.5)).value.timestampMs).toBe(
+            1234.5,
+        );
     });
 
     it("exposes the frame's keypoints so an overlay can draw them", () => {
@@ -89,7 +91,11 @@ describe("NftTracker.process", () => {
     });
 
     it("reports too-few-matches on a frame with nothing in it", () => {
-        const blank: GrayImage = { data: new Uint8Array(320 * 240).fill(128), width: 320, height: 240 };
+        const blank: GrayImage = {
+            data: new Uint8Array(320 * 240).fill(128),
+            width: 320,
+            height: 240,
+        };
         const tracker = new NftTracker(cv, target, K);
         const { value: result } = withSeededRandom(1, () => tracker.process(blank, 0));
 
@@ -99,6 +105,32 @@ describe("NftTracker.process", () => {
         expect(result.numMatches).toBeLessThan(4);
         expect(result.H).toBeNull();
         expect(result.pose).toBeNull();
+    });
+
+    it("reports a DETECT state and an inlier-share quality when detection locks on", () => {
+        const tracker = new NftTracker(cv, target, K, { maxSceneKeypoints: 900 });
+        const { value: result } = withSeededRandom(1, () => tracker.process(scene, 0));
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.state).toBe("DETECT");
+        expect(result.quality).toBe(result.numInliers / result.numMatches);
+        expect(result.quality).toBeGreaterThan(0);
+        expect(result.quality).toBeLessThanOrEqual(1);
+    });
+
+    it("reports LOST with quality 0 when nothing is found", () => {
+        const blank: GrayImage = {
+            data: new Uint8Array(320 * 240).fill(128),
+            width: 320,
+            height: 240,
+        };
+        const tracker = new NftTracker(cv, target, K);
+        const { value: result } = withSeededRandom(1, () => tracker.process(blank, 0));
+
+        expect(result.ok).toBe(false);
+        expect(result.state).toBe("LOST");
+        expect(result.quality).toBe(0);
     });
 
     it("gives the same answer twice for the same frame under the same seed", () => {
@@ -126,7 +158,7 @@ describe("NftTracker.process", () => {
 
     it("honours maxSceneKeypoints rather than a hard-coded budget", () => {
         const { value: few } = withSeededRandom(1, () =>
-            new NftTracker(cv, target, K, { maxSceneKeypoints: 50 }).process(scene, 0)
+            new NftTracker(cv, target, K, { maxSceneKeypoints: 50 }).process(scene, 0),
         );
         expect(few.sceneKeypoints.length).toBeLessThanOrEqual(50);
     });

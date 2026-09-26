@@ -49,13 +49,59 @@ export {
 export type { BuildTargetOptions } from "./target/build_from_image.js";
 
 export {
+    DEFAULT_ALIGN_EPSILON,
+    DEFAULT_ALIGN_MAX_ITERATIONS,
+    DEFAULT_FIT_EPSILON,
+    DEFAULT_FIT_MAX_ITERATIONS,
+    DEFAULT_MAX_FIT_RMS,
+    DEFAULT_MAX_FRAME_LEVELS,
+    DEFAULT_MAX_OUTLIER_SHARE,
     DEFAULT_MAX_SCENE_KEYPOINTS,
+    DEFAULT_MIN_PATCH_ZNCC,
+    DEFAULT_MIN_TRACKED_PATCHES,
+    DEFAULT_PHOTOMETRIC,
     DEFAULT_RANSAC_THRESHOLD,
     DEFAULT_RATIO,
     DEFAULT_SCENE_LEVELS,
+    DEFAULT_TUKEY_C,
     NftTracker,
 } from "./tracker.js";
-export type { NftTrackerOptions, TrackFailure, TrackResult } from "./tracker.js";
+export type { NftTrackerOptions, TrackFailure, TrackResult, TrackTimings } from "./tracker.js";
+export type { TrackLoss, TrackStats } from "./tracking/track_frame.js";
+
+// The tracking state (M2). Every function is exported here up front, stub or
+// not, so the branches implementing them never need to touch this file.
+export { levelScale } from "./tracking/level_scale.js";
+export { selectPatches } from "./tracking/select_patches.js";
+export { buildFramePyramid } from "./tracking/frame_pyramid.js";
+export { alignPatch } from "./tracking/align_patch.js";
+export { robustHomography } from "./tracking/robust_homography.js";
+export { predictHomography } from "./tracking/predict_homography.js";
+export type {
+    AlignPatch,
+    AlignPatchOptions,
+    BuildFramePyramid,
+    FramePyramid,
+    FramePyramidFailure,
+    FramePyramidOptions,
+    FramePyramidResult,
+    HomographyPrediction,
+    HomographyPredictionFailure,
+    ImagePyramid,
+    PatchAlignment,
+    PatchAlignmentFailure,
+    PatchObservation,
+    PatchSelection,
+    PatchSelectionFailure,
+    PredictHomography,
+    RobustHomography,
+    RobustHomographyFailure,
+    RobustHomographyOptions,
+    RobustHomographyResult,
+    SelectPatches,
+    SelectPatchesOptions,
+    TrackingState,
+} from "./tracking/types.js";
 
 export { DEFAULT_LIMITS, decode, encode } from "./target/format/index.js";
 export type {

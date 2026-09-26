@@ -42,10 +42,12 @@
  *
  * This is the seed of the target compiler, and for now it does exactly what
  * the demos do by hand: detect over a pyramid, describe, and lay the result
- * out the way `docs/specs/nft-target-format.md` specifies. Synthetic views,
- * tracking patches and a stored reference image belong to milestone M4; none
- * of them is written here, and every field they would fill is optional in the
- * format precisely so this step can leave them out.
+ * out the way `docs/specs/nft-target-format.md` specifies. Tracking patches
+ * are `compile-target`'s to add (`selectPatches`, M2); synthetic views and a
+ * stored reference image belong to later milestones. None of them is written
+ * here, and every field they would fill is optional in the format precisely
+ * so this step can leave them out — which is also why a target built here
+ * runs `NftTracker` in detection-only mode (§5.7).
  *
  * Nothing here encodes bytes. The `.wnft` codec is a separate component; this
  * produces the decoded shape it would also produce.
@@ -61,7 +63,7 @@ import type { BitsDescriptorSet, KeypointTable, TargetDb } from "./types.js";
  * will export its own constant when it lands. Duplicating the string here is
  * cheaper than reaching across into a component that does not exist yet.
  */
-const FORMAT_VERSION = "0.2";
+const FORMAT_VERSION = "0.3";
 
 /**
  * Size ratio between consecutive pyramid levels when the caller does not say.
@@ -113,7 +115,7 @@ export interface BuildTargetOptions {
 export function buildTargetFromImage(
     cv: CvBackend,
     image: GrayImage,
-    options?: BuildTargetOptions
+    options?: BuildTargetOptions,
 ): TargetDb {
     const levels = options?.levels ?? DEFAULT_TARGET_LEVELS;
     const maxKeypoints = options?.maxKeypoints ?? levels * DEFAULT_KEYPOINTS_PER_LEVEL;
@@ -123,7 +125,7 @@ export function buildTargetFromImage(
         throw new Error(
             `@webarkit/nft-tracker: scaleStep must be finite and > 1, got ${scaleStep}. ` +
                 `A step of 1 or less makes the level-to-level-0 mapping of the target ` +
-                `format's section 3 a division by zero or an identity.`
+                `format's section 3 a division by zero or an identity.`,
         );
     }
 
@@ -138,7 +140,7 @@ export function buildTargetFromImage(
         throw new Error(
             `@webarkit/nft-tracker: no keypoints found in a ${image.width}x${image.height} ` +
                 `image over ${levels} levels. A target with no features cannot be matched ` +
-                `against anything.`
+                `against anything.`,
         );
     }
 
@@ -161,7 +163,7 @@ export function buildTargetFromImage(
             `@webarkit/nft-tracker: describe returned ${described.count} rows for ` +
                 `${sorted.length} keypoints. This builder assumes one row per keypoint ` +
                 `(format section 5.6, no multiview): a backend that drops keypoints in ` +
-                `describe needs kpIndex built from what it kept, which is not implemented.`
+                `describe needs kpIndex built from what it kept, which is not implemented.`,
         );
     }
 
@@ -206,11 +208,7 @@ export function buildTargetFromImage(
  * pyramid geometry, so this is a reconstruction from the declared step. Same
  * contract gap as {@link DEFAULT_SCALE_STEP}.
  */
-function levelSizes(
-    image: GrayImage,
-    levelCount: number,
-    scaleStep: number
-): [number, number][] {
+function levelSizes(image: GrayImage, levelCount: number, scaleStep: number): [number, number][] {
     const sizes: [number, number][] = [[image.width, image.height]];
     let scale = 1;
     for (let level = 1; level < levelCount; level++) {
@@ -223,7 +221,7 @@ function levelSizes(
                     `image at scaleStep ${scaleStep} would be ${width}x${height}, but the ` +
                     `target format requires every level size to be at least 1 (section 5.4). ` +
                     `The backend reported a keypoint at this level, so the step is probably ` +
-                    `not the one it used.`
+                    `not the one it used.`,
             );
         }
         sizes.push([width, height]);
@@ -232,7 +230,11 @@ function levelSizes(
 }
 
 /** Keypoints, level-sorted already, as the format's structure of arrays (§5.5). */
-function toKeypointTable(cv: CvBackend, sorted: readonly Keypoint[], levelCount: number): KeypointTable {
+function toKeypointTable(
+    cv: CvBackend,
+    sorted: readonly Keypoint[],
+    levelCount: number,
+): KeypointTable {
     const count = sorted.length;
     const levelStart = new Uint32Array(levelCount + 1);
     const x = new Float32Array(count);
@@ -263,20 +265,29 @@ function toKeypointTable(cv: CvBackend, sorted: readonly Keypoint[], levelCount:
     if (detector === undefined) {
         throw new Error(
             `@webarkit/nft-tracker: backend '${cv.capabilities.name}' declares no detectors, ` +
-                `so there is nothing honest to record in keypoints.detector.kind.`
+                `so there is nothing honest to record in keypoints.detector.kind.`,
         );
     }
     // `DetectOptions` carries no detector selector, so the backend ran the one
     // detector it has; its first declared entry is the honest answer. Revisit
     // when the contract lets a caller choose.
-    return { count, detector: { kind: detector, params: {} }, levelStart, x, y, angle, score, level };
+    return {
+        count,
+        detector: { kind: detector, params: {} },
+        levelStart,
+        x,
+        y,
+        angle,
+        score,
+        level,
+    };
 }
 
 /** The single descriptor set (§5.6). One row per keypoint, in keypoint order. */
 function toDescriptorSet(
     cv: CvBackend,
     described: Descriptors,
-    levelStart: Uint32Array
+    levelStart: Uint32Array,
 ): BitsDescriptorSet {
     return {
         kind: described.kind,

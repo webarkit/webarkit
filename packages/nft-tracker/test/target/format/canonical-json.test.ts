@@ -114,9 +114,7 @@ describe("canonicalJson", () => {
     });
 
     it("keeps 2^53 − 1 exact", () => {
-        expect(canonicalJson({ seed: 9007199254740991 })).toBe(
-            '{"seed":9007199254740991}',
-        );
+        expect(canonicalJson({ seed: 9007199254740991 })).toBe('{"seed":9007199254740991}');
     });
 });
 

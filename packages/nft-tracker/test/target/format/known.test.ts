@@ -82,8 +82,8 @@ describe("known values", () => {
         expect(IMPLEMENTED_EXTENSIONS).toEqual([]);
     });
 
-    it("targets format 0.2 and container major 1", () => {
-        expect(SUPPORTED_FORMAT_VERSION).toBe("0.2");
+    it("targets format 0.3 and container major 1", () => {
+        expect(SUPPORTED_FORMAT_VERSION).toBe("0.3");
         expect(SUPPORTED_CONTAINER_MAJOR).toBe(1);
     });
 });

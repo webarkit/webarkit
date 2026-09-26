@@ -41,7 +41,7 @@
  * The **in-memory** shape of a trained NFT target.
  *
  * This is the decoded form of a `.wnft` file, as specified in
- * `docs/specs/nft-target-format.md` (format 0.2). Section references below
+ * `docs/specs/nft-target-format.md` (format 0.3). Section references below
  * point into that document, which is the source of truth: where these types
  * and the specification disagree, the specification wins.
  *
@@ -57,11 +57,7 @@
  * @see {@link https://github.com/webarkit/webarkit/blob/dev/docs/specs/nft-target-format.md}
  */
 
-import type {
-    DescriptorKind,
-    DescriptorNorm,
-    DetectorKind,
-} from "@webarkit/cv-backend-spec";
+import type { DescriptorKind, DescriptorNorm, DetectorKind } from "@webarkit/cv-backend-spec";
 
 /**
  * A value the contract enumerates, or any other string the file may carry.
@@ -275,10 +271,7 @@ export interface F32DescriptorSet extends DescriptorSetBase {
  *   is why a fourth, "unknown" variant would be unreachable rather than
  *   useful.
  */
-export type DescriptorSet =
-    | BitsDescriptorSet
-    | U8DescriptorSet
-    | F32DescriptorSet;
+export type DescriptorSet = BitsDescriptorSet | U8DescriptorSet | F32DescriptorSet;
 
 /**
  * Tracking patches (§5.7), `Q = count` entries.

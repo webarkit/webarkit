@@ -44,10 +44,16 @@
  *         examples/images/pinball.jpg -o examples/targets/pinball.wnft
  *
  * It is the offline half of the tracker, run by hand: `buildTargetFromImage`
- * with `@webarkit/cv-backend-jsfeatnext`, then `encode`. Nothing here is new
- * behaviour — it is the two library calls the demos already make, with the
- * result written to disk instead of kept in memory, so a target can be
- * prepared once and shipped as a file.
+ * with `@webarkit/cv-backend-jsfeatnext`, then `selectPatches` for the
+ * tracking patches (§5.7), then `encode`. The first two are the library calls
+ * the demos already make, with the result written to disk instead of kept in
+ * memory, so a target can be prepared once and shipped as a file.
+ *
+ * **Tracking patches** are cut from the target's pyramid as
+ * `buildFramePyramid` builds it — the function the tracker builds the live
+ * frame's pyramid with, so a stored patch and the frame level it is aligned
+ * on were filtered alike (format spec §11, Q11). The five patch options and
+ * their defaults are documented where the defaults are defined, below.
  *
  * **Determinism is a feature, not a side effect.** The same image and the same
  * options must produce the same bytes, or a compiled target could not be
@@ -78,11 +84,15 @@ import process from "node:process";
 import { createJsfeatNextBackend } from "@webarkit/cv-backend-jsfeatnext";
 
 import {
+    buildFramePyramid,
     buildTargetFromImage,
     DEFAULT_KEYPOINTS_PER_LEVEL,
     DEFAULT_SCALE_STEP,
+    DEFAULT_LIMITS,
     DEFAULT_TARGET_LEVELS,
     encode,
+    levelScale,
+    selectPatches,
 } from "../dist/index.js";
 import { grayFromJpegFile } from "./image.mjs";
 
@@ -95,6 +105,126 @@ import { grayFromJpegFile } from "./image.mjs";
  * loaded must cap that image the same way. Change one and change the other.
  */
 const DEFAULT_MAX_SIDE = 640;
+
+/*
+ * Tracking-patch defaults (§5.7). First choices with their reasons, measured
+ * on `examples/images/pinball.jpg` at the default cap; the M2 tuning pass,
+ * which can measure alignment itself, is expected to revise them, which is
+ * why each one is an option rather than a constant.
+ */
+
+/**
+ * `P`, the patch edge. 16 gives the score and the alignment `14² = 196`
+ * interior gradient samples — enough to condition a translation + gain/bias
+ * fit on real texture, where 8 (§9's example) leaves 36 — while staying
+ * local: 16 level-0 px is 3% of a 512-px target, so the prediction's
+ * perspective varies little across one patch. 64 of them are 16 KB.
+ */
+const DEFAULT_PATCH_SIZE = 16;
+
+/**
+ * `maxPatches`, the budget. Tracking needs four inliers per frame; 64 leaves
+ * room to lose most of them to occlusion, the frame edge and the robust fit,
+ * while a frame's alignment cost stays linear in a small number.
+ */
+const DEFAULT_MAX_PATCHES = 64;
+
+/**
+ * How many of the target's pyramid levels patches may come from, finest
+ * first. Scores are in level-0 units (`select_patches.ts`), so levels compete
+ * on how precisely they localise, and a coarser level rarely wins: on the
+ * pinball target all 64 patches come from level 0, and allowing six or all
+ * eight levels instead of three selects exactly the same 64. (While a box
+ * filter built the levels, one level-1 window won by a small margin; the
+ * pyramid filter blurs more, and it lost to a level-0 window 0.87 px away.)
+ * Three levels span a factor `2^(2/3)` ≈ 1.6 at the default step, and keep a
+ * patch's footprint local (under 26 level-0 px for P=16); the limit is there
+ * for the images where coarse texture would win.
+ */
+const DEFAULT_PATCH_LEVELS = 3;
+
+/**
+ * Minimum score, (grey levels / level-0 px)²: a mean squared gradient of 25,
+ * so an RMS of 5 grey levels per pixel even in the patch's *weakest*
+ * direction — several times the gradient that sensor and JPEG noise produce
+ * on a flat surface. On pinball this rejects 57% of all level-0 windows, the
+ * least-textured ones (the median P=16 window scores 17; a quarter score
+ * under 2).
+ */
+const DEFAULT_PATCH_MIN_SCORE = 25;
+
+/**
+ * Default spacing between patch centres, level-0 px: 0.75 × `√(W·H / Q)`,
+ * rounded. `√(W·H / Q)` is the side of one cell if the budget tiled the
+ * image exactly; three quarters of it leaves room for about twice the budget
+ * in a hexagonal packing, so the budget still fills when parts of the target
+ * are flat, while forbidding the clusters a bare score ranking produces. On
+ * pinball it is 54 px; at 1.0 × (72 px) only 42 of 64 patches fit, at 0.5 ×
+ * (27 px) the patches cover 32 rather than 52 cells of an 8 × 8 grid.
+ */
+function defaultPatchSpacing(width, height, maxPatches) {
+    return Math.round(0.75 * Math.sqrt((width * height) / maxPatches));
+}
+
+/**
+ * What `info.compiler.patchPyramid` records: the filter that built the level
+ * images patches are cut from. §5.7 does not say (open question Q11), so the
+ * file carries it as provenance; `crates/wnft-format/tests/real_target.rs`
+ * asserts it on the committed demo target.
+ */
+const PATCH_PYRAMID =
+    "buildFramePyramid (@webarkit/nft-tracker): a box of width r over the bilinear " +
+    "reconstruction, rounded to nearest";
+
+/**
+ * The most patch windows `compile-target` lets `selectPatches` score: 2^23.
+ *
+ * `selectPatches` keeps every window scoring at least `--patch-min-score`
+ * as a candidate, and on a fully textured image that can be every window,
+ * whatever the threshold. Measured on noise at `--patch-min-score 0` (the
+ * worst case, and the one a threshold cannot be relied on to avoid): about
+ * 30 bytes and 0.55 s per million windows, so this cap is roughly 250 MB and
+ * 5 s. The default 640-px cap at three levels is about 0.63 M windows.
+ *
+ * The bound lives here, not in `selectPatches`: see the note on its cost in
+ * `src/tracking/select_patches.ts` for why, and for when that changes.
+ */
+const MAX_PATCH_WINDOWS = 2 ** 23;
+
+/**
+ * How many `P × P` windows `selectPatches` will score on the first
+ * `patchLevels` levels of a `width × height` target: each level at the size
+ * `ImagePyramid` defines, `(w · s_l) | 0` × `(h · s_l) | 0`. An upper bound,
+ * since the target may end up with fewer levels than asked for.
+ *
+ * The loop stops at the first level smaller than 1 × 1, which comes long
+ * before `s_l` could underflow, and at level 255, the last a `.wnft` can
+ * name (`level` is `u8`, §5.7), so `levelScale` is never handed an argument
+ * it throws on.
+ */
+function patchWindows(width, height, scaleStep, patchLevels, P) {
+    let windows = 0;
+    for (let l = 0; l < Math.min(patchLevels, 256); l++) {
+        const s = levelScale(scaleStep, l);
+        const w = (width * s) | 0;
+        const h = (height * s) | 0;
+        if (w < 1 || h < 1) break;
+        if (w >= P && h >= P) windows += (w - P + 1) * (h - P + 1);
+    }
+    return windows;
+}
+
+/**
+ * What `info.compiler.patchScore` records: which quantity `patches.score`
+ * holds, in which units. §5.7 fixes the quantity (Shi–Tomasi's minimum
+ * eigenvalue) but not its normalisation, so without this a score — and
+ * `patchMinScore` beside it — cannot be read by anyone who did not also read
+ * `select_patches.ts`, and a compiler that normalised differently would
+ * write numbers on another scale into the same field unnoticed.
+ */
+const PATCH_SCORE =
+    "lambda-min of the mean structure tensor over the window interior, " +
+    "central differences, (grey levels / level-0 px)^2";
 
 /**
  * The directory the command was typed in, which is not always the cwd.
@@ -132,6 +262,12 @@ const USAGE = `usage: compile-target <image.jpg> -o <out.wnft> [options]
                               (default: unknown, units stay level-0 pixels)
       --max-side <px>         cap the image's longer side (default ${DEFAULT_MAX_SIDE})
       --seed <n>              RNG seed, recorded and enforced (default 0)
+      --patches <n>           tracking-patch budget, 0 for none (default ${DEFAULT_MAX_PATCHES})
+      --patch-size <px>       patch edge, at least 3 (default ${DEFAULT_PATCH_SIZE})
+      --patch-levels <n>      pyramid levels patches may come from (default ${DEFAULT_PATCH_LEVELS})
+      --patch-min-score <x>   minimum Shi-Tomasi score (default ${DEFAULT_PATCH_MIN_SCORE})
+      --patch-spacing <px>    minimum distance between patch centres, level-0 px
+                              (default 0.75 * sqrt(width * height / patches))
       --name <text>           info.name (default: the image's base name)
   -h, --help                  this text
 `;
@@ -174,12 +310,22 @@ function withSeededRandom(seed, run) {
     }
 }
 
-/** A positive, finite number from `text`, or a `UsageError` naming `flag`. */
-function positiveNumber(text, flag, { integer = false } = {}) {
+/**
+ * A positive — or with `zero`, non-negative — finite number from `text`, or a
+ * `UsageError` naming `flag`.
+ */
+function positiveNumber(text, flag, { integer = false, zero = false } = {}) {
     const value = Number(text);
-    if (!Number.isFinite(value) || value <= 0 || (integer && !Number.isInteger(value))) {
+    if (
+        text.trim() === "" ||
+        !Number.isFinite(value) ||
+        value < 0 ||
+        (value === 0 && !zero) ||
+        (integer && !Number.isInteger(value))
+    ) {
+        const what = zero ? "non-negative" : "positive";
         throw new UsageError(
-            `${flag} expects a positive ${integer ? "integer" : "number"}, got "${text}"`
+            `${flag} expects a ${what} ${integer ? "integer" : "number"}, got "${text}"`,
         );
     }
     return value;
@@ -220,6 +366,11 @@ function parseArgs(argv) {
         maxSide: DEFAULT_MAX_SIDE,
         seed: 0,
         name: null,
+        maxPatches: DEFAULT_MAX_PATCHES,
+        patchSize: DEFAULT_PATCH_SIZE,
+        patchLevels: DEFAULT_PATCH_LEVELS,
+        patchMinScore: DEFAULT_PATCH_MIN_SCORE,
+        patchSpacing: null,
         help: false,
     };
 
@@ -277,7 +428,7 @@ function parseArgs(argv) {
                     // check admits 0xffffffff, so a message saying "2^32"
                     // would name a value the CLI refuses.
                     throw new UsageError(
-                        `--seed expects an integer in [-4294967295, 4294967295], got "${text}"`
+                        `--seed expects an integer in [-4294967295, 4294967295], got "${text}"`,
                     );
                 }
                 i += 1;
@@ -287,11 +438,34 @@ function parseArgs(argv) {
                 options.name = next(argv, i, arg);
                 i += 1;
                 break;
+            case "--patches":
+                options.maxPatches = positiveNumber(next(argv, i, arg), arg, {
+                    integer: true,
+                    zero: true,
+                });
+                i += 1;
+                break;
+            case "--patch-size":
+                options.patchSize = positiveNumber(next(argv, i, arg), arg, { integer: true });
+                i += 1;
+                break;
+            case "--patch-levels":
+                options.patchLevels = positiveNumber(next(argv, i, arg), arg, { integer: true });
+                i += 1;
+                break;
+            case "--patch-min-score":
+                options.patchMinScore = positiveNumber(next(argv, i, arg), arg, { zero: true });
+                i += 1;
+                break;
+            case "--patch-spacing":
+                options.patchSpacing = positiveNumber(next(argv, i, arg), arg, { zero: true });
+                i += 1;
+                break;
             default:
                 if (arg.startsWith("-")) throw new UsageError(`unknown option "${arg}"`);
                 if (options.image !== null) {
                     throw new UsageError(
-                        `only one image at a time, got "${options.image}" and "${arg}"`
+                        `only one image at a time, got "${options.image}" and "${arg}"`,
                     );
                 }
                 options.image = arg;
@@ -303,6 +477,32 @@ function parseArgs(argv) {
     if (options.out === null) throw new UsageError("no output path: pass -o/--out <file.wnft>");
     if (options.scaleStep <= 1) {
         throw new UsageError(`--scale-step must be > 1, got ${options.scaleStep}`);
+    }
+    // selectPatches' own domain (SelectPatchesOptions), checked here so the
+    // message names the flag rather than arriving as "invalid-options".
+    if (options.maxPatches !== 0 && options.maxPatches < 4) {
+        throw new UsageError(
+            `--patches must be 0 (no patches) or at least 4, the minimum for a homography, ` +
+                `got ${options.maxPatches}`,
+        );
+    }
+    if (options.patchSize < 3) {
+        throw new UsageError(`--patch-size must be at least 3, got ${options.patchSize}`);
+    }
+    // §6.4's default resource limits. `encode` does not enforce them, so
+    // without these checks the compiler would write a file that its own
+    // `decode` — and validate-target — refuse with LIMIT_EXCEEDED.
+    if (options.maxPatches > DEFAULT_LIMITS.maxPatches) {
+        throw new UsageError(
+            `--patches must be at most ${DEFAULT_LIMITS.maxPatches}, the default decoder ` +
+                `limit (§6.4), got ${options.maxPatches}`,
+        );
+    }
+    if (options.patchSize > DEFAULT_LIMITS.maxPatchSize) {
+        throw new UsageError(
+            `--patch-size must be at most ${DEFAULT_LIMITS.maxPatchSize}, the default decoder ` +
+                `limit (§6.4), got ${options.patchSize}`,
+        );
     }
 
     options.maxKeypoints ??= options.levels * DEFAULT_KEYPOINTS_PER_LEVEL;
@@ -318,17 +518,101 @@ async function main(argv) {
     }
 
     const image = grayFromJpegFile(fromInvocation(options.image), options.maxSide);
+
+    // Refused before the backend runs, so an oversized compile fails in the
+    // time it takes to decode the image rather than after detection.
+    if (options.maxPatches !== 0) {
+        const patchLevels = Math.min(options.patchLevels, options.levels);
+        const windows = patchWindows(
+            image.width,
+            image.height,
+            options.scaleStep,
+            patchLevels,
+            options.patchSize,
+        );
+        if (windows > MAX_PATCH_WINDOWS) {
+            throw new UsageError(
+                `tracking patches would score ${windows} windows on a ` +
+                    `${image.width}x${image.height} image at --patch-levels ${patchLevels} ` +
+                    `and --patch-size ${options.patchSize}, over the limit of ` +
+                    `${MAX_PATCH_WINDOWS}. Use a smaller --max-side or fewer --patch-levels ` +
+                    `(or --patches 0 for a detection-only target). A higher ` +
+                    `--patch-min-score keeps fewer candidates on most images, but cannot ` +
+                    `lift this limit: on a fully textured image every window can qualify.`,
+            );
+        }
+    }
+
     const cv = await createJsfeatNextBackend();
 
-    const built = withSeededRandom(options.seed, () =>
-        buildTargetFromImage(cv, image, {
+    const patchSpacing =
+        options.patchSpacing ??
+        (options.maxPatches === 0
+            ? 0
+            : defaultPatchSpacing(image.width, image.height, options.maxPatches));
+
+    // Patch selection runs inside the seeded region too, so the reported draw
+    // count covers the whole build and not only the backend's part of it.
+    const built = withSeededRandom(options.seed, () => {
+        const db = buildTargetFromImage(cv, image, {
             levels: options.levels,
             maxKeypoints: options.maxKeypoints,
             scaleStep: options.scaleStep,
             physicalSizeMm: options.physicalSizeMm,
             name: options.name,
-        })
-    );
+        });
+        if (options.maxPatches === 0) return { db, patches: null };
+
+        // A PREFIX of the target's levels — the first --patch-levels, each at
+        // the size the file records for it. `SelectPatches` in
+        // src/tracking/types.ts asks for "exactly the target's
+        // levelSizes.length levels", so this departs from its wording, on
+        // purpose. The reason it gives for that rule is that a patch must not
+        // name a level the file lacks and must be bounds-checked against the
+        // file's own sizes (§5.7, INCONSISTENT_DATA); a prefix at the file's
+        // sizes guarantees both. It is also the only way to limit the levels:
+        // SelectPatchesOptions has no such knob. Aligning the wording ("the
+        // first k ≤ L levels, each of exactly the file's size") is a change
+        // to types.ts, the contract the tracking modules share, and not one
+        // to make here.
+        const { scaleStep, levelSizes } = db.pyramid;
+        const levels = Math.min(options.patchLevels, levelSizes.length);
+        const built = buildFramePyramid(image, { levels, scaleStep });
+        if (!built.ok) {
+            throw new Error(`buildFramePyramid refused the target image: ${built.reason}`);
+        }
+        // buildFramePyramid computes its sizes by the rule the file records
+        // (§5.4), and a patch is in bounds only against the file's sizes, so
+        // the two are compared rather than assumed equal.
+        built.pyramid.levels.forEach((level, l) => {
+            const [w, h] = levelSizes[l];
+            if (level.width !== w || level.height !== h) {
+                throw new Error(
+                    `pyramid level ${l} is ${level.width}x${level.height}, ` +
+                        `but the target records ${w}x${h}`,
+                );
+            }
+        });
+        const selected = selectPatches(built.pyramid, {
+            patchSize: options.patchSize,
+            maxPatches: options.maxPatches,
+            minScore: options.patchMinScore,
+            minSpacing: patchSpacing,
+        });
+        return { db, patches: selected };
+    });
+
+    const selected = built.value.patches;
+    if (selected !== null && !selected.ok) {
+        process.stderr.write(
+            `compile-target: no tracking patches: selectPatches said "${selected.reason}". ` +
+                (selected.reason === "too-few-patches"
+                    ? `Fewer than four windows qualify; lower --patch-min-score or ` +
+                      `--patch-spacing, or pass --patches 0 for a detection-only target.\n`
+                    : `\n`),
+        );
+        return 1;
+    }
 
     // `buildTargetFromImage` writes `info.name` and nothing else, so the
     // provenance the compiler owns is added here rather than taught to the
@@ -336,9 +620,10 @@ async function main(argv) {
     // with the image beside it, they are what makes a committed `.wnft`
     // rebuildable by someone who did not run the command.
     const target = {
-        ...built.value,
+        ...built.value.db,
+        ...(selected === null ? {} : { patches: selected.patches }),
         info: {
-            ...built.value.info,
+            ...built.value.db.info,
             compiler: {
                 tool: "@webarkit/nft-tracker compile-target",
                 source: basename(options.image),
@@ -347,6 +632,23 @@ async function main(argv) {
                 scaleStep: options.scaleStep,
                 maxSide: options.maxSide,
                 seed: options.seed,
+                maxPatches: options.maxPatches,
+                ...(selected === null
+                    ? {}
+                    : {
+                          patchSize: options.patchSize,
+                          // What was used, not what was asked for: a target
+                          // with fewer levels than --patch-levels offers only
+                          // the levels it has.
+                          patchLevels: Math.min(
+                              options.patchLevels,
+                              built.value.db.pyramid.levelSizes.length,
+                          ),
+                          patchMinScore: options.patchMinScore,
+                          patchSpacing,
+                          patchPyramid: PATCH_PYRAMID,
+                          patchScore: PATCH_SCORE,
+                      }),
             },
         },
     };
@@ -354,7 +656,7 @@ async function main(argv) {
     const written = encode(target);
     if (!written.ok) {
         process.stderr.write(
-            `compile-target: encode refused this target: ${written.error} at ${written.detail}\n`
+            `compile-target: encode refused this target: ${written.error} at ${written.detail}\n`,
         );
         return 1;
     }
@@ -364,11 +666,13 @@ async function main(argv) {
     writeFileSync(out, written.bytes);
 
     const levels = target.pyramid.levelSizes.length;
+    const patchCount = target.patches?.count ?? 0;
     process.stdout.write(
         `${options.out}: ${image.width}x${image.height}, ` +
             `${target.keypoints.count} keypoints over ${levels} level${levels === 1 ? "" : "s"}, ` +
+            `${patchCount} patch${patchCount === 1 ? "" : "es"}, ` +
             `${written.bytes.length} bytes ` +
-            `(${built.draws} random draw${built.draws === 1 ? "" : "s"})\n`
+            `(${built.draws} random draw${built.draws === 1 ? "" : "s"})\n`,
     );
     return 0;
 }

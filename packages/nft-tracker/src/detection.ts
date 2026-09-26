@@ -124,7 +124,7 @@ export function chooseDescriptorSet(cv: CvBackend, target: TargetDb): UsableDesc
     throw new Error(
         `@webarkit/nft-tracker: no descriptor set in this target is usable by backend ` +
             `'${cv.capabilities.name}'. The target offers [${offered}]; the backend reads ` +
-            `binary hamming sets of kind [${supported.join(", ")}].`
+            `binary hamming sets of kind [${supported.join(", ")}].`,
     );
 }
 
@@ -169,7 +169,7 @@ export function matchPerLevel(
     cv: CvBackend,
     query: Descriptors,
     levels: readonly TargetLevelView[],
-    ratio: number
+    ratio: number,
 ): Match[] {
     const best = new Map<number, Match>();
     for (const { descriptors, kpIndex } of levels) {

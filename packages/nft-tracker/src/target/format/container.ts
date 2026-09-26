@@ -115,12 +115,7 @@ export type ParseResult =
     | ({ readonly ok: false } & Failure);
 
 function readType(bytes: Uint8Array, at: number): string {
-    return String.fromCharCode(
-        bytes[at]!,
-        bytes[at + 1]!,
-        bytes[at + 2]!,
-        bytes[at + 3]!,
-    );
+    return String.fromCharCode(bytes[at]!, bytes[at + 1]!, bytes[at + 2]!, bytes[at + 3]!);
 }
 
 const no = (error: Parameters<typeof fail>[0], detail: string): ParseResult => ({
@@ -180,10 +175,7 @@ export function parseContainer(bytes: Uint8Array): ParseResult {
         const crc = view.getUint32(at + 8, true);
         const reserved = view.getUint32(at + 12, true);
         if (reserved !== 0) {
-            return no(
-                "BAD_CONTAINER",
-                `chunk "${type}" reserved word must be 0, got ${reserved}`,
-            );
+            return no("BAD_CONTAINER", `chunk "${type}" reserved word must be 0, got ${reserved}`);
         }
         const dataStart = at + CHUNK_HEADER_SIZE;
         // `length` is a u32 and `align8` is arithmetic, so this sum is exact
@@ -206,9 +198,7 @@ export function parseContainer(bytes: Uint8Array): ParseResult {
     if (chunks.filter((c) => c.type === JSON_TYPE).length !== 1) {
         return no("BAD_CONTAINER", "there must be exactly one JSON chunk");
     }
-    const binIndexes = chunks
-        .map((c, i) => (c.type === BIN_TYPE ? i : -1))
-        .filter((i) => i >= 0);
+    const binIndexes = chunks.map((c, i) => (c.type === BIN_TYPE ? i : -1)).filter((i) => i >= 0);
     if (binIndexes.length > 1) {
         return no("BAD_CONTAINER", "there must be at most one BIN chunk");
     }

@@ -38,10 +38,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-    DEFAULT_LIMITS,
-    resolveLimits,
-} from "../../../src/target/format/limits.js";
+import { DEFAULT_LIMITS, resolveLimits } from "../../../src/target/format/limits.js";
 
 describe("resolveLimits", () => {
     it("uses the §6.4 defaults when given nothing", () => {

@@ -32,7 +32,7 @@
 //! whether the set is usable, preserved, or dropped.
 
 /// The only `format.version` this build reads or writes (§7.1).
-pub(crate) const SUPPORTED_FORMAT_VERSION: &str = "0.2";
+pub(crate) const SUPPORTED_FORMAT_VERSION: &str = "0.3";
 
 /// The only `container_major` this build frames (§7.1). Any `container_minor` is
 /// accepted: a newer minor only adds chunks a reader can skip.
@@ -77,10 +77,10 @@ pub(crate) const KNOWN_DESCRIPTOR_NORMS: &[&str] = &["hamming", "l2"];
 /// unknown one makes a set uninterpretable, so such a set is dropped.
 pub(crate) const KNOWN_ELEMENT_TYPES: &[&str] = &["bits", "u8", "f32"];
 
-/// Extensions this build implements — none, because format 0.2 defines none to
+/// Extensions this build implements — none, because format 0.3 defines none to
 /// implement.
 ///
-/// `WKNF_multiview` is the only extension §5.6 names, and in 0.2 it defines **no
+/// `WKNF_multiview` is the only extension §5.6 names, and in 0.3 it defines **no
 /// payload**: it is purely a permission, relaxing the `M = N` and identity-
 /// `kpIndex` rules for a file that lists it in `extensionsRequired`. There is
 /// nothing here for a codec to implement, and nothing this list could truthfully

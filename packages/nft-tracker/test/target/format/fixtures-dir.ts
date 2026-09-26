@@ -52,5 +52,15 @@ export const CORPUS_ROOT = fileURLToPath(
     new URL("../../../../../fixtures/nft-target/", import.meta.url),
 );
 
-/** `fixtures/nft-target/0.2/`, this build's own version (§8.3). */
-export const FIXTURES_DIR = `${CORPUS_ROOT}0.2/`;
+/** `fixtures/nft-target/0.3/`, this build's own version (§8.3). */
+export const FIXTURES_DIR = `${CORPUS_ROOT}0.3/`;
+
+/**
+ * Released versions whose corpus is frozen and which this build no longer
+ * reads (§8.3).
+ *
+ * Under §7.1's exact-minor rule for `0.x`, every file in them must be
+ * **rejected** with `UNSUPPORTED_FORMAT_VERSION` — never misread, and never
+ * quietly decoded because the bytes happen to still parse.
+ */
+export const FROZEN_VERSIONS = ["0.2"] as const;

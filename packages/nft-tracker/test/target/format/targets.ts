@@ -73,7 +73,7 @@ export const goodBitsSet = (): BitsDescriptorSet => ({
 
 /** L = 1, N = 1, one `orb` set of one row. The smallest legal target. */
 export const good = (): TargetDb => ({
-    formatVersion: "0.2",
+    formatVersion: "0.3",
     extensionsUsed: [],
     extensionsRequired: [],
     meta: { widthPx: 8, heightPx: 4, physicalSizeMm: null },

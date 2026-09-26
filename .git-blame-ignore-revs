@@ -1,0 +1,12 @@
+# Revisions to skip when running `git blame`.
+#
+# GitHub reads this file automatically. Locally it needs one command per clone:
+#
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Only whole-tree mechanical rewrites belong here — a commit in this list is a
+# commit nobody can be asked about, so anything carrying a decision must stay
+# blameable. One entry per line, full 40-character SHA, with what it was.
+
+# style: reformat with prettier (#51) — 41 files, layout only, no behaviour.
+53a5ccd1c1cc4618b4e6d44fc35e0eae557c8a4c
