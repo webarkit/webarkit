@@ -889,3 +889,306 @@ which scale they are matched) is the other half. The TypeScript
 implementation has had one pass of optimisation (unrolled four-tap passes,
 3.08 → 1.87 ms here for four levels, bit-identical); integer arithmetic is
 the obvious next pass if the pyramid stays in TypeScript.
+
+## 2026-09-25 — M2: the tracking state on the reference device
+
+A measurement plan, written down **before** any of its runs, as the
+`maxKeypoints` sweep's was. The runs are made by hand after the page's
+tracking mode is merged; their results go in a Results section at the end of
+this one, and the plan itself stays as written.
+
+This is #48's first "Evaluation" item. `bench-nft.html` now has a
+**tracking** mode, beside **stateless** and **detection-only**, and reports
+the figure ADR-0001 point 5 decides on — tracker-side TypeScript compute in
+the tracking state — as a number of its own.
+
+### What a run reports
+
+- **The target.** Tracking needs patches, so every run in this plan uses
+  `examples/targets/pinball.wnft` (64 patches of 16 × 16, all from level 0),
+  loaded from the file — the stateless runs too, so the comparison is between
+  modes, not between targets. The export records it, with the file's SHA-256.
+- **Per frame:** the `state`; the tracker's `trackerTimings` (`trackMs`,
+  `pyramidMs`, `alignMs`, `fitMs`, as `src/tracker.ts` defines them); its
+  `tracking` counts (`fitIterations`, `fitConverged`, `inliers`, `observed`,
+  `culled`, …); its `quality`; and the target's four `corners`, reprojected
+  into the frame.
+- **Per run** (`runSummary`, and the page's "Run summary" panel): TRACK
+  share; re-acquisitions; a lock's first steps and how many were confirmed, a
+  held lock's steps and how many were lost; **`trackStepMs`** — `trackMs` on
+  TRACK frames, point 5's figure; `pyramidMs`, frame levels, capped fits; and
+  the corners' `jitterPx` and `spreadPx`.
+
+Each is defined once, in `examples/js/bench-metrics.mjs`; every export carries
+the definitions and their `metricsVersion`. `scripts/compare-bench.mjs` puts
+two exports of one clip side by side, on the media times both posed — the one
+table the tracked and stateless numbers are compared in.
+
+**Two numbers for "jitter", and why.** Taken literally — the corners'
+standard deviation over the run, `spreadPx` — jitter on `pinball-static.mp4`
+mostly measures the clip: its framing drifts, the target's top corners moving
+about 3.7 px over the 12 s and about 3 px back at each loop, and detection and
+tracking agree on the drift. So the number tested here is `jitterPx`: the
+corners' standard deviation about their own straight-line motion within each
+one-second window of media time, pooled with n − 2 degrees of freedom per
+window. It equals the SD for a target still in the image, does not count
+motion that is straight over a second, and does not depend on how many frames
+a run processed per second — which matters, because a tracker's error is
+correlated from frame to frame, and a frame-to-frame measure would have
+flattered a faster run (or a smoothing filter) by that alone. `spreadPx` is
+reported beside it, untested.
+
+### Pre-flight: a desktop replay
+
+Not an on-device measurement. `node scripts/replay-clips.mjs` runs each
+bundled clip's frames — decoded and scaled by ffmpeg to the page's processing
+size, not by the browser — through `NftTracker` with `pinball.wnft`, two
+loops, on the desktop PC this plan was written on (Intel i7-9700, Node 24,
+Windows). Besides "every frame", **device schedules** model a device that
+processes only the frames it is free for: after a frame at media time *t*,
+the next is the first at or after *t* + busy, where busy is the clip's own
+acquire + gray p50 on `Tab_9_WiFi` (above), plus 83.2 ms on a frame that
+detected (the rear-camera runs' detect, describe, match and
+estimateHomography), plus a tracking step of 15 or 25 ms on a frame that ran
+one. The model leaves out the page's own work per frame (the overlay and the
+stats panel, after `total`), the video callback's latency and JIT warm-up, so
+it brackets the device rather than predicting it to the frame.
+
+Every number in this section comes from three runs of that script, committed
+as printed in [`2026-09-25-desktop-replay.md`](./2026-09-25-desktop-replay.md).
+The runs differ by RANSAC's draws in the detections and by this machine's
+timing noise, so the table gives ranges over the three.
+
+| clip, processed at | tracking, schedule | TRACK share | first steps confirmed | held-lock steps lost (+ at loop wraps) | `trackStepMs` p50 / p95, desktop | capped fits |
+|---|---|---|---|---|---|---|
+| static, 203×360 | every frame | 99.9% | 1 / 1 | 0 / 724 (+0) | 4.0–4.4 / 5.6–6.7 | 0 |
+| | device, 15 or 25 ms | 99.7% | 1 / 1 | 0 / 361 (+0) | 3.8–4.2 / 5.6–6.6 | 0 |
+| wall, 480×270 | every frame | 69.1–69.5% | 4–5 / 132–133 | 2–3 / 411–413 (+1) | 6.3–6.8 / 8.6–10.2 | 0 |
+| | device, 15 ms | 81.7–83.5% | 4–5 / 58–63 | 2–3 / 355–373 (+1) | 6.3–6.6 / 8.6–9.2 | 0–1 |
+| | device, 25 ms | 57.7–61.8% | 12–18 / 68–76 | 10–18 / 124–136 (+0–1) | 7.1–7.5 / 9.4–10.5 | 3–4 of 133–144 |
+| table, 203×360 | every frame | 78.7–81.3% | 2–3 / 87–104 | 0–1 / 419–433 (+1) | 5.0–5.3 / 7.1–7.8 | 0–1 |
+| | device, 15 or 25 ms | 79.6–84.3% | 5–7 / 31–39 | 3–5 / 163–182 (+1) | 5.6–6.4 / 7.8–9.5 | 0–2 |
+
+Also from the replay:
+
+- **Frame levels:** 1 on every TRACK frame of every clip and schedule;
+  alignment is 97–99% of `trackStepMs`.
+- **The static clip holds its lock through its loops:** no re-acquisition,
+  and no lock lost, at the wrap, on any schedule.
+- **On the moving clips, a lock is almost never lost once held; it is a
+  detection the first step cannot confirm.** Nearly every lock loss is a
+  lock's first step, with 0–1 patches observed and 19–29 of the 64 culled at
+  p50: a detection of a target partly out of view, or of the wrong place,
+  which the step refuses rather than tracks. Held locks lose at most 1% of
+  their steps on the wall clip while the schedule keeps up with it (every
+  frame, 15 ms) and 0–3% on the table clip; on the wall clip's 25 ms
+  schedule, where each processed step spans two frames, 7–15%. Each moving
+  clip also loses a held lock at its loop wrap, where the clip itself jumps;
+  those are counted apart (`lostAtLoopWrap`).
+- **Jitter, static clip, aligned on common frames:** every frame, `jitterPx`
+  0.131 tracked against 0.44–0.50 detection-only (÷ 3.4–3.8); device
+  schedules, 0.153–0.158 against 0.42–0.54 (÷ 2.7–3.5). `spreadPx` 0.89–0.90
+  against 1.02–1.08. Every detection on the static clip was right in all
+  three runs; on the table clip they were not (a `spreadPx` in the thousands
+  of px, from detections far off), which is why jitter is read on the static
+  clip only.
+- **Quality:** the lowest TRACK quality per run was 0.34–0.37 on the static
+  clip, 0.11–0.14 on the wall clip and 0.15–0.29 on the table clip; TRACK
+  frames at 0.20 or below: 0, 4–9 and 0–3.
+- **Fits:** at most 4 of 133 reached the iteration cap (3.0%, the wall clip's
+  25 ms schedule); iterations were 3 at p50 on the static and table clips and
+  4 on the wall clip.
+
+### The runs
+
+**Every run:** `maxKeypoints` 300, processing box 480×360, window 300 frames
+(at least one loop of every clip in every mode), start at 0, target
+`targets/pinball.wnft`. Load the page fresh for each run with its parameters
+in the URL, press Start, and let it run **at least 50 frames past the window
+filling** (the window shows `300 / 300`; wait a further ~5 s) before Stop and
+Download, so the window holds no cold-JIT frames. About two minutes idle
+between runs, the same charging state throughout.
+
+**`Tab_9_WiFi`** (the reference device; its own Chrome over `adb reverse`;
+device label `Tab_9_WiFi`), in this order:
+
+| # | source | mode | URL parameters |
+|---|---|---|---|
+| 1 | static | tracking | `?mode=tracking&window=300&clip=pinball-static.mp4` |
+| 2 | static | stateless | `?mode=stateless&target=wnft&window=300&clip=pinball-static.mp4` |
+| 3 | wall | tracking | `?mode=tracking&window=300&clip=pinball-bench.mp4` |
+| 4 | wall | stateless | `?mode=stateless&target=wnft&window=300&clip=pinball-bench.mp4` |
+| 5 | table | tracking | `?mode=tracking&window=300&clip=pinball-bench-table.mp4` |
+| 6 | table | stateless | `?mode=stateless&target=wnft&window=300&clip=pinball-bench-table.mp4` |
+| 7 | static | tracking (repeat of 1) | as 1 |
+| 8 | wall | tracking (repeat of 3) | as 3 |
+| 9 | table | tracking (repeat of 5) | as 5 |
+| 10 | rear camera | tracking | `?mode=tracking&window=300&camera=rear` — the printed target in view, hand-held |
+| 11 | — | pyramid probe | no parameters; press "Time frame pyramid" |
+
+**Oppo A72** (a second sample, not the reference device: point 5 is not
+evaluated on it), by hand: runs 1–6 and 11.
+
+**File names:** `YYYY-MM-DD-<tab9|oppo-a72>-ondevice-<tracking|stateless>-<static|wall|table>.json`,
+`…-repeat.json` for 7–9, `…-tracking-camera.json` for 10,
+`…-pyramid-probe.json` for 11. An export of 300 frames is about 0.45 MB;
+whether every Oppo export is committed, or its summary, is decided with the
+results. The stateless reference for the camera path stays the 2026-09-24
+rear-camera runs (109.0 and 109.7 ms `total` p50, `acquire` 23.0 ms).
+
+After the runs, the denominator of the proxy check (prediction 1) is taken on
+the desktop from each tracking export:
+`node scripts/replay-clips.mjs --sequence <export.json>` replays exactly the
+frames it processed.
+
+### Validity checks (before reading any number)
+
+1. `userAgent` contains `Android`; the device label is as planned.
+2. Each export's `mode` is the planned one; its `target.file` is
+   `targets/pinball.wnft`, and `target.sha256` is the same in every export.
+3. Tracking runs: `tracker.detectionOnly === false`.
+4. 300 frames; `ticks − 300 ≥ 50` (no cold-JIT frame in the window). File
+   runs: `runSummary.loopWraps ≥ 1` (the window saw the whole clip).
+5. Repeats (7–9 against 1, 3, 5): `trackStepMs` p50 within ±10%, TRACK share
+   within ±10 points — else the session drifted and that result is
+   **inconclusive**, not falsified. (On the wall clip, TRACK share can also
+   cross the regime boundary of prediction 4 between two runs; that is read as
+   inconclusive too.)
+6. `clockResolutionMs` recorded (0.1 ms expected): a timing under it reads 0
+   or 0.1.
+7. Static-clip runs (1, 2, 7): `spreadPx` ≤ 2 px (replay 0.89–1.08). Above
+   that, some pose in the window is wrong, and prediction 3 is not read until
+   it is found: `jitterPx` pools every posed frame.
+
+### What each should show, and what would falsify it
+
+Results between "holds" and "falsified" are reported as **inconclusive**, not
+rounded toward either side.
+
+**1. Tracker-side compute against 8 ms, and against the ~10 ms the camera
+path leaves after `acquire`.** Replay `trackStepMs` p50, desktop, over its
+schedules and runs: static 3.8–4.4 ms, wall 6.3–7.5, table 5.0–6.4 — alignment
+97–99% of it. The desktop-to-device proxy (the `gray` loop in
+`bench-tracking.mjs`) measured 3.4–3.8× on this machine over three runs, and
+3.1–4.1× in #63's container. If it holds, the device's `trackStepMs` p50 is
+about **12–18 ms** on the static clip, **20–31 ms** on the wall clip and
+**15–26 ms** on the table clip, and p95 above each. The camera path aligns the
+same 64 patches, below their scale, on a 270×360 frame: expect it near the
+static clip. So:
+
+- **Point 5, decided on the recorded clips** (it is defined "over a recorded
+  test sequence"). **Holds:** `trackStepMs` p95 > 8 ms on all three clips —
+  point 5's tracker-side condition is then met on the reference device; by
+  point 5 that triggers nothing yet (point 3 comes first, and the step to move
+  is patch alignment, not the pyramid: see 2). **Falsified:** p95 ≤ 8 ms on
+  the static clip, where the tracker holds its lock throughout.
+- **The ~10 ms, on the camera run** (the path it is defined on). **Holds:** the
+  camera run's `trackStepMs` p50 > 33 − `acquire` p50 − `gray` p50 of that
+  same run (about 10 ms). **Falsified:** ≤ it. Hand-held and not reproducible,
+  so this verdict is about the camera path, and the static clip's
+  `trackStepMs` corroborates it. Expected TRACK-frame `total` p50 on the
+  camera run: 23 + 1.2 + `trackStepMs` + the pose ≈ 36–42 ms, over the 33 ms
+  frame.
+- **The proxy, on the same frames.** For each tracking export, device p50 ÷
+  `--sequence` replay p50 (median of three). **Holds:** 3.1–4.1 on each clip.
+  **Wrong:** below 2.5 or above 5.0. Between: inconclusive.
+
+**2. `pyramidMs` against #63's 5.6–7.5 ms.** #63 estimated a four-level ∛2
+pyramid of 270×360 at 5.6–7.5 ms on the reference device, by the proxy above.
+The tracker does not build that pyramid here: `frameLevelsFor` (#66) builds
+only the levels the patches start on, and `pinball.wnft`'s patches are all
+level 0 and are seen below their own scale on every clip and on the camera
+path, so they start on frame level 0 — the frame itself, nothing computed.
+The replay: frame levels 1 on every TRACK frame, `pyramidMs` 0.00–0.01 ms.
+
+- **Prediction:** `tracking.frameLevels` = 1 on ≥ 99% of TRACK frames and
+  `pyramidMs` p95 ≤ 0.1 ms (one clock step), on every run. **Falsified:**
+  frame levels > 1 on more than 1% of TRACK frames (the target seen at more
+  than about 1.12× its level-0 scale).
+- So the run's `pyramidMs` does not test #63's estimate; the **pyramid probe**
+  (run 11) does: `buildFramePyramid` on the device, by #63's method, at #63's
+  sizes. #63's device estimates for 270×360 at 2 / 3 / 4 / 5 / 6 levels:
+  2.7–3.7 / 4.5–6.0 / **5.6–7.5** / 6.4–8.5 / 6.8–9.1 ms; this machine's three
+  runs of `bench-tracking.mjs` today, by its own 3.4–3.8× proxy: 2.9–3.2 /
+  5.0–5.4 / 6.1–6.8 / 7.6–7.9 / 7.6–8.3 ms. **Holds** (the proxy was right):
+  the device's four-level 270×360 p50 within 5.6–7.5 ms. **Wrong:** below 4.5
+  or above 9.4 ms (25% beyond either end). Otherwise inconclusive.
+- Either way, on these paths the pyramid costs nothing today; point 3's first
+  candidate would save nothing here until patches from deeper levels make the
+  tracker build more.
+
+**3. Jitter on the static clip, tracked against stateless.** Runs 1 and 2,
+read through `scripts/compare-bench.mjs` on the media times both posed. The
+replay under device schedules gave `jitterPx` 0.153–0.158 tracked against
+0.42–0.54 (÷ 2.7–3.5); every frame, 0.131 against 0.44–0.50 (÷ 3.4–3.8).
+Read only once validity check 7 holds: `jitterPx` pools every posed frame,
+DETECT and TRACK alike, so one wrong stateless detection could make the
+ratio hold for the wrong reason.
+
+- **Holds:** stateless ÷ tracking `jitterPx` ≥ 2. **Falsified:** < 1.3
+  (the tracker not measurably steadier). Between: inconclusive.
+- Tracking's `jitterPx` itself (expected 0.10–0.20 px) and the ratio are the
+  numbers M3 (IPPE and the One Euro filter) and M4 compare against. Both are
+  reported, whatever the verdict.
+- `spreadPx` is reported for both (expected 0.8–1.1 px, within about 20% of
+  each other) and **not tested**: on this clip it is the footage's drift.
+
+**4. Lock share on the three clips, and what #66's bounds predict for
+handheld footage.** #66 pins that one tracking step recovers the pose from a
+prediction up to 4 px, 3.5° of roll or 5% of scale off, and that from 4° of
+roll or past 8% of scale — on a step with no velocity to predict it, such as
+a lock's first — it may accept a wrong pose (up to 9.19 px off on the pinned
+render) that does not persist past a frame or two. The prediction is
+constant-velocity, so a *held* lock must survive the change of the target's
+motion between two processed frames; a *first* step must survive all of the
+motion since the detection, over the whole detection tick (about 120 ms, 3–4
+frames at 30 fps), plus the detection's own error. For hand-held footage that
+predicts:
+
+- **held locks rarely fail:** a hand's roll and scale change between two
+  processed frames stay far inside 3.5° and 5%, and its change of velocity
+  mostly inside 4 px — until the device skips frames, which widens every step;
+- **first steps are the fragile ones,** and a detection the step cannot
+  confirm is refused, not tracked wrong;
+- so **TRACK share is set by how much of a clip holds a confirmable
+  detection**, and by whether the device keeps up with the frame rate.
+
+The replay agrees (the pre-flight above). Predicted on `Tab_9_WiFi`, per run:
+
+| clip | TRACK share | held-lock steps lost | first steps confirmed |
+|---|---|---|---|
+| static | ≥ 95% | 0–1 (`lost`; `lostAtLoopWrap` apart) | every one |
+| wall | 70–85% if a TRACK tick keeps up with the clip (`acquire` + `gray` + `trackStepMs` p50 < 40 ms at 24.9 fps); 50–65% if it does not | ≤ 5% of held steps if it keeps up; ≤ 20% if not (`lost`; `lostAtLoopWrap` apart) | ≤ 30% |
+| table | 70–90% (at 41 ms `acquire`, a TRACK tick never keeps up with 30 fps) | ≤ 5% | ≤ 30% |
+
+- **Falsified:** on the static clip, TRACK share < 90%, more than 1 held-lock
+  step `lost`, or a first step refused; on a moving clip, held-lock losses
+  above twice the bound in its column, first steps confirmed above 50%, or
+  TRACK share more than 10 points outside its range. Between a bound and its
+  falsifier (first steps confirmed 30–50%, TRACK share within 10 points of the
+  range): inconclusive.
+- **Wrong poses** from rotation or scale cannot be seen without ground truth;
+  `lowQualityTrackFrames` (quality ≤ 0.20) is recorded as the watch number
+  (replay: 0 / 4–9 / 0–3). The camera run's TRACK share is reported, not
+  tested.
+
+**5. Fit health.** In the replay, 0–4 fits per run reached the iteration cap
+— at most 3.0% (4 of 133), on the wall clip's 25 ms schedule — and iterations
+were 3–4 at p50. **Prediction:** capped fits ≤ 4% of `fits.n` on every run. Above 5% on
+any run: not a falsification, a finding for the tuning pass (#66 measured 1 in
+484 on synthetic frames).
+
+**6. The Oppo A72.** Not the reference device; point 5 is not evaluated on
+it. On 2026-09-19 its stateless `total` p50 was 1.16× `Tab_9_WiFi`'s, and its
+stages 1.0–1.4× at p50 — the `gray` loop, the tracker proxy, 1.40×. **Expected**
+(reported, not tested): `trackStepMs` p50 1.2–1.7× Tab9's on each clip; a
+slower tick skips more frames, so TRACK share on the moving clips at or below
+Tab9's; jitter on the static clip within the same bands as prediction 3.
+
+### What this plan does not test
+
+- **Whether a TRACK pose is right.** There is no ground truth on these clips;
+  the tracker's accuracy is pinned on synthetic frames in
+  `packages/nft-tracker`'s tests.
+- **Tuning.** Every threshold stays at its provisional default; these runs
+  supply the tuning pass's inputs (#48), not its decisions.

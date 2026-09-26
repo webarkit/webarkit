@@ -236,6 +236,12 @@
         color: var(--bad);
         white-space: pre-wrap;
       }
+      .definition {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 10px 0 0;
+        white-space: pre-line;
+      }
       code {
         color: var(--accent);
       }
@@ -245,17 +251,18 @@
   <body>
     <h1>CvBackend — NFT pipeline benchmark</h1>
     <p class="lede">
-      Measures the <code>detect → describe → match → estimateHomography → poseFromHomography</code> pipeline
-      frame-by-frame, on this device, against a live webcam or a looped video file. Measurement only — nothing here
-      changes how the pipeline runs, it only times it. Two modes share every parameter and call the backend the same
-      way: <strong>stateless pipeline</strong> re-implements the calls inline (as the
-      <a href="./pinball-static-jsfeatnext-backend.html">static demo</a> does; the webcam demo already runs
-      <code>NftTracker</code> itself), <strong>NftTracker</strong> runs
-      <code>tracker.process()</code>. The target here is built with <code>buildTargetFromImage</code>, which writes no
-      tracking patches, so <code>NftTracker</code> runs detection-only — M1 of
-      <a href="../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md">ADR-0001</a> — and the two should report
-      the same numbers; that is the baseline M2's tracking state, which needs a target with patches, is measured
-      against.
+      Measures the <code>detect → describe → match → estimateHomography → poseFromHomography</code> pipeline and
+      <code>NftTracker</code>'s tracking state frame-by-frame, on this device, against a live webcam or a looped video
+      file. Measurement only — nothing here changes how the pipeline runs, it only times it. Three modes share every
+      parameter and call the backend the same way: <strong>stateless pipeline</strong> writes the detection calls out
+      inline (as the <a href="./pinball-static-jsfeatnext-backend.html">static demo</a> does);
+      <strong>NftTracker, detection-only</strong> runs <code>tracker.process()</code> with
+      <code>detectionOnly: true</code> — M1 of
+      <a href="../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md">ADR-0001</a>, which reports the same
+      numbers as the stateless pipeline; <strong>NftTracker, tracking</strong> runs M2's
+      <code>LOST → DETECT → TRACK</code> state machine, which needs a target with patches:
+      <code>targets/pinball.wnft</code>, loaded from the file, never built here. Every run metric is defined once, in
+      <code>js/bench-metrics.mjs</code>, and each export carries those definitions.
     </p>
 
     <div class="wrap">
@@ -303,7 +310,8 @@
                 >mode
                 <select id="mode">
                   <option value="stateless" selected>stateless pipeline</option>
-                  <option value="tracker">NftTracker</option>
+                  <option value="detection-only">NftTracker, detection-only</option>
+                  <option value="tracking">NftTracker, tracking</option>
                 </select>
               </label>
               <label
@@ -325,6 +333,15 @@
                 <input type="number" id="procHeight" min="1" max="4096" step="1" />
               </label>
             </div>
+            <div class="row">
+              <label
+                >target
+                <select id="target">
+                  <option value="image" selected>built here from images/pinball.jpg (no patches)</option>
+                  <option value="wnft">targets/pinball.wnft, loaded (patches)</option>
+                </select>
+              </label>
+            </div>
             <label
               >device label (for the export, typed by hand)
               <input type="text" id="deviceLabel" placeholder="e.g. Pixel 7, Chrome 129" />
@@ -333,6 +350,7 @@
               <button id="start">Start</button>
               <button id="stop" class="secondary" disabled>Stop</button>
               <button id="download" class="secondary" disabled>Download JSON</button>
+              <button id="probe" class="secondary" disabled>Time frame pyramid</button>
             </div>
           </div>
         </div>
@@ -347,7 +365,8 @@
           </dl>
           <div class="legend">
             <span><i class="swatch" style="background: #60a5fa"></i> keypoints</span>
-            <span><i class="swatch" style="background: #fbbf24"></i> target outline, reprojected</span>
+            <span><i class="swatch" style="background: #fbbf24"></i> target outline, detected (DETECT)</span>
+            <span><i class="swatch" style="background: #4ade80"></i> target outline, tracked (TRACK)</span>
           </div>
         </div>
 
@@ -365,6 +384,12 @@
             <tbody></tbody>
           </table>
         </div>
+
+        <div class="panel">
+          <h2>Run summary, over the window</h2>
+          <dl id="summary"></dl>
+          <p class="definition" id="definitions"></p>
+        </div>
       </div>
     </div>
 
@@ -373,20 +398,73 @@
     <script type="module">
       import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
       import {
+        buildFramePyramid,
         buildLevelIndex,
         buildTargetFromImage,
         chooseDescriptorSet,
+        decode,
         matchPerLevel,
         NftTracker,
+        DEFAULT_ALIGN_EPSILON,
+        DEFAULT_ALIGN_MAX_ITERATIONS,
+        DEFAULT_FIT_EPSILON,
+        DEFAULT_FIT_MAX_ITERATIONS,
+        DEFAULT_MAX_FIT_RMS,
+        DEFAULT_MAX_FRAME_LEVELS,
+        DEFAULT_MAX_OUTLIER_SHARE,
         DEFAULT_MAX_SCENE_KEYPOINTS,
+        DEFAULT_MIN_PATCH_ZNCC,
+        DEFAULT_MIN_TRACKED_PATCHES,
+        DEFAULT_PHOTOMETRIC,
         DEFAULT_RANSAC_THRESHOLD,
         DEFAULT_RATIO,
         DEFAULT_SCENE_LEVELS,
+        DEFAULT_TUKEY_C,
       } from "@webarkit/nft-tracker";
-      import { project, toGrayTimed } from "./js/pinball-shared.mjs";
+      import { toGrayTimed } from "./js/pinball-shared.mjs";
+      import {
+        clockResolution,
+        DEFINITIONS,
+        frameRecord,
+        framesForStage,
+        METRICS_VERSION,
+        parsePositiveInt,
+        parseRunParams,
+        percentile,
+        sha256Hex,
+        startRefusal,
+        summarizeRun,
+        targetCorners,
+        targetRecord,
+        texturedFrame,
+        timeRepeated,
+      } from "./js/bench-metrics.mjs";
 
-      const TARGET = "./images/pinball.jpg";
+      const TARGET_IMAGE = "./images/pinball.jpg";
+      const TARGET_FILE = "./targets/pinball.wnft";
       const TARGET_LEVELS = 8;
+      /** The long side the in-page target is built at, as the webcam demo builds its own. */
+      const TARGET_MAX_SIDE = 640;
+      /** The tracking step's own timings (TrackTimings), shown over TRACK frames only — see DEFINITIONS. */
+      const TRACKER_STAGES = ["trackMs", "pyramidMs", "alignMs", "fitMs"];
+      const TRACKER_STAGE_LABELS = {
+        trackMs: "tracking step, TRACK frames",
+        pyramidMs: "· frame pyramid",
+        alignMs: "· patch alignment",
+        fitMs: "· robust fit",
+      };
+      /** The injected clock: the tracker reads none of its own (ADR-0001 point 7). */
+      const clock = () => performance.now();
+      /** buildFramePyramid on this device, at the sizes and depths #63 estimated by proxy (docs/benchmarks/README.md). */
+      const PROBE_SIZES = [
+        [270, 360],
+        [480, 270],
+        [640, 480],
+      ];
+      const PROBE_LEVELS = [1, 2, 3, 4, 5, 6];
+      const PROBE_SCALE_STEP = Math.cbrt(2);
+      const PROBE_WARMUP = 50;
+      const PROBE_RUNS = 300;
       // The default processing box the live/looped frame is downscaled
       // into, same budget as the webcam demo -- this page compares two ways
       // of running the SAME pipeline, not a different one, so it keeps the
@@ -433,6 +511,11 @@
       const startButton = $("start");
       const stopButton = $("stop");
       const downloadButton = $("download");
+      const probeButton = $("probe");
+      const modeSelect = $("mode");
+      const targetSelect = $("target");
+      const windowSizeInput = $("windowSize");
+      const summaryDl = $("summary");
       const errorEl = $("error");
       const statsDl = $("stats");
       const percentilesBody = document.querySelector("#percentiles tbody");
@@ -456,21 +539,6 @@
 
       function activeStages() {
         return filterMatchesSupported ? STAGES : STAGES.filter((s) => s !== "filterMatches");
-      }
-
-      /**
-       * The history records where `stage` actually ran, so its percentiles
-       * are computed only over frames that paid the cost -- not diluted by
-       * frames where it was skipped and its timing sits at the `resetTimings`
-       * zero. Both `runStatelessPipeline` and `NftTracker.process` skip
-       * `estimateHomography` below four matches, and skip `poseFromHomography`
-       * whenever RANSAC found no consensus, so a frame's `ok`/`reason` say
-       * which stages actually ran on it.
-       */
-      function framesForStage(stage) {
-        if (stage === "estimateHomography") return history.filter((f) => f.reason !== "too-few-matches");
-        if (stage === "pose") return history.filter((f) => f.ok);
-        return history;
       }
 
       /** The source's native resolution, snapshotted at run start -- see the note in `runBenchmark`. */
@@ -519,6 +587,15 @@
        * measured.
        */
       let lastProcessingResolution = { width: PROC_WIDTH, height: PROC_HEIGHT };
+      /** The target the last run used (`targetRecord`) and its tracker's configuration, snapshotted at Start. */
+      let lastTarget = null;
+      let lastTracker = null;
+      /** Frames processed since Start, of which the window keeps the last windowSize: the export's `ticks`. */
+      let ticks = 0;
+      /** The two targets, prepared at page load: `image` always, `wnft` when the file loaded. */
+      const targets = { image: null, wnft: null };
+      /** `clockResolution(clock)`, measured once at page load. */
+      let clockResolutionMs = null;
 
       function showError(message) {
         errorEl.textContent = message;
@@ -678,19 +755,18 @@
         };
       }
 
-      function percentile(sortedAsc, p) {
-        if (sortedAsc.length === 0) return NaN;
-        const idx = Math.min(sortedAsc.length - 1, Math.floor((p / 100) * sortedAsc.length));
-        return sortedAsc[idx];
-      }
-
       function renderPercentiles() {
         percentilesBody.replaceChildren();
-        for (const s of activeStages()) {
-          const values = framesForStage(s).map((f) => f.timings[s]).sort((a, b) => a - b);
+        const rows = activeStages().map((s) => [STAGE_LABELS[s], framesForStage(history, s).map((f) => f.timings[s])]);
+        if (lastMode !== "stateless") {
+          const track = history.filter((f) => f.state === "TRACK" && f.trackerTimings);
+          for (const k of TRACKER_STAGES) rows.push([TRACKER_STAGE_LABELS[k], track.map((f) => f.trackerTimings[k])]);
+        }
+        for (const [label, raw] of rows) {
+          const values = raw.sort((a, b) => a - b);
           const tr = document.createElement("tr");
           const cells = [
-            STAGE_LABELS[s],
+            label,
             values.length ? percentile(values, 50).toFixed(2) : "—",
             values.length ? percentile(values, 95).toFixed(2) : "—",
             values.length ? values[values.length - 1].toFixed(2) : "—",
@@ -702,6 +778,45 @@
           }
           percentilesBody.append(tr);
         }
+      }
+
+      /** The run's summary over the window: `summarizeRun`, whose every key DEFINITIONS explains. */
+      function renderSummary() {
+        const s = summarizeRun(history);
+        const ms = (st) => (st.n ? `${st.p50.toFixed(2)} / ${st.p95.toFixed(2)} ms (n ${st.n})` : "—");
+        const px = (v) => (v === null ? "—" : `${v.toFixed(3)} px`);
+        const rows = [
+          ["target", lastTarget ? `${lastTarget.file}, ${lastTarget.patches} patches` : "—"],
+          ["frames", `${s.frames}: LOST ${s.states.LOST}, DETECT ${s.states.DETECT}, TRACK ${s.states.TRACK}`],
+          ["TRACK share", s.trackShare === null ? "—" : `${(100 * s.trackShare).toFixed(1)}%`],
+          ["re-acquisitions", `${s.reacquisitions} (+${s.reacquisitionsAtLoopWrap} at loop wraps)`],
+          ["first steps confirmed", `${s.firstSteps.confirmed} of ${s.firstSteps.n}`],
+          [
+            "held-lock steps lost",
+            `${s.heldLockSteps.lost} of ${s.heldLockSteps.n} (+${s.heldLockSteps.lostAtLoopWrap} at loop wraps)`,
+          ],
+          ["tracking step p50 / p95", `${ms(s.trackStepMs)}; ADR-0001 point 5: 8 ms at p95`],
+          ["frame pyramid p50 / p95", ms(s.pyramidMs)],
+          ["capped fits", `${s.fits.capped} of ${s.fits.n}`],
+          ["jitter", px(s.jitterPx)],
+          ["spread", px(s.spreadPx)],
+        ];
+        summaryDl.replaceChildren();
+        for (const [label, value] of rows) {
+          const dt = document.createElement("dt");
+          dt.textContent = label;
+          const dd = document.createElement("dd");
+          dd.textContent = value;
+          summaryDl.append(dt, dd);
+        }
+      }
+
+      function renderDefinitions() {
+        $("definitions").textContent = [
+          `tracking step — ${DEFINITIONS.trackStepMs}`,
+          `jitter — ${DEFINITIONS.jitterPx}`,
+          `spread — ${DEFINITIONS.spreadPx}`,
+        ].join("\n\n");
       }
 
       function renderStats(rows) {
@@ -852,34 +967,26 @@
       }
 
       /**
-       * A positive integer from `raw`, or `null` for anything else (empty,
-       * `abc`, `0`, `-5`, `1e999`) -- so a malformed URL parameter or an
-       * emptied field falls back to the default rather than reaching
-       * `detect` or the canvas as `NaN` or `0`.
-       */
-      function parsePositiveInt(raw) {
-        if (raw === null || String(raw).trim() === "") return null;
-        const n = Math.floor(Number(raw));
-        return Number.isFinite(n) && n >= 1 ? n : null;
-      }
-
-      /**
-       * `?maxKeypoints=N`, `?procWidth=W` and `?procHeight=H` pre-fill their
-       * controls, so a run on a phone reached over `adb reverse` can be set
-       * from the address bar instead of by tapping number fields. With no
-       * parameters the controls show `DEFAULT_MAX_SCENE_KEYPOINTS` and
-       * `PROC_WIDTH` x `PROC_HEIGHT`, and a run is the same one this page
-       * measured before the controls existed.
+       * URL parameters pre-fill the controls (`parseRunParams` lists them and
+       * their domains), so a run on a phone reached over `adb reverse` is set
+       * from the address bar. With none, a run is the one this page measured
+       * before each control existed.
        */
       function initRunInputs() {
-        const params = new URLSearchParams(location.search);
-        maxKeypointsInput.value = String(parsePositiveInt(params.get("maxKeypoints")) ?? DEFAULT_MAX_SCENE_KEYPOINTS);
-        procWidthInput.value = String(parsePositiveInt(params.get("procWidth")) ?? PROC_WIDTH);
-        procHeightInput.value = String(parsePositiveInt(params.get("procHeight")) ?? PROC_HEIGHT);
-        // `?camera=front` or `?camera=rear`; anything else keeps the rear default.
-        const camera = params.get("camera");
-        if (camera === "front") cameraSelect.value = "user";
-        else if (camera === "rear") cameraSelect.value = "environment";
+        const p = parseRunParams(location.search, {
+          bundledClips: [...bundledClipSelect.options].map((o) => o.value),
+        });
+        maxKeypointsInput.value = String(p.maxKeypoints ?? DEFAULT_MAX_SCENE_KEYPOINTS);
+        procWidthInput.value = String(p.procWidth ?? PROC_WIDTH);
+        procHeightInput.value = String(p.procHeight ?? PROC_HEIGHT);
+        if (p.camera) cameraSelect.value = p.camera;
+        if (p.mode) modeSelect.value = p.mode;
+        if (p.target) targetSelect.value = p.target;
+        if (p.windowSize) windowSizeInput.value = String(p.windowSize);
+        if (p.clip) {
+          bundledClipSelect.value = p.clip;
+          document.querySelector('input[name="source"][value="bundled"]').checked = true;
+        }
       }
 
       function readMaxKeypoints() {
@@ -966,25 +1073,44 @@
         }
       }
 
-      function drawOverlay(result, targetDb) {
+      function drawOverlay(result, record) {
         octx.clearRect(0, 0, overlay.width, overlay.height);
         octx.fillStyle = "#60a5fa";
         for (const k of result.sceneKeypoints) octx.fillRect(k.x - 1, k.y - 1, 2, 2);
-
-        if (result.ok) {
-          const corners = [
-            [0, 0],
-            [targetDb.meta.widthPx - 1, 0],
-            [targetDb.meta.widthPx - 1, targetDb.meta.heightPx - 1],
-            [0, targetDb.meta.heightPx - 1],
-          ].map(([x, y]) => project(result.H, x, y));
-          octx.strokeStyle = "#fbbf24";
+        if (record.corners) {
+          octx.strokeStyle = record.state === "TRACK" ? "#4ade80" : "#fbbf24";
           octx.lineWidth = 3;
           octx.beginPath();
-          corners.forEach(([x, y], i) => (i ? octx.lineTo(x, y) : octx.moveTo(x, y)));
+          record.corners.forEach(([x, y], i) => (i ? octx.lineTo(x, y) : octx.moveTo(x, y)));
           octx.closePath();
           octx.stroke();
         }
+      }
+
+      /**
+       * The tracker's options as this page runs it: its own defaults, which the
+       * page does not override, except the scene keypoint budget. Recorded in
+       * the export so a run stays readable after a default changes.
+       */
+      function trackerOptions(maxKeypoints, mode) {
+        return {
+          detectionOnly: mode === "detection-only",
+          sceneLevels: DEFAULT_SCENE_LEVELS,
+          maxSceneKeypoints: maxKeypoints,
+          ratio: DEFAULT_RATIO,
+          ransacThreshold: DEFAULT_RANSAC_THRESHOLD,
+          maxFrameLevels: DEFAULT_MAX_FRAME_LEVELS,
+          alignMaxIterations: DEFAULT_ALIGN_MAX_ITERATIONS,
+          alignEpsilon: DEFAULT_ALIGN_EPSILON,
+          photometric: DEFAULT_PHOTOMETRIC,
+          tukeyC: DEFAULT_TUKEY_C,
+          fitMaxIterations: DEFAULT_FIT_MAX_ITERATIONS,
+          fitEpsilon: DEFAULT_FIT_EPSILON,
+          minTrackedPatches: DEFAULT_MIN_TRACKED_PATCHES,
+          maxOutlierShare: DEFAULT_MAX_OUTLIER_SHARE,
+          maxFitRms: DEFAULT_MAX_FIT_RMS,
+          minPatchZncc: DEFAULT_MIN_PATCH_ZNCC,
+        };
       }
 
       function runBenchmark(cv, targetDb, mode, windowSize, maxKeypoints, box) {
@@ -1015,8 +1141,23 @@
         const probe = toGrayTimed(video, video.videoWidth, video.videoHeight, box.width, box.height, resetTimings({}));
         lastProcessingResolution = { width: probe.width, height: probe.height };
         const K = intrinsics(probe.width, probe.height);
+        lastTracker = null;
         const tracker =
-          mode === "tracker" ? new NftTracker(icv, targetDb, K, { maxSceneKeypoints: maxKeypoints }) : null;
+          mode === "stateless"
+            ? null
+            : new NftTracker(icv, targetDb, K, {
+                maxSceneKeypoints: maxKeypoints,
+                detectionOnly: mode === "detection-only",
+                clock,
+              });
+        // Start already refused an untrackable target (trackabilityError, the
+        // constructor's own rule); this only guards the two drifting apart.
+        if (mode === "tracking" && tracker.detectionOnly) {
+          throw new Error("The tracker would run detection-only on this target: use targets/pinball.wnft.");
+        }
+        lastTracker = tracker ? { detectionOnly: tracker.detectionOnly, options: trackerOptions(maxKeypoints, mode) } : null;
+        ticks = 0;
+        const targetPoints = targetCorners(targetDb.meta.widthPx, targetDb.meta.heightPx);
 
         overlay.width = probe.width;
         overlay.height = probe.height;
@@ -1041,63 +1182,59 @@
           fps = fps === 0 ? instantFps : fps * 0.8 + instantFps * 0.2;
           lastTickAt = now;
 
-          history.push({
+          // `mediaTimeSeconds`: the frame's position in the clip; see
+          // frameRecord's doc and examples/README.md ("A shared startAt is not
+          // a shared frame sequence"). Compare two exports by it, never by index.
+          const record = frameRecord({
+            mode,
+            result,
+            stageTimings: timings,
             timestampMs: t0,
-            // The frame's own position in the clip -- `metadata.mediaTime`
-            // from requestVideoFrameCallback where available, else
-            // `video.currentTime` (rAF fallback). For a webcam this is time
-            // since the stream started, not a clip position -- meaningful
-            // within one run, not comparable across two separate sessions.
-            // Two runs seeked to the same `startAt` do NOT visit the same
-            // tick INDEX -> same clip moment: requestVideoFrameCallback
-            // fires once per PRESENTED frame, and a browser whose main
-            // thread is busy for longer than the video's own frame interval
-            // (real here -- this page's own `total` p50 sits close to a
-            // ~25fps clip's ~40ms budget) coalesces to the latest frame,
-            // skipping the ones that went stale. Stateless and NftTracker
-            // cost slightly different amounts per frame, so they skip a
-            // different number of frames and drift apart by tick index.
-            // Comparing two exports by this field instead of by array index
-            // is what makes the comparison honest.
             mediaTimeSeconds: metadata?.mediaTime ?? video.currentTime,
-            timings: { ...timings },
-            ok: result.ok,
-            reason: result.ok ? null : result.reason,
-            // What `detect` actually returned, which is at most the run's
-            // `maxKeypoints` and less on a frame with fewer corners than
-            // that. `match` is a brute-force search over these, so without
-            // this count a `match` timing cannot be told apart as "the budget
-            // was spent" or "the frame did not fill it".
-            numSceneKeypoints: result.sceneKeypoints.length,
-            numMatches: result.numMatches,
-            numInliers: result.numInliers,
+            targetPoints,
           });
+          ticks++;
+          history.push(record);
           if (history.length > windowSize) history.splice(0, history.length - windowSize);
 
-          drawOverlay(result, targetDb);
+          drawOverlay(result, record);
           // `renderStats` rebuilds the whole `#stats` list every tick, which
           // means the static "status" row from the markup does not survive
           // the first call -- so status is a row passed in here, not a
           // separate element updated on the side.
-          const statusText = result.ok
-            ? "locked on"
-            : result.reason === "too-few-matches"
-              ? "too few matches"
-              : "no consensus";
+          const tracked = record.state === "TRACK";
+          const statusText = tracked
+            ? "tracking"
+            : record.ok
+              ? "locked on (detected)"
+              : record.reason === "too-few-matches"
+                ? "too few matches"
+                : "no consensus";
           renderStats([
             ["status", statusText],
             ["mode", mode],
+            ["state", record.state],
+            ["target", lastTarget.file],
             ["fps", fps.toFixed(1)],
-            ["keypoints (scene)", `${result.sceneKeypoints.length} / ${maxKeypoints}`],
-            ["matches", result.numMatches],
-            ["inliers", result.numMatches >= 4 ? `${result.numInliers} / ${result.numMatches}` : "—"],
+            ["keypoints (scene)", tracked ? "— (not detected)" : `${record.numSceneKeypoints} / ${maxKeypoints}`],
+            ["matches", tracked ? "—" : record.numMatches],
+            ["inliers", !tracked && record.numMatches >= 4 ? `${record.numInliers} / ${record.numMatches}` : "—"],
+            ["tracked patches", tracked ? `${record.tracking.inliers} / ${record.tracking.attempted}` : "—"],
+            ["quality", record.quality === null ? "—" : record.quality.toFixed(2)],
+            ["track loss", record.trackLoss ?? "—"],
+            [
+              "tracking step",
+              record.tracking && record.trackerTimings ? `${record.trackerTimings.trackMs.toFixed(1)} ms` : "—",
+            ],
             ["pose", result.ok ? (result.pose.good ? "recovered" : "degenerate") : "—"],
             ["frame time", `${timings.total.toFixed(1)} ms`],
+            // Last, as before: the CDP driver reads the window count from the last row.
             ["window", `${history.length} / ${windowSize}`],
           ]);
           if (now - lastPercentileRenderAt >= PERCENTILE_RENDER_INTERVAL_MS || history.length === 1) {
             lastPercentileRenderAt = now;
             renderPercentiles();
+            renderSummary();
           }
           downloadButton.disabled = history.length === 0;
 
@@ -1107,10 +1244,28 @@
         scheduleNextTick(tick);
       }
 
+      function saveJson(payload, name) {
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = name;
+        document.body.append(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      function deviceSlug() {
+        return ($("deviceLabel").value || "device").replace(/[^a-z0-9-]+/gi, "-");
+      }
+
       function downloadHistory() {
         const summary = {};
         for (const s of activeStages()) {
-          const values = framesForStage(s).map((f) => f.timings[s]).sort((a, b) => a - b);
+          const values = framesForStage(history, s)
+            .map((f) => f.timings[s])
+            .sort((a, b) => a - b);
           summary[s] = {
             p50: values.length ? percentile(values, 50) : null,
             p95: values.length ? percentile(values, 95) : null,
@@ -1120,9 +1275,26 @@
 
         const payload = {
           exportedAt: new Date().toISOString(),
+          // The version of js/bench-metrics.mjs's definitions this export's
+          // metrics and per-frame fields follow; `definitions` spells them out.
+          // Absent in exports that predate the tracking mode.
+          metricsVersion: METRICS_VERSION,
           userAgent: navigator.userAgent,
           deviceLabel: $("deviceLabel").value || null,
           mode: lastMode,
+          // Which target the run used (targetRecord): its file, SHA-256, and
+          // what it carries. Absent in older exports, which all built theirs
+          // from images/pinball.jpg in the page.
+          target: lastTarget,
+          // The tracker's options as it ran (null for the stateless pipeline):
+          // its defaults, except maxSceneKeypoints.
+          tracker: lastTracker,
+          // The step performance.now() takes here; a timing under it reads 0.
+          clockResolutionMs,
+          crossOriginIsolated: globalThis.crossOriginIsolated === true,
+          // Frames processed since Start; the window is the last windowSize of
+          // them, so ticks − windowSize frames ran before it (warm-up).
+          ticks,
           source: lastSource,
           // Which of the two bundled clips a "bundled" run used, or `null`
           // for any other source -- same reproducibility reasoning as
@@ -1150,45 +1322,157 @@
           processingResolution: lastProcessingResolution,
           windowSize: history.length,
           summaryMs: summary,
+          // Over the same frames as summaryMs; see definitions.
+          runSummary: summarizeRun(history),
+          definitions: DEFINITIONS,
           frames: history,
         };
+        saveJson(payload, `bench-nft-${payload.mode}-${deviceSlug()}-${Date.now()}.json`);
+      }
 
-        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        const label = (payload.deviceLabel || "device").replace(/[^a-z0-9-]+/gi, "-");
-        a.href = url;
-        a.download = `bench-nft-${payload.mode}-${label}-${Date.now()}.json`;
-        document.body.append(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
+      /**
+       * buildFramePyramid on this device, by bench-tracking.mjs's method (p50
+       * and p95 of 300 runs after 50 warm-up), on its texture, at the sizes and
+       * depths #63 estimated by proxy. The tracker's own pyramidMs cannot
+       * measure those: it builds only the levels its patches start on, which for
+       * pinball.wnft on these paths is one — the frame itself.
+       */
+      async function runPyramidProbe() {
+        probeButton.disabled = true;
+        startButton.disabled = true;
+        clearError();
+        try {
+          const rows = [];
+          for (const [width, height] of PROBE_SIZES) {
+            const frame = texturedFrame(width, height);
+            for (const levels of PROBE_LEVELS) {
+              setStatusText(`timing the frame pyramid: ${width}×${height}, ${levels} level(s)…`);
+              // Let the status repaint; the timing itself blocks the thread.
+              await new Promise((r) => setTimeout(r, 0));
+              const t = timeRepeated(
+                () => {
+                  const built = buildFramePyramid(frame, { levels, scaleStep: PROBE_SCALE_STEP });
+                  if (!built.ok) throw new Error(`buildFramePyramid: ${built.reason}`);
+                },
+                { clock, warmup: PROBE_WARMUP, runs: PROBE_RUNS },
+              );
+              rows.push({ width, height, levels, p50: t.p50, p95: t.p95 });
+            }
+          }
+          saveJson(
+            {
+              kind: "pyramid-probe",
+              exportedAt: new Date().toISOString(),
+              metricsVersion: METRICS_VERSION,
+              userAgent: navigator.userAgent,
+              deviceLabel: $("deviceLabel").value || null,
+              clockResolutionMs,
+              crossOriginIsolated: globalThis.crossOriginIsolated === true,
+              scaleStep: PROBE_SCALE_STEP,
+              warmup: PROBE_WARMUP,
+              runs: PROBE_RUNS,
+              rows,
+            },
+            `bench-nft-pyramid-probe-${deviceSlug()}-${Date.now()}.json`,
+          );
+          const four = rows.find((r) => r.width === 270 && r.height === 360 && r.levels === 4);
+          setStatusText(`pyramid probe done: 270×360, 4 levels, p50 ${four.p50.toFixed(2)} ms`);
+        } catch (e) {
+          showError(e.message);
+        } finally {
+          probeButton.disabled = false;
+          startButton.disabled = false;
+        }
       }
 
       async function main() {
         const cv = await createJsfeatNextBackend();
 
-        setStatusText("preparing target…");
-        const targetImg = await loadImage(TARGET);
-        // Downscaled the same way the webcam demo builds its target -- this
-        // page is not exercising target preparation, so it borrows a setting
-        // already measured elsewhere rather than picking a new one. The
-        // timings object is thrown away: this cost is paid once, outside the
-        // per-frame loop the rest of the page measures.
-        const target = toGrayTimed(targetImg, targetImg.naturalWidth, targetImg.naturalHeight, 640, undefined, resetTimings({}));
-        const targetDb = buildTargetFromImage(cv, target, { levels: TARGET_LEVELS, name: "pinball" });
+        clockResolutionMs = clockResolution(clock);
+        renderDefinitions();
+
+        setStatusText("preparing targets…");
+        // Built in the page, as this page always has: the default target, so a
+        // run with no parameters is the run it always was. Downscaled the same
+        // way the webcam demo builds its target -- this page is not exercising
+        // target preparation, so it borrows a setting already measured
+        // elsewhere. The timings object is thrown away: this cost is paid once,
+        // outside the per-frame loop the rest of the page measures.
+        const imageBytes = await (await fetch(TARGET_IMAGE)).arrayBuffer();
+        const targetImg = await loadImage(TARGET_IMAGE);
+        const gray = toGrayTimed(
+          targetImg,
+          targetImg.naturalWidth,
+          targetImg.naturalHeight,
+          TARGET_MAX_SIDE,
+          undefined,
+          resetTimings({}),
+        );
+        const imageDb = buildTargetFromImage(cv, gray, { levels: TARGET_LEVELS, name: "pinball" });
+        targets.image = {
+          db: imageDb,
+          record: targetRecord({
+            source: "image",
+            file: "images/pinball.jpg",
+            sha256: await sha256Hex(imageBytes),
+            db: imageDb,
+            builtWith: { function: "buildTargetFromImage", maxSide: TARGET_MAX_SIDE, levels: TARGET_LEVELS },
+          }),
+        };
+        // Loaded and decoded, never built here: the only target with patches,
+        // and the one compile-target's defaults made (examples/README.md).
+        try {
+          const response = await fetch(TARGET_FILE);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const bytes = await response.arrayBuffer();
+          const decoded = decode(bytes);
+          if (!decoded.ok) throw new Error(`${decoded.error} — ${decoded.detail}`);
+          for (const w of decoded.warnings) console.warn(`${TARGET_FILE}: ${w.code} — ${w.detail}`);
+          targets.wnft = {
+            db: decoded.target,
+            record: targetRecord({
+              source: "wnft",
+              file: "targets/pinball.wnft",
+              sha256: await sha256Hex(bytes),
+              db: decoded.target,
+            }),
+          };
+        } catch (e) {
+          targetSelect.querySelector('option[value="wnft"]').disabled = true;
+          errorEl.textContent =
+            `targets/pinball.wnft could not be loaded (${e.message}); the tracking mode needs it. ` +
+            "Serve the repository root, so examples/targets/ is reachable next to this page.";
+        }
 
         setStatusText("ready");
         startButton.disabled = false;
+        probeButton.disabled = false;
 
         for (const radio of document.querySelectorAll('input[name="source"]')) {
           radio.addEventListener("change", updateSourceInputs);
         }
-        updateSourceInputs();
+        // `?clip=` may change the source radio, and the inputs' enabled state
+        // must follow it.
         initRunInputs();
+        updateSourceInputs();
+        // Choosing tracking chooses the only target it can run on.
+        modeSelect.addEventListener("change", () => {
+          if (modeSelect.value === "tracking") targetSelect.value = "wnft";
+        });
+        probeButton.addEventListener("click", runPyramidProbe);
 
         startButton.addEventListener("click", async () => {
           clearError();
+          // The target is checked before any source starts, so a refusal
+          // starts no camera or clip, commits nothing, and is not blamed on
+          // the source.
+          const mode = modeSelect.value;
+          const target = targets[targetSelect.value];
+          const refusal = startRefusal({ mode, target, minTrackedPatches: DEFAULT_MIN_TRACKED_PATCHES });
+          if (refusal) {
+            showError(refusal);
+            return;
+          }
           startButton.disabled = true;
           try {
             // Local until every step that can throw is behind us. Committing
@@ -1221,7 +1505,6 @@
             placeholder.remove();
             stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
 
-            const mode = $("mode").value;
             const windowSize = Math.max(1, Math.floor(Number($("windowSize").value) || 120));
             const maxKeypoints = readMaxKeypoints();
             // Shows the value actually used when a malformed entry fell back
@@ -1233,6 +1516,7 @@
 
             lastSource = source;
             lastMode = mode;
+            lastTarget = target.record;
             lastStartAtSeconds = startAtSeconds;
             lastBundledClip = bundledClip;
             lastCamera = camera;
@@ -1241,7 +1525,8 @@
             history = [];
             running = true;
             stopButton.disabled = false;
-            runBenchmark(cv, targetDb, mode, windowSize, maxKeypoints, box);
+            probeButton.disabled = true;
+            runBenchmark(cv, target.db, mode, windowSize, maxKeypoints, box);
           } catch (e) {
             const src = currentSource();
             const hint =
@@ -1269,6 +1554,7 @@
             running = false;
             stopButton.disabled = true;
             startButton.disabled = false;
+            probeButton.disabled = false;
           }
         });
 
@@ -1277,6 +1563,7 @@
           stopSource();
           stopButton.disabled = true;
           startButton.disabled = false;
+          probeButton.disabled = false;
           setStatusText("stopped");
         });
 

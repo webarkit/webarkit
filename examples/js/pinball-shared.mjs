@@ -48,9 +48,10 @@
 /**
  * The pixel box `toGray`/`toGrayTimed` downscale into, shared so the two
  * can't compute it differently. See `toGray`'s own doc comment for what
- * `maxHeight` being omitted changes.
+ * `maxHeight` being omitted changes. Exported for `scripts/replay-clips.mjs`,
+ * which must size its frames as the pages do.
  */
-function fitSize(sourceW, sourceH, maxWidth, maxHeight) {
+export function fitSize(sourceW, sourceH, maxWidth, maxHeight) {
     const scale = maxHeight
         ? Math.min(1, maxWidth / sourceW, maxHeight / sourceH)
         : Math.min(1, maxWidth / Math.max(sourceW, sourceH));
