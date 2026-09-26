@@ -422,6 +422,7 @@ export function compareExports(first, second) {
         new Set(e.frames.filter((f) => f.corners).map((f) => mediaKey(f.mediaTimeSeconds)));
     const inFirst = posed(first);
     const common = new Set([...posed(second)].filter((k) => inFirst.has(k)));
+    if (common.size === 0) refuse("there is no media time both runs posed, so no frame to compare");
     const restrict = (e) =>
         e.frames.filter((f) => f.corners && common.has(mediaKey(f.mediaTimeSeconds)));
     return {
@@ -523,7 +524,26 @@ export function sequenceRefusal(e, { metricsVersion, sha256, clips }) {
     if (!(e.processingResolution?.width > 0 && e.processingResolution?.height > 0)) {
         return "it records no processingResolution";
     }
+    if (!(e.processingBox?.width > 0 && e.processingBox?.height > 0)) {
+        return "it records no processingBox, so its frames cannot be sized as the page sized them";
+    }
+    if (!e.tracker?.options) {
+        return "it records no tracker options, so the replay could not run the tracker it ran";
+    }
     return null;
+}
+
+/**
+ * How `--sequence` replays export `e` (one `sequenceRefusal` accepted): at its
+ * own processing box, and with the tracker options it recorded — the page's
+ * `maxKeypoints` among them — so the replay does the work the device did.
+ * The replay adds only its own clock.
+ */
+export function sequenceSettings(e) {
+    return {
+        box: { width: e.processingBox.width, height: e.processingBox.height },
+        trackerOptions: { ...e.tracker.options },
+    };
 }
 
 /**

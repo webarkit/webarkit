@@ -113,6 +113,12 @@ describe("compareExports", () => {
     ])("refuses %s", (_, other, why) => {
         expect(() => compareExports(run([]), run([], other))).toThrow(why);
     });
+
+    it("refuses two runs that posed no media time in common, rather than compare nothing", () => {
+        const first = run([at(0.1), at(0.2), lost(0.3)]);
+        const second = run([lost(0.1), at(0.3), at(0.4)], { mode: "stateless" });
+        expect(() => compareExports(first, second)).toThrow(/no media time both runs posed/);
+    });
 });
 
 describe("scripts/compare-bench.mjs", () => {

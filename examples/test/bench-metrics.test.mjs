@@ -45,6 +45,7 @@ import {
     reacquisitions,
     reprojectCorners,
     sequenceRefusal,
+    sequenceSettings,
     sha256Hex,
     startRefusal,
     stats,
@@ -886,6 +887,11 @@ describe("the review's fixes", () => {
             source: "bundled",
             bundledClip: "pinball-static.mp4",
             target: { sha256: "ab" },
+            tracker: {
+                detectionOnly: false,
+                options: { detectionOnly: false, maxSceneKeypoints: 150 },
+            },
+            processingBox: { width: 360, height: 360 },
             processingResolution: { width: 203, height: 360 },
             frames: [],
             ...o,
@@ -895,6 +901,15 @@ describe("the review's fixes", () => {
             expect(sequenceRefusal(e(), expected)).toBeNull();
         });
 
+        it("replays with the export's own processing box and tracker options, not the defaults", () => {
+            const settings = sequenceSettings(e());
+            expect(settings).toEqual({
+                box: { width: 360, height: 360 },
+                trackerOptions: { detectionOnly: false, maxSceneKeypoints: 150 },
+            });
+            expect(settings.trackerOptions).not.toBe(e().tracker.options);
+        });
+
         it.each([
             ["a stateless run", { mode: "stateless" }, /tracking run/],
             ["a webcam run", { source: "webcam", bundledClip: null }, /bundled clip/],
@@ -902,6 +917,8 @@ describe("the review's fixes", () => {
             ["another metricsVersion", { metricsVersion: undefined }, /metricsVersion/],
             ["another target", { target: { sha256: "cd" } }, /target/],
             ["no processing size", { processingResolution: undefined }, /processingResolution/],
+            ["no processing box", { processingBox: undefined }, /processingBox/],
+            ["no recorded tracker options", { tracker: null }, /tracker options/],
         ])("refuses %s in one line", (_, o, why) => {
             const r = sequenceRefusal(e(o), expected);
             expect(r).toMatch(why);

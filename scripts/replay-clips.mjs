@@ -50,7 +50,9 @@
  * latency, and JIT warm-up: it brackets, it does not predict to the frame.
  *
  * --sequence replays the frames a tracking export processed, by their media
- * times (framesAt), once to warm up and then three times, and prints the
+ * times (framesAt), at the export's own processing box and with the tracker
+ * options it recorded (sequenceSettings), once to warm up and then three
+ * times, and prints the
  * median of the three runs' trackStepMs p50 and p95: the device ÷ desktop
  * ratio on the same frames, which prediction 1 in docs/benchmarks/README.md
  * reads the proxy from.
@@ -74,6 +76,7 @@ import {
     nextFrameIndex,
     proxyRatio,
     sequenceRefusal,
+    sequenceSettings,
     sha256Hex,
     stats,
     summarizeRun,
@@ -170,10 +173,11 @@ function greyFrames(path, width, height) {
     return frames;
 }
 
-async function loadClip(clip) {
+/** A clip's frames, fitted into `box` as the page fits them (its default box unless a run set another). */
+async function loadClip(clip, box = BOX) {
     const path = join(EXAMPLES, "videos", clip);
     const { width: sw, height: sh, pts } = probe(path);
-    const { width, height } = fitSize(sw, sh, BOX.width, BOX.height);
+    const { width, height } = fitSize(sw, sh, box.width, box.height);
     const frames = greyFrames(path, width, height);
     if (frames.length !== pts.length)
         throw new Error(`${clip}: ${frames.length} frames decoded, ${pts.length} timestamps`);
@@ -193,9 +197,14 @@ const targetRec = targetRecord({
     db: target,
 });
 
-/** One replay: `order` is the frame indices to process, or null for the device schedule over `LOOPS` loops. */
-function replay({ clip, frames, pts, K, mode, stepMs, order }) {
+/**
+ * One replay: `order` is the frame indices to process, or null for the device
+ * schedule over `LOOPS` loops; `options` are the tracker's (its defaults unless
+ * an export recorded others).
+ */
+function replay({ clip, frames, pts, K, mode, stepMs, order, options = {} }) {
     const tracker = new NftTracker(cv, target, K, {
+        ...options,
         detectionOnly: mode === "detection-only",
         clock: () => performance.now(),
     });
@@ -279,10 +288,12 @@ if (sequencePath) {
         clips: CLIPS,
     });
     if (why) refuse(why);
-    const { frames, pts, width, height } = await loadClip(e.bundledClip);
+    // The export's own box and tracker options, so the replay does the device's work.
+    const settings = sequenceSettings(e);
+    const { frames, pts, width, height } = await loadClip(e.bundledClip, settings.box);
     if (width !== e.processingResolution.width || height !== e.processingResolution.height) {
         refuse(
-            `it ran at ${e.processingResolution.width}x${e.processingResolution.height}, this replay at ${width}x${height}`,
+            `its box ${settings.box.width}x${settings.box.height} fits the clip to ${width}x${height} here, but it ran at ${e.processingResolution.width}x${e.processingResolution.height}`,
         );
     }
     let order;
@@ -305,6 +316,7 @@ if (sequencePath) {
                 mode: "tracking",
                 stepMs: null,
                 order,
+                options: settings.trackerOptions,
             }),
         ).trackStepMs;
     replayed(); // warm-up
