@@ -1,6 +1,6 @@
 [package]
 name = "wnft-format"
-version = "0.1.0"
+version = "0.3.0"
 description = "Reader and canonical writer for the WebARKit .wnft NFT target format (format 0.3)"
 edition.workspace = true
 rust-version.workspace = true

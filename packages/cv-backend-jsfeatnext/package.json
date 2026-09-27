@@ -1,6 +1,6 @@
 {
   "name": "@webarkit/cv-backend-jsfeatnext",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "jsfeatNext implementation of the @webarkit/cv-backend-spec CvBackend contract.",
   "license": "LGPL-3.0-or-later",
   "type": "module",
@@ -30,7 +30,7 @@
     "directory": "packages/cv-backend-jsfeatnext"
   },
   "dependencies": {
-    "@webarkit/cv-backend-spec": "0.1.0",
+    "@webarkit/cv-backend-spec": "0.3.0",
     "@webarkit/jsfeat-next": "^0.17.0"
   },
   "devDependencies": {
