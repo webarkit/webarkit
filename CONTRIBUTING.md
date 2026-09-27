@@ -22,7 +22,7 @@ To contribute to the project, please follow these steps:
 
 ## Releasing
 
-Releases are cut by @kalwalt, from `dev` into `master`: the release pull request is the one pull request that targets `master`. Steps 1–3 are what the `v0.2.0` and `v0.3.0` releases did, with the gates CI runs today. Step 4 is new with ADR-0002.
+Releases are cut by @kalwalt, from `dev` into `master`: the release pull request is the one pull request that targets `master`. Steps 1 and 3–4 are what the `v0.2.0` and `v0.3.0` releases did, with the gates CI runs today. Steps 2, 5 and 6 are new with ADR-0002 and [#72](https://github.com/webarkit/webarkit/issues/72).
 
 1. **Check that `dev` is green**: CI's gates must pass on `dev` before the release is opened. To run them locally:
    ```powershell
@@ -38,24 +38,23 @@ Releases are cut by @kalwalt, from `dev` into `master`: the release pull request
    rustup target add thumbv7em-none-eabihf   # once
    cargo build -p wnft-format --no-default-features --target thumbv7em-none-eabihf
    ```
-2. **Open the release pull request**:
+2. **Close the changelog entry**: In [`CHANGELOG.md`](CHANGELOG.md), rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, add its compare link at the foot of the file, and open a fresh, empty `## [Unreleased]` above it. The section should already be complete: every pull request that changed behaviour added its own line to `[Unreleased]` when it landed (see [Commit Message Conventions](#commit-message-conventions)), so this step edits a heading, not a history.
+3. **Open the release pull request**:
    * It goes from `dev` into `master`.
    * It is titled `chore(release): vX.Y.Z — <milestone>`, for example [`chore(release): v0.3.0 — M2 complete`](https://github.com/webarkit/webarkit/pull/74). `release` is the one scope that names no part of the repository.
-   * Its body is the release notes.
+   * Its body is the release notes, and the release notes **are** that version's changelog entry: paste the section from step 2, whole. The changelog is the source, because it is reviewed line by line as each change lands, and the pull request body is a copy of it; nothing is written twice, and the two cannot drift.
    * It is merged with a merge commit.
-3. **Tag the merge commit**: After the merge, @kalwalt puts an annotated tag on the **merge commit**, not on the tip of `dev`. The tag's message repeats the pull request's title without `chore(release): `. `v0.2.0` and `v0.3.0` are both annotated tags on the merge commits of [#45](https://github.com/webarkit/webarkit/pull/45) and [#74](https://github.com/webarkit/webarkit/pull/74).
+4. **Tag the merge commit**: After the merge, @kalwalt puts an annotated tag on the **merge commit**, not on the tip of `dev`. The tag's message repeats the pull request's title without `chore(release): `. `v0.2.0` and `v0.3.0` are both annotated tags on the merge commits of [#45](https://github.com/webarkit/webarkit/pull/45) and [#74](https://github.com/webarkit/webarkit/pull/74).
    ```powershell
    git tag -a vX.Y.Z -m "vX.Y.Z — <milestone>" merge-commit-sha
    git push origin vX.Y.Z
    ```
-4. **Versions**: The package versions match the release tag; [ADR-0002](docs/adr/0002-lockstep-versioning.md) records why.
+5. **Create the GitHub Release**: On that tag, in the web interface, @kalwalt creates a GitHub Release titled like the tag's message, with the same notes as the pull request's body. `v0.1.0`, `v0.2.0` and `v0.3.0` get theirs retroactively, from their entries in `CHANGELOG.md`.
+6. **Versions**: The package versions match the release tag; [ADR-0002](docs/adr/0002-lockstep-versioning.md) records why. Every manifest, the exact pins between the packages and both lockfiles are raised on `dev` before the release pull request is opened, and `npm run check:contract` fails when any of them disagrees. Nothing checks them against the tag itself.
 
 What the project does **not** do today:
-* It keeps no `CHANGELOG` and creates no GitHub Release objects. A release's notes are the body of its release pull request.
 * It publishes nothing to npm or crates.io.
-* The package manifests will read `0.1.0` until the first release under ADR-0002.
-
-Two questions are still open in [#72](https://github.com/webarkit/webarkit/issues/72): whether to keep a `CHANGELOG` and GitHub Releases, and so whether the "automated release history" promised under Commit Message Conventions is kept or withdrawn.
+* It generates nothing: the changelog, the release notes and the GitHub Release are written by hand, from the same text.
 
 ## Testing
 
@@ -84,7 +83,9 @@ These are exactly the checks CI runs on every push and pull request (see `.githu
 
 ## Commit Message Conventions
 
-To maintain a clean and automated release history, this project strictly adheres to the [Conventional Commits](https://www.conventionalcommits.org/) specification.
+This project strictly adheres to the [Conventional Commits](https://www.conventionalcommits.org/) specification, enforced by review. It buys a history that reads at a glance — what kind of change, to which part of the repository — and release notes that are easy to write from it. Nothing is generated from the messages: there is no release, changelog or publish automation, and the changelog is written by hand.
+
+**Where changelog entries come from.** A pull request that changes observable behaviour — a new option, a changed result, a format change, a fix a user could notice — adds its own line under `## [Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md), in the same pull request, written for someone who wants to know what changed for them rather than as the commit subject repeated. That rule is what keeps the file honest: without it the changelog becomes something someone reconstructs at release time. Documentation, test and tooling changes that a user of the packages would not notice add no line.
 
 Please ensure your PR titles and commit messages follow this format:
 
