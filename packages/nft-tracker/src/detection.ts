@@ -62,9 +62,31 @@ import type {
     DescriptorKind,
     DescriptorNorm,
     Descriptors,
+    GrayImage,
+    Keypoint,
+    Mat3,
     Match,
 } from "@webarkit/cv-backend-spec";
 import type { BitsDescriptorSet, TargetDb } from "./target/types.js";
+
+/**
+ * Pyramid levels searched in the LIVE frame.
+ *
+ * One, deliberately: the target is prepared once, offline, over many levels,
+ * and the per-frame work stays cheap. This is the demos' known limitation —
+ * a camera moving far from the target has no scale search of its own — kept
+ * here so M1 changes nothing. See `examples/README.md`.
+ */
+export const DEFAULT_SCENE_LEVELS = 1;
+
+/** Keypoint budget for the live frame — the webcam demo's measured setting. */
+export const DEFAULT_MAX_SCENE_KEYPOINTS = 300;
+
+/** Lowe ratio for each per-level match call. */
+export const DEFAULT_RATIO = 0.8;
+
+/** RANSAC reprojection threshold, in pixels of the live frame. */
+export const DEFAULT_RANSAC_THRESHOLD = 4;
 
 /**
  * A `BitsDescriptorSet` whose `kind` and `norm` a backend has accepted.
@@ -184,4 +206,247 @@ export function matchPerLevel(
         }
     }
     return [...best.values()];
+}
+
+/** The detection pipeline's options; each has a documented default above. */
+export interface DetectTargetOptions {
+    /** See {@link DEFAULT_SCENE_LEVELS}. */
+    readonly sceneLevels?: number;
+    /** See {@link DEFAULT_MAX_SCENE_KEYPOINTS}. */
+    readonly maxSceneKeypoints?: number;
+    /** See {@link DEFAULT_RATIO}. */
+    readonly ratio?: number;
+    /** See {@link DEFAULT_RANSAC_THRESHOLD}. */
+    readonly ransacThreshold?: number;
+}
+
+/**
+ * Everything {@link detectTarget} needs from a target, computed once by
+ * {@link prepareDetection}: a plain struct, so that a worker can build its
+ * own from the same `.wnft` and run the pipeline there.
+ */
+export interface DetectionSetup {
+    /** One view per target level, over the descriptor set's own bytes. */
+    readonly levels: readonly TargetLevelView[];
+    /**
+     * The target's keypoints as the contract's array-of-objects, built only
+     * when the backend has a `filterMatches` to feed them to — materialising
+     * N objects a frame-filter will never read is pure waste. `null` otherwise.
+     */
+    readonly targetKeypoints: readonly Keypoint[] | null;
+    readonly targetWidth: number;
+    readonly targetHeight: number;
+    /** The target's keypoint coordinates, f32 as stored (§5.5); widened to f64 per match. */
+    readonly keypointX: Float32Array;
+    readonly keypointY: Float32Array;
+    readonly sceneLevels: number;
+    readonly maxSceneKeypoints: number;
+    readonly ratio: number;
+    readonly ransacThreshold: number;
+}
+
+/** Why a detection produced no homography. */
+export type DetectionFailure =
+    /** Fewer than the 4 correspondences a homography needs. */
+    | "too-few-matches"
+    /** Enough matches, but RANSAC found no model they agree on. */
+    | "no-consensus";
+
+/**
+ * What {@link detectTarget} found in one frame.
+ *
+ * A fixed-shape struct — typed arrays, numbers, strings and plain keypoint
+ * objects — so that it survives `structuredClone`: a worker that ran the
+ * detection posts it, and the main thread hands it to `NftTracker.process`
+ * unchanged. It carries no pose, because the tracker computes that from
+ * whichever homography it ends up with, and no `state`: whether this becomes
+ * a `"DETECT"` or a `"TRACK"` frame is the state machine's call.
+ */
+export type Detection =
+    | {
+          readonly ok: true;
+          /** The timestamp `detectTarget` was given for the frame it detected. */
+          readonly timestampMs: number;
+          /** Matches after filtering. */
+          readonly numMatches: number;
+          /** RANSAC inliers. */
+          readonly numInliers: number;
+          /** Target level-0 → frame level-0, row-major 3×3. */
+          readonly H: Mat3;
+          /** The frame's keypoints, as detected. For overlays. */
+          readonly sceneKeypoints: readonly Keypoint[];
+      }
+    | {
+          readonly ok: false;
+          readonly timestampMs: number;
+          readonly reason: DetectionFailure;
+          readonly numMatches: number;
+          readonly numInliers: number;
+          readonly sceneKeypoints: readonly Keypoint[];
+      };
+
+/**
+ * The per-target half of the detection pipeline, once.
+ *
+ * Throws on a target this backend cannot read ({@link chooseDescriptorSet}):
+ * a mismatch between target and backend, not a frame that failed to detect.
+ * Throws a `RangeError` naming the option on one out of its domain —
+ * `sceneLevels` and `maxSceneKeypoints` integers `≥ 1`, `ratio` in
+ * `(0, 1]`, `ransacThreshold` finite and `> 0` — rather than hand the
+ * backend a value that silently returns no keypoints (found in review:
+ * `maxSceneKeypoints: NaN` made the reference backend detect nothing, and
+ * every frame failed with `"too-few-matches"`).
+ */
+export function prepareDetection(
+    cv: CvBackend,
+    target: TargetDb,
+    options?: DetectTargetOptions,
+): DetectionSetup {
+    const o = options ?? {};
+    const integer = (name: string, v: unknown): number => {
+        if (!(typeof v === "number" && Number.isInteger(v) && v >= 1)) {
+            throw new RangeError(
+                `prepareDetection: ${name} must be an integer >= 1, got ${String(v)}`,
+            );
+        }
+        return v;
+    };
+    const positive = (name: string, v: unknown, max = Infinity): number => {
+        if (!(typeof v === "number" && Number.isFinite(v) && v > 0 && v <= max)) {
+            throw new RangeError(
+                `prepareDetection: ${name} must be finite, > 0${
+                    max === Infinity ? "" : ` and <= ${max}`
+                }, got ${String(v)}`,
+            );
+        }
+        return v;
+    };
+    return {
+        levels: buildLevelIndex(chooseDescriptorSet(cv, target)),
+        targetKeypoints: cv.filterMatches ? toKeypointArray(target) : null,
+        targetWidth: target.meta.widthPx,
+        targetHeight: target.meta.heightPx,
+        keypointX: target.keypoints.x,
+        keypointY: target.keypoints.y,
+        sceneLevels: integer("sceneLevels", o.sceneLevels ?? DEFAULT_SCENE_LEVELS),
+        maxSceneKeypoints: integer(
+            "maxSceneKeypoints",
+            o.maxSceneKeypoints ?? DEFAULT_MAX_SCENE_KEYPOINTS,
+        ),
+        ratio: positive("ratio", o.ratio ?? DEFAULT_RATIO, 1),
+        ransacThreshold: positive("ransacThreshold", o.ransacThreshold ?? DEFAULT_RANSAC_THRESHOLD),
+    };
+}
+
+/**
+ * The detection pipeline on one frame: detect, describe, match per level,
+ * filter, estimate. M1's pipeline, and the one `NftTracker` runs on a frame
+ * without a lock — the same function, so the two cannot drift.
+ *
+ * This is the "whole pipeline step" the contract's boundary note means by
+ * "offload a whole pipeline step to a Worker" (cv_backend.ts, item 2): it
+ * holds no state, reads no clock, and returns a struct that crosses a worker
+ * boundary intact. The application that owns a worker calls it there, with
+ * a `DetectionSetup` built from the same target, and hands the result to
+ * `NftTracker.process` on the main thread; the application that owns none
+ * lets the tracker call it, or calls it inline. Nothing in this package
+ * posts to a worker (ADR-0001 point 7).
+ *
+ * The one random choice is RANSAC's minimal-sample draw inside
+ * `estimateHomography`, below the contract and not yet seedable through it
+ * (webarkit/webarkit#24); everything else is a pure function of its
+ * arguments.
+ */
+export function detectTarget(
+    cv: CvBackend,
+    setup: DetectionSetup,
+    frame: GrayImage,
+    timestampMs: number,
+): Detection {
+    const sceneKeypoints = cv.detect(frame, {
+        levels: setup.sceneLevels,
+        maxKeypoints: setup.maxSceneKeypoints,
+    });
+    const sceneDescriptors = cv.describe(frame, sceneKeypoints);
+    let matches = matchPerLevel(cv, sceneDescriptors, setup.levels, setup.ratio);
+
+    // Skipped exactly as the contract documents when a backend has none.
+    if (cv.filterMatches && setup.targetKeypoints) {
+        matches = cv.filterMatches(
+            matches,
+            { keypoints: sceneKeypoints, width: frame.width, height: frame.height },
+            {
+                keypoints: setup.targetKeypoints as Keypoint[],
+                width: setup.targetWidth,
+                height: setup.targetHeight,
+            },
+        );
+    }
+
+    if (matches.length < 4) {
+        return {
+            ok: false,
+            timestampMs,
+            reason: "too-few-matches",
+            numMatches: matches.length,
+            numInliers: 0,
+            sceneKeypoints,
+        };
+    }
+
+    // src = target points, dst = frame points, so H maps the target plane
+    // into the frame and its corners can be drawn straight onto it.
+    const src = new Float64Array(matches.length * 2);
+    const dst = new Float64Array(matches.length * 2);
+    for (let i = 0; i < matches.length; i++) {
+        const m = matches[i];
+        // f32 -> number widens here, which is what §5.5 means by "readers
+        // widen to Float64 when building the contract's PointArray".
+        src[i * 2] = setup.keypointX[m.trainIdx];
+        src[i * 2 + 1] = setup.keypointY[m.trainIdx];
+        dst[i * 2] = sceneKeypoints[m.queryIdx].x;
+        dst[i * 2 + 1] = sceneKeypoints[m.queryIdx].y;
+    }
+
+    const h = cv.estimateHomography(src, dst, { threshold: setup.ransacThreshold });
+    if (!h.ok) {
+        return {
+            ok: false,
+            timestampMs,
+            reason: "no-consensus",
+            numMatches: matches.length,
+            numInliers: h.numInliers,
+            sceneKeypoints,
+        };
+    }
+    return {
+        ok: true,
+        timestampMs,
+        numMatches: matches.length,
+        numInliers: h.numInliers,
+        H: h.H,
+        sceneKeypoints,
+    };
+}
+
+/**
+ * The target's keypoint table back as the contract's `Keypoint[]`.
+ *
+ * `filterMatches` takes an array of objects; a `TargetDb` stores a structure
+ * of arrays. The conversion happens once, in {@link prepareDetection}, not
+ * per frame.
+ */
+function toKeypointArray(target: TargetDb): Keypoint[] {
+    const kp = target.keypoints;
+    const out: Keypoint[] = new Array(kp.count);
+    for (let i = 0; i < kp.count; i++) {
+        out[i] = {
+            x: kp.x[i],
+            y: kp.y[i],
+            score: kp.score[i],
+            angle: kp.angle[i],
+            level: kp.level[i],
+        };
+    }
+    return out;
 }
