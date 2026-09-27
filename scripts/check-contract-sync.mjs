@@ -188,7 +188,7 @@ function json(relative) {
     if (source === null) return null;
     let value;
     try {
-        value = JSON.parse(source.replace(/^﻿/, ""));
+        value = JSON.parse(source.replace(/^\uFEFF/, ""));
     } catch (e) {
         fail(`${relative}: not valid JSON (${e.message})`);
         return null;
@@ -216,17 +216,58 @@ function manifestsUnder(parent, file) {
         .sort();
 }
 
+/**
+ * Carries the state that decides whether a line can start a table across one
+ * TOML line: how deep inside a multiline array it ends, and which multiline
+ * string (`"""` or `'''`) is still open. Quoted strings and comments are
+ * skipped, so brackets inside them do not count.
+ */
+function scanTomlLine(line, depth, open) {
+    let i = 0;
+    while (i < line.length) {
+        if (open !== null) {
+            const end = line.indexOf(open, i);
+            if (end < 0) return { depth, open };
+            i = end + open.length;
+            open = null;
+            continue;
+        }
+        const c = line[i];
+        if (c === "#") break;
+        if (line.startsWith('"""', i) || line.startsWith("'''", i)) {
+            open = line.slice(i, i + 3);
+            i += 3;
+            continue;
+        }
+        if (c === '"' || c === "'") {
+            let j = i + 1;
+            while (j < line.length && line[j] !== c) j += c === '"' && line[j] === "\\" ? 2 : 1;
+            i = j + 1;
+            continue;
+        }
+        if (c === "[") depth += 1;
+        else if (c === "]") depth = Math.max(0, depth - 1);
+        i += 1;
+    }
+    return { depth, open };
+}
+
 /** The text of one TOML table, from its `header` line to the next table; `null` if absent. */
 function tomlTable(source, header) {
-    const lines = source.replace(/^﻿/, "").split(/\r?\n/);
+    const lines = source.replace(/^\uFEFF/, "").split(/\r?\n/);
     // `[ package ]  # a comment` is the same header as `[package]`.
     const bare = (line) => line.replace(/#.*$/, "").replace(/\s+/g, "");
     const start = lines.findIndex((line) => bare(line) === header);
     if (start < 0) return null;
     const body = [];
+    // A line that starts with `[` ends the table only when it is a header: not
+    // an element of a multiline array, and not text inside a multiline string.
+    let depth = 0;
+    let open = null;
     for (const line of lines.slice(start + 1)) {
-        if (line.trimStart().startsWith("[")) break;
+        if (depth === 0 && open === null && line.trimStart().startsWith("[")) break;
         body.push(line);
+        ({ depth, open } = scanTomlLine(line, depth, open));
     }
     return body.join("\n");
 }
@@ -417,6 +458,33 @@ function samePins(dependencies, where) {
 
 for (const p of packages) samePins(p.manifest, p.file);
 
+// samePins compares the pins an entry has; it cannot see one the entry lacks.
+// So a lockfile entry must also pin exactly the packages its manifest pins,
+// section by section: a pin dropped from the lockfile, or one the manifest
+// no longer declares, is the lockfile being stale too.
+function sameLocalPins(manifest, manifestFile, entry, where) {
+    for (const section of DEPENDENCY_SECTIONS) {
+        const declared = manifest[section] ?? {};
+        const locked = entry[section] ?? {};
+        for (const dep of Object.keys(declared).filter((d) => byName.has(d))) {
+            if (!(dep in locked)) {
+                fail(
+                    `${where} (${section}): no ${dep}, which ${manifestFile} pins at ` +
+                        `${JSON.stringify(declared[dep])}`,
+                );
+            }
+        }
+        for (const dep of Object.keys(locked).filter((d) => byName.has(d))) {
+            if (!(dep in declared)) {
+                fail(
+                    `${where} (${section}): pins ${dep} at ${JSON.stringify(locked[dep])}, ` +
+                        `which ${manifestFile} does not declare`,
+                );
+            }
+        }
+    }
+}
+
 const lock = json(NPM_LOCK);
 if (lock !== null) {
     for (const p of packages) {
@@ -433,6 +501,7 @@ if (lock !== null) {
             p.version,
             p.file,
         );
+        sameLocalPins(p.manifest, p.file, entry, `${NPM_LOCK} "${key}"`);
         samePins(entry, `${NPM_LOCK} "${key}"`);
     }
 }

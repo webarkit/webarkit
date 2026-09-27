@@ -98,6 +98,14 @@ function tree(edits = [], added = {}) {
     return root;
 }
 
+/** Rewrites a JSON file of the copy in place: `mutate` edits the parsed value. */
+function editJson(root, file, mutate) {
+    const path = join(root, file);
+    const value = JSON.parse(readFileSync(path, "utf8"));
+    mutate(value);
+    writeFileSync(path, JSON.stringify(value, null, 2));
+}
+
 const spawn = (...args) => spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8" });
 const run = (root) => spawn("--root", root);
 
@@ -262,6 +270,36 @@ describe("check-contract-sync: lockstep versions (ADR-0002)", () => {
         );
     });
 
+    it("fails when a package-lock.json entry drops a pin its manifest declares", () => {
+        const root = tree();
+        editJson(root, NPM_LOCK, (lock) => {
+            delete lock.packages["packages/cv-backend-jsfeatnext"].dependencies[
+                "@webarkit/cv-backend-spec"
+            ];
+        });
+        expectFailureIn(
+            root,
+            `${NPM_LOCK} "packages/cv-backend-jsfeatnext" (dependencies)`,
+            "no @webarkit/cv-backend-spec",
+            JSFEATNEXT,
+        );
+    });
+
+    it("fails when a package-lock.json entry records a pin its manifest does not declare", () => {
+        const root = tree();
+        editJson(root, NPM_LOCK, (lock) => {
+            lock.packages["packages/cv-backend-spec"].dependencies = {
+                "@webarkit/nft-tracker": VERSION,
+            };
+        });
+        expectFailureIn(
+            root,
+            `${NPM_LOCK} "packages/cv-backend-spec"`,
+            "@webarkit/nft-tracker",
+            SPEC,
+        );
+    });
+
     it("fails when Cargo.lock still records an old version of the crate", () => {
         expectFailure(
             [
@@ -348,7 +386,7 @@ describe("check-contract-sync: lockstep versions (ADR-0002)", () => {
         it("a byte-order mark at the start of a package.json", () => {
             const root = tree();
             const path = join(root, TRACKER);
-            writeFileSync(path, "﻿" + readFileSync(path, "utf8"));
+            writeFileSync(path, String.fromCharCode(0xfeff) + readFileSync(path, "utf8"));
             expectPass(root);
         });
 
@@ -358,6 +396,20 @@ describe("check-contract-sync: lockstep versions (ADR-0002)", () => {
                     [CRATE, "[package]", "[package] # the codec"],
                     [CRATE, `version = "${VERSION}"`, `version = '${VERSION}'`],
                 ]),
+            );
+        });
+
+        it("a multiline array before name and version, closed on its own line", () => {
+            expectPass(tree([[CRATE, "[package]\n", '[package]\nkeywords = [\n    "ar",\n]\n']]));
+        });
+
+        it("a multiline array whose element line starts with [", () => {
+            expectPass(tree([[CRATE, "[package]\n", '[package]\nexclude = [\n    ["a"],\n]\n']]));
+        });
+
+        it("a multiline string with a line that starts with [", () => {
+            expectPass(
+                tree([[CRATE, "[package]\n", '[package]\nreadme = """\n[beta] notes\n"""\n']]),
             );
         });
     });
