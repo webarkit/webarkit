@@ -124,8 +124,15 @@
  */
 
 import type { CvBackend, GrayImage, Keypoint, Mat3, Pose } from "@webarkit/cv-backend-spec";
-import { buildLevelIndex, chooseDescriptorSet, matchPerLevel } from "./detection.js";
-import type { TargetLevelView } from "./detection.js";
+import {
+    DEFAULT_MAX_SCENE_KEYPOINTS,
+    DEFAULT_RANSAC_THRESHOLD,
+    DEFAULT_RATIO,
+    DEFAULT_SCENE_LEVELS,
+    detectTarget,
+    prepareDetection,
+} from "./detection.js";
+import type { Detection, DetectionSetup } from "./detection.js";
 import type { TargetDb } from "./target/types.js";
 import { trackFrame, trackTarget } from "./tracking/track_frame.js";
 import type {
@@ -136,25 +143,6 @@ import type {
     TrackTarget,
 } from "./tracking/track_frame.js";
 import type { TrackingState } from "./tracking/types.js";
-
-/**
- * Pyramid levels searched in the LIVE frame.
- *
- * One, deliberately: the target is prepared once, offline, over many levels,
- * and the per-frame work stays cheap. This is the demos' known limitation —
- * a camera moving far from the target has no scale search of its own — kept
- * here so M1 changes nothing. See `examples/README.md`.
- */
-export const DEFAULT_SCENE_LEVELS = 1;
-
-/** Keypoint budget for the live frame — the webcam demo's measured setting. */
-export const DEFAULT_MAX_SCENE_KEYPOINTS = 300;
-
-/** Lowe ratio for each per-level match call. */
-export const DEFAULT_RATIO = 0.8;
-
-/** RANSAC reprojection threshold, in pixels of the live frame. */
-export const DEFAULT_RANSAC_THRESHOLD = 4;
 
 /*
  * The tracking state's defaults. Every one is provisional until the M2
@@ -418,17 +406,8 @@ type Detected =
 const NO_KEYPOINTS: readonly Keypoint[] = Object.freeze([]);
 
 export class NftTracker {
-    private readonly levels: TargetLevelView[];
-    private readonly sceneLevels: number;
-    private readonly maxSceneKeypoints: number;
-    private readonly ratio: number;
-    private readonly ransacThreshold: number;
-    /**
-     * The target's keypoints as the contract's array-of-objects, built once —
-     * and only when the backend has a `filterMatches` to feed them to, since
-     * materialising N objects a frame-filter will never read is pure waste.
-     */
-    private readonly targetKeypoints: Keypoint[] | null;
+    /** The detection pipeline's per-target half, built once (`prepareDetection`). */
+    private readonly setup: DetectionSetup;
     /**
      * Whether every frame runs detection and none tracks: asked for with the
      * `detectionOnly` option, or forced by a target that cannot be tracked —
@@ -457,20 +436,15 @@ export class NftTracker {
      */
     constructor(
         private readonly cv: CvBackend,
-        private readonly target: TargetDb,
+        target: TargetDb,
         private readonly K: Mat3,
         options?: NftTrackerOptions,
     ) {
         const tracking = resolveTrackingOptions(options);
-        // Both throw on a target this backend cannot read, in the constructor
+        // Throws on a target this backend cannot read, in the constructor
         // rather than on the first frame: it is a mismatch between target and
         // backend, not a frame that failed to track.
-        this.levels = buildLevelIndex(chooseDescriptorSet(cv, target));
-        this.sceneLevels = options?.sceneLevels ?? DEFAULT_SCENE_LEVELS;
-        this.maxSceneKeypoints = options?.maxSceneKeypoints ?? DEFAULT_MAX_SCENE_KEYPOINTS;
-        this.ratio = options?.ratio ?? DEFAULT_RATIO;
-        this.ransacThreshold = options?.ransacThreshold ?? DEFAULT_RANSAC_THRESHOLD;
-        this.targetKeypoints = cv.filterMatches ? toKeypointArray(target) : null;
+        this.setup = prepareDetection(cv, target, options);
         this.trackOptions = tracking.track;
         this.clock = tracking.clock;
         const p = target.patches;
@@ -541,83 +515,36 @@ export class NftTracker {
      * match per level, filter, estimate, decompose.
      */
     private detect(frame: GrayImage, timestampMs: number): Detected {
-        const sceneKeypoints = this.cv.detect(frame, {
-            levels: this.sceneLevels,
-            maxKeypoints: this.maxSceneKeypoints,
-        });
-        const sceneDescriptors = this.cv.describe(frame, sceneKeypoints);
-        let matches = matchPerLevel(this.cv, sceneDescriptors, this.levels, this.ratio);
+        return this.detected(detectTarget(this.cv, this.setup, frame, timestampMs));
+    }
 
-        // Skipped exactly as the contract documents when a backend has none.
-        if (this.cv.filterMatches && this.targetKeypoints) {
-            matches = this.cv.filterMatches(
-                matches,
-                { keypoints: sceneKeypoints, width: frame.width, height: frame.height },
-                {
-                    keypoints: this.targetKeypoints,
-                    width: this.target.meta.widthPx,
-                    height: this.target.meta.heightPx,
-                },
-            );
-        }
-
-        if (matches.length < 4) {
+    /** M1's result for a detection: its `state`, `quality` and `pose` added. */
+    private detected(d: Detection): Detected {
+        if (!d.ok) {
             return {
                 ok: false,
                 state: "LOST",
                 quality: 0,
-                reason: "too-few-matches",
-                timestampMs,
-                numMatches: matches.length,
-                numInliers: 0,
+                reason: d.reason,
+                timestampMs: d.timestampMs,
+                numMatches: d.numMatches,
+                numInliers: d.numInliers,
                 H: null,
                 pose: null,
-                sceneKeypoints,
+                sceneKeypoints: d.sceneKeypoints,
             };
         }
-
-        // src = target points, dst = frame points, so H maps the target plane
-        // into the frame and its corners can be drawn straight onto it.
-        const src = new Float64Array(matches.length * 2);
-        const dst = new Float64Array(matches.length * 2);
-        const kp = this.target.keypoints;
-        for (let i = 0; i < matches.length; i++) {
-            const m = matches[i];
-            // f32 -> number widens here, which is what §5.5 means by "readers
-            // widen to Float64 when building the contract's PointArray".
-            src[i * 2] = kp.x[m.trainIdx];
-            src[i * 2 + 1] = kp.y[m.trainIdx];
-            dst[i * 2] = sceneKeypoints[m.queryIdx].x;
-            dst[i * 2 + 1] = sceneKeypoints[m.queryIdx].y;
-        }
-
-        const h = this.cv.estimateHomography(src, dst, { threshold: this.ransacThreshold });
-        if (!h.ok) {
-            return {
-                ok: false,
-                state: "LOST",
-                quality: 0,
-                reason: "no-consensus",
-                timestampMs,
-                numMatches: matches.length,
-                numInliers: h.numInliers,
-                H: null,
-                pose: null,
-                sceneKeypoints,
-            };
-        }
-
         return {
             ok: true,
             state: "DETECT",
-            // matches.length >= 4 here, so the division is safe.
-            quality: h.numInliers / matches.length,
-            timestampMs,
-            numMatches: matches.length,
-            numInliers: h.numInliers,
-            H: h.H,
-            pose: this.cv.poseFromHomography(h.H, this.K),
-            sceneKeypoints,
+            // numMatches >= 4 on an ok detection, so the division is safe.
+            quality: d.numInliers / d.numMatches,
+            timestampMs: d.timestampMs,
+            numMatches: d.numMatches,
+            numInliers: d.numInliers,
+            H: d.H,
+            pose: this.cv.poseFromHomography(d.H, this.K),
+            sceneKeypoints: d.sceneKeypoints,
         };
     }
 
@@ -719,25 +646,4 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
             minPatchZncc: fraction("minPatchZncc", o.minPatchZncc ?? DEFAULT_MIN_PATCH_ZNCC),
         },
     };
-}
-
-/**
- * The target's keypoint table back as the contract's `Keypoint[]`.
- *
- * `filterMatches` takes an array of objects; a `TargetDb` stores a structure
- * of arrays. The conversion happens once, in the constructor, not per frame.
- */
-function toKeypointArray(target: TargetDb): Keypoint[] {
-    const kp = target.keypoints;
-    const out: Keypoint[] = new Array(kp.count);
-    for (let i = 0; i < kp.count; i++) {
-        out[i] = {
-            x: kp.x[i],
-            y: kp.y[i],
-            score: kp.score[i],
-            angle: kp.angle[i],
-            level: kp.level[i],
-        };
-    }
-    return out;
 }

@@ -37,8 +37,25 @@
  *
  */
 
-export { buildLevelIndex, chooseDescriptorSet, matchPerLevel } from "./detection.js";
-export type { TargetLevelView, UsableDescriptorSet } from "./detection.js";
+export {
+    buildLevelIndex,
+    chooseDescriptorSet,
+    DEFAULT_MAX_SCENE_KEYPOINTS,
+    DEFAULT_RANSAC_THRESHOLD,
+    DEFAULT_RATIO,
+    DEFAULT_SCENE_LEVELS,
+    detectTarget,
+    matchPerLevel,
+    prepareDetection,
+} from "./detection.js";
+export type {
+    Detection,
+    DetectionFailure,
+    DetectionSetup,
+    DetectTargetOptions,
+    TargetLevelView,
+    UsableDescriptorSet,
+} from "./detection.js";
 
 export {
     buildTargetFromImage,
@@ -56,13 +73,9 @@ export {
     DEFAULT_MAX_FIT_RMS,
     DEFAULT_MAX_FRAME_LEVELS,
     DEFAULT_MAX_OUTLIER_SHARE,
-    DEFAULT_MAX_SCENE_KEYPOINTS,
     DEFAULT_MIN_PATCH_ZNCC,
     DEFAULT_MIN_TRACKED_PATCHES,
     DEFAULT_PHOTOMETRIC,
-    DEFAULT_RANSAC_THRESHOLD,
-    DEFAULT_RATIO,
-    DEFAULT_SCENE_LEVELS,
     DEFAULT_TUKEY_C,
     NftTracker,
 } from "./tracker.js";
