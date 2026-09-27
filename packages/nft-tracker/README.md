@@ -295,9 +295,10 @@ if (result.ok) {
 
 `process` does not throw on a frame it cannot use; `result.ok` narrows the
 union. Besides `H`, `pose`, `numMatches`, `numInliers`, `sceneKeypoints` and,
-when not `ok`, a `reason` (`"too-few-matches"`, `"no-consensus"`,
-`"no-detection"` or `"unconfirmed"` — the last two only with a detection
-computed elsewhere, below), every result carries:
+when not `ok`, a `reason` (`"too-few-matches"` or `"no-consensus"` from a
+detection; `"no-detection"` when `externalDetection` is on and no detection
+was handed in; `"unconfirmed"` when one was handed in and the tracking step
+refused it — see **External detection** below), every result carries:
 
 | `state` | Meaning | `quality`, in `[0, 1]` |
 |---|---|---|
@@ -355,9 +356,12 @@ step **on this same frame**, which carries the pose forward and checks it —
 `"TRACK"` if the step holds, `"LOST"` with `reason: "unconfirmed"` and the
 step's `trackLoss` if not (a detection three frames old on a target moving
 5–10 px a frame is refused this way, on every frame of the fast return in
-`test/tracker_external_detection.test.ts`). A detection-only tracker returns
-it as `"DETECT"`, unconfirmed, as it does its own; a failed detection is
-`"LOST"` with the detection's reason. A detection handed in while the lock
+`test/tracker_external_detection.test.ts`). A detection-only tracker has no
+patches to carry a pose forward, so it returns the detection as `"DETECT"`,
+unconfirmed, as it does its own — but that `H` and `pose` are the **detected**
+frame's, `detectionLatencyMs` old, not this frame's; a caller in that mode
+reads the latency before drawing them. A failed detection is `"LOST"` with
+the detection's reason. A detection handed in while the lock
 holds through this frame's step is **ignored**, and `detectionUse` says so.
 On every row `timestampMs` is this frame's, as `process` was given it;
 `detectionLatencyMs` is that minus the detection's own, so 0 for a detection

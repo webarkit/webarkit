@@ -434,7 +434,12 @@ export type TrackResult =
           readonly numMatches: number;
           /** `"DETECT"`: RANSAC inliers. `"TRACK"`: correspondences the fit weighed above 0. */
           readonly numInliers: number;
-          /** Row-major 3x3 mapping target level-0 pixels into the frame. */
+          /**
+           * Row-major 3x3 mapping target level-0 pixels into the frame — this
+           * frame, with one exception: a detection-only tracker cannot carry
+           * a consumed detection forward, so its `"DETECT"` result for one is
+           * the DETECTED frame's `H` (and `pose`), `detectionLatencyMs` old.
+           */
           readonly H: Mat3;
           /**
            * Decomposition of {@link H}. Present whenever `ok`, but check

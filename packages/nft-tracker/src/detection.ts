@@ -290,12 +290,37 @@ export type Detection =
  *
  * Throws on a target this backend cannot read ({@link chooseDescriptorSet}):
  * a mismatch between target and backend, not a frame that failed to detect.
+ * Throws a `RangeError` naming the option on one out of its domain —
+ * `sceneLevels` and `maxSceneKeypoints` integers `≥ 1`, `ratio` in
+ * `(0, 1]`, `ransacThreshold` finite and `> 0` — rather than hand the
+ * backend a value that silently returns no keypoints (found in review:
+ * `maxSceneKeypoints: NaN` made the reference backend detect nothing, and
+ * every frame failed with `"too-few-matches"`).
  */
 export function prepareDetection(
     cv: CvBackend,
     target: TargetDb,
     options?: DetectTargetOptions,
 ): DetectionSetup {
+    const o = options ?? {};
+    const integer = (name: string, v: unknown): number => {
+        if (!(typeof v === "number" && Number.isInteger(v) && v >= 1)) {
+            throw new RangeError(
+                `prepareDetection: ${name} must be an integer >= 1, got ${String(v)}`,
+            );
+        }
+        return v;
+    };
+    const positive = (name: string, v: unknown, max = Infinity): number => {
+        if (!(typeof v === "number" && Number.isFinite(v) && v > 0 && v <= max)) {
+            throw new RangeError(
+                `prepareDetection: ${name} must be finite, > 0${
+                    max === Infinity ? "" : ` and <= ${max}`
+                }, got ${String(v)}`,
+            );
+        }
+        return v;
+    };
     return {
         levels: buildLevelIndex(chooseDescriptorSet(cv, target)),
         targetKeypoints: cv.filterMatches ? toKeypointArray(target) : null,
@@ -303,10 +328,13 @@ export function prepareDetection(
         targetHeight: target.meta.heightPx,
         keypointX: target.keypoints.x,
         keypointY: target.keypoints.y,
-        sceneLevels: options?.sceneLevels ?? DEFAULT_SCENE_LEVELS,
-        maxSceneKeypoints: options?.maxSceneKeypoints ?? DEFAULT_MAX_SCENE_KEYPOINTS,
-        ratio: options?.ratio ?? DEFAULT_RATIO,
-        ransacThreshold: options?.ransacThreshold ?? DEFAULT_RANSAC_THRESHOLD,
+        sceneLevels: integer("sceneLevels", o.sceneLevels ?? DEFAULT_SCENE_LEVELS),
+        maxSceneKeypoints: integer(
+            "maxSceneKeypoints",
+            o.maxSceneKeypoints ?? DEFAULT_MAX_SCENE_KEYPOINTS,
+        ),
+        ratio: positive("ratio", o.ratio ?? DEFAULT_RATIO, 1),
+        ransacThreshold: positive("ransacThreshold", o.ransacThreshold ?? DEFAULT_RANSAC_THRESHOLD),
     };
 }
 

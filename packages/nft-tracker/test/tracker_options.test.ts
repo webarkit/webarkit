@@ -103,6 +103,11 @@ describe("NftTracker options (M2)", () => {
         ["detectionOnly", 1],
         ["externalDetection", "later"],
         ["clock", 42],
+        // The detection options, checked by prepareDetection (found in review).
+        ["sceneLevels", 0],
+        ["maxSceneKeypoints", Number.NaN],
+        ["ratio", 1.5],
+        ["ransacThreshold", 0],
     ])("refuses %s = %s at construction, naming it", (name, value) => {
         const options = { [name]: value } as NftTrackerOptions;
         expect(() => new NftTracker(cv, tracked, K, options)).toThrow(RangeError);

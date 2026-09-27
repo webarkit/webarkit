@@ -59,7 +59,7 @@ import {
     NftTracker,
     prepareDetection,
 } from "../src/index.js";
-import type { TargetDb } from "../src/index.js";
+import type { DetectTargetOptions, TargetDb } from "../src/index.js";
 import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "./fixtures/pgm.js";
 import { withSeededRandom } from "./fixtures/seeded_rng.js";
 
@@ -192,5 +192,37 @@ describe("prepareDetection", () => {
             descriptorSets: [{ ...target.descriptorSets[0], kind: "akaze" }],
         };
         expect(() => prepareDetection(cv, alien)).toThrow(/no descriptor set/i);
+    });
+
+    // Found in review: with the reference backend, maxSceneKeypoints NaN made
+    // detect return no keypoints, so a caller got a failed detection instead
+    // of an error naming the option. Validated like the tracking options.
+    it.each<[keyof DetectTargetOptions, unknown]>([
+        ["sceneLevels", 0],
+        ["sceneLevels", 1.5],
+        ["sceneLevels", Number.NaN],
+        ["maxSceneKeypoints", 0],
+        ["maxSceneKeypoints", Number.NaN],
+        ["maxSceneKeypoints", 299.5],
+        ["ratio", 0],
+        ["ratio", 1.01],
+        ["ratio", Number.NaN],
+        ["ransacThreshold", 0],
+        ["ransacThreshold", -4],
+        ["ransacThreshold", Infinity],
+        ["ransacThreshold", "4"],
+    ])("refuses %s = %s with a RangeError naming it", (name, value) => {
+        const options = { [name]: value } as DetectTargetOptions;
+        expect(() => prepareDetection(cv, target, options)).toThrow(RangeError);
+        expect(() => prepareDetection(cv, target, options)).toThrow(new RegExp(name));
+    });
+
+    it("accepts the domain's edges: sceneLevels 1, maxSceneKeypoints 1, ratio 1", () => {
+        const edge = prepareDetection(cv, target, {
+            sceneLevels: 1,
+            maxSceneKeypoints: 1,
+            ratio: 1,
+        });
+        expect([edge.sceneLevels, edge.maxSceneKeypoints, edge.ratio]).toEqual([1, 1, 1]);
     });
 });
