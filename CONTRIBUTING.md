@@ -20,6 +20,43 @@ To contribute to the project, please follow these steps:
 
 > **Important**: All PRs must be made against the `dev` branch. The `master` branch is reserved exclusively for stable releases.
 
+## Releasing
+
+Releases are cut by @kalwalt, from `dev` into `master`: the release pull request is the one pull request that targets `master`. Steps 1–3 are what the `v0.2.0` and `v0.3.0` releases did, with the gates CI runs today. Step 4 is new with ADR-0002.
+
+1. **Check that `dev` is green**: CI's gates must pass on `dev` before the release is opened. To run them locally:
+   ```powershell
+   npm install
+   npm run build
+   npm run typecheck
+   npm run format:check
+   npm run check:contract
+   npm test
+   cargo test --workspace
+   cargo fmt --all --check
+   cargo clippy --workspace --all-targets -- -D warnings
+   rustup target add thumbv7em-none-eabihf   # once
+   cargo build -p wnft-format --no-default-features --target thumbv7em-none-eabihf
+   ```
+2. **Open the release pull request**:
+   * It goes from `dev` into `master`.
+   * It is titled `chore(release): vX.Y.Z — <milestone>`, for example [`chore(release): v0.3.0 — M2 complete`](https://github.com/webarkit/webarkit/pull/74). `release` is the one scope that names no part of the repository.
+   * Its body is the release notes.
+   * It is merged with a merge commit.
+3. **Tag the merge commit**: After the merge, @kalwalt puts an annotated tag on the **merge commit**, not on the tip of `dev`. The tag's message repeats the pull request's title without `chore(release): `. `v0.2.0` and `v0.3.0` are both annotated tags on the merge commits of [#45](https://github.com/webarkit/webarkit/pull/45) and [#74](https://github.com/webarkit/webarkit/pull/74).
+   ```powershell
+   git tag -a vX.Y.Z -m "vX.Y.Z — <milestone>" merge-commit-sha
+   git push origin vX.Y.Z
+   ```
+4. **Versions**: The package versions match the release tag; [ADR-0002](docs/adr/0002-lockstep-versioning.md) records why.
+
+What the project does **not** do today:
+* It keeps no `CHANGELOG` and creates no GitHub Release objects. A release's notes are the body of its release pull request.
+* It publishes nothing to npm or crates.io.
+* The package manifests will read `0.1.0` until the first release under ADR-0002.
+
+Two questions are still open in [#72](https://github.com/webarkit/webarkit/issues/72): whether to keep a `CHANGELOG` and GitHub Releases, and so whether the "automated release history" promised under Commit Message Conventions is kept or withdrawn.
+
 ## Testing
 
 Before submitting a commit or a Pull Request, it is essential to verify that the code works correctly and adheres to the project's quality standards.
