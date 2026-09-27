@@ -142,7 +142,7 @@ import type {
     TrackStepTimings,
     TrackTarget,
 } from "./tracking/track_frame.js";
-import type { TrackingState } from "./tracking/types.js";
+import type { DetectionUse, TrackingState } from "./tracking/types.js";
 
 /*
  * The tracking state's defaults. Every one is provisional until the M2
@@ -265,7 +265,20 @@ export type TrackFailure =
     /** Fewer than the 4 correspondences a homography needs. */
     | "too-few-matches"
     /** Enough matches, but RANSAC found no model they agree on. */
-    | "no-consensus";
+    | "no-consensus"
+    /**
+     * No lock, and no detection: with `externalDetection`, the tracker runs
+     * none itself, and none was handed to `process` this frame. The result
+     * says `needsDetection`.
+     */
+    | "no-detection"
+    /**
+     * A detection was handed in and consumed, but the tracking step that
+     * carries its homography to this frame refused it — `trackLoss` says
+     * why. The detection is of an earlier frame, and the target moved past
+     * what one step recovers, or the detection was wrong to begin with.
+     */
+    | "unconfirmed";
 
 export interface NftTrackerOptions {
     /** See {@link DEFAULT_SCENE_LEVELS}. */
@@ -278,6 +291,16 @@ export interface NftTrackerOptions {
     readonly ransacThreshold?: number;
     /** Never track: every frame runs detection, and nothing is carried between frames (M1). Default `false`. */
     readonly detectionOnly?: boolean;
+    /**
+     * Never detect: the application runs `detectTarget` where it likes — in
+     * a worker it owns, typically — and hands the result to {@link
+     * NftTracker.process}. A frame without a lock and without one is
+     * `"LOST"` with `reason: "no-detection"`, costs no backend call, and
+     * says `needsDetection`. Default `false`: the tracker detects itself on
+     * a frame without a lock, as in M2. Either way, a detection handed in is
+     * consumed. May be combined with `detectionOnly`.
+     */
+    readonly externalDetection?: boolean;
     /** See {@link DEFAULT_MAX_FRAME_LEVELS}. Integer in `[1, 256]`. */
     readonly maxFrameLevels?: number;
     /** See {@link DEFAULT_ALIGN_MAX_ITERATIONS}. Integer `≥ 1`. */
@@ -345,6 +368,21 @@ interface TrackingFields {
     readonly tracking: TrackStats | null;
     /** `null` without the `clock` option. */
     readonly timings: TrackTimings | null;
+    /**
+     * Whether the application should produce a detection and hand it to a
+     * later `process` call: `true` iff the frame ended without a lock and the
+     * tracker has `externalDetection`. Always `false` without it. The tracker
+     * keeps no request state — how many detections are in flight, and of
+     * which frames, is the application's policy.
+     */
+    readonly needsDetection: boolean;
+    /** What became of a detection this frame. */
+    readonly detectionUse: DetectionUse;
+    /**
+     * `timestampMs` minus the consumed detection's own, in the caller's
+     * units, when one was consumed this frame; else `null`.
+     */
+    readonly detectionLatencyMs: number | null;
 }
 
 /**
@@ -415,6 +453,8 @@ export class NftTracker {
      * 3 × 3, which `alignPatch` cannot align.
      */
     readonly detectionOnly: boolean;
+    /** Whether the tracker never detects itself: the `externalDetection` option. */
+    readonly externalDetection: boolean;
     /** The target's patches with their geometry, when this tracker tracks. */
     private readonly track: TrackTarget | null;
     private readonly trackOptions: TrackFrameOptions;
@@ -456,6 +496,7 @@ export class NftTracker {
                 ? trackTarget(p, target.pyramid.scaleStep)
                 : null;
         this.detectionOnly = this.track === null;
+        this.externalDetection = tracking.externalDetection;
     }
 
     process(frame: GrayImage, timestampMs: number): TrackResult {
@@ -491,6 +532,9 @@ export class NftTracker {
                     trackLoss: null,
                     tracking,
                     timings: this.timings(start, 0, step),
+                    needsDetection: false,
+                    detectionUse: "none",
+                    detectionLatencyMs: null,
                 };
             }
             // The lock goes, and this same frame is detected again below: a
@@ -506,7 +550,14 @@ export class NftTracker {
         if (detected.ok && this.track !== null) {
             this.lock = { previous: null, current: detected.H };
         }
-        const fields = { trackLoss, tracking, timings: this.timings(start, detectMs, step) };
+        const fields: TrackingFields = {
+            trackLoss,
+            tracking,
+            timings: this.timings(start, detectMs, step),
+            needsDetection: false,
+            detectionUse: "internal",
+            detectionLatencyMs: null,
+        };
         return detected.ok ? { ...detected, ...fields } : { ...detected, ...fields };
     }
 
@@ -572,6 +623,7 @@ export class NftTracker {
  */
 function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
     readonly detectionOnly: boolean;
+    readonly externalDetection: boolean;
     readonly clock: (() => number) | null;
     readonly track: TrackFrameOptions;
 } {
@@ -607,6 +659,7 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
     }
     return {
         detectionOnly: flag("detectionOnly", o.detectionOnly ?? false),
+        externalDetection: flag("externalDetection", o.externalDetection ?? false),
         clock: o.clock ?? null,
         track: {
             maxFrameLevels: integer(

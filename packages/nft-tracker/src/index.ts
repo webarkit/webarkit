@@ -94,6 +94,7 @@ export type {
     AlignPatch,
     AlignPatchOptions,
     BuildFramePyramid,
+    DetectionUse,
     FramePyramid,
     FramePyramidFailure,
     FramePyramidOptions,

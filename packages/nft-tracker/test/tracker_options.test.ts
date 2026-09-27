@@ -101,6 +101,7 @@ describe("NftTracker options (M2)", () => {
         ["minPatchZncc", 1],
         ["photometric", "yes"],
         ["detectionOnly", 1],
+        ["externalDetection", "later"],
         ["clock", 42],
     ])("refuses %s = %s at construction, naming it", (name, value) => {
         const options = { [name]: value } as NftTrackerOptions;
@@ -142,6 +143,25 @@ describe("NftTracker options (M2)", () => {
         expect(r.trackLoss).toBeNull();
         expect(r.tracking).toBeNull();
         expect(r.timings).toBeNull();
+    });
+
+    it("carries the M3 fields on an M2 result: needsDetection false, detectionUse internal on a detected frame, none on a tracked one, latency null", () => {
+        const [detected, trackedFrame] = run(new NftTracker(cv, tracked, K), still);
+        expect(detected.state).toBe("DETECT");
+        expect(detected.needsDetection).toBe(false);
+        expect(detected.detectionUse).toBe("internal");
+        expect(detected.detectionLatencyMs).toBeNull();
+        expect(trackedFrame.state).toBe("TRACK");
+        expect(trackedFrame.needsDetection).toBe(false);
+        expect(trackedFrame.detectionUse).toBe("none");
+        expect(trackedFrame.detectionLatencyMs).toBeNull();
+    });
+
+    it("stores externalDetection, default false", () => {
+        expect(new NftTracker(cv, tracked, K).externalDetection).toBe(false);
+        expect(new NftTracker(cv, tracked, K, { externalDetection: true }).externalDetection).toBe(
+            true,
+        );
     });
 });
 
