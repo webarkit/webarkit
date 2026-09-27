@@ -51,6 +51,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import type { CvBackend, GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
 import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
 import { NftTracker } from "../src/tracker.js";
+import type { TrackResult } from "../src/tracker.js";
 import { detectTarget, prepareDetection } from "../src/detection.js";
 import type { Detection, DetectionSetup } from "../src/detection.js";
 import type { TargetDb } from "../src/target/types.js";
@@ -326,5 +327,201 @@ describe("NftTracker with a detection handed in (M3)", () => {
         expect(withSeededRandom(SEED, () => tracker.process(f0, 0)).draws).toBe(0);
         expect(withSeededRandom(SEED, () => tracker.process(f1, 33, d0)).draws).toBe(0);
         expect(withSeededRandom(SEED, () => tracker.process(f2, 66)).draws).toBe(0);
+    });
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * Sequences. The camera paths of tracker_state_machine.test.ts, copied.
+ * ---------------------------------------------------------------------------
+ */
+
+const smoothstep = (t: number) => {
+    const u = Math.min(1, Math.max(0, t));
+    return u * u * (3 - 2 * u);
+};
+
+/** Rest 10 frames, slide 260 px right over 40 (fully out past 250), stay out 6, slide back over 40, rest 10. */
+function leaveAndReturn(i: number): Pose {
+    const x =
+        i < 10
+            ? 0
+            : i < 50
+              ? 260 * smoothstep((i - 10) / 40)
+              : i < 56
+                ? 260
+                : i < 96
+                  ? 260 * (1 - smoothstep((i - 56) / 40))
+                  : 0;
+    return { scale: 0.45, angle: 0, shift: [x, 0] };
+}
+
+/** At rest for 5 frames, then moving right at `v` px/frame: the first moving frame's prediction is off by `v`. */
+const velocityStep =
+    (v: number) =>
+    (i: number): Pose => ({ scale: 0.45, angle: 0, shift: [i < 5 ? 0 : v * (i - 4), 0] });
+
+type Path = (i: number) => Pose;
+
+/**
+ * M2 on a path, each frame under its own seed `SEED + i` — so that frame
+ * `i`'s detection, when M2 runs one, draws exactly what `runExternal`'s
+ * caller draws when it detects frame `i`.
+ */
+function runM2(t: TargetDb, path: Path, n: number) {
+    const tracker = new NftTracker(cv, t, K);
+    const results = Array.from(
+        { length: n },
+        (_, i) =>
+            withSeededRandom(SEED + i, () => tracker.process(frameAt(path(i), i), i * 33)).value,
+    );
+    return { results, states: results.map((r) => r.state[0]).join("") };
+}
+
+/**
+ * The application's loop, as a worker-owning one would run it, made
+ * synchronous: on a frame whose result says `needsDetection`, while nothing
+ * is in flight, detect that frame (under `SEED + i`) and hand the result to
+ * `process` `latency` frames later. The tracker's own calls draw nothing.
+ */
+function runExternal(t: TargetDb, path: Path, n: number, latency: number) {
+    const tracker = new NftTracker(cv, t, K, { externalDetection: true });
+    const detections = new Map<number, Detection>();
+    let pending: { due: number; detection: Detection } | null = null;
+    const results: TrackResult[] = [];
+    for (let i = 0; i < n; i++) {
+        const frame = frameAt(path(i), i);
+        let handed: Detection | undefined;
+        if (pending !== null && pending.due === i) {
+            handed = pending.detection;
+            pending = null;
+        }
+        const { value: r, draws } = withSeededRandom(SEED + i, () =>
+            tracker.process(frame, i * 33, handed),
+        );
+        expect(draws).toBe(0);
+        results.push(r);
+        if (r.needsDetection && pending === null) {
+            const detection: Detection = withSeededRandom(SEED + i, () =>
+                detectTarget(cv, setup, frame, i * 33),
+            ).value;
+            detections.set(i, detection);
+            pending = { due: i + latency, detection };
+        }
+    }
+    return { results, detections, states: results.map((r) => r.state[0]).join("") };
+}
+
+/** A result without the three M3 fields, for comparison with M2's. */
+function m2Shape(r: TrackResult) {
+    const { needsDetection: _n, detectionUse: _u, detectionLatencyMs: _l, ...rest } = r;
+    return rest;
+}
+
+describe("NftTracker with external detection on camera-path sequences", () => {
+    // M2's pinned sequences (tracker_state_machine.test.ts), which the
+    // per-frame seeding used here reproduces exactly — measured, so a change
+    // on either side of the comparison is visible.
+    it.each<[string, Path, number, string]>([
+        ["wander", wander, 40, "D" + "T".repeat(39)],
+        [
+            "leaveAndReturn",
+            leaveAndReturn,
+            106,
+            "D" + "T".repeat(38) + "D" + "L".repeat(27) + "D".repeat(26) + "T".repeat(13),
+        ],
+        ["velocityStep(6)", velocityStep(6), 15, "DTTTT" + "D".repeat(10)],
+    ])(
+        "at latency 1 reproduces M2 on %s: the same TRACK frames bit for bit, its detections one frame later, LOST where M2 detected",
+        (_, path, n, pinned) => {
+            const m2 = runM2(target, path, n);
+            const ext = runExternal(target, path, n, 1);
+            expect(m2.states).toBe(pinned);
+            expect(ext.states).toBe(pinned.replace(/D/g, "L"));
+            m2.results.forEach((a, i) => {
+                const b = ext.results[i];
+                if (a.state === "TRACK") {
+                    if (b.detectionUse === "consumed") {
+                        // The consuming frame carries the detected frame's
+                        // keypoints, for overlays; M2's TRACK frame carries
+                        // none. Everything else is bit-identical.
+                        const { sceneKeypoints: bk, ...bRest } = m2Shape(b);
+                        const { sceneKeypoints: _ak, ...aRest } = m2Shape(a);
+                        expect(bRest).toEqual(aRest);
+                        expect(bk).toEqual(m2.results[i - 1].sceneKeypoints);
+                    } else {
+                        expect(m2Shape(b)).toEqual(m2Shape(a));
+                    }
+                    return;
+                }
+                // M2 detected frame i; the loop detected it too, because the
+                // external tracker was LOST there and asked for one.
+                expect(b.state).toBe("LOST");
+                const d = ext.detections.get(i);
+                expect(d).toBeDefined();
+                if (d === undefined) return;
+                expect(d.ok).toBe(a.ok);
+                expect(d.numMatches).toBe(a.numMatches);
+                expect(d.numInliers).toBe(a.numInliers);
+                expect(d.sceneKeypoints).toEqual(a.sceneKeypoints);
+                if (a.ok && d.ok) expect(Array.from(d.H)).toEqual(Array.from(a.H));
+                if (i + 1 < n) {
+                    const next = ext.results[i + 1];
+                    expect(next.detectionUse).toBe("consumed");
+                    expect(next.detectionLatencyMs).toBe(33);
+                    expect(next.trackLoss).toBe(m2.results[i + 1].trackLoss);
+                }
+            });
+        },
+        120_000,
+    );
+
+    it("locks through 3 frames of latency on a slow wander: LOST for 3 frames, then TRACK on one detection", () => {
+        // The wander starts at rest, so the detection of frame 0, handed in on
+        // frame 3, is confirmed there: 0.7 px of motion in between.
+        const ext = runExternal(target, wander, 40, 3);
+        expect(ext.states).toBe("LLL" + "T".repeat(37));
+        expect(ext.detections.size).toBe(1);
+        expect(ext.results[3].detectionUse).toBe("consumed");
+        expect(ext.results[3].detectionLatencyMs).toBe(99);
+        expect(ext.results.slice(3).every((r) => r.state === "TRACK")).toBe(true);
+    }, 60_000);
+
+    it("re-acquires through 3 frames of latency on leave-and-return, refusing every stale detection on the fast return: TRACK again from frame 99, not 92", () => {
+        // On the way back the target moves 5–10 px a frame, so a detection
+        // three frames old is 15–30 px off, past what one step survives: each
+        // is consumed and refused as "unconfirmed". M2, with no latency,
+        // re-detects each of those frames and tracks again from frame 92; here
+        // the first detection confirmed is of frame 96, the first at rest,
+        // handed in on frame 99. Measured: 21 detections over the sequence.
+        const ext = runExternal(target, leaveAndReturn, 106, 3);
+        expect(ext.states).toBe("LLL" + "T".repeat(36) + "L".repeat(60) + "T".repeat(7));
+        expect(ext.detections.size).toBe(21);
+        expect(ext.results[99].detectionUse).toBe("consumed");
+        ext.results.forEach((r) => {
+            if (r.ok || r.reason !== "unconfirmed") return;
+            expect(r.detectionUse).toBe("consumed");
+            expect(r.trackLoss).not.toBeNull();
+            expect(r.detectionLatencyMs).toBe(99);
+        });
+        expect(ext.results.filter((r) => r.state === "TRACK").length).toBeGreaterThan(20);
+    }, 60_000);
+
+    it("is deterministic: the same external sequence twice gives the same states, fields and homographies", () => {
+        const a = runExternal(target, leaveAndReturn, 106, 2);
+        const b = runExternal(target, leaveAndReturn, 106, 2);
+        expect(b.states).toBe(a.states);
+        expect(b.results).toEqual(a.results);
+    }, 120_000);
+
+    it("consumes a structuredClone of a detection exactly as the original", () => {
+        const plain = external().tracker;
+        const cloned = external().tracker;
+        plain.process(f0, 0);
+        cloned.process(f0, 0);
+        const a = plain.process(f1, 33, d0);
+        const b = cloned.process(f1, 33, structuredClone(d0));
+        expect(a.state).toBe("TRACK");
+        expect(b).toEqual(a);
     });
 });
