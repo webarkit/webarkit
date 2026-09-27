@@ -59,11 +59,27 @@
  * is detected from scratch and nothing is carried between frames: exactly
  * M1, which the parity test checks unchanged. `detectionOnly` says which.
  *
- * **Known limitation: re-acquisition is synchronous.** A frame that detects
- * blocks for about the stateless cost — ~109 ms p50 on the reference
- * device's camera path (docs/benchmarks/README.md, "Webcam: `acquire`
- * without a video decoder") against a 33 ms frame budget. Asynchronous
- * detection is M3 (#48's numbering).
+ * **External detection (M3).** The detection pipeline costs about 79 ms p50
+ * on the reference device (docs/benchmarks/README.md, "Results
+ * (2026-09-26)") against a 33 ms frame budget, and in the default mode a
+ * frame without a lock pays it on the thread that called `process`. The
+ * pipeline is exported as `prepareDetection` and `detectTarget`
+ * (detection.ts) so that the application can run it where it likes — in a
+ * worker it owns, with a setup built from the same target — and hand the
+ * `Detection` back to `process` as its third argument. With
+ * `externalDetection: true` the tracker never detects itself: a frame
+ * without a lock and without a handed-in detection is `"LOST"` with
+ * `reason: "no-detection"`, makes no backend call, and says
+ * `needsDetection`. A handed-in detection is of an earlier frame, so its
+ * homography is not this frame's pose: the tracker locks on it and runs a
+ * tracking step **on the same frame**, which carries the pose to this frame
+ * and checks it — `"TRACK"` if it holds, `"LOST"` with
+ * `reason: "unconfirmed"` and the step's `trackLoss` if not. A detection
+ * handed in while a lock holds is ignored (`detectionUse`). The tracker
+ * keeps no request state and no frame: how many detections are in flight,
+ * and of which frames, is the application's policy, and the worker is the
+ * application's (ADR-0001 point 7). The default mode is M2's, unchanged:
+ * the parity tests hold it there.
  *
  * **What tracking survives**, measured on synthetic camera-path frames
  * (270 × 360, pinball at 0.45; track_frame.test.ts,
@@ -137,6 +153,7 @@ import type { TargetDb } from "./target/types.js";
 import { trackFrame, trackTarget } from "./tracking/track_frame.js";
 import type {
     TrackFrameOptions,
+    TrackFrameResult,
     TrackLoss,
     TrackStats,
     TrackStepTimings,
@@ -499,48 +516,61 @@ export class NftTracker {
         this.externalDetection = tracking.externalDetection;
     }
 
-    process(frame: GrayImage, timestampMs: number): TrackResult {
+    /**
+     * One frame.
+     *
+     * @param frame       The frame, a `GrayImage`.
+     * @param timestampMs The frame's timestamp, in the caller's units; echoed
+     *                    back, and the reference for `detectionLatencyMs`.
+     * @param detection   A detection computed elsewhere — by `detectTarget`,
+     *                    in a worker the application owns — of an earlier
+     *                    frame. Consumed when this frame ends without a lock
+     *                    (see the class comment); ignored when the lock holds.
+     *                    Trusted as `detectTarget` produced it.
+     */
+    process(frame: GrayImage, timestampMs: number, detection?: Detection | null): TrackResult {
         const clock = this.clock;
         const start = clock === null ? 0 : clock();
         let trackLoss: TrackLoss | null = null;
         let tracking: TrackStats | null = null;
         let step: TrackStepTimings | null = null;
         if (this.lock !== null && this.track !== null) {
-            const r = trackFrame(
-                frame,
-                this.track,
-                this.lock.previous,
-                this.lock.current,
-                this.trackOptions,
-                clock,
-            );
+            const r = this.step(frame);
             tracking = r.stats;
             step = r.timings;
             if (r.ok) {
-                this.lock = { previous: this.lock.current, current: r.H };
-                const pose = this.cv.poseFromHomography(r.H, this.K);
-                return {
-                    ok: true,
-                    state: "TRACK",
-                    quality: r.quality,
-                    timestampMs,
-                    numMatches: r.stats.observed,
-                    numInliers: r.stats.inliers,
-                    H: r.H,
-                    pose,
-                    sceneKeypoints: NO_KEYPOINTS,
-                    trackLoss: null,
-                    tracking,
-                    timings: this.timings(start, 0, step),
-                    needsDetection: false,
-                    detectionUse: "none",
+                return this.tracked(r, timestampMs, NO_KEYPOINTS, start, [step], {
+                    detectionUse: detection ? "ignored" : "none",
                     detectionLatencyMs: null,
-                };
+                });
             }
-            // The lock goes, and this same frame is detected again below: a
-            // target moved out of the step's reach is often still in view.
+            // The lock goes, and this same frame gets whatever detection
+            // there is below: a target moved out of the step's reach is
+            // often still in view.
             trackLoss = r.loss;
-            this.lock = null;
+        }
+        if (detection) {
+            return this.consume(detection, frame, timestampMs, start, trackLoss, tracking, step);
+        }
+        if (this.externalDetection) {
+            return {
+                ok: false,
+                state: "LOST",
+                quality: 0,
+                reason: "no-detection",
+                timestampMs,
+                numMatches: 0,
+                numInliers: 0,
+                H: null,
+                pose: null,
+                sceneKeypoints: NO_KEYPOINTS,
+                trackLoss,
+                tracking,
+                timings: this.timings(start, 0, [step]),
+                needsDetection: true,
+                detectionUse: "none",
+                detectionLatencyMs: null,
+            };
         }
         const detectStart = clock === null ? 0 : clock();
         const detected = this.detect(frame, timestampMs);
@@ -553,12 +583,116 @@ export class NftTracker {
         const fields: TrackingFields = {
             trackLoss,
             tracking,
-            timings: this.timings(start, detectMs, step),
+            timings: this.timings(start, detectMs, [step]),
             needsDetection: false,
             detectionUse: "internal",
             detectionLatencyMs: null,
         };
         return detected.ok ? { ...detected, ...fields } : { ...detected, ...fields };
+    }
+
+    /**
+     * A detection of an earlier frame enters the state machine here, on a
+     * frame that has no lock.
+     *
+     * When the tracker tracks, the detection's homography starts a lock with
+     * no velocity and a tracking step runs on this frame at once — that step
+     * is what carries a pose from the detected frame to this one, and what
+     * checks it. A detection-only tracker returns it as `"DETECT"`, as M2
+     * does its own; a failed detection is `"LOST"` with its reason. `first*`
+     * describe a tracking step this frame already ran and lost, so that a
+     * result reports the last step run.
+     */
+    private consume(
+        d: Detection,
+        frame: GrayImage,
+        timestampMs: number,
+        start: number,
+        firstLoss: TrackLoss | null,
+        firstStats: TrackStats | null,
+        firstStep: TrackStepTimings | null,
+    ): TrackResult {
+        const use = {
+            detectionUse: "consumed",
+            detectionLatencyMs: timestampMs - d.timestampMs,
+        } as const;
+        if (d.ok && this.track !== null) {
+            this.lock = { previous: null, current: d.H };
+            const r = this.step(frame);
+            const steps = [firstStep, r.timings];
+            if (r.ok) return this.tracked(r, timestampMs, d.sceneKeypoints, start, steps, use);
+            return {
+                ok: false,
+                state: "LOST",
+                quality: 0,
+                reason: "unconfirmed",
+                timestampMs,
+                numMatches: d.numMatches,
+                numInliers: d.numInliers,
+                H: null,
+                pose: null,
+                sceneKeypoints: d.sceneKeypoints,
+                trackLoss: r.loss,
+                tracking: r.stats,
+                timings: this.timings(start, 0, steps),
+                needsDetection: this.externalDetection,
+                ...use,
+            };
+        }
+        const detected = this.detected(d);
+        const fields: TrackingFields = {
+            trackLoss: firstLoss,
+            tracking: firstStats,
+            timings: this.timings(start, 0, [firstStep]),
+            needsDetection: this.externalDetection,
+            ...use,
+        };
+        return detected.ok ? { ...detected, ...fields } : { ...detected, ...fields };
+    }
+
+    /**
+     * One tracking step from the lock, which it advances when the step holds
+     * and drops when it fails. Called only with a lock and a trackable target.
+     */
+    private step(frame: GrayImage): TrackFrameResult {
+        const lock = this.lock!;
+        const r = trackFrame(
+            frame,
+            this.track!,
+            lock.previous,
+            lock.current,
+            this.trackOptions,
+            this.clock,
+        );
+        this.lock = r.ok ? { previous: lock.current, current: r.H } : null;
+        return r;
+    }
+
+    /** A `"TRACK"` result from a step that held. */
+    private tracked(
+        r: Extract<TrackFrameResult, { ok: true }>,
+        timestampMs: number,
+        sceneKeypoints: readonly Keypoint[],
+        start: number,
+        steps: readonly (TrackStepTimings | null)[],
+        use: Pick<TrackingFields, "detectionUse" | "detectionLatencyMs">,
+    ): TrackResult {
+        return {
+            ok: true,
+            state: "TRACK",
+            quality: r.quality,
+            timestampMs,
+            numMatches: r.stats.observed,
+            numInliers: r.stats.inliers,
+            H: r.H,
+            pose: this.cv.poseFromHomography(r.H, this.K),
+            sceneKeypoints,
+            trackLoss: null,
+            tracking: r.stats,
+            timings: this.timings(start, 0, steps),
+            needsDetection: false,
+            ...use,
+        };
     }
 
     /**
@@ -599,20 +733,29 @@ export class NftTracker {
         };
     }
 
+    /** The frame's timings, the tracking steps it ran summed (two, at most: see `consume`). */
     private timings(
         start: number,
         detectMs: number,
-        step: TrackStepTimings | null,
+        steps: readonly (TrackStepTimings | null)[],
     ): TrackTimings | null {
         if (this.clock === null) return null;
-        return {
+        const t = {
             totalMs: this.clock() - start,
             detectMs,
-            trackMs: step?.trackMs ?? 0,
-            pyramidMs: step?.pyramidMs ?? 0,
-            alignMs: step?.alignMs ?? 0,
-            fitMs: step?.fitMs ?? 0,
+            trackMs: 0,
+            pyramidMs: 0,
+            alignMs: 0,
+            fitMs: 0,
         };
+        for (const s of steps) {
+            if (s === null) continue;
+            t.trackMs += s.trackMs;
+            t.pyramidMs += s.pyramidMs;
+            t.alignMs += s.alignMs;
+            t.fitMs += s.fitMs;
+        }
+        return t;
     }
 }
 
