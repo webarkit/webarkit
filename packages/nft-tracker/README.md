@@ -320,8 +320,9 @@ option is given: the tracker reads no clock of its own, and reports the
 tracking step's time and its frame-pyramid share apart from detection. Three
 more fields say what became of detection this frame: `needsDetection`,
 `detectionUse` (`"none"`, `"internal"`, `"consumed"` or `"ignored"`) and
-`detectionLatencyMs` — see **External detection** below; in the default mode
-they read `false`, `"internal"` or `"none"`, and `null`.
+`detectionLatencyMs` — see **External detection** below; in the default mode,
+without a handed-in detection, they read `false`, `"internal"` or `"none"`,
+and `null`.
 
 **External detection.** The detection pipeline costs about 79 ms p50 on the
 reference device
@@ -340,7 +341,9 @@ const detection = detectTarget(cv, setup, frame, timestampMs);
 // On the main thread.
 const tracker = new NftTracker(cv, target, K, { externalDetection: true });
 const result = tracker.process(frame, timestampMs); // no lock, no detection:
-if (result.needsDetection) worker.postMessage({ frame, timestampMs }); // LOST, "no-detection"
+// LOST, "no-detection". Ask for one — while none is in flight, which is the
+// application's policy to keep: the tracker asks on every lost frame.
+if (result.needsDetection && !inFlight) worker.postMessage({ frame, timestampMs });
 // ... frames later, when the worker answers:
 tracker.process(laterFrame, laterTimestampMs, detection); // consumed
 ```
@@ -356,7 +359,15 @@ step's `trackLoss` if not (a detection three frames old on a target moving
 it as `"DETECT"`, unconfirmed, as it does its own; a failed detection is
 `"LOST"` with the detection's reason. A detection handed in while the lock
 holds through this frame's step is **ignored**, and `detectionUse` says so.
-`detectionLatencyMs` is this frame's timestamp minus the detection's.
+On every row `timestampMs` is this frame's, as `process` was given it;
+`detectionLatencyMs` is that minus the detection's own, so 0 for a detection
+of this very frame, and negative if the caller stamped the detection later
+than the frame — trusted, not checked. A frame that consumed a detection
+carries the **detected** frame's `sceneKeypoints`, `detectionLatencyMs` old,
+so an overlay can still draw them; on every other `"TRACK"` frame they are
+empty. `trackLoss` and `tracking` describe the last tracking step run this
+frame — two run only when a frame drops its lock and then confirms a
+consumed detection, and `timings.trackMs` sums them.
 
 With `externalDetection: true` the tracker never detects itself: a frame
 without a lock and without a handed-in detection is `"LOST"` with
@@ -380,7 +391,9 @@ tracked — no patches (format spec §5.7), fewer than `minTrackedPatches`, or
 smaller than 3 × 3 — every frame runs detection and nothing is carried between
 frames: exactly M1. `tracker.detectionOnly` says which mode a tracker is in.
 Targets from `buildTargetFromImage` carry no patches; `compile-target` writes
-them.
+them. Combined with `externalDetection`, a detection-only tracker runs no
+detection itself either: every frame needs one, and a handed-in detection is
+returned as `"DETECT"`.
 
 **Options.** Every threshold the tracking state judges a frame by is an
 option, checked at construction (a value out of its domain throws a

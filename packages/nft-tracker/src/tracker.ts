@@ -358,7 +358,9 @@ export interface TrackTimings {
      * The tracking step when it ran — prediction, cull, pyramid, alignment,
      * fit, judgement; the pose (a backend call) is not in it. On `"TRACK"`
      * frames, ADR-0001 point 5's "tracker-side TypeScript compute in the
-     * tracking state". Else 0.
+     * tracking state". Else 0. A frame that drops its lock and then confirms
+     * a consumed detection runs two steps, and this is their sum (as are
+     * the three parts below).
      */
     readonly trackMs: number;
     /** Part of `trackMs` building the frame pyramid: ADR-0001 point 3's first candidate for the backend. */
@@ -376,12 +378,15 @@ export interface TrackTimings {
 /** Fields every result carries in M2, on both branches. */
 interface TrackingFields {
     /**
-     * Why the lock this frame started with was dropped; `null` if it held, or
-     * there was none. A frame that drops its lock is detected again at once,
-     * so this can accompany a `"DETECT"` result as well as a `"LOST"` one.
+     * Why the last tracking step run this frame dropped its lock; `null` if
+     * it held, or no step ran. A frame that drops its lock is detected again
+     * at once, so this can accompany a `"DETECT"` result as well as a `"LOST"`
+     * one. Two steps run only on a frame that drops its lock and then
+     * confirms a consumed detection (see `consume`): both fields then
+     * describe the confirming step, and its `"TRACK"` result has `null` here.
      */
     readonly trackLoss: TrackLoss | null;
-    /** The tracking step's patch counts, when one ran this frame; else `null`. */
+    /** The last tracking step's patch counts, when one ran this frame; else `null`. */
     readonly tracking: TrackStats | null;
     /** `null` without the `clock` option. */
     readonly timings: TrackTimings | null;
@@ -397,7 +402,9 @@ interface TrackingFields {
     readonly detectionUse: DetectionUse;
     /**
      * `timestampMs` minus the consumed detection's own, in the caller's
-     * units, when one was consumed this frame; else `null`.
+     * units, when one was consumed this frame; else `null`. 0 for a
+     * detection of this very frame, and negative if the caller stamped the
+     * detection later than the frame: trusted, not checked.
      */
     readonly detectionLatencyMs: number | null;
 }
@@ -435,7 +442,12 @@ export type TrackResult =
            * geometrically degenerate.
            */
           readonly pose: Pose;
-          /** The frame's keypoints, as detected. For overlays. Empty on `"TRACK"`: nothing is detected. */
+          /**
+           * The frame's keypoints, as detected. For overlays. Empty on a
+           * `"TRACK"` frame, where nothing is detected — except one that
+           * consumed a detection, which carries the DETECTED frame's
+           * keypoints, `detectionLatencyMs` old.
+           */
           readonly sceneKeypoints: readonly Keypoint[];
       })
     | (TrackingFields & {
@@ -639,8 +651,13 @@ export class NftTracker {
                 ...use,
             };
         }
+        // `detected` stamps the detection's own timestamp, as M2's internal
+        // path does for the frame it detected; here that is an earlier
+        // frame, and every result echoes the timestamp `process` was given —
+        // the detection's age is `detectionLatencyMs`.
         const detected = this.detected(d);
-        const fields: TrackingFields = {
+        const fields: TrackingFields & { timestampMs: number } = {
+            timestampMs,
             trackLoss: firstLoss,
             tracking: firstStats,
             timings: this.timings(start, 0, [firstStep]),

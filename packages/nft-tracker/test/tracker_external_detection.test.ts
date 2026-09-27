@@ -236,6 +236,9 @@ describe("NftTracker with a detection handed in (M3)", () => {
         expect(r.needsDetection).toBe(true);
         expect(r.detectionUse).toBe("consumed");
         expect(r.detectionLatencyMs).toBe(33);
+        // Echoed from process, as on every other row; the detection's own
+        // timestamp is what detectionLatencyMs is measured against.
+        expect(r.timestampMs).toBe(33);
         expect(r.tracking).toBeNull();
         expect(r.trackLoss).toBeNull();
         expect(calls).toEqual({});
@@ -277,15 +280,29 @@ describe("NftTracker with a detection handed in (M3)", () => {
         );
         const dJumped = withSeededRandom(SEED, () => detectTarget(cv, setup, jumped, 66)).value;
         expect(dJumped.ok).toBe(true);
-        const b = external();
-        b.tracker.process(f0, 0);
-        expect(b.tracker.process(f1, 33, d0).state).toBe("TRACK");
-        const s = b.tracker.process(jumped, 66, dJumped);
+        // A clock that ticks once per read: the frame's timings then count
+        // clock reads, and two steps read it more than one does.
+        let ticks = 0;
+        const clock = () => ++ticks;
+        const single = new NftTracker(cv, target, K, { externalDetection: true, clock });
+        single.process(f0, 0);
+        const oneStep = single.process(f1, 33, d0);
+        expect(oneStep.state).toBe("TRACK");
+        const b = new NftTracker(cv, target, K, { externalDetection: true, clock });
+        b.process(f0, 0);
+        expect(b.process(f1, 33, d0).state).toBe("TRACK");
+        const s = b.process(jumped, 66, dJumped);
         expect(s.state).toBe("TRACK");
         expect(s.trackLoss).toBeNull();
         expect(s.detectionUse).toBe("consumed");
         expect(s.detectionLatencyMs).toBe(0);
+        expect(s.timestampMs).toBe(66);
         expect(s.tracking!.observed).toBeGreaterThanOrEqual(8);
+        // Two steps ran: the first dropped the lock, the second confirmed the
+        // detection. timings sums them, and no detection ran here.
+        expect(s.timings!.detectMs).toBe(0);
+        expect(s.timings!.trackMs).toBeGreaterThan(oneStep.timings!.trackMs);
+        expect(s.timings!.trackMs).toBeLessThanOrEqual(s.timings!.totalMs);
     });
 
     it("default mode consumes a handed-in detection too, and does not detect again itself", () => {
@@ -313,6 +330,7 @@ describe("NftTracker with a detection handed in (M3)", () => {
         expect(r.needsDetection).toBe(true);
         expect(r.detectionUse).toBe("consumed");
         expect(r.detectionLatencyMs).toBe(33);
+        expect(r.timestampMs).toBe(33);
         expect(r.tracking).toBeNull();
         expect(calls).toEqual({ poseFromHomography: 1 });
         const next = tracker.process(f2, 66);
