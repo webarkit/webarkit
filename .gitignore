@@ -40,3 +40,9 @@ crates/wnft-format/fuzz/Cargo.lock
 # Claude Code personal overrides. .claude/settings.json is shared and checked
 # in; settings.local.json is per-developer and must not be.
 .claude/settings.local.json
+
+# The tuning pass's candidate targets (docs/benchmarks/README.md, "M3: the
+# tuning pass"): compiled by hand, served to bench-nft.html as
+# ?targetFile=tuning/<name>.wnft, and never committed. A candidate that is
+# adopted replaces examples/targets/pinball.wnft in its own commit.
+examples/targets/tuning/

@@ -40,6 +40,7 @@ import {
     nextFrameIndex,
     parsePositiveInt,
     parseRunParams,
+    parseTrackerOverrides,
     percentile,
     proxyRatio,
     reacquisitions,
@@ -55,6 +56,7 @@ import {
     texturedFrame,
     timeRepeated,
     trackabilityError,
+    TUNABLE_TRACKER_OPTIONS,
 } from "../js/bench-metrics.mjs";
 
 describe("percentile", () => {
@@ -652,7 +654,49 @@ describe("parsePositiveInt and parseRunParams", () => {
             target: null,
             windowSize: null,
             clip: null,
+            targetFile: null,
+            trackerOverrides: {},
+            paramErrors: [],
         });
+    });
+
+    it("reads a candidate target under targets/tuning/ and tracker overrides", () => {
+        const p = parseRunParams(
+            "?mode=tracking&targetFile=tuning/p32-s16.wnft&tracker=minTrackedPatches:6,alignEpsilon:0.03,photometric:false",
+            { bundledClips: clips },
+        );
+        expect(p.targetFile).toBe("tuning/p32-s16.wnft");
+        expect(p.trackerOverrides).toEqual({
+            minTrackedPatches: 6,
+            alignEpsilon: 0.03,
+            photometric: false,
+        });
+        expect(p.paramErrors).toEqual([]);
+    });
+
+    it("refuses, rather than drops, a target file or an override it cannot use", () => {
+        // Falling back to the defaults would export a run labelled with
+        // parameters it did not run with: the one failure a tuning round
+        // cannot afford, so these are errors the page shows, not nulls.
+        for (const file of [
+            "pinball.wnft",
+            "tuning/../pinball.wnft",
+            "tuning/.hidden.wnft",
+            "tuning/a/b.wnft",
+            "tuning/p32.json",
+            "tuning/",
+        ]) {
+            const p = parseRunParams(`?targetFile=${encodeURIComponent(file)}`, {
+                bundledClips: clips,
+            });
+            expect(p.targetFile, file).toBeNull();
+            expect(p.paramErrors, file).toHaveLength(1);
+            expect(p.paramErrors[0], file).toMatch(/targetFile/);
+        }
+        const bad = parseRunParams("?tracker=minPatchZnc:0.5", { bundledClips: clips });
+        expect(bad.trackerOverrides).toEqual({});
+        expect(bad.paramErrors).toHaveLength(1);
+        expect(bad.paramErrors[0]).toMatch(/minPatchZnc/);
     });
 
     it("reads a tracking run's URL, and gives tracking the file by default", () => {
@@ -692,6 +736,106 @@ describe("parsePositiveInt and parseRunParams", () => {
         expect(parseRunParams("?camera=front", { bundledClips: clips }).camera).toBe("user");
         expect(parseRunParams("?camera=rear", { bundledClips: clips }).camera).toBe("environment");
         expect(MODES).toEqual(["stateless", "detection-only", "tracking"]);
+    });
+});
+
+describe("parseTrackerOverrides", () => {
+    it("reads nothing as no overrides", () => {
+        for (const raw of [null, undefined, "", "  "]) {
+            expect(parseTrackerOverrides(raw)).toEqual({ ok: true, options: {} });
+        }
+    });
+
+    it("reads key:value pairs, numbers and the one boolean", () => {
+        expect(parseTrackerOverrides(" maxFrameLevels:2 , maxFitRms:0.45,photometric:true")).toEqual(
+            {
+                ok: true,
+                options: { maxFrameLevels: 2, maxFitRms: 0.45, photometric: true },
+            },
+        );
+    });
+
+    it("names every tracking-state option the tracker takes, and no detection option", () => {
+        expect([...TUNABLE_TRACKER_OPTIONS].sort()).toEqual(
+            [
+                "maxFrameLevels",
+                "alignMaxIterations",
+                "alignEpsilon",
+                "photometric",
+                "tukeyC",
+                "fitMaxIterations",
+                "fitEpsilon",
+                "minTrackedPatches",
+                "maxOutlierShare",
+                "maxFitRms",
+                "minPatchZncc",
+            ].sort(),
+        );
+    });
+
+    it("refuses an unknown key, a repeated key, a malformed pair or a value of the wrong type", () => {
+        for (const [raw, pattern] of [
+            ["tukey:4", /unknown option "tukey"/],
+            ["maxSceneKeypoints:300", /unknown option "maxSceneKeypoints"/],
+            ["tukeyC:4,tukeyC:5", /"tukeyC" given twice/],
+            ["tukeyC", /"tukeyC" is not key:value/],
+            ["tukeyC:", /tukeyC.*not a finite number/],
+            ["tukeyC:abc", /tukeyC.*not a finite number/],
+            ["tukeyC:Infinity", /tukeyC.*not a finite number/],
+            ["photometric:1", /photometric.*true or false/],
+        ]) {
+            const r = parseTrackerOverrides(raw);
+            expect(r.ok, raw).toBe(false);
+            expect(r.error, raw).toMatch(pattern);
+        }
+    });
+});
+
+describe("parseTrackerOverrides applies the tracker's domains", () => {
+    // Found in review: a finite value out of its domain passed the URL check,
+    // started the clip, and only then made the tracker throw — or, in
+    // stateless mode, was silently ignored. The domains are NftTracker's own.
+    it.each([
+        ["maxFrameLevels:0", /maxFrameLevels.*integer in \[1, 256\]/],
+        ["maxFrameLevels:257", /maxFrameLevels/],
+        ["alignMaxIterations:0", /alignMaxIterations.*integer ≥ 1/],
+        ["alignMaxIterations:2.5", /alignMaxIterations/],
+        ["fitMaxIterations:0", /fitMaxIterations/],
+        ["minTrackedPatches:3", /minTrackedPatches.*integer ≥ 4/],
+        ["alignEpsilon:0", /alignEpsilon.*> 0/],
+        ["fitEpsilon:-1", /fitEpsilon/],
+        ["tukeyC:0", /tukeyC/],
+        ["maxFitRms:0", /maxFitRms/],
+        ["maxOutlierShare:1", /maxOutlierShare.*\[0, 1\)/],
+        ["minPatchZncc:-0.1", /minPatchZncc/],
+    ])("refuses %s", (raw, pattern) => {
+        const r = parseTrackerOverrides(raw);
+        expect(r.ok).toBe(false);
+        expect(r.error).toMatch(pattern);
+    });
+
+    it("accepts each domain's edges", () => {
+        expect(
+            parseTrackerOverrides(
+                "maxFrameLevels:256,alignMaxIterations:1,minTrackedPatches:4,maxOutlierShare:0,minPatchZncc:0",
+            ).ok,
+        ).toBe(true);
+    });
+});
+
+describe("startRefusal names the target file it was given", () => {
+    it("says which file did not load, pinball.wnft when none is named", () => {
+        expect(
+            startRefusal({
+                mode: "tracking",
+                target: null,
+                minTrackedPatches: 8,
+                file: "targets/tuning/p32.wnft",
+            }),
+        ).toMatch(/targets\/tuning\/p32\.wnft is not loaded/);
+        expect(startRefusal({ mode: "tracking", target: null, minTrackedPatches: 8 })).toMatch(
+            /targets\/pinball\.wnft is not loaded/,
+        );
     });
 });
 

@@ -56,24 +56,62 @@
  * median of the three runs' trackStepMs p50 and p95: the device ÷ desktop
  * ratio on the same frames, which prediction 1 in docs/benchmarks/README.md
  * reads the proxy from.
+ *
+ * **Tuning rounds** (M3's tuning pass; the plan is in
+ * docs/benchmarks/README.md, "2026-09-28 — M3: the tuning pass"):
+ *
+ *     node scripts/replay-clips.mjs --target examples/targets/tuning/p32-s16.wnft  *         --options minTrackedPatches:6 --seed 1 [--tracking-only] [--device-ratio 3.15]
+ *
+ * - `--target <file.wnft>`: a candidate target instead of pinball.wnft. The
+ *   export and the header record its path and SHA-256.
+ * - `--options k:v,…`: tracker option overrides, the page's `?tracker=` syntax
+ *   (`parseTrackerOverrides`), applied to every run. Not with `--sequence`,
+ *   which runs the export's own options.
+ * - `--seed <n>`: `Math.random` seeded (mulberry32) at the start of every run,
+ *   so RANSAC draws in the detections repeat, and a candidate's run differs
+ *   from the baseline's by the candidate, not by the draws — until the two
+ *   runs' frames diverge. Without it the replay draws as it always has.
+ * - `--tracking-only`: skip the detection-only runs. They do not depend on the
+ *   patches or the tracking options, so a round needs them once per seed, for
+ *   the static clip's jitter ratio.
+ * - `--device-ratio <x>` (default 3.15, the middle of 2026-09-26's measured
+ *   3.0–3.3): a further schedule, "device, scaled step", whose tracking step
+ *   costs this configuration's own every-frame `trackStepMs` p50 times the
+ *   ratio. A cheaper step skips fewer frames, and this is the schedule that
+ *   lets it show; the fixed 15 and 25 ms schedules stay for comparison with
+ *   M2's replay.
+ *
+ * The every-frame tracking run also runs the step probe
+ * (`scripts/tuning-probe.mjs`), which re-runs each tracking step beside the
+ * tracker, stops the script if the two ever disagree, and prints a second
+ * table: per-patch cost, alignment iterations, the correlation of right
+ * alignments against the `minPatchZncc` gate, and what the `too-few-patches`
+ * losses had left. Iterations, correlations and counts are functions of the
+ * pixels, not of this machine's speed, so the desktop measures them as the
+ * device would, up to ffmpeg's decoding against the browser's.
  */
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { cpus } from "node:os";
-import { join } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
     createJsfeatNextBackend,
     intrinsics,
 } from "../packages/cv-backend-jsfeatnext/dist/index.js";
-import { decode, NftTracker } from "../packages/nft-tracker/dist/index.js";
+import {
+    decode,
+    DEFAULT_MIN_TRACKED_PATCHES,
+    NftTracker,
+} from "../packages/nft-tracker/dist/index.js";
 import {
     compareExports,
     framesAt,
     frameRecord,
     METRICS_VERSION,
     nextFrameIndex,
+    parseTrackerOverrides,
     proxyRatio,
     sequenceRefusal,
     sequenceSettings,
@@ -84,6 +122,7 @@ import {
     targetRecord,
 } from "../examples/js/bench-metrics.mjs";
 import { fitSize } from "../examples/js/pinball-shared.mjs";
+import { createStepProbe } from "./tuning-probe.mjs";
 
 const EXAMPLES = fileURLToPath(new URL("../examples/", import.meta.url));
 /** bench-nft.html's default processing box. */
@@ -106,14 +145,72 @@ const RUNS = [
     { mode: "tracking", schedule: "every frame", stepMs: null },
     { mode: "tracking", schedule: "device, 15 ms step", stepMs: 15 },
     { mode: "tracking", schedule: "device, 25 ms step", stepMs: 25 },
+    { mode: "tracking", schedule: "device, scaled step", stepMs: "scaled" },
     { mode: "detection-only", schedule: "every frame", stepMs: null },
     { mode: "detection-only", schedule: "device", stepMs: 0 },
 ];
 
+/**
+ * A flag's value, or `null` when the flag is absent. A flag given with no
+ * value — last on the line, or followed by another flag — is a usage error,
+ * not an absent flag: read as absent, `--target` at the end of a command ran
+ * the default target under a command that named a candidate.
+ */
 const arg = (flag) => {
     const i = process.argv.indexOf(flag);
-    return i > 0 ? process.argv[i + 1] : null;
+    if (i < 0) return null;
+    const value = process.argv[i + 1];
+    if (value === undefined || value.startsWith("--")) usage(`${flag} expects a value`);
+    return value;
 };
+
+/** A command-line mistake: one line on stderr, exit 2. */
+function usage(why) {
+    console.error(`replay-clips: ${why}`);
+    process.exit(2);
+}
+
+const TARGET_PATH = resolve(arg("--target") ?? join(EXAMPLES, "targets/pinball.wnft"));
+const parsedOverrides = parseTrackerOverrides(arg("--options"));
+if (!parsedOverrides.ok) usage(`--options: ${parsedOverrides.error}`);
+const OVERRIDES = parsedOverrides.options;
+const SEED = arg("--seed") === null ? null : Number(arg("--seed"));
+if (SEED !== null && !(Number.isSafeInteger(SEED) && Math.abs(SEED) <= 0xffffffff)) {
+    usage(`--seed expects an integer in [-4294967295, 4294967295], got "${arg("--seed")}"`);
+}
+const TRACKING_ONLY = process.argv.includes("--tracking-only");
+const DEVICE_RATIO = Number(arg("--device-ratio") ?? 3.15);
+if (!(Number.isFinite(DEVICE_RATIO) && DEVICE_RATIO > 0)) {
+    usage(`--device-ratio expects a positive number, got "${arg("--device-ratio")}"`);
+}
+if (arg("--sequence") && arg("--options") !== null) {
+    usage(
+        "--sequence replays an export with its own recorded options; --options cannot change them",
+    );
+}
+
+/** mulberry32, as compile-target and the tests' seeded_rng use it. */
+function mulberry32(seed) {
+    let a = seed >>> 0;
+    return () => {
+        a = (a + 0x6d2b79f5) >>> 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+/** `run()` with `Math.random` seeded by `--seed`, or unchanged without one. */
+function seeded(run) {
+    if (SEED === null) return run();
+    const real = Math.random;
+    Math.random = mulberry32(SEED);
+    try {
+        return run();
+    } finally {
+        Math.random = real;
+    }
+}
 
 function probe(path) {
     const json = JSON.parse(
@@ -185,14 +282,32 @@ async function loadClip(clip, box = BOX) {
 }
 
 const cv = await createJsfeatNextBackend();
-const wnft = readFileSync(join(EXAMPLES, "targets/pinball.wnft"));
+const wnft = readFileSync(TARGET_PATH);
 const decoded = decode(new Uint8Array(wnft));
-if (!decoded.ok) throw new Error(`pinball.wnft: ${decoded.error}`);
+if (!decoded.ok) throw new Error(`${TARGET_PATH}: ${decoded.error}`);
 const target = decoded.target;
 const targetPoints = targetCorners(target.meta.widthPx, target.meta.heightPx);
+/** As the page names it — relative to examples/ — when it is under examples/. */
+const targetFile = relative(EXAMPLES, TARGET_PATH).startsWith("..")
+    ? TARGET_PATH
+    : relative(EXAMPLES, TARGET_PATH).split(sep).join("/");
+// Every run here but the detection-only ones needs the tracker to track, and
+// the step probe mirrors its lock: a target it would run detection-only (the
+// constructor's rule, under these options) is refused rather than replayed.
+{
+    const min = OVERRIDES.minTrackedPatches ?? DEFAULT_MIN_TRACKED_PATCHES;
+    const p = target.patches;
+    if (!p || p.patchSize < 3 || p.count < min) {
+        usage(
+            `${targetFile}: ${p ? `${p.count} patches of ${p.patchSize} × ${p.patchSize}` : "no patches"}, ` +
+                `and minTrackedPatches (${min}) needs at least that many of at least 3 × 3; ` +
+                "the tracker would run it detection-only, and the tracking runs need it to track",
+        );
+    }
+}
 const targetRec = targetRecord({
     source: "wnft",
-    file: "targets/pinball.wnft",
+    file: targetFile,
     sha256: await sha256Hex(wnft),
     db: target,
 });
@@ -202,7 +317,11 @@ const targetRec = targetRecord({
  * schedule over `LOOPS` loops; `options` are the tracker's (its defaults unless
  * an export recorded others).
  */
-function replay({ clip, frames, pts, K, mode, stepMs, order, options = {} }) {
+function replay({ clip, frames, pts, K, mode, stepMs, order, options = OVERRIDES, probe = null }) {
+    return seeded(() => replayRun({ clip, frames, pts, K, mode, stepMs, order, options, probe }));
+}
+
+function replayRun({ clip, frames, pts, K, mode, stepMs, order, options, probe }) {
     const tracker = new NftTracker(cv, target, K, {
         ...options,
         detectionOnly: mode === "detection-only",
@@ -211,6 +330,7 @@ function replay({ clip, frames, pts, K, mode, stepMs, order, options = {} }) {
     const records = [];
     const push = (i) => {
         const result = tracker.process(frames[i], pts[i] * 1000);
+        probe?.frame(frames[i], result);
         records.push(
             frameRecord({
                 mode,
@@ -344,15 +464,34 @@ if (sequencePath) {
 
 const outDir = arg("--out");
 if (outDir) mkdirSync(outDir, { recursive: true });
+const patchTable = target.patches;
+console.log(
+    `target ${targetFile} (sha256 ${targetRec.sha256.slice(0, 12)}…): ${patchTable ? `${patchTable.count} patches of ${patchTable.patchSize} × ${patchTable.patchSize}` : "no patches"}; options ${Object.keys(OVERRIDES).length > 0 ? JSON.stringify(OVERRIDES) : "defaults"}; seed ${SEED ?? "none"}; device ratio ${DEVICE_RATIO}
+`,
+);
 console.log(
     "| clip, at | mode, schedule | frames | TRACK share | re-acq. (at wraps) | wraps | first steps confirmed | held-lock steps lost (at wraps) | lock losses | trackStepMs p50 / p95 | align share | frame levels | capped / fits | fit iterations p50 | quality min | quality ≤ 0.20 | jitterPx | spreadPx |",
 );
 console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+const probeRows = [];
+const runs = TRACKING_ONLY ? RUNS.filter((r) => r.mode === "tracking") : RUNS;
 for (const clip of CLIPS) {
     const { frames, pts, width, height } = await loadClip(clip);
     const K = intrinsics(width, height);
     const exports = [];
-    for (const run of RUNS) {
+    let probeSummary = null;
+    for (const planned of runs) {
+        const everyFrameTracking = planned.mode === "tracking" && planned.stepMs === null;
+        let run = planned;
+        if (planned.stepMs === "scaled") {
+            // This configuration's own step, on the device: its every-frame
+            // p50 here, times the measured device ÷ desktop ratio.
+            const p50 = exports[0].runSummary.trackStepMs.p50 ?? 0;
+            const stepMs = p50 * DEVICE_RATIO;
+            run = { ...planned, stepMs, schedule: `device, scaled step (${fmt(stepMs, 1)} ms)` };
+        }
+        const probe =
+            everyFrameTracking && target.patches ? createStepProbe(target, OVERRIDES) : null;
         const records = replay({
             clip,
             frames,
@@ -361,8 +500,17 @@ for (const clip of CLIPS) {
             mode: run.mode,
             stepMs: run.stepMs,
             order: null,
+            probe,
         });
         const e = exportOf(clip, run, { width, height }, records);
+        // Every export names the configuration that produced it, whether or
+        // not the probe ran on it.
+        e.trackerOptions = OVERRIDES;
+        e.seed = SEED;
+        if (probe) {
+            probeSummary = probe.summary();
+            e.tuningProbe = probeSummary;
+        }
         exports.push(e);
         const s = e.runSummary;
         const losses =
@@ -374,9 +522,19 @@ for (const clip of CLIPS) {
             `| ${clip}, ${width}×${height} | ${run.mode}, ${run.schedule} | ${s.frames} | ${pct(s.trackShare)} | ${s.reacquisitions} (${s.reacquisitionsAtLoopWrap}) | ${s.loopWraps} | ${s.firstSteps.confirmed} / ${s.firstSteps.n} | ${s.heldLockSteps.lost} / ${s.heldLockSteps.n} (${s.heldLockSteps.lostAtLoopWrap}) | ${losses} | ${fmt(s.trackStepMs.p50)} / ${fmt(s.trackStepMs.p95)} | ${align} | ${JSON.stringify(s.frameLevels)} | ${s.fits.capped} / ${s.fits.n} | ${s.fits.iterations.p50 ?? "—"} | ${fmt(s.quality.min)} | ${s.lowQualityTrackFrames} | ${fmt(s.jitterPx, 3)} | ${fmt(s.spreadPx, 3)} |`,
         );
         if (outDir) {
-            const slug = `${clip.replace(/\.mp4$/, "")}-${run.mode}-${run.schedule.replace(/[^a-z0-9]+/gi, "-")}`;
+            const slug = `${clip.replace(/\.mp4$/, "")}-${run.mode}-${planned.schedule.replace(/[^a-z0-9]+/gi, "-")}`;
             writeFileSync(join(outDir, `replay-${slug}.json`), JSON.stringify(e, null, 2));
         }
+    }
+    if (probeSummary) {
+        probeRows.push({
+            clip,
+            s: exports[0].runSummary,
+            p: probeSummary,
+            attempted: stats(
+                exports[0].frames.filter((f) => f.tracking).map((f) => f.tracking.attempted),
+            ),
+        });
     }
     const firstStepLosses = exports[0].frames.filter(
         (f, i, all) => f.trackLoss && i > 0 && all[i - 1].state === "DETECT",
@@ -387,18 +545,56 @@ for (const clip of CLIPS) {
             `first-step losses (every frame): ${firstStepLosses.length}; observed patches p50 ${stats(firstStepLosses.map((f) => f.tracking.observed)).p50}, culled p50 ${stats(firstStepLosses.map((f) => f.tracking.culled)).p50} of ${target.patches.count}`,
         );
     }
-    if (clip === "pinball-static.mp4") {
+    const byRun = (mode, prefix) =>
+        exports.find((e) => e.mode === mode && e.schedule.startsWith(prefix));
+    if (clip === "pinball-static.mp4" && !TRACKING_ONLY) {
         for (const [a, b, label] of [
-            [0, 3, "every frame, both modes"],
-            [1, 4, "device schedules (tracking 15 ms step)"],
-            [2, 4, "device schedules (tracking 25 ms step)"],
+            [
+                byRun("tracking", "every frame"),
+                byRun("detection-only", "every frame"),
+                "every frame, both modes",
+            ],
+            [
+                byRun("tracking", "device, 15"),
+                byRun("detection-only", "device"),
+                "device schedules (tracking 15 ms step)",
+            ],
+            [
+                byRun("tracking", "device, 25"),
+                byRun("detection-only", "device"),
+                "device schedules (tracking 25 ms step)",
+            ],
+            [
+                byRun("tracking", "device, scaled"),
+                byRun("detection-only", "device"),
+                "device schedules (tracking scaled step)",
+            ],
         ]) {
-            const r = compareExports(exports[a], exports[b]);
+            const r = compareExports(a, b);
             note.push(
                 `aligned, ${label}: ${r.commonMediaTimes} common media times — jitterPx tracking ${fmt(r.first.jitterPx, 3)}, detection-only ${fmt(r.second.jitterPx, 3)} (÷ ${fmt(r.second.jitterPx / r.first.jitterPx)}); spreadPx ${fmt(r.first.spreadPx, 3)}, ${fmt(r.second.spreadPx, 3)}`,
             );
         }
     }
-    for (const line of note) console.log(`\n${clip}: ${line}`);
+    for (const line of note)
+        console.log(`
+${clip}: ${line}`);
     console.log("");
+}
+
+if (probeRows.length > 0) {
+    console.log(
+        `Step probe, every-frame tracking run (right: within 1 px of the accepted fit; gate: minPatchZncc ${OVERRIDES.minPatchZncc ?? "default"})
+`,
+    );
+    console.log(
+        "| clip | steps | attempted p50 | alignMs p50 / p95 | µs per attempted patch p50 / p95 | align iterations p50 / p95 / max | unconverged (their share of iterations) | right: iterations p50 / p95 / p99 | right needing > 8 / 10 / 15 / 20 | right alignments | ZNCC of right p1 / p5 / p50 | right, refused by the gate | observed off the fit | too-few-patches first / held | observed at those p50 / max | culled at those p50 | winnable by a lower minimum |",
+    );
+    console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+    for (const { clip, s, p, attempted } of probeRows) {
+        const t = p.tooFewPatches;
+        console.log(
+            `| ${clip} | ${p.steps} | ${attempted.p50 ?? "—"} | ${fmt(s.alignMs.p50)} / ${fmt(s.alignMs.p95)} | ${fmt(p.perPatchUs.p50, 1)} / ${fmt(p.perPatchUs.p95, 1)} | ${p.alignIterations.p50 ?? "—"} / ${p.alignIterations.p95 ?? "—"} / ${p.alignIterations.max ?? "—"} | ${pct(p.unconvergedShare)} (${pct(p.iterationsOnUnconverged)}) | ${p.rightIterations.p50 ?? "—"} / ${p.rightIterations.p95 ?? "—"} / ${p.rightIterationsP99 ?? "—"} | ${[8, 10, 15, 20].map((k) => pct(p.rightNeedingMoreThan[k])).join(" / ")} | ${p.right} | ${fmt(p.rightZnccP1, 3)} / ${fmt(p.rightZnccP5, 3)} / ${fmt(p.rightZncc.p50, 3)} | ${p.rightRejected} | ${p.observedOffFit} | ${t.first} / ${t.held} | ${t.observed.p50 ?? "—"} / ${t.observed.max ?? "—"} | ${t.culled.p50 ?? "—"} | ${t.winnableByLowerMinimum} |`,
+        );
+    }
 }
