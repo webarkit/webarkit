@@ -1724,9 +1724,14 @@ within ±10% of the first or the session is inconclusive. Validity checks as
 2026-09-26's 1–7, with check 2 reading the candidate's file and SHA-256.
 
 **File names:** `YYYY-MM-DD-tab9-tuning-r<N>-<config>-<clip>.json`, `<config>`
-being `baseline`, `p32-s16`, `iter15`, and so on. They stay out of the
-repository until the round's decision; the runs a change is adopted on are
-committed, as the runs a milestone is measured against are (root AGENTS.md).
+being `baseline`, `p32-s16`, `iter15`, and so on. **Device exports are
+committed whenever a written conclusion cites them, adopted or not**: a
+verdict of "no change" rests on its runs as much as an adoption does, and
+the tablet runs need the device, adb and a session, so they are the one part
+of a round that cannot be redone from the repository. **Desktop replays are
+not committed**, because they reproduce from it. (Amended after round 1,
+which had first left its exports out under a rule that kept only the runs a
+change was adopted on.)
 
 ### What adopting a result means
 
@@ -1783,9 +1788,17 @@ committed, as the runs a milestone is measured against are (root AGENTS.md).
   caps: the model's cheaper step fit inside the clip's 40.2 ms frame. That
   rested on the model's 20.4 ms of `acquire` + `gray`.
 
-**On `Tab_9_WiFi`** (eight runs, every one at its first attempt; exports
-`2026-09-28-tab9-tuning-r1-<run>.json`, not committed: no change was adopted
-on them):
+**On `Tab_9_WiFi`** (eight runs, every one at its first attempt). The
+round adopted nothing, and its exports are committed because this verdict
+rests on them, as `2026-09-28-tab9-tuning-r1-<run>.json`:
+
+- `baseline-static`, `baseline-wall`, `baseline-table`: tracking,
+  `pinball.wnft`, the tracker's defaults (cap 30);
+- `iter20-static`, `iter20-wall`, `iter20-table`: the same, with
+  `?tracker=alignMaxIterations:20`;
+- `stateless-static`: the stateless pipeline on the static clip, for the
+  jitter ratio;
+- `baseline-static-repeat`: the session's last run, the drift check.
 
 | clip | `trackStepMs` p50 / p95, 30 → 20 | TRACK share | held-lock steps lost | first steps confirmed | lock losses, 30 → 20 |
 |---|---|---|---|---|---|
