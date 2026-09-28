@@ -1758,3 +1758,70 @@ committed, as the runs a milestone is measured against are (root AGENTS.md).
   at about half scale: the tracker's own notes) and the two-phase photometric
   convergence. That is a change to `alignPatch`, not a value to tune, and
   belongs after this pass.
+
+### Results
+
+#### Round 1 — `alignMaxIterations` (2026-09-28): no change, the cap stays 30
+
+**Desktop** (three seeds, interleaved with the baseline; per seed in
+[`2026-09-28-desktop-tuning-r1.md`](./2026-09-28-desktop-tuning-r1.md)):
+
+| cap | `alignMs` p50 against 30: static / wall / table | wall, every frame: TRACK share, held-lock steps lost | wall, scaled schedule: TRACK share | static `jitterPx`, scaled schedule |
+|---|---|---|---|---|
+| 30 | 3.70–3.90 / 6.18–6.38 / 4.76–4.85 ms | 69.5%, 2 of 413 | 57.5–60.4% | 0.139–0.140 px |
+| 25 | −3% / −7% / −3% | 67.4–68.0%, 4 of 401–404 | 78.8–79.4% | 0.139 px |
+| 20 | −4% / −15% / −10% | 65.4–65.9%, 9 of 389–392 | 78.8–79.3% | 0.143–0.144 px |
+
+- Neither cap was worse by the plan's rules. On the same frames, 20 cost the
+  wall clip about 4 points of TRACK share and 1.8 points of held-lock steps,
+  both inside their bounds. It also left 19% fewer right alignments on the
+  wall clip (14,580–14,649, against 18,127–18,131): those it stops at 20
+  iterations end unconverged, the price the probe named in advance.
+- 25 saved 7% of `alignMs` on the wall clip, under the 10% the round needed;
+  20 saved 15%, so 20 went to the device.
+- The scaled schedule's TRACK share on the wall clip rose to 79% under both
+  caps: the model's cheaper step fit inside the clip's 40.2 ms frame. That
+  rested on the model's 20.4 ms of `acquire` + `gray`.
+
+**On `Tab_9_WiFi`** (eight runs, every one at its first attempt; exports
+`2026-09-28-tab9-tuning-r1-<run>.json`, not committed: no change was adopted
+on them):
+
+| clip | `trackStepMs` p50 / p95, 30 → 20 | TRACK share | held-lock steps lost | first steps confirmed | lock losses, 30 → 20 |
+|---|---|---|---|---|---|
+| static | 12.1 / 22.1 → 11.7 / 20.7 (−3.3%) | 100% → 100% | 0 of 299 → 0 of 299 | — | none |
+| wall | 20.5 / 25.1 → 17.1 / 19.8 (−16.6%) | 48% → 47% | 15 of 145 → 15 of 141 | 17 of 119 → 18 of 123 | too-few-patches 93 → 110, poor-fit 9 → 5, fit-failed 8 → 1, no-prediction 8 → 7, too-many-outliers 1 → 0 |
+| table | 18.4 / 25.9 → 16.4 / 24.3 (−10.9%) | 76% → 77% | 12 of 227 → 10 of 229 | 14 of 59 → 13 of 58 | too-few-patches 41 → 49, poor-fit 19 → 9 |
+
+- **Validity:** all 1–7 hold. Every export is Android and `Tab_9_WiFi`, 300
+  frames with 63–139 ticks beyond them, 1–3 loop wraps, a clock of 0.1 ms,
+  the target's SHA-256 `4af6a7fb…`, and the cap the run planned. The static
+  baseline's repeat, the session's last run, gave the same `trackStepMs` p50,
+  12.1 ms, and `spreadPx` was 0.87–0.99 px on every static run.
+- **Static jitter**, aligned against the stateless run: 0.142 px tracked at
+  30 (÷ 3.00), 0.137 at 20 (÷ 3.18), and 0.153 at 30 again on the repeat
+  (÷ 2.69).
+- **Not worse:** on every clip every figure stayed inside its bound; on the
+  table clip every lock figure improved slightly.
+- **Not better:** the step fell 16.6% and 10.9% on the moving clips, but 3.3%
+  on the static clip, where only 5% of patches reach the cap. The plan asks
+  for 10% on every clip, so the verdict is **no change**, as the plan
+  predicted.
+- **The regime did not cross on the device.** `acquire` on the wall clip was
+  25.2–25.8 ms today (21.9 on 2026-09-26, 20.4 in the model), so even the
+  17.1 ms step left a TRACK tick at about 44 ms, over the clip's 40.2 ms
+  frame, and TRACK share stayed at 47–48%.
+
+**What the round shows for the rest of the pass:**
+
+- **The cap is a real lever on the moving clips,** 11–17% of the step,
+  whose price the probe named in advance: right alignments cut short. The
+  plan's every-clip rule declines it because the static clip cannot pay it
+  back. Whether a saving confined to moving footage should count is a
+  question about the rule, not the measurement, and it is not reopened here.
+- **The jitter bound is inside the session's own noise.** The two static
+  baselines of this session differed by 7% in aligned `jitterPx` (0.142 and
+  0.153), against the 1.3% the plan took from 2026-09-26. A 5% bound would
+  have called the baseline worse than itself. Every later round's jitter
+  verdict needs a bound set against this session-to-session spread, before
+  it is read.
