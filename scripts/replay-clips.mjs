@@ -100,7 +100,11 @@ import {
     createJsfeatNextBackend,
     intrinsics,
 } from "../packages/cv-backend-jsfeatnext/dist/index.js";
-import { decode, NftTracker } from "../packages/nft-tracker/dist/index.js";
+import {
+    decode,
+    DEFAULT_MIN_TRACKED_PATCHES,
+    NftTracker,
+} from "../packages/nft-tracker/dist/index.js";
 import {
     compareExports,
     framesAt,
@@ -146,9 +150,18 @@ const RUNS = [
     { mode: "detection-only", schedule: "device", stepMs: 0 },
 ];
 
+/**
+ * A flag's value, or `null` when the flag is absent. A flag given with no
+ * value — last on the line, or followed by another flag — is a usage error,
+ * not an absent flag: read as absent, `--target` at the end of a command ran
+ * the default target under a command that named a candidate.
+ */
 const arg = (flag) => {
     const i = process.argv.indexOf(flag);
-    return i > 0 ? process.argv[i + 1] : null;
+    if (i < 0) return null;
+    const value = process.argv[i + 1];
+    if (value === undefined || value.startsWith("--")) usage(`${flag} expects a value`);
+    return value;
 };
 
 /** A command-line mistake: one line on stderr, exit 2. */
@@ -278,6 +291,20 @@ const targetPoints = targetCorners(target.meta.widthPx, target.meta.heightPx);
 const targetFile = relative(EXAMPLES, TARGET_PATH).startsWith("..")
     ? TARGET_PATH
     : relative(EXAMPLES, TARGET_PATH).split(sep).join("/");
+// Every run here but the detection-only ones needs the tracker to track, and
+// the step probe mirrors its lock: a target it would run detection-only (the
+// constructor's rule, under these options) is refused rather than replayed.
+{
+    const min = OVERRIDES.minTrackedPatches ?? DEFAULT_MIN_TRACKED_PATCHES;
+    const p = target.patches;
+    if (!p || p.patchSize < 3 || p.count < min) {
+        usage(
+            `${targetFile}: ${p ? `${p.count} patches of ${p.patchSize} × ${p.patchSize}` : "no patches"}, ` +
+                `and minTrackedPatches (${min}) needs at least that many of at least 3 × 3; ` +
+                "the tracker would run it detection-only, and the tracking runs need it to track",
+        );
+    }
+}
 const targetRec = targetRecord({
     source: "wnft",
     file: targetFile,
@@ -476,11 +503,13 @@ for (const clip of CLIPS) {
             probe,
         });
         const e = exportOf(clip, run, { width, height }, records);
+        // Every export names the configuration that produced it, whether or
+        // not the probe ran on it.
+        e.trackerOptions = OVERRIDES;
+        e.seed = SEED;
         if (probe) {
             probeSummary = probe.summary();
             e.tuningProbe = probeSummary;
-            e.trackerOptions = OVERRIDES;
-            e.seed = SEED;
         }
         exports.push(e);
         const s = e.runSummary;

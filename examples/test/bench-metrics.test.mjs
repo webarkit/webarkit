@@ -791,6 +791,38 @@ describe("parseTrackerOverrides", () => {
     });
 });
 
+describe("parseTrackerOverrides applies the tracker's domains", () => {
+    // Found in review: a finite value out of its domain passed the URL check,
+    // started the clip, and only then made the tracker throw — or, in
+    // stateless mode, was silently ignored. The domains are NftTracker's own.
+    it.each([
+        ["maxFrameLevels:0", /maxFrameLevels.*integer in \[1, 256\]/],
+        ["maxFrameLevels:257", /maxFrameLevels/],
+        ["alignMaxIterations:0", /alignMaxIterations.*integer ≥ 1/],
+        ["alignMaxIterations:2.5", /alignMaxIterations/],
+        ["fitMaxIterations:0", /fitMaxIterations/],
+        ["minTrackedPatches:3", /minTrackedPatches.*integer ≥ 4/],
+        ["alignEpsilon:0", /alignEpsilon.*> 0/],
+        ["fitEpsilon:-1", /fitEpsilon/],
+        ["tukeyC:0", /tukeyC/],
+        ["maxFitRms:0", /maxFitRms/],
+        ["maxOutlierShare:1", /maxOutlierShare.*\[0, 1\)/],
+        ["minPatchZncc:-0.1", /minPatchZncc/],
+    ])("refuses %s", (raw, pattern) => {
+        const r = parseTrackerOverrides(raw);
+        expect(r.ok).toBe(false);
+        expect(r.error).toMatch(pattern);
+    });
+
+    it("accepts each domain's edges", () => {
+        expect(
+            parseTrackerOverrides(
+                "maxFrameLevels:256,alignMaxIterations:1,minTrackedPatches:4,maxOutlierShare:0,minPatchZncc:0",
+            ).ok,
+        ).toBe(true);
+    });
+});
+
 describe("startRefusal names the target file it was given", () => {
     it("says which file did not load, pinball.wnft when none is named", () => {
         expect(

@@ -525,13 +525,40 @@ export const TUNABLE_TRACKER_OPTIONS = Object.freeze([
     "minPatchZncc",
 ]);
 
+const integerFrom = (lo, hi = Infinity) => ({
+    test: (v) => Number.isInteger(v) && v >= lo && v <= hi,
+    text: hi === Infinity ? `an integer ≥ ${lo}` : `an integer in [${lo}, ${hi}]`,
+});
+const POSITIVE = { test: (v) => v > 0, text: "finite and > 0" };
+const FRACTION = { test: (v) => v >= 0 && v < 1, text: "in [0, 1)" };
+
+/**
+ * Each numeric override's domain, as `NftTracker`'s constructor checks it
+ * (`resolveTrackingOptions` in packages/nft-tracker/src/tracker.ts). Checked
+ * here too so the page refuses Start before any source starts, in every mode:
+ * left to the tracker, a value out of its domain started the clip before the
+ * constructor threw, and a stateless run ignored it silently.
+ */
+const OVERRIDE_DOMAINS = Object.freeze({
+    maxFrameLevels: integerFrom(1, 256),
+    alignMaxIterations: integerFrom(1),
+    alignEpsilon: POSITIVE,
+    tukeyC: POSITIVE,
+    fitMaxIterations: integerFrom(1),
+    fitEpsilon: POSITIVE,
+    minTrackedPatches: integerFrom(4),
+    maxOutlierShare: FRACTION,
+    maxFitRms: POSITIVE,
+    minPatchZncc: FRACTION,
+});
+
 /**
  * Tracker option overrides from `key:value` pairs separated by commas —
  * `minTrackedPatches:6,alignEpsilon:0.03` — as the page's `?tracker=` and the
  * replay's `--options` take them: `{ ok: true, options }`, empty for no text,
  * or `{ ok: false, error }` naming the first thing wrong. Keys are
- * {@link TUNABLE_TRACKER_OPTIONS}; values are finite numbers, and `true` or
- * `false` for `photometric`.
+ * {@link TUNABLE_TRACKER_OPTIONS}; values are numbers in the tracker's own
+ * domain for that option, and `true` or `false` for `photometric`.
  */
 export function parseTrackerOverrides(raw) {
     const options = {};
@@ -559,6 +586,10 @@ export function parseTrackerOverrides(raw) {
         const value = text === "" ? NaN : Number(text);
         if (!Number.isFinite(value)) {
             return { ok: false, error: `${key}: "${text}" is not a finite number` };
+        }
+        const domain = OVERRIDE_DOMAINS[key];
+        if (!domain.test(value)) {
+            return { ok: false, error: `${key} must be ${domain.text}, got ${text}` };
         }
         options[key] = value;
     }
