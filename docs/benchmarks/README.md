@@ -1412,3 +1412,349 @@ tuning pass and M3 to work from, not decisions:
 
 All 18 exports are committed (about 6.2 MB). The Oppo's are the evidence for
 item 6.
+
+## 2026-09-28 — M3: the tuning pass
+
+A measurement plan, written down **before** any of its rounds, as the M2
+plan above was. The rounds run with @kalwalt and the reference device present,
+one parameter per round; each round's decision is taken when its numbers are
+in, and its results go in a Results section at the end of this one. The plan
+itself stays as written. **No default changes in this plan**: it proposes the
+values to try and the rule that ends each round; the decision is per round.
+
+The inputs are the 2026-09-26 results above: the tracking step
+(`trackStepMs`) is 2.6–3.2× ADR-0001 point 5's 8 ms at p95 on `Tab_9_WiFi`,
+patch alignment is 94–98% of it, and the lock losses that dominate the moving
+clips are `too-few-patches` on a lock's first step. The pass tunes the
+tracking step's cost without giving up what M2 measured it buys: lock share
+and jitter.
+
+### What is compiled, and what is an option
+
+Checked in `packages/nft-tracker/bin/compile-target.mjs` and
+`src/tracking/select_patches.ts`. A round on a compiled quantity builds a
+**candidate target**; a round on an option overrides it at run time.
+
+| quantity | where | today |
+|---|---|---|
+| patch count `Q` (`--patches`) | compiled: `selectPatches`' `maxPatches` | 64 |
+| patch size `P` (`--patch-size`) | compiled: `selectPatches`' `patchSize`; the tracker reads it from the file | 16 |
+| patch spacing (`--patch-spacing`) | compiled; **its default is derived from `Q`**: `round(0.75 · √(W·H / Q))` | 54 px |
+| patch levels, minimum score (`--patch-levels`, `--patch-min-score`) | compiled | 3, 25 |
+| `minTrackedPatches` | tracker option; also the constructor's floor on `Q` (a target with fewer patches runs detection-only) | 8 |
+| `alignMaxIterations`, `alignEpsilon`, `photometric` | tracker options | 30, 0.01, on |
+| `maxFitRms`, `maxOutlierShare`, `tukeyC`, fit iterations | tracker options | 0.6, 0.45, 4, 20 |
+| `minPatchZncc` | tracker option — **not tuned in this pass** (below) | 0.6 |
+
+Patch size is not fixed anywhere else: `selectPatches` takes any `P ≥ 3`,
+the decoder's default limit is 64 (§6.4), and `alignPatch` reads `P` from the
+table. Two consequences for the rounds:
+
+- **A count round moves the spacing too.** Compiled with the default rule,
+  `Q = 48` is spaced 62 px and `Q = 32` 76 px, so fewer patches also means
+  patches spread wider over the target. That is what a changed compiler
+  default would ship, so it is the round's main arm; a control arm at the
+  same `Q` with `--patch-spacing 54` separates "fewer" from "wider" on the
+  desktop.
+- **A size round leaves the spacing alone** (the rule does not read `P`), and
+  keeps the minimum score's meaning: the score is a mean over the window, not
+  a sum.
+
+Candidates are compiled into `examples/targets/tuning/`, which is
+git-ignored, never committed and served to the page as
+`?targetFile=tuning/<name>.wnft`. Named `p<Q>-s<P>[-sp<spacing>].wnft`, from
+the documented command with the round's flags added:
+
+```bash
+node packages/nft-tracker/bin/compile-target.mjs examples/images/pinball.jpg \
+    -o examples/targets/tuning/p32-s16.wnft --physical-size 210x262.5 --patches 32
+```
+
+Compiled with no flag added, that command reproduces
+`examples/targets/pinball.wnft` byte for byte (SHA-256 `4af6a7fb…`, checked
+2026-09-28). `examples/targets/pinball.wnft` is untouched until a candidate
+is adopted, and adopting one is its own commit, which also updates the
+asserted counts in `crates/wnft-format/tests/real_target.rs` (root AGENTS.md).
+
+### The harness
+
+**Desktop, before the device.** `scripts/replay-clips.mjs` now takes a
+candidate and overrides, and seeds its RANSAC draws:
+
+```bash
+npm run build
+node scripts/replay-clips.mjs --target examples/targets/tuning/p32-s16.wnft \
+    --options alignMaxIterations:15 --seed 1 --tracking-only
+```
+
+It prints the table it printed for the M2 plan, with one more schedule —
+**device, scaled step**, whose tracking step costs this configuration's own
+desktop `trackStepMs` p50 × 3.15 (the device ÷ desktop ratio 2026-09-26
+measured, 3.0–3.3), so a cheaper step skips fewer frames, as it would on the
+tablet. Then a second table, from `scripts/tuning-probe.mjs`, which re-runs
+every tracking step of the every-frame run beside the tracker, **stops the
+script if the two ever disagree** in a count, an outcome or a homography, and
+reports what no export carries: the cost per attempted patch, each patch's
+alignment iterations, the correlation (ZNCC) of each converged alignment, and
+what the `too-few-patches` losses had left.
+
+A converged patch is **right** when the homography the frame accepted puts
+its centre within 1 px of where it aligned. That is agreement with the
+accepted fit, not with ground truth, which these clips do not have; on the
+static clip, where every pose is right, the two coincide. On a TRACK frame
+every attempted patch lies on the target, so a right patch with a low ZNCC is
+a correct patch read through blur, not a patch on background.
+
+Iterations, correlations and counts are functions of the pixels, not of the
+machine's speed: the desktop measures them as the tablet would, up to
+ffmpeg's decoding against the browser's. Only timing, and lock share through
+it, needs the device. So each round runs its whole grid on the desktop first,
+and the device runs only the configurations the desktop did not eliminate.
+
+**On the device.** `bench-nft.html` takes the candidate and the overrides:
+
+```
+?mode=tracking&window=300&clip=pinball-bench.mp4&targetFile=tuning/p32-s16.wnft&tracker=alignMaxIterations:15
+```
+
+The export records both: `target.file` and `target.sha256`, and the tracker's
+options with the overrides applied. A `?targetFile=` outside
+`targets/tuning/`, or a `?tracker=` the page cannot read, refuses Start
+rather than running the defaults under a URL that names a candidate.
+
+### The desktop baseline
+
+Three runs of the harness on today's target (`pinball.wnft`, the tracker's
+defaults) with `--seed 1`, `2` and `3`, on the desktop the M2 plan was
+written on (Intel i7-9700, Node 24, Windows), committed as printed in
+[`2026-09-28-desktop-tuning-baseline.md`](./2026-09-28-desktop-tuning-baseline.md).
+Ranges are over the three seeds; "scaled" is the device, scaled step
+schedule.
+
+| clip | TRACK share, every frame / scaled | held-lock steps lost, every frame / scaled | first steps confirmed, every frame / scaled | `trackStepMs` p50 / p95, every frame | µs per attempted patch, p50 |
+|---|---|---|---|---|---|
+| static, 203×360 | 99.9% / 99.7% | 0 of 724 / 0 of 361 | 1 of 1 / 1 of 1 | 3.87–4.11 / 5.37–7.00 | 59–63 |
+| wall, 480×270 | 69.5% / 57.5–60.4% | 2 of 413 / 14–18 of 122–131 | 4 of 125–137 / 15–18 of 75–83 | 6.35–6.73 / 8.59–9.79 | 97–104 |
+| table, 203×360 | 79.8–80.7% / 80.2–83.2% | 0 of 425–430 / 4–5 of 165–177 | 2 of 91–97 / 6–7 of 35–39 | 4.84–4.99 / 6.57–6.84 | 76–78 |
+
+- **Static jitter**, aligned on common media times: every frame 0.131 px
+  tracked, ratio 3.45–3.71; device schedules 0.157–0.158 px, ratio
+  2.86–3.17. The tablet's were 0.149 px and 2.95.
+- **The scaled schedule's step** came out at 12.2–12.9 / 20.0–21.2 /
+  15.3–15.7 ms (static / wall / table), against the tablet's measured
+  12.2–12.3 / 19.7–20.4 / 17.8–18.3: right on two clips, 13% low on the
+  table clip.
+- **Under a seed, every count repeats exactly.** Compiling the default
+  candidate into `tuning/` and running it through `--target` with seed 1
+  reproduced seed 1's TRACK shares, losses, confirmations and jitter to the
+  last digit. Timings do not: `trackStepMs` p50 moved up to 6% between runs.
+  So on the desktop a count is compared seed for seed, and a timing only by
+  more than 10%.
+- **Lock losses:** `too-few-patches` is 116–129 of 123–136 on the wall clip
+  and 88–95 of 90–96 on the table clip (every frame), nearly all on a lock's
+  first step, with 0–1 patches observed at p50 and 18–28 of 64 culled.
+
+### What every round is judged on
+
+Stated once; every round reports all of it, per clip, against a baseline run
+**in the same session** (on the device, the plan's baseline runs are part of
+each round's session, never borrowed from 2026-09-26).
+
+**Reported:** `trackStepMs` p50 / p95; TRACK share; held-lock steps lost;
+first steps confirmed; lock losses by reason; on the static clip only,
+`jitterPx` tracked, aligned against the stateless run on common media times
+(`scripts/compare-bench.mjs`), and the ratio. On the desktop also the probe's
+table.
+
+**A configuration is not better because it is faster.** There is no ground
+truth on these clips, so:
+
+- **Worse**, whatever else improves, if on any moving clip TRACK share falls
+  more than 5 points below the session's baseline, held-lock losses rise more
+  than 2 points of held steps, or first steps confirmed fall more than 5
+  points; or if on the static clip TRACK share falls under 95%, a held lock is
+  lost, or `jitterPx` rises more than 5% over the session's baseline (0.149 px
+  and a ratio of 2.95 on 2026-09-26; the tablet's two repeats then differed
+  by 1.3%).
+- **Better** only if it is not worse, and `trackStepMs` p50 falls by at least
+  10% on every clip — three times the 3.4% the 2026-09-26 repeats moved it.
+- Between the two: **no change**. A round that ends with no change keeps the
+  default.
+
+On the desktop the same rules apply against the desktop baseline, with the
+seed band (above) in place of the device's repeat band: a difference inside
+the three seeds' range is not a difference.
+
+**`minPatchZncc` is not a knob here.** Lowering it would win back patches,
+and it is the move that reopens #66's 232 px wrong pose: twelve patches
+"converged" on flat background, agreeing with a wrong prediction. If a
+round's only way forward is lowering it, the round reports "not tunable
+here" and ends.
+
+### The rounds
+
+In this order, which differs from the brief's in one place and says why.
+
+**Round 1 — the alignment iteration cap, `alignMaxIterations`: 30 → 25 → 20.**
+
+The brief put this last, as not binding: iterations 3–4 at p50 and 0–4% of
+fits at the cap. Those are the **robust fit's** figures (`fitIterations`,
+`fits.capped`). The alignment's are in no export; the probe measured them:
+
+| clip | iterations p50 / p95 / max | patches at the cap | their share of all iterations | right alignments: iterations p50 / p95 / p99 |
+|---|---|---|---|---|
+| static | 6 / 30 / 30 | 5.4% | 19.7% | 5 / 15 / 20 |
+| wall | 18 / 30 / 60 | 33.3–33.5% | 52.5–52.8% | 12 / 26 / 29 |
+| table | 11 / 30 / 60 | 20.0–21.0% | 40.7–42.2% | 9 / 23 / 29 |
+
+The cap is per frame level; 60 is two levels, on failed first steps whose
+wrong detection saw the target larger. So the cap binds: on the wall clip a
+third of the patches run to it, and they spend half the clip's iterations.
+
+**But right alignments are slow too,** and the probe prices a lower cap
+before anything runs, as the share of right alignments that needed more than
+`k` iterations and would be cut short:
+
+| clip | more than 8 | 10 | 15 | 20 |
+|---|---|---|---|---|
+| static | 19.8% | 12.6% | 4.9% | 0.7% |
+| wall | 71.3% | 58.0% | 31.7% | 15.9% |
+| table | 54.6% | 40.6% | 18.7% | 8.5% |
+
+At 20, the wall clip would lose 16% of its right alignments. So the values
+are **30 → 25 → 20**, not lower, and the expected outcome is honestly "no
+change or 25". The finding under it is not a knob: a right alignment takes
+12 iterations at p50 on the wall clip against 5 on the static clip — the
+cost is in how slowly alignment converges on moving footage, not in where it
+is stopped. It is recorded for after this pass (see "What this plan does not
+test").
+
+It still comes first: it is the cheapest round — an option, no recompile, no
+change to the patch geometry rounds 2 and 3 settle — it is likely to close on
+the desktop, and if it does change the cost, every later round is read
+against the new one.
+
+- **Should improve:** `alignMs` and `trackStepMs`, most on the moving clips,
+  where the unconverged patches are. An unconverged patch is refused whatever
+  its last estimate, so a lower cap ends it sooner at no cost to the fit.
+- **Must not get worse:** the right alignments a lower cap would cut short.
+  The probe prices them before anything runs: the share of right alignments
+  that needed more than `k` iterations (table above). A patch cut short is
+  refused (unconverged), not placed wrong, so the risk is lost patches, then
+  lost locks — first steps above all, whose predictions are furthest off.
+- **Ends:** at the lowest cap that is not worse (above), provided the desktop
+  shows it saving at least 10% of `alignMs` on the wall clip; if 25 saves
+  less, nothing is bought and the round ends at 30 without a device run. On
+  the device: the baseline and the chosen cap, three clips.
+
+**Round 2 — patch count `Q`: 64 → 48 → 32, at `P = 16`.**
+
+- **Should improve:** cost, close to linearly in the patches attempted. On the
+  static clip every patch is attempted (64 at p50), so cost should fall to
+  about ¾ and ½.
+- **Must not get worse:** `too-few-patches`. Fewer patches means fewer
+  survive the cull: the failed first steps cull 25–28 of 64 at p50 today. Read
+  held-lock losses above all, and `observed` on the failed steps; and the fit,
+  which with fewer correspondences separates right from wrong fits less well
+  (#66 measured right fits with at least 12 inliers, and wrong ones the rules
+  accepted with 8–13).
+- **Arms:** the compiler's default spacing (62 and 76 px) is the candidate;
+  `p32-s16-sp54` is the desktop control.
+- **Ends:** at the smallest `Q` that is not worse. The first `Q` that is worse
+  ends the round at the one before it.
+
+**Round 3 — patch size `P`: 16 → 12 → 8, at round 2's `Q`.**
+
+- **Should improve:** cost, with the window's area — but not all of a patch's
+  cost is per pixel, so it is measured, not assumed.
+- **Must not get worse:** distinctiveness. A smaller window's correlation is
+  noisier, and **the gate already refuses right alignments at `P = 16`**:
+  the right alignments' ZNCC is 0.90 at p50 on the static clip and 0.84–0.85
+on the moving clips (p5 0.66 / 0.52–0.53), and the gate refuses 3.5% of them
+on the static clip, 8.4% on the wall clip and 10.1–10.2% on the table clip. Watch the right alignments' ZNCC p5 and the share the gate
+  refuses: those turn correct patches into rejects without anything looking
+  broken. And the basin: a smaller window has less to align with, so watch
+  the unconverged share and first steps confirmed.
+- **Ends:** at the smallest `P` that is not worse, and whose share of right
+  alignments refused by the gate rises no more than 2 points over `P = 16`'s
+  on any clip. If a size fails only on that share, the answer is "not
+  tunable here" (above), not a lower gate.
+
+**Round 4 — `minTrackedPatches`: 8 → 6, and 10, at rounds 2 and 3's
+target.**
+
+The threshold that emits `too-few-patches`. A robustness knob, not a cost
+one, and it depends on `Q`, so it comes after round 2. The probe says how
+much it can win before anything runs: a lower threshold can only save a loss
+whose surviving correspondences (or, past that rule, inliers) are at least 4
+and under the threshold.
+
+At `Q = 64` today: 6–8 of the wall clip's 116–129 `too-few-patches` losses
+could be won back (5–7%), and 9–11 of the table clip's 88–95 (9.5–12.5%). The
+rest had 0–1 patches observed at p50 (6–7 at most): a detection the first
+step cannot confirm, which no threshold of 4 or more can accept. The table
+clip straddles the 10% below, so today the round would run on the desktop.
+
+- **Should improve (6):** those losses, at most. **Must not get worse:** the
+  wrong fits it admits — the reason the value is 8 (#66: wrong fits accepted
+  with 8–13 inliers, right ones with at least 12). **10** is the other
+  direction: fewer wrong fits, more refused first steps.
+- **Ends on the desktop,** without a device run, if at round 2's `Q` the
+  winnable losses are under 10% of `too-few-patches` on both moving clips:
+  there is then nothing for the threshold to win, and 8 stays.
+
+**Round 5 — the alignment tolerance, `alignEpsilon`: 0.01 → 0.03 → 0.1 px.**
+
+A converged patch costs fewer iterations under a looser tolerance, and is
+placed less precisely. **Should improve:** cost, after round 1. **Must not
+get worse:** jitter on the static clip, which is where alignment precision
+shows. **Ends:** at the loosest value whose static `jitterPx` rises less than
+5% and saves at least 10% of `alignMs`; else 0.01 stays. Expected to end
+on the desktop.
+
+### A device session
+
+For each round, after its desktop grid, on `Tab_9_WiFi`, as the 2026-09-26
+runs were made (a script over the DevTools protocol, the page's own export,
+120 s idle between runs): the **baseline** (`targets/pinball.wnft`, no
+overrides) and each surviving configuration, `tracking` mode, on the three
+clips; one `stateless` run on the static clip for the jitter ratio; and the
+baseline's static run once more at the end, whose `trackStepMs` p50 must be
+within ±10% of the first or the session is inconclusive. Validity checks as
+2026-09-26's 1–7, with check 2 reading the candidate's file and SHA-256.
+
+**File names:** `YYYY-MM-DD-tab9-tuning-r<N>-<config>-<clip>.json`, `<config>`
+being `baseline`, `p32-s16`, `iter15`, and so on. They stay out of the
+repository until the round's decision; the runs a change is adopted on are
+committed, as the runs a milestone is measured against are (root AGENTS.md).
+
+### What adopting a result means
+
+- **A tracker option** (rounds 1, 4, 5): the default in `src/tracker.ts`, its
+  documentation, the tests pinned on it, and a `CHANGELOG.md` line under
+  `[Unreleased]`.
+- **A compiled quantity** (rounds 2, 3): `compile-target`'s default, the
+  recompiled `examples/targets/pinball.wnft` with
+  `crates/wnft-format/tests/real_target.rs` updated in the same commit, the
+  tests pinned on the old target, and a `CHANGELOG.md` line. A `.wnft` from
+  the old default keeps working: `Q` and `P` are data, not format.
+- Each adoption is its own commit, with its round's result written here.
+
+### What this plan does not test
+
+- **Whether a TRACK pose is right.** No ground truth on these clips; "right"
+  above is agreement with the accepted fit.
+- **ADR-0001 point 5.** A tuned step under 8 ms at p95 would change the
+  measurement point 5's first condition reads, not the ADR; recording that is
+  a decision about the ADR, taken apart from this pass. And it would say
+  nothing about point 3, which no tuning of the TypeScript path tests
+  ([`docs/design/2026-09-27-cv-backend-align-patches.md`](../design/2026-09-27-cv-backend-align-patches.md) §2.1).
+- **`minPatchZncc`**, the pyramid, the fit's options and the detection
+  pipeline: out of scope, by the measurements above. `photometric` too: the
+  gate reads the least-squares gain, which only photometric alignment has.
+- **Why right alignments converge slowly on moving footage** (round 1's
+  table): 12 iterations at p50 on the wall clip against 5 on the static clip.
+  Candidates are the patches' sharpness against the frame (all level 0, seen
+  at about half scale: the tracker's own notes) and the two-phase photometric
+  convergence. That is a change to `alignPatch`, not a value to tune, and
+  belongs after this pass.
