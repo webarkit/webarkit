@@ -441,7 +441,16 @@
       } from "./js/bench-metrics.mjs";
 
       const TARGET_IMAGE = "./images/pinball.jpg";
-      const TARGET_FILE = "./targets/pinball.wnft";
+      /**
+       * The tuning pass's two parameters, read once: `?targetFile=` names a
+       * candidate under targets/tuning/ (git-ignored, never committed) in place
+       * of pinball.wnft, and `?tracker=` overrides tracker options. Either one
+       * out of its domain refuses Start (`paramErrors`) rather than falling
+       * back to the defaults, so no export carries a label it did not run with.
+       */
+      const TUNING = parseRunParams(location.search, { bundledClips: [] });
+      const TARGET_PATH = `targets/${TUNING.targetFile ?? "pinball.wnft"}`;
+      const TARGET_FILE = `./${TARGET_PATH}`;
       const TARGET_LEVELS = 8;
       /** The long side the in-page target is built at, as the webcam demo builds its own. */
       const TARGET_MAX_SIDE = 640;
@@ -1110,6 +1119,7 @@
           maxOutlierShare: DEFAULT_MAX_OUTLIER_SHARE,
           maxFitRms: DEFAULT_MAX_FIT_RMS,
           minPatchZncc: DEFAULT_MIN_PATCH_ZNCC,
+          ...TUNING.trackerOverrides,
         };
       }
 
@@ -1146,6 +1156,7 @@
           mode === "stateless"
             ? null
             : new NftTracker(icv, targetDb, K, {
+                ...TUNING.trackerOverrides,
                 maxSceneKeypoints: maxKeypoints,
                 detectionOnly: mode === "detection-only",
                 clock,
@@ -1432,16 +1443,22 @@
             db: decoded.target,
             record: targetRecord({
               source: "wnft",
-              file: "targets/pinball.wnft",
+              file: TARGET_PATH,
               sha256: await sha256Hex(bytes),
               db: decoded.target,
             }),
           };
+          const p = decoded.target.patches;
+          targetSelect.querySelector('option[value="wnft"]').textContent =
+            `${TARGET_PATH}, loaded (${p ? `${p.count} patches of ${p.patchSize} × ${p.patchSize}` : "no patches"})`;
         } catch (e) {
           targetSelect.querySelector('option[value="wnft"]').disabled = true;
           errorEl.textContent =
-            `targets/pinball.wnft could not be loaded (${e.message}); the tracking mode needs it. ` +
+            `${TARGET_PATH} could not be loaded (${e.message}); the tracking mode needs it. ` +
             "Serve the repository root, so examples/targets/ is reachable next to this page.";
+        }
+        if (TUNING.paramErrors.length > 0) {
+          errorEl.textContent = TUNING.paramErrors.join(" ");
         }
 
         setStatusText("ready");
@@ -1468,7 +1485,15 @@
           // the source.
           const mode = modeSelect.value;
           const target = targets[targetSelect.value];
-          const refusal = startRefusal({ mode, target, minTrackedPatches: DEFAULT_MIN_TRACKED_PATCHES });
+          const refusal =
+            TUNING.paramErrors.length > 0
+              ? TUNING.paramErrors.join(" ")
+              : startRefusal({
+                  mode,
+                  target,
+                  minTrackedPatches: TUNING.trackerOverrides.minTrackedPatches ?? DEFAULT_MIN_TRACKED_PATCHES,
+                  file: TARGET_PATH,
+                });
           if (refusal) {
             showError(refusal);
             return;

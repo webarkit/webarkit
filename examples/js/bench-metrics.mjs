@@ -454,6 +454,15 @@ export function parsePositiveInt(raw) {
  * (clamped to 10–2000 frames) and `?clip=` (one of `bundledClips`). Tracking
  * needs patches, which only the file carries, so `mode=tracking` defaults the
  * target to `"wnft"`; an explicit `target=image` is kept, and Start refuses it.
+ *
+ * Two more, for the tuning pass, and handled the other way: `?targetFile=`
+ * (a candidate `.wnft` under `examples/targets/tuning/`, which is never
+ * committed, in place of `targets/pinball.wnft`) and `?tracker=` (tracker
+ * option overrides, {@link parseTrackerOverrides}). One of those out of its
+ * domain is **not** dropped: it goes in `paramErrors`, which the page shows
+ * and refuses to start on. Dropping it would run the defaults under a URL
+ * that names a candidate — an export labelled with parameters it did not run
+ * with, the one failure a tuning round cannot afford.
  */
 export function parseRunParams(search, { bundledClips }) {
     const p = new URLSearchParams(search);
@@ -461,6 +470,18 @@ export function parseRunParams(search, { bundledClips }) {
     const t = p.get("target");
     const windowSize = parsePositiveInt(p.get("window"));
     const camera = p.get("camera");
+    const paramErrors = [];
+    const rawFile = p.get("targetFile");
+    let targetFile = null;
+    if (rawFile !== null) {
+        if (TUNING_TARGET.test(rawFile)) targetFile = rawFile;
+        else
+            paramErrors.push(
+                `?targetFile=${rawFile}: a candidate target must be tuning/<name>.wnft, one file directly under examples/targets/tuning/.`,
+            );
+    }
+    const overrides = parseTrackerOverrides(p.get("tracker"));
+    if (!overrides.ok) paramErrors.push(`?tracker=: ${overrides.error}`);
     return {
         maxKeypoints: parsePositiveInt(p.get("maxKeypoints")),
         procWidth: parsePositiveInt(p.get("procWidth")),
@@ -470,7 +491,78 @@ export function parseRunParams(search, { bundledClips }) {
         target: t === "image" || t === "wnft" ? t : mode === "tracking" ? "wnft" : null,
         windowSize: windowSize === null ? null : Math.min(2000, Math.max(10, windowSize)),
         clip: bundledClips.includes(p.get("clip")) ? p.get("clip") : null,
+        targetFile,
+        trackerOverrides: overrides.ok ? overrides.options : {},
+        paramErrors,
     };
+}
+
+/**
+ * A candidate target's path under `examples/targets/`: `tuning/<name>.wnft`,
+ * one plain file name, no directory and no leading dot, so the page can only
+ * fetch from the git-ignored scratch directory.
+ */
+const TUNING_TARGET = /^tuning\/[A-Za-z0-9_-][A-Za-z0-9._-]*\.wnft$/;
+
+/**
+ * The `NftTracker` options a tuning run may override: the tracking state's,
+ * every one. The detection options are not here — the page sets
+ * `maxSceneKeypoints` from `?maxKeypoints=`, and the rest are not what the
+ * tuning pass tunes. Domains are the tracker's, checked by its constructor,
+ * which throws a `RangeError` naming the option; this only reads the text.
+ */
+export const TUNABLE_TRACKER_OPTIONS = Object.freeze([
+    "maxFrameLevels",
+    "alignMaxIterations",
+    "alignEpsilon",
+    "photometric",
+    "tukeyC",
+    "fitMaxIterations",
+    "fitEpsilon",
+    "minTrackedPatches",
+    "maxOutlierShare",
+    "maxFitRms",
+    "minPatchZncc",
+]);
+
+/**
+ * Tracker option overrides from `key:value` pairs separated by commas —
+ * `minTrackedPatches:6,alignEpsilon:0.03` — as the page's `?tracker=` and the
+ * replay's `--options` take them: `{ ok: true, options }`, empty for no text,
+ * or `{ ok: false, error }` naming the first thing wrong. Keys are
+ * {@link TUNABLE_TRACKER_OPTIONS}; values are finite numbers, and `true` or
+ * `false` for `photometric`.
+ */
+export function parseTrackerOverrides(raw) {
+    const options = {};
+    if (raw === null || raw === undefined || String(raw).trim() === "") return { ok: true, options };
+    for (const part of String(raw).split(",")) {
+        const pair = part.trim();
+        const colon = pair.indexOf(":");
+        if (colon < 0) return { ok: false, error: `"${pair}" is not key:value` };
+        const key = pair.slice(0, colon).trim();
+        const text = pair.slice(colon + 1).trim();
+        if (!TUNABLE_TRACKER_OPTIONS.includes(key)) {
+            return {
+                ok: false,
+                error: `unknown option "${key}"; one of ${TUNABLE_TRACKER_OPTIONS.join(", ")}`,
+            };
+        }
+        if (Object.hasOwn(options, key)) return { ok: false, error: `"${key}" given twice` };
+        if (key === "photometric") {
+            if (text !== "true" && text !== "false") {
+                return { ok: false, error: `photometric is true or false, got "${text}"` };
+            }
+            options[key] = text === "true";
+            continue;
+        }
+        const value = text === "" ? NaN : Number(text);
+        if (!Number.isFinite(value)) {
+            return { ok: false, error: `${key}: "${text}" is not a finite number` };
+        }
+        options[key] = value;
+    }
+    return { ok: true, options };
 }
 
 /**
@@ -496,11 +588,12 @@ export function trackabilityError(db, minTrackedPatches) {
  * not one of {@link MODES} (a script that set `#mode` to a value the page no
  * longer has, such as the old `tracker`, leaves the select empty), a target
  * that did not load, or a tracking run on a target the tracker would not
- * track (`trackabilityError`). Checked before any source starts.
+ * track (`trackabilityError`). Checked before any source starts. `file` is
+ * the target file the page tried to load, for the message.
  */
-export function startRefusal({ mode, target, minTrackedPatches }) {
+export function startRefusal({ mode, target, minTrackedPatches, file = "targets/pinball.wnft" }) {
     if (!MODES.includes(mode)) return `Unknown mode "${mode}": choose one of ${MODES.join(", ")}.`;
-    if (!target) return "targets/pinball.wnft is not loaded (see above).";
+    if (!target) return `${file} is not loaded (see above).`;
     return mode === "tracking" ? trackabilityError(target.db, minTrackedPatches) : null;
 }
 
