@@ -136,6 +136,7 @@ export interface PatchSet {
     readonly originX: Float64Array;  // Q, target units
     readonly originY: Float64Array;  // Q
     readonly pitch: Float64Array;    // Q, target units per patch pixel, finite, > 0
+    readonly scaleStep: number;      // size ratio between consecutive levels of the pyramid the patches were cut from, finite, > 1
 }
 
 export interface AlignPatchesOptions {
@@ -143,8 +144,7 @@ export interface AlignPatchesOptions {
     maxIterations?: number; // per level, integer >= 1. Reference default: 30
     epsilon?: number;       // a level converges when its translation step is below this, in that level's px. Reference default: 0.01
     photometric?: boolean;  // estimate gain and bias with the translation. Reference default: true
-    maxLevels?: number;     // most multi-scale levels the backend may read, integer in [1, 256]. Reference default: 4
-    scaleStep?: number;     // size ratio between those levels, finite, > 1. Reference default: the step the patches were cut with
+    maxLevels?: number;     // most multi-scale levels the backend may read, at ratio patches.scaleStep, integer in [1, 256]. Reference default: 4
 }
 
 /** Per-patch outcome codes in {@link PatchAlignments.status}. */
@@ -207,10 +207,14 @@ Why the pieces are shaped as they are:
   later aligner (a forward-additive or ESM variant, an NCC search) can be
   added without another contract change. What the result *means* (§5) is
   the same for every kind; the kind is how it was found.
-- **`scaleStep` and `maxLevels` are options, not capabilities**, because
-  they describe the target the patches came from, not the backend. #39's
-  `pyramidScaleStep` capability is about `detect`'s pyramid and is a
-  separate matter.
+- **`scaleStep` is a field of the `PatchSet`, not an option and not a
+  capability.** It describes how the patches were cut, so it travels with
+  them; as an option it would need a default, and "the step the patches were
+  cut with" is not something a backend can recover from anything else in the
+  call (found in review). `maxLevels` is an option because it bounds the
+  backend's work, not the data. Neither is a capability, because they
+  describe the target, not the backend: #39's `pyramidScaleStep` capability
+  is about `detect`'s pyramid and is a separate matter.
 
 ## 5. Definitions
 
@@ -224,7 +228,7 @@ coordinates (the units of `originX`, `originY` and `pitch`) to frame level-0
 coordinates, row-major, at any scale with `H[8] ≠ 0`; a homography and any
 non-zero multiple of it are the same map, and nothing may depend on the
 scale. Level `l` of any multi-scale representation the implementation builds
-has scale `s_l = scaleStep^−l` and size `⌊w₀ · s_l⌋ × ⌊h₀ · s_l⌋`, and a
+has scale `s_l = patches.scaleStep^−l` and size `⌊w₀ · s_l⌋ × ⌊h₀ · s_l⌋`, and a
 frame level-0 point `p` is `s_l · p` on it, with no half-pixel correction
 (format spec §3, decision D2). This is what makes `level` in the result mean
 the same thing everywhere.
@@ -258,10 +262,18 @@ minimising `Σ_k (I(p_k + d) − gain · T_k − bias)²` — up to the
 implementation's own convergence tolerance. (The reference's final values are
 its last iterate's, which agree with the least-squares pair to within
 `epsilon`'s effect; an implementation may recompute them at the final `d`.)
-This is what makes the tracker's gate exact: for the least-squares pair, the
-zero-normalised cross-correlation of the window with the patch is
+**With `photometric`, status 0 and 1 require `gain > 0`.** A least-squares
+pair whose gain is zero or negative — a window of inverted contrast, or one
+with none — is not a match of the template, and an implementation reports it
+as status 3 (§5.9) rather than returning it; the reference already does so,
+in both of its phases. This is what makes the tracker's gate exact: for the
+least-squares pair with a positive gain, the zero-normalised cross-
+correlation of the window with the patch is
 `1 / √(1 + (residual / (gain · σ_T))²)`, with `σ_T` the patch's own standard
 deviation — a quantity the tracker computes from the three returned numbers.
+Without the sign requirement the identity would read a negative gain as a
+positive correlation and the gate would pass an inverted match (found in
+review).
 
 **5.6 `residual`.** `√( Σ_k (I(p_k + d) − gain · T_k − bias)² / P² )` at the
 returned `d`, `gain` and `bias`, in grey levels, with `I` read on the level
@@ -295,14 +307,17 @@ the reference does, or however it chooses) rather than failing.
 some direction (the alignment system is not positive definite; the reference
 tests its smallest eigenvalue against a documented floor), the prediction
 collapses the window (a Jacobian that is not invertible at some sample), or,
-with `photometric`, the gain collapsed towards 0 during the iteration. A
-tracker reads status 3 as a per-frame outcome, not a property of the patch.
+with `photometric`, the gain is not positive: it collapsed towards 0 during
+the iteration, or the least-squares fit at the final translation gives a
+zero or negative gain (§5.5). A tracker reads status 3 as a per-frame
+outcome, not a property of the patch.
 
 **5.10 Contract violations throw; nothing else does.** A frame whose `width`
 or `height` is not a positive integer or whose `data` is shorter than
 `width · height`; a `PatchSet` whose `patchSize` is not an integer ≥ 3, whose
-arrays are not `Q · P²` and `Q` long, or with a non-finite origin or a pitch
-not finite and positive; an option out of the domain stated on it; a
+arrays are not `Q · P²` and `Q` long, with a non-finite origin or a pitch
+not finite and positive, or whose `scaleStep` is not finite and greater
+than 1; an option out of the domain stated on it; a
 `prediction` with a non-finite entry or `H[8] = 0`. These are the caller's
 bugs, in the sense the contract already uses for a malformed image or a
 9-element matrix that is not 9 long, and they throw the same way. Every
@@ -324,8 +339,8 @@ pixels, and any bytes after them are not — the rule `cv-backend-jsfeatnext`'s
 longer than the image is fine.
 
 **About the patches:** that they were cut from a pyramid of ratio
-`scaleStep` — the `.wnft` target's `pyramid.scaleStep`, passed through the
-option — built with the reference filter (`buildFramePyramid`; format spec
+`patches.scaleStep` — the `.wnft` target's `pyramid.scaleStep`, carried on
+the `PatchSet` — built with the reference filter (`buildFramePyramid`; format spec
 open question Q11, #71), so that a patch and a frame level equally deep are
 filtered alike. The backend cannot check this. A target compiled with another
 filter adds a difference the backend cannot see, in gain and residual mostly
@@ -334,8 +349,8 @@ blurred frame give a gain of 0.86–1.10 and a median position error of
 0.016–0.042 px).
 
 **About its own pyramid:** it builds whatever multi-scale representation it
-needs, of at most `maxLevels` levels at ratio `scaleStep`, sized by §5.1's
-rule. **Its downsampling filter is its own**, deterministic and documented
+needs, of at most `maxLevels` levels at ratio `patches.scaleStep`, sized by
+§5.1's rule. **Its downsampling filter is its own**, deterministic and documented
 where it is implemented; the reference's is `buildFramePyramid`'s box-of-
 triangle filter, which reproduces linear intensity exactly at every sampling
 phase. The difference between filters is measured by the tolerance test on
@@ -454,7 +469,8 @@ the same `PatchOutcome` codes, so `TrackStats`, `quality`, the ZNCC gate, the
 fit and the judgement are shared code. `trackTarget` builds the `PatchSet`
 once per target from the §5.7 table: `originX = left / s_l`,
 `originY = top / s_l`, `pitch = 1 / s_l`, with `s_l = levelScale(scaleStep,
-level)`. `packages/nft-tracker/src/` still imports no backend: it calls
+level)`, and `scaleStep` the target's own `pyramid.scaleStep`.
+`packages/nft-tracker/src/` still imports no backend: it calls
 `cv.alignPatches` through the contract.
 
 **The option.** `NftTrackerOptions.alignment?: "auto" | "reference" |
