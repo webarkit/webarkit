@@ -1422,6 +1422,12 @@ in, and its results go in a Results section at the end of this one. The plan
 itself stays as written. **No default changes in this plan**: it proposes the
 values to try and the rule that ends each round; the decision is per round.
 
+**Closed 2026-09-29: not tunable above the contract.** One default changed
+— 48 tracking patches, round 2 — and rounds 1, 4 and 3 found no other
+margin the plan's rules can take; round 5 did not run. The pass's result,
+as a whole, closes its Results:
+[The pass](#the-pass-2026-09-29-not-tunable-above-the-contract).
+
 The inputs are the 2026-09-26 results above: the tracking step
 (`trackStepMs`) is 2.6–3.2× ADR-0001 point 5's 8 ms at p95 on `Tab_9_WiFi`,
 patch alignment is 94–98% of it, and the lock losses that dominate the moving
@@ -1715,6 +1721,96 @@ ground-truth tests on the shipped target, and before any device session:
   size whose whole-target error rises more than 1.25 times over the shipped
   configuration's is reported as losing coverage, and the round's result says
   so, whatever else it does.
+
+**Amended before round 3 ran (2026-09-29), on @kalwalt's decision: the sizes
+are 12, 16 and 24, at the adopted 48 patches and their default spacing
+(62 px).** The round is "patch size", not "smaller patches": the failure
+that dominates is patches not surviving a step, and a larger patch is more
+distinctive and may converge from further off, so 24 may win on lock even
+while each patch costs more. **The prediction, written before any of it
+ran**, against the 16 × 16 baseline as rounds 2 and 4 measured it:
+
+| 48 patches of 16 × 16 | static | wall | table |
+|---|---|---|---|
+| desktop µs per attempted patch, p50 (round 4's session) | 64–72 | 101–113 | 82–90 |
+| right alignments' ZNCC, p50 / p5 | 0.93 / 0.61 | 0.88 / 0.57 | 0.87 / 0.53 |
+| right alignments the gate refuses | 4.4% | 6.1% | 7.4% |
+| attempted patches ending unconverged | 9.5% | 35% | 25% |
+| tablet `trackStepMs` p50 / p95 (round 2) | 9.6 / 15.4 ms | 14.8 / 18.9 ms | 13.6 / 19.8 ms |
+
+On ground truth (round 4): 788 right fits and no wrong one in the sweep;
+leave-and-return extrapolating to 3.4 px RMS over the whole target (8.2 px
+at the far point) with the part in view within 0.36 px; the velocity steps
+tracked up to 4 px/frame and re-detected from 5. The alignment's basin,
+measured per patch on the M2 fixture: 84% of alignments converge from 2 px
+off, 68% from 3 (`src/tracker.ts`).
+
+**12 × 12, smaller — expected faster, less robust, and rejected.**
+
+- **Cost:** the area is 0.56 times 16's, but not all of a patch's cost is
+  per pixel — validation, the warp's allocation, the alignment system and
+  the result are paid per patch — and a patch with less gradient information
+  converges more slowly. Expected: 0.6–0.75 times the cost per patch, the
+  step 25–40% cheaper; on the tablet its p95 would still be about 9–15 ms,
+  above point 5's 8 ms.
+- **Distinctiveness:** a 12-px window spans less intensity range for the
+  same residual per pixel, so the ZNCC of right alignments falls. Expected:
+  its median 0.02–0.05 lower, its p5 further under the gate, and the gate's
+  share of right alignments refused up 2–6 points — past the round's
+  2-point bound on at least one clip.
+- **Basin:** less texture per window, and more windows whose texture runs
+  one way (the aperture problem): a narrower basin. Expected: fewer right
+  fits in the sweep, more alignments ending unconverged or singular, fewer
+  first steps confirmed.
+- **Ground truth:** the risk that matters most — less distinctive patches
+  agreeing on a wrong place. Expected: at least one wrong fit in the sweep,
+  which alone rejects it.
+- **Coverage:** smaller windows are culled later as a target leaves the
+  frame, so more patches stay in view on the last frames, each less precise.
+  Expected: whole-target error within ±25% of 16's.
+
+**24 × 24, larger — expected more robust frame for frame, much slower, and
+not adoptable.**
+
+- **Cost:** 2.25 times the area; 1.8–2.3 times the cost per patch, the per
+  patch overhead diluting and fewer iterations if the basin widens. Expected:
+  the step 80–125% dearer; on the tablet a p95 of about 28–45 ms, above M2's
+  64 patches of 16.
+- **Distinctiveness:** the ZNCC of right alignments up, and the gate's
+  refusals down, to about 2–4% on the moving clips.
+- **Basin:** wider in translation, a larger window holding more
+  low-frequency structure. Expected: more right fits in the sweep, the
+  velocity-5 sequence tracked where 16 re-detects, fewer unconverged on the
+  wall clip, more first steps confirmed. Against it: only a translation is
+  estimated, and a mis-predicted roll or scale distorts a larger window
+  more (at 6° of roll, about 0.6 px at a 24-px window's edge on the camera
+  path, against 0.4 at 16), so the sweep's roll and scale predictions may
+  recover less.
+- **Coverage:** larger windows are culled sooner as a target leaves, so
+  fewer patches stay in view on the last frames, each more precise.
+  Expected: the lock dropped a frame or two earlier on leave-and-return; the
+  whole-target error within ±25%.
+- **On the tablet:** a step twice as long skips more frames — round 1's
+  scaled-schedule trap in the other direction — so gains frame for frame are
+  expected to turn into losses of lock on the device.
+
+**Which is expected: neither is adopted.** 12 is expected to be faster by
+about a third and rejected on ground truth or on the gate's refusals; 24 to
+hold the lock better frame for frame and on ground truth, at about twice the
+cost. And under this plan's rule a configuration is better only if its step
+falls at least 10% on every clip ("What every round is judged on"), so **24
+cannot be adopted however it performs** — recorded before the results, so
+the rule is not bent after them. Whether a lock win at a higher cost should
+count is an amendment to decide before any device session, not after. If
+neither size is adoptable, the tuning pass closes as "not tunable above the
+contract".
+
+**Also reported per size:** the patch set itself (levels, and the cells of
+an 8 × 8 grid over the target that hold a patch centre); the alignment's
+basin per patch — the share of alignments converging, and converging within
+0.5 px, from 1, 2, 3, 4 and 6 px off in 16 directions, on the ground truth's
+views and renders, with the M2 fixture beside it to check the method against
+`src/tracker.ts`'s 84% and 68%; and coverage as amended at round 4's close.
 
 **Round 4 — `minTrackedPatches`: 8 → 6, and 10, at rounds 2 and 3's
 target.**
@@ -2215,3 +2311,201 @@ added.
   at a fixed spacing) and round 4's (coverage degrades as the count falls).
 - **Round 3's judging is amended** to use the ground truth and report
   coverage (above).
+
+#### Round 3 — patch size (2026-09-29): no adoption, and no device session
+
+**Verdict: the round ends without an adoption and without a session on the
+device. `patchSize` stays 16 × 16.** Decided by @kalwalt on the desktop's
+evidence, on the rule round 4's close set as the precedent for a round that
+ends on the desktop: **a device run can confirm an adoption; it cannot
+rescue a configuration the ground truth rejected** ("What every round is
+judged on"). Neither size is an adoption to confirm. 24 × 24 fails the
+round's own rule before anything else is read: that rule counts a
+configuration better only if its step is faster, and 24 × 24's is 76–110%
+slower. 12 × 12, which is faster, is refused on ground truth and is worse on
+the clips, on evidence of its own. A tablet run could only have timed
+configurations already refused.
+
+Evidence in
+[`2026-09-29-desktop-tuning-r3.md`](./2026-09-29-desktop-tuning-r3.md):
+ground truth from the synthetic suites at the tracker's defaults — the
+perturbation sweep, the alignment's basin per patch and the camera-path
+sequences — and the bundled clips replayed at three seeds. The method checks
+against `src/tracker.ts`: on M2's fixture it reproduces the basin recorded
+there to the percent (84% and 68% converging from 2 and 3 px off; 78% and
+61% within 0.5 px).
+
+**12 × 12 — faster, and refused on what it does to the pose and the lock.**
+
+- **In view and coverage:** on leave-and-return the part in view is off by
+  up to 0.87 px RMS (2.2 px at a point), past 1.25 times the shipped 0.36 —
+  a rejection on ground truth by itself — and **12 × 12 extrapolates worse
+  than 16 × 16 as a target leaves the frame**: up to 5.0 px RMS over the
+  whole target (11.0 px at the far point), against 3.4 (8.2), 1.49 times.
+  **12 × 12 is faster and loses coverage, and a size that is faster and
+  loses coverage is not an improvement.**
+- **The basin and the sweep:** 71% of alignments right from 2 px off and 52%
+  from 3, against 80% and 65%; right fits fall from 788 to 690, on every
+  kind of prediction (597 shifts, 56 rolls and 37 scales recovered, against
+  650, 75 and 63). The sweep also accepts one wrong fit, 7.4 px off. By the
+  round's amended rule that rejects 12 × 12 as well, but the in-view error
+  above does so on its own; and the fit is of the kind below, which the
+  smaller size shares with the larger and with M2's 64 patches — not a
+  property of small patches.
+- **The clips:** the step is 32–44% cheaper, seed for seed (0.55–0.68 times
+  the cost per patch). But on the wall clip, frame for frame, TRACK share
+  falls from 67.6–68.1% to 55.9–57.2% and held-lock losses rise from 1.5% to
+  about 10% of held steps — both past their bounds; static `jitterPx` rises
+  from 0.131 to 0.152 px (+16%); and the gate refuses 8.4 / 10.1 / 14.0% of
+  right alignments (static / wall / table), against 4.4 / 6.1 / 7.4% — past
+  the round's 2-point bound on every clip.
+
+**24 × 24 — not better by the round's own rule, which asks for a faster
+step.**
+
+- **The rule decides it first.** A configuration is better only if
+  `trackStepMs` p50 falls at least 10% on every clip ("What every round is
+  judged on"), and 24 × 24's step is 76–110% dearer, seed for seed (1.8–2.2
+  times the cost per patch). The prediction recorded as much before anything
+  ran — 24 "cannot be adopted however it performs" — so nothing measured
+  after could make it adoptable, and whether a lock win at a higher cost
+  should count is moot for this round.
+- **What it does otherwise, recorded for what it shows:** frame for frame it
+  is the more robust size. Its basin is wider (86% of alignments right from
+  2 px off, 72% from 3); the sweep's right fits rise to 802 (roll 89 of 120,
+  against 75); the gate refuses fewer right alignments; its coverage is
+  better, 2.9 px RMS over the whole target (7.1 at the far point) against
+  3.4 (8.2), 0.28 px in view; and on the wall clip it holds the lock slightly
+  better, TRACK share 69.0–70.5% against 67.6–68.1%, held-lock losses 3–4
+  against 6 of about 410. But on the schedule that models the tablet's frame
+  skipping, its wall TRACK share falls to 57.3–61.2% against 76.2–78.4%: a
+  step twice as long skips more frames, and the robustness does not survive
+  the cost.
+- **Its wrong fits are a finding, not the reason.** The sweep accepts three:
+  two gross, 6.1 and 7.7 px off, and one 0.505 px off — 0.005 px past the
+  suite's 0.5 px line, from 5° of roll, on a residual of 0.275 px: a fit at
+  the line that defines "wrong", not a wrong pose. By the letter of the
+  round's amended rule they would reject 24 × 24 as well; but the rule above
+  rejected it before they were read, and the gross two are not a property of
+  large patches. They are the kind below.
+
+**The gross wrong fits belong to the residual limit, not to the patch
+size.** Both sizes' come from one prediction, the sweep's `scale /1.08`: a
+prediction 1.08 times too small, as when the target grows by that factor in
+one step. They rest on 9–10 inliers, with residuals of 0.589–0.599 px, just
+under `maxFitRms` (0.6 px). Run again with the limit lifted, the same sweep
+shows where every patch set's fits fall against it (the record, "The
+residual limit's margin"):
+
+| patch set | right fits: largest residual | gross wrong fits the limit accepts | nearest wrong fit it refuses |
+|---|---|---|---|
+| M2: 64 of 16 × 16 | 0.370 px | 8, 7.1–9.4 px off, at 0.42–0.56 px, from the target shrinking by 1.10–1.12 | 0.617 px |
+| 48 of 12 × 12 | 0.468 px | 1, 7.4 px off, at 0.589 px, growing by 1.08 | 0.612 px |
+| 48 of 16 × 16, shipped | 0.391 px | none | 0.680 px |
+| 48 of 24 × 24 | 0.376 px | 2, 6.1 and 7.7 px off, at 0.598–0.599 px, growing by 1.08 | 0.605 px |
+
+So a gross wrong fit from a single-step change of scale is accepted by the
+smaller size, by the larger, and by M2's 64 patches of 16 × 16; where a
+patch set's wrong fits happen to land against a fixed limit decides it, and
+at 24 × 24 the limit cuts through them — accepted at 0.598–0.599 px, refused
+from 0.605. The shipped set tracks those three `scale /1.08` steps right
+(0.19–0.30 px off) and keeps its nearest wrong fit 0.080 px above the limit,
+its largest right residual 0.209 below: a margin measured on this target and
+this patch set, which nothing in the judgement guarantees for the next. That
+is what round 3 sends onward:
+[#92](https://github.com/webarkit/webarkit/issues/92), the residual limit on
+a single-step change of scale.
+
+**The prediction, against the outcome.** Part of the round's result, not an
+appendix: it was written before anything ran (the plan, above), and of its
+fifteen lines six missed and one held only in part. The misses mark where
+the pass's picture of the tracker was wrong: the smaller window loses
+correlation in its tail, not its median; it loses coverage rather than
+holding it by staying in view longer; the larger window's wider basin does
+not reach 5 px/frame, does not lose rolls to distortion, and does not drop
+the lock sooner as the target leaves; and the gross wrong fits came from
+the residual limit, which the prediction did not consider.
+
+| predicted | measured | held? |
+|---|---|---|
+| 12: cost per patch 0.6–0.75×, step 25–40% cheaper | 0.55–0.68×, 32–44% cheaper | yes, a little cheaper than predicted |
+| 12: the gate refuses 2–6 points more of right alignments, past 2 on a clip | +4.0 / +4.0 / +6.6 points, past 2 on every clip | yes |
+| 12: right alignments' ZNCC median 0.02–0.05 lower | the median moved −0.017 / +0.015 / +0.003; the tail fell (p5 0.56 / 0.51 / 0.43 against 0.61 / 0.57 / 0.53) | no: the tail, not the median |
+| 12: narrower basin, fewer right fits in the sweep | 71% / 52% right from 2 / 3 px against 80% / 65%; 690 right against 788 | yes |
+| 12: at least one wrong fit in the sweep | one, 7.4 px | yes |
+| 12: whole-target error within ±25% of 16's | 1.49 times, and worse in view too | no: it loses coverage |
+| 24: cost per patch 1.8–2.3×, step 80–125% dearer | 1.8–2.2×, 76–110% dearer | yes, one seed just under |
+| 24: the gate's refusals down, to about 2–4% on the moving clips | down, but to 5.9% and 6.1% | partly |
+| 24: wider basin, more right fits | 86% / 72% right from 2 / 3 px; 802 right | yes |
+| 24: the velocity-5 sequence tracked | re-detected from 5 px/frame, as 16 does | no |
+| 24: roll and scale predictions recover less | roll recovered more (89 against 75), scale the same | no |
+| 24: the lock dropped a frame or two earlier on leave-and-return | same frame; coverage better (0.85 times) | no |
+| 24: gains frame for frame turn into losses where frames are skipped | wall TRACK share 57–61% on the modelled schedule against 76–78% | yes, as modelled |
+| 24: no wrong fit implied | three: two gross, from the target growing by 1.08 in one step, and one 0.505 px off, from 5° of roll | no |
+| Neither adopted | neither adoptable | yes |
+
+#### The pass (2026-09-29): not tunable above the contract
+
+**The pass closes with one adoption, and a result: the tracking step is not
+tunable above the contract.** One round of four found a real gain — round
+2's 48 patches, adopted, which cut the tablet's `trackStepMs` 21–29% at p50
+and 24–29% at p95. The other three showed, with evidence rather than
+impression, that the knobs they own have no margin the plan's rules can
+take: the iteration cap buys 11–17% of the step on moving footage by
+cutting right alignments short, and 3% on the static clip (round 1); a
+lower lock minimum wins no right fit, and every fit it admits is wrong
+(round 4); patch size moves the cost with the window's area and robustness
+the other way, so the cheaper size loses coverage and lock, and the dearer
+one costs twice the step — which, on the schedule that models the tablet's
+frame skipping, costs lock again (round 3).
+Round 5, the alignment tolerance, did not run: by the pass's stopping rule,
+rounds 4 and 3 finding nothing adoptable ends the pass, so its lever is the
+one this result does not cover (below).
+
+**The step stays at 1.9–2.5 times ADR-0001 point 5's threshold, and the pass
+says why.** After it, `trackStepMs` p95 is 15.4 / 18.9 / 19.8 ms on
+`Tab_9_WiFi` (static / wall / table), against 8 ms. The step is patch
+alignment — 94–98% of it on the reference device (2026-09-26) — and the
+pass measured what sets its cost: how many patches (the cost close to
+linear in them, round 2), how large (close to linear in their area, round
+3), and how many iterations each may take (round 1). Only the count had
+margin the plan's rules could take, and it is spent: pushed past its limit,
+to 32 patches, which lose the lock, the step is still 11.8–12.0 ms at p95,
+1.5 times the threshold. What is left is the work itself — aligning each
+patch, pixel by pixel — at the speed the JavaScript engine does it, which no
+parameter changes: the cost is there, not in a parameter the pass tuned.
+One lever is left unmeasured, and is named so that nothing here is read as
+covering it: the alignment tolerance, round 5's, sets how many iterations a
+converging patch spends, and patches that stop before the cap spend 80% of
+the static clip's iterations and 47–59% of the moving clips' (round 1's
+table, at 64 patches).
+
+**For ADR-0001 point 5.** Its tracker-side condition — tracker-side compute
+in the tracking state above 8 ms per frame at p95 — was met on 2026-09-26
+and is met still; the port also requires that "moving individual steps into
+the backend (point 3) has not brought it back under the threshold". This
+pass is the measured companion to that requirement: **tuning above the
+contract has not brought the tracking step back under 8 ms at p95 either —
+after the pass it is 15.4–19.8 ms on the reference device, 1.9–2.5 times the
+threshold, and the one default that moved it, 48 patches, is spent.** It
+covers the parameters the pass measured, not the alignment tolerance
+(above). The requirement itself is untested: no step has moved into a
+backend. `alignPatches`
+([#84](https://github.com/webarkit/webarkit/issues/84)) waited on this pass,
+and waits still on a non-JS backend
+([#9](https://github.com/webarkit/webarkit/issues/9)). Writing any of this
+into the ADR is a decision about the ADR, taken apart from this pass ("What
+this plan does not test").
+
+**What "not tunable" leaves open.** It says that no setting brings the step
+under; it does not say that no change to the tracker could. The pass sent
+three changes onward, each above the contract and none a value to set: an
+early abandon for patches that are not converging
+([#87](https://github.com/webarkit/webarkit/issues/87), round 1); patches
+selected per grid cell, for quality without losing coverage
+([#89](https://github.com/webarkit/webarkit/issues/89), round 4); and the
+residual limit on a single-step change of scale
+([#92](https://github.com/webarkit/webarkit/issues/92), round 3), a question
+of correctness rather than cost. A fourth, recorded without an issue, is
+round 1's: why right alignments converge slowly on moving footage ("What
+this plan does not test").
