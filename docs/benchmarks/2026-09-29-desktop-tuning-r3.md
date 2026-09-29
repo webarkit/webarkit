@@ -10,7 +10,8 @@ node packages/nft-tracker/bin/compile-target.mjs examples/images/pinball.jpg \
     -o examples/targets/tuning/p48-s<12|24>.wnft --physical-size 210x262.5 --patches 48 --patch-size <12|24>
 ```
 
-The 16 × 16 target is the committed `examples/targets/pinball.wnft`. Two parts:
+The 16 × 16 target is the committed `examples/targets/pinball.wnft`. Two parts,
+and a third measured at the round's close:
 
 1. **Ground truth**, at the tracker's defaults, on four patch sets cut by
    `selectPatches` from the fixture image — M2's 64 of 16 × 16 at 54 px, to
@@ -27,6 +28,8 @@ The 16 × 16 target is the committed `examples/targets/pinball.wnft`. Two parts:
    nine runs interleaved per seed. Timings compare within this session only,
    and were taken while the ground-truth run shared the machine for part of
    it; the counts and poses are deterministic under a seed.
+3. **The residual limit's margin**: part 1's sweep re-run with `maxFitRms`
+   lifted, so that each fit can be read on both sides of the limit.
 
 ## Ground truth
 
@@ -52,15 +55,26 @@ defaults, so each passed `maxFitRms` 0.6 px, some narrowly):
 48 of 24 at 62 px: render 5, view 1, scale /1.08: 7.668 px RMS (in view 4.680), inliers 10 of 14, fit rms 0.598, quality 0.22
 ```
 
-The shipped 16 × 16 refuses those same predictions on those renders.
+`scale /1.08` scales the prediction by 1/1.08 about the target's centre: the
+target is 1.08 times larger than predicted, as when it grows by that factor
+in one step (`scale x1.1`, the opposite, is the target shrinking, the case
+`src/tracker.ts` describes for M2). On the same renders and views the
+shipped 16 × 16 tracks all three `scale /1.08` predictions right, 0.19–0.30 px
+off at residuals of 0.14–0.15 px, and refuses the roll (`too-many-outliers`):
+"The residual limit's margin", below.
 
+The alignment's basin, per patch:
+
+| patch set | converged from 1 / 2 / 3 / 4 / 6 px off | right, within 0.5 px, from 1 / 2 / 3 / 4 / 6 px | ZNCC of right alignments from 2 px or less, p5 / p25 / p50 | of those under the 0.6 gate |
 |---|---|---|---|---|
 | M2: 64 of 16 at 54 px | 92% / 84% / 68% / 47% / 27% | 85% / 78% / 61% / 39% / 17% | 0.675 / 0.839 / 0.893 | 1.9% of 16017 |
 | 48 of 12 at 62 px | 91% / 79% / 62% / 48% / 34% | 78% / 71% / 52% / 34% / 14% | 0.552 / 0.794 / 0.917 | 9.2% of 10981 |
 | 48 of 16 at 62 px (shipped) | 88% / 83% / 69% / 53% / 31% | 84% / 80% / 65% / 46% / 21% | 0.716 / 0.847 / 0.911 | 1.3% of 11945 |
 | 48 of 24 at 62 px | 95% / 87% / 75% / 56% / 29% | 95% / 86% / 72% / 52% / 22% | 0.694 / 0.843 / 0.907 | 0.4% of 13334 |
 
+The camera-path sequences:
 
+| patch set | sequence | states | last TRACK before the target leaves | error max: RMS over the target / at the far point / in view RMS / in view at a point (px) | TRACK frames over 1.5 px RMS | fewest inliers |
 |---|---|---|---|---|---|---|
 | M2: 64 of 16 at 54 px | wander | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | — | 0.10 / 0.19 / 0.10 / 0.19 | — | 54 |
 | M2: 64 of 16 at 54 px | leave-and-return | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTDLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTT` | frame 38 | 1.20 / 2.49 / 0.24 / 0.45 | — | 10 |
@@ -129,13 +143,48 @@ jitter is read on the static clip only.
 | 24 | 2 | 82.4% | 0 / 439 | 2 / 83 | 80 / 1 | 7.6 / 11.3 | 87.2%, 3 / 196 (1) | 159.1 | 16.0% (35.5%) | 18613 | 1151 (6.2%) | 0.581 / 0.850 | 9 / 22 | 10 / 34 / 39 | 15.731 / 32.0 |
 | 24 | 3 | 79.4% | 1 / 423 | 3 / 97 | 94 / 1 | 7.4 / 11.2 | 87.7%, 2 / 198 (1) | 161.4 | 18.3% (39.3%) | 17974 | 1071 (6.0%) | 0.584 / 0.853 | 9 / 22 | 14 / 35 / 40 | 18.694 / 46.1 |
 
+## The residual limit's margin
+
+Measured at the round's close. Part 1's sweep, re-run with `maxFitRms`
+lifted to `Number.POSITIVE_INFINITY`, recording every step's render, view,
+prediction, outcome, inliers, residual and pose error. The limit is the last
+check `trackFrame` makes (`poor-fit`, `src/tracking/track_frame.ts`) and
+nothing else reads it, so lifting it changes no other outcome: each step that
+reaches the check keeps its fit, and can be read on both sides of the limit.
+The run reproduces every count above — right fits 787 / 690 / 788 / 802, the
+same 24 / 1 / 0 / 3 wrong fits accepted — and, on M2's fixture, the figures
+`src/tracking/track_frame.ts` records: right fits at most 0.370 px of
+residual, and of the 38 wrong fits that reach the limit, 14 refused and 24
+accepted. In no set does the limit alone refuse a right fit.
+
+| patch set | right fits: residual p50 / p99 / max | wrong fits accepted at 0.6 px: residual | wrong fits the limit alone refuses: count, nearest |
+|---|---|---|---|
+| M2: 64 of 16 at 54 px | 0.216 / 0.356 / 0.370 | 24, at 0.226–0.555; the 8 gross ones (7.1–9.4 px off, from `scale x1.1` and `scale x1.12`) at 0.424–0.555 | 14, from 0.617 (7.0 px off, `scale /1.08`) |
+| 48 of 12 at 62 px | 0.296 / 0.413 / 0.468 | 1, at 0.589 (7.4 px off, `scale /1.08`) | 91, from 0.612 (2.2 px off, `scale /1.06`) |
+| 48 of 16 at 62 px (shipped) | 0.180 / 0.324 / 0.391 | none | 30, from 0.680 (6.4 px off, `scale x1.1`) |
+| 48 of 24 at 62 px | 0.137 / 0.346 / 0.376 | 3: 0.599 and 0.598 (6.1 and 7.7 px off, `scale /1.08`), 0.275 (0.505 px off, `roll +5 deg`) | 21, from 0.605 (6.1 px off, `scale /1.08`) |
+
+Every set on the three `scale /1.08` steps that 12 × 12 and 24 × 24 accepted
+wrong — residual, then the pose's error; a wrong fit is accepted when its
+residual is at most 0.6 px:
+
+```text
+                               render 3, view 0        render 5, view 0         render 5, view 1
+M2: 64 of 16 at 54 px          0.183, 0.104 px right   0.786, 10.913 px wrong   0.629, 7.110 px wrong
+48 of 12 at 62 px              0.706, 7.529 px wrong   0.589, 7.417 px wrong    1.009, 5.450 px wrong
+48 of 16 at 62 px (shipped)    0.142, 0.192 px right   0.144, 0.200 px right    0.152, 0.302 px right
+48 of 24 at 62 px              0.599, 6.123 px wrong   0.728, 2.040 px wrong    0.598, 7.668 px wrong
+```
+
 ## The run's source
 
 `packages/nft-tracker/test/round3_sweep.test.ts`, run once with
 `ROUND3_OUT=<file> npx vitest run test/round3_sweep.test.ts` from
 `packages/nft-tracker`, and not committed as a test. The wrong fits' origins
 above came from a variant of it that records, for each accepted wrong fit,
-the render, the view and the prediction.
+the render, the view and the prediction; the residual limit's margin, from
+another that runs only part B, with `maxFitRms: Number.POSITIVE_INFINITY` in
+`OPTIONS`, and records every step.
 
 ```ts
 // TEMPORARY — tuning round 3's ground-truth run, not for commit. At the
