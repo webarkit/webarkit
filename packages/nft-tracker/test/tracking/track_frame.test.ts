@@ -48,7 +48,22 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import type { GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
-import { alignPatch, buildFramePyramid, decode } from "../../src/index.js";
+import {
+    alignPatch,
+    buildFramePyramid,
+    decode,
+    DEFAULT_ALIGN_EPSILON,
+    DEFAULT_ALIGN_MAX_ITERATIONS,
+    DEFAULT_FIT_EPSILON,
+    DEFAULT_FIT_MAX_ITERATIONS,
+    DEFAULT_MAX_FIT_RMS,
+    DEFAULT_MAX_FRAME_LEVELS,
+    DEFAULT_MAX_OUTLIER_SHARE,
+    DEFAULT_MIN_PATCH_ZNCC,
+    DEFAULT_MIN_TRACKED_PATCHES,
+    DEFAULT_PHOTOMETRIC,
+    DEFAULT_TUKEY_C,
+} from "../../src/index.js";
 import { PatchOutcome, trackFrame, trackTarget } from "../../src/tracking/track_frame.js";
 import type {
     TrackFrameOptions,
@@ -612,11 +627,14 @@ describe("trackFrame", () => {
  * The shipped configuration on this suite's ground truth: the patches of the
  * committed `examples/targets/pinball.wnft`, stepped from the same 137
  * predictions as the judgement's margins above (translations to 8 px in 16
- * directions, roll to ±6°, scale to ±12%), on both views of this render, with
- * the tracker's default options. The fixture above stays at M2's 64 patches
- * on purpose; this block follows compile-target's default, so a change to it
- * that admits a wrong fit fails here. Errors are measured at the fixture's
- * 64 patch centres, as everywhere in this file.
+ * directions, roll to ±6°, scale to ±12%), on both views of five renders of
+ * this file's kind (seeds 1–5), with the tracker's default options. The
+ * fixture above stays at M2's 64 patches on purpose; this block follows
+ * compile-target's default and the tracker's, so a change to either that
+ * admits a wrong fit fails here. Five renders, not this file's one, because
+ * on one render lowering `DEFAULT_MIN_TRACKED_PATCHES` to 7 admits nothing:
+ * the wrong fit it admits is on another (found in review). Errors are measured
+ * at the fixture's 64 patch centres, as everywhere in this file.
  */
 describe("trackFrame with the shipped target's patches", () => {
     const decoded = decode(
@@ -630,12 +648,34 @@ describe("trackFrame with the shipped target's patches", () => {
     );
     if (!decoded.ok) throw new Error(`pinball.wnft: ${decoded.error}`);
     const shipped = trackTarget(decoded.target.patches!, decoded.target.pyramid.scaleStep);
+    // The tracker's own defaults, mapped as its constructor maps them — not
+    // this file's OPTIONS, which pin M2's values for the fixture's tests: a
+    // shipped-configuration test must move when a default does (found in
+    // review: at the file's OPTIONS, lowering DEFAULT_MIN_TRACKED_PATCHES to 7
+    // left this sweep at 8).
+    const SHIPPED_OPTIONS: TrackFrameOptions = {
+        maxFrameLevels: DEFAULT_MAX_FRAME_LEVELS,
+        align: {
+            maxIterations: DEFAULT_ALIGN_MAX_ITERATIONS,
+            epsilon: DEFAULT_ALIGN_EPSILON,
+            photometric: DEFAULT_PHOTOMETRIC,
+        },
+        fit: {
+            maxIterations: DEFAULT_FIT_MAX_ITERATIONS,
+            tukeyC: DEFAULT_TUKEY_C,
+            epsilon: DEFAULT_FIT_EPSILON,
+        },
+        minTrackedPatches: DEFAULT_MIN_TRACKED_PATCHES,
+        maxOutlierShare: DEFAULT_MAX_OUTLIER_SHARE,
+        maxFitRms: DEFAULT_MAX_FIT_RMS,
+        minPatchZncc: DEFAULT_MIN_PATCH_ZNCC,
+    };
 
-    it("accepts no wrong fit from 137 predictions on either view: 158 right, the rest refused", () => {
-        // Measured on five renders (1,370 steps): 788 right fits, none
-        // wrong; the minimum of 8 correspondences never binds on a right fit
-        // (at least 11 inliers). Lowered to 7 it admits one fit 1.2 px off,
-        // to 6 one 17.5 px off, and no right fit either way
+    it("accepts no wrong fit from 137 predictions on two views of five renders: 788 right, the rest refused", () => {
+        // Measured (1,370 steps): 788 right fits, none wrong; the minimum of
+        // 8 correspondences never binds on a right fit (at least 11
+        // inliers). Lowered to 7 it admits one fit 1.2 px off, to 6 one
+        // 17.5 px off, and no right fit either way
         // (docs/benchmarks/README.md, round 4).
         const deg = (a: number) => (a * Math.PI) / 180;
         const errors: Mat3[] = [translation(0, 0)];
@@ -646,16 +686,26 @@ describe("trackFrame with the shipped target's patches", () => {
         expect(errors.length).toBe(137);
         const right: number[] = [];
         const wrong: number[] = [];
-        VIEWS.forEach((H, v) => {
-            for (const E of errors) {
-                const r = trackFrame(FRAMES[v], shipped, null, about(E, H), OPTIONS, null);
-                if (!r.ok) continue;
-                if (centreRms(r.H, H) < 0.5) right.push(r.stats.inliers);
-                else wrong.push(centreRms(r.H, H));
-            }
-        });
+        for (let seed = 1; seed <= 5; seed++) {
+            const frames = VIEWS.map((H) => renderWarp(image, H, { ...RENDER, seed }));
+            VIEWS.forEach((H, v) => {
+                for (const E of errors) {
+                    const r = trackFrame(
+                        frames[v],
+                        shipped,
+                        null,
+                        about(E, H),
+                        SHIPPED_OPTIONS,
+                        null,
+                    );
+                    if (!r.ok) continue;
+                    if (centreRms(r.H, H) < 0.5) right.push(r.stats.inliers);
+                    else wrong.push(centreRms(r.H, H));
+                }
+            });
+        }
         expect(wrong).toEqual([]);
-        expect(right.length).toBe(158);
+        expect(right.length).toBe(788);
         expect(Math.min(...right)).toBeGreaterThanOrEqual(11);
-    }, 30_000);
+    }, 120_000);
 });
