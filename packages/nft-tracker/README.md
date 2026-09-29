@@ -471,9 +471,11 @@ a median of 0.079 px.
   these poses: the next step refused every lock they seeded
   (`tracker_state_machine.test.ts`). The `"DETECT"` result itself is
   returned.
-- **Patch levels** are the first thing the tuning pass should revisit: all of
-  `examples/targets/pinball.wnft`'s patches are level 0, sharper than the frame
-  they are aligned in on the camera path, which narrows the basin.
+- **Patch levels** are the first thing the tuning pass should revisit: 47 of
+  `examples/targets/pinball.wnft`'s 48 patches are level 0 and one is level 1,
+  and on the camera path, where the target is seen at about half level 0's
+  scale, every one of them is sharper than the frame it is aligned in, which
+  narrows the basin.
 
 ### The M2 tracking state
 
@@ -541,13 +543,15 @@ Their cost, in Node on a development machine, is measured by
 `scripts/bench-tracking.mjs` (`npm run build` first): at the 270×360
 camera-path frame, a four-level `∛2` pyramid takes about 1.8 ms, and a
 matched patch about 15 µs at 8 × 8 or 36 µs at `compile-target`'s 16 × 16.
-How that translates to the reference device, where 64 such patches and the
-pyramid together overrun the tracker's ~10 ms, is recorded with its caveats
-in [`docs/benchmarks/README.md`](../../docs/benchmarks/README.md). The tracker
-builds only the pyramid levels its patches start on, and on the camera path
-pinball's start on level 0 — the frame itself, nothing computed — so there the
-patches are the cost: seen at about half their scale they take more
-iterations, about 64 µs each at 16 × 16 in Node. An on-device measurement of
+How that translates to the reference device, where M2's 64 such patches and
+the pyramid together overran the tracker's ~10 ms, is recorded with its
+caveats in [`docs/benchmarks/README.md`](../../docs/benchmarks/README.md),
+with the tuning pass that lowered the default to 48. The tracker builds only
+the pyramid levels its patches start on, and on the camera path pinball's
+start on level 0 — the frame itself, nothing computed; the one level-1 patch
+too, being seen below its own scale — so there the patches are the cost:
+seen at about half their scale they take more iterations, about 64 µs each at
+16 × 16 in Node. An on-device measurement of
 a tracking frame is #48's next step.
 
 ## Conformance

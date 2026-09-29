@@ -304,9 +304,10 @@ cannot align: a webcam run (its media time is the stream's), an export from
 before `metricsVersion` 1, another clip, another processing size.
 
 **Timing the frame pyramid on the device.** The tracker builds only the
-pyramid levels its patches start on; with `pinball.wnft`'s level-0 patches,
-on the bundled clips and on the camera path, that is one level — the frame
-itself, nothing computed — so `pyramidMs` reads about 0. The **Time frame
+pyramid levels its patches start on; with `pinball.wnft`'s patches — 47 of
+level 0 and one of level 1, every one seen below its own scale — on the
+bundled clips and on the camera path, that is one level — the frame itself,
+nothing computed — so `pyramidMs` reads about 0. The **Time frame
 pyramid** button measures what #63 estimated instead: `buildFramePyramid` at
 1–6 levels of 270×360, 480×270 and 640×480, by
 `packages/nft-tracker/scripts/bench-tracking.mjs`'s method (p50 and p95 of 300

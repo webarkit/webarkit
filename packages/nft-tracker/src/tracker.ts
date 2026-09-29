@@ -109,9 +109,9 @@
  * but one patch of `examples/targets/pinball.wnft` come from level 0 (47 of
  * 48; the other is from level 1), and on the camera path the target is seen
  * at about half level 0's scale: each patch is sharper than the frame it is
- * aligned in. The measurements below were made on the 64-patch target of
- * M2, all of it level 0. That is why the basin is the
- * narrow one — on this suite's frames (one blur pass, noise σ = 2), 84% of
+ * aligned in. That is why the basin is the narrow one — on this suite's
+ * frames (one blur pass, noise σ = 2, and M2's 64 level-0 patches, which the
+ * tests' fixture keeps), 84% of
  * alignments converge from 2 px off and 68% from 3, 78% and 61% within
  * 0.5 px of the truth; unblurred, 92% and 72% (measured in review, not
  * pinned) — why a right alignment's gain sits near 0.5, and why its residual
