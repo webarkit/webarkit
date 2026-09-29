@@ -1708,6 +1708,40 @@ clip straddles the 10% below, so today the round would run on the desktop.
   winnable losses are under 10% of `too-few-patches` on both moving clips:
   there is then nothing for the threshold to win, and 8 stays.
 
+**Amended before round 4 ran (2026-09-29), on @kalwalt's decision: round 4
+runs before round 3, and is defined as follows.** Round 2 found that 32
+patches failed only because a median of 7 survived a hard step against a
+fixed minimum of 8: a threshold rejecting a configuration worth −50% of the
+step, twice what round 2 adopted. Patch size waits behind that.
+
+- **Values: 8 → 7 → 6, one notch at a time.** 10 is dropped. If 7 already
+  shows a correctness signal, the round stops at 7 and reports it.
+- **Targets: the adopted 48 patches, and round 2's rejected 32** (76 px).
+  The second is the point of the round: if 32 failed only on the threshold,
+  32 with a lower one is the −50% configuration; if it still fails, round 2's
+  rejection was about something else, and that is learned too.
+- **Judged on correctness first, then on time.** Every earlier round traded
+  time against lock; this one trades lock against pose correctness: a fit to
+  fewer correspondences is worse conditioned, the condition #66's 232 px
+  wrong-but-finite pose appeared in. So a configuration that is faster and
+  keeps the lock is still rejected if the static clip's `jitterPx` worsens
+  outside the bracketing baselines' range, or if `spreadPx` on any clip shows
+  the gross-pose signature (far above the clip's own drift). Where truth is
+  known — the tracker's synthetic sequences and its single-step perturbation
+  sweep — every accepted pose is measured against it. On the clips, a pose
+  the lower minimum admits is compared with the pose the minimum-8 run gave
+  on the same frame.
+- **Reported per configuration and clip:** the distribution of how many
+  patches (inliers) the accepted fits were built from, not only its median —
+  a minimum that is almost never reached is not one reached constantly —
+  with `right` and `right refused`, beside the plan's usual figures.
+- The desktop stopping rule above is superseded by this definition: the
+  round's point is now the 32-patch target, whose winnable losses it does
+  not measure.
+- The pass's own stopping rule is unchanged: if rounds 4 and 3 find nothing
+  faster without losing lock or steadiness, the pass closes as "not tunable
+  above the contract" — a result, not a failure.
+
 **Round 5 — the alignment tolerance, `alignEpsilon`: 0.01 → 0.03 → 0.1 px.**
 
 A converged patch costs fewer iterations under a looser tolerance, and is
@@ -2020,3 +2054,66 @@ which the format specification leaves open (Q11, #71).
 **Verdict: 48 patches, at the compiler's default spacing (62 px), is better
 by the plan's rules; 32 is worse.** Adopted by @kalwalt: `compile-target`'s
 default budget becomes 48, in its own commit after this one.
+
+#### Round 4 — `minTrackedPatches` (2026-09-29): the desktop's prediction
+
+Desktop only so far; the device session waits on @kalwalt, with this
+prediction. Evidence in
+[`2026-09-29-desktop-tuning-r4.md`](./2026-09-29-desktop-tuning-r4.md):
+ground truth from the tracker's synthetic sequences and its perturbation
+sweep (1,370 single steps per patch set and minimum), and the bundled clips
+replayed at three seeds.
+
+**Minimum 7 shows a correctness signal, so by the amended rule the round
+stops at 7.**
+
+- **Lowering the minimum won no right fit.** In the sweep, right fits stayed
+  at 787 (M2's 64 patches), 788 (the adopted 48) and 753 (32) at 8, 7 and 6.
+  What the lower minimum let through were only fits on fewer than 8 inliers,
+  and **every one of them was wrong** by the suite's 0.5 px: at 7, six on the
+  64 patches, three of them 7.4–9.6 px off, and one on the 48 patches, 1.2 px
+  off; at 6, besides those, 10.8 px (64), 17.5 px (48) and 11.5 px (32). The
+  other steps it stopped refusing for `too-few-patches` were refused a rule
+  later instead (`fit-failed`, `poor-fit`).
+- **On the clips, such fits are rare and looked right.** Fits on 7 inliers
+  were 0–2 of about 400 tracked frames per wall-clip run and none on the static
+  and table clips; the two built on exactly 7 inliers (48 and 32 patches)
+  landed within 1.6–3.7 px of the detection the minimum-8 run made on the same
+  frame, moving smoothly with their neighbours. TRACK share on the wall clip
+  rose 0.4–1.2 points (48) and 0.1–0.5 (32), and nowhere else; the step's
+  cost does not change. The one "gross-pose signature" in the grid, the table
+  clip's `spreadPx` 32 → 128 px at 48 patches, minimum 6, seed 2, comes from
+  detections, not from the admitted fit: skipping one detection shifted the
+  seeded RANSAC draws of every later one, and the run returned different
+  wrong detections (corners at (3331, 4065), (−1243, 535)).
+- **Refusing a step does not mean returning no pose.** A refused step is
+  detected again on the same frame, and on a target half out of the frame the
+  detection can be far off: at 32 patches, minimum 8, leave-and-return frames
+  36–38 returned detections 58, 441 and 2,156 px off the truth (RMS), where
+  minimum 7 tracked them about 3 px off (1.1–1.2 px in view). The minimum
+  trades a fit that may be wrong for a detection that may be wrong; on the
+  sweep, where no detection follows, only the first half shows.
+
+**Two findings about configurations already decided:**
+
+- **32 patches accepts a wrong pose at every minimum.** On the velocity-5
+  sequence, frame 7, fully in view, it tracked 9.1 px off the truth (20.6 px
+  at the worst point) on 10 inliers of 14 correspondences: #66's pattern, a
+  handful of patches agreeing on the wrong place, which no minimum up to 10
+  would refuse. So round 2's rejection of 32 has a correctness basis besides
+  the threshold, and lowering the threshold cannot make 32 adoptable.
+- **The adopted 48 extrapolates worse than M2's 64 as a target leaves the
+  frame.** On leave-and-return frames 36–38, with 9–11 inliers left, its
+  poses are 3.0–3.4 px RMS off over the whole target (8.2 px at the far
+  point), where 64 patches were 0.7–1.2 (2.5); the part still in view is
+  registered within 0.34–0.36 px (0.72 at worst), against 0.10–0.24. That
+  breaks the bound `tracker_state_machine.test.ts` pins for M2 (1.5 px RMS,
+  3 px at worst), which CI does not see because the suite's fixture stays at
+  64 patches by design. Round 2 judged 48 on the tablet's lock and jitter,
+  which cannot see this. Not a gross pose — the visible part is sub-pixel —
+  but a degradation the adoption did not measure, recorded here.
+
+**Prediction: no change.** 8 stays for both targets: on the adopted 48, 7
+buys about a point of TRACK share on one clip and no time, and admits the
+class of fit the ground truth shows to be wrong; on 32, 7 cannot address the
+wrong pose above, whatever it does to the lock on the tablet.
