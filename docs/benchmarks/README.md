@@ -1659,7 +1659,12 @@ against the new one.
   (#66 measured right fits with at least 12 inliers, and wrong ones the rules
   accepted with 8–13).
 - **Arms:** the compiler's default spacing (62 and 76 px) is the candidate;
-  `p32-s16-sp54` is the desktop control.
+  `p32-s16-sp54` is the desktop control. A fourth arm, `p64-s16-ms50`, keeps
+  64 patches and raises the minimum patch score from 25 to 50 — fewer
+  low-texture patches at the same count — since the gate refuses 8–10% of
+  right alignments on the moving clips, and a `too-few-patches` loss is in
+  part correct patches the gate discarded. Reported per configuration:
+  `right` and `right refused` beside the timings.
 - **Ends:** at the smallest `Q` that is not worse. The first `Q` that is worse
   ends the round at the one before it.
 
@@ -1716,12 +1721,29 @@ on the desktop.
 
 For each round, after its desktop grid, on `Tab_9_WiFi`, as the 2026-09-26
 runs were made (a script over the DevTools protocol, the page's own export,
-120 s idle between runs): the **baseline** (`targets/pinball.wnft`, no
-overrides) and each surviving configuration, `tracking` mode, on the three
-clips; one `stateless` run on the static clip for the jitter ratio; and the
-baseline's static run once more at the end, whose `trackStepMs` p50 must be
-within ±10% of the first or the session is inconclusive. Validity checks as
+120 s idle between runs), `tracking` mode, on the three clips, with one
+`stateless` run on the static clip for the jitter ratio. Validity checks as
 2026-09-26's 1–7, with check 2 reading the candidate's file and SHA-256.
+
+**Interleaved, from round 2 on.** Per clip the order is baseline, candidate,
+baseline, candidate, …, baseline: every candidate run is **bracketed** by the
+two baseline runs taken just before and just after it, and is compared
+against both. A difference counts as real only when it has the same sign
+against both brackets and is past the rule's bound against each; otherwise it
+is **no change**. Drift across the session — the tablet warming, the clip's
+acquire cost moving — then cancels by design instead of being absorbed by a
+margin. Jitter is read on the static clip only, as before.
+
+Why the rule changed. Round 1 ran each configuration once and repeated one
+baseline at the end. Its two static baselines were the session's first and
+last runs, 19 minutes apart, and the later was less steady: `jitterPx`
+0.148 → 0.155 over the window, 0.142 → 0.153 aligned against the stateless
+run (exported 12:32:14 and 12:51:05). That is drift's signature, though the
+compute did not slow: `trackStepMs` p50 was 12.1 ms both times and `acquire`
+fell, 41.4 → 39.2 ms. Two runs cannot tell drift from noise, and a band
+spanned by two observations understates the spread either way; bracketing
+holds under both. A session is inconclusive if two consecutive baselines of
+one clip differ in `trackStepMs` p50 by more than 10%.
 
 **File names:** `YYYY-MM-DD-tab9-tuning-r<N>-<config>-<clip>.json`, `<config>`
 being `baseline`, `p32-s16`, `iter15`, and so on. **Device exports are

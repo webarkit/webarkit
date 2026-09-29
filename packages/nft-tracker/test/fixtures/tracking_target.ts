@@ -46,9 +46,18 @@
  * decoded from that file so recompiling it never moves the tracking suites:
  * the committed file is `crates/wnft-format/tests/real_target.rs`'s to pin.
  *
- * The four patch options are compile-target's defaults, repeated: patch size
- * 16, 64 patches, minimum score 25, spacing round(0.75 · √(512 · 640 / 64)) =
- * 54, from the first three levels (bin/compile-target.mjs).
+ * The four patch options are compile-target's defaults as of M2, repeated:
+ * patch size 16, 64 patches, minimum score 25, spacing
+ * round(0.75 · √(512 · 640 / 64)) = 54, from the first three levels
+ * (bin/compile-target.mjs).
+ *
+ * **Deliberately independent of the shipped default.** If the tuning pass
+ * (docs/benchmarks/README.md, "M3: the tuning pass") changes compile-target's
+ * defaults, these stay: this fixture exercises the tracker, and a fixture
+ * that chased the default would move counts in tests unrelated to the
+ * change, so "the default changed" and "something broke" could no longer be
+ * told apart. The shipped configuration is pinned where it ships, by
+ * `crates/wnft-format/tests/real_target.rs` on `examples/targets/pinball.wnft`.
  */
 
 import type { CvBackend } from "@webarkit/cv-backend-spec";
