@@ -1787,6 +1787,15 @@ change was adopted on.)
 - The scaled schedule's TRACK share on the wall clip rose to 79% under both
   caps: the model's cheaper step fit inside the clip's 40.2 ms frame. That
   rested on the model's 20.4 ms of `acquire` + `gray`.
+- **The scaled-schedule trap: that 60% → 79% is not a quality result.** A
+  cheaper step skips fewer frames, so each motion between two processed
+  frames is smaller and a lock survives longer; a configuration that tracks
+  *worse* frame for frame can still post a higher TRACK share there. Tracking
+  quality is read on the **every-frame** columns ("ef"), where both
+  configurations see the same frames — and there a cap of 20 was slightly
+  worse (TRACK share 69.5% → 65.4–65.9%, held-lock steps lost 2 → 9). The
+  scaled schedule answers a different question, whether a cheaper step keeps
+  up with the clip, and only the device settles that: here it did not (below).
 
 **On `Tab_9_WiFi`** (eight runs, every one at its first attempt). The
 round adopted nothing, and its exports are committed because this verdict
