@@ -38,13 +38,14 @@
  */
 
 /**
- * The pinball target as `compile-target` builds it at its defaults, in memory:
- * keypoints and descriptors from `buildTargetFromImage`, tracking patches from
- * `selectPatches` over `buildFramePyramid` — the same 64 patches
- * `examples/targets/pinball.wnft` carries (the compile-target suite checks
- * the file's pixels against this very pyramid). Built here rather than
- * decoded from that file so recompiling it never moves the tracking suites:
- * the committed file is `crates/wnft-format/tests/real_target.rs`'s to pin.
+ * The pinball target as `compile-target` built it at its M2 defaults, in
+ * memory: keypoints and descriptors from `buildTargetFromImage`, tracking
+ * patches from `selectPatches` over `buildFramePyramid` — the 64 patches
+ * `examples/targets/pinball.wnft` carried until the tuning pass lowered the
+ * default budget to 48 (the compile-target suite checks a compiled file's
+ * pixels against this very pyramid). Built here rather than decoded from that
+ * file so recompiling it never moves the tracking suites: the committed file
+ * is `crates/wnft-format/tests/real_target.rs`'s to pin.
  *
  * The four patch options are compile-target's defaults as of M2, repeated:
  * patch size 16, 64 patches, minimum score 25, spacing

@@ -158,11 +158,11 @@ unset, which is exactly the case where the cwd is already the right answer.
 | `--max-side` | 640 | cap on the image's longer side |
 | `--seed` | 0 | RNG seed, recorded in `info.compiler` and enforced during the build |
 | `--name` | the image's base name | `info.name` |
-| `--patches` | 64 | tracking-patch budget; `0` compiles a detection-only target with no `patches` section |
+| `--patches` | 48 | tracking-patch budget; `0` compiles a detection-only target with no `patches` section. 64 until M3's tuning pass: 48 cut the tracking step 21–29% on the reference device without losing lock ([`docs/benchmarks`](../../docs/benchmarks/README.md), round 2) |
 | `--patch-size` | 16 | patch edge `P`, at least 3 |
 | `--patch-levels` | 3 | how many of the finest pyramid levels patches may come from |
 | `--patch-min-score` | 25 | minimum Shi–Tomasi score, (grey levels / level-0 px)² |
-| `--patch-spacing` | `0.75 * sqrt(W * H / patches)` | minimum distance between patch centres, level-0 px (54 on pinball) |
+| `--patch-spacing` | `0.75 * sqrt(W * H / patches)` | minimum distance between patch centres, level-0 px (62 on pinball at the default budget) |
 
 Three of those deserve a word.
 
@@ -215,8 +215,9 @@ function the tracker builds the live frame's pyramid with, so a stored patch
 and the frame level it is aligned on were filtered alike (format spec §11,
 Q11). `info.compiler.patchPyramid` names it. Files compiled before this used a
 stand-in box filter and say so there. On pinball the switch replaced the one
-level-1 patch with a level-0 window 0.87 px away, so all 64 patches are now
-level 0.
+level-1 patch with a level-0 window 0.87 px away, so all 64 patches were then
+level 0. At the default budget of 48, spaced wider, one level-1 patch is back:
+47 from level 0 and one from level 1.
 
 [`examples/targets/pinball.wnft`](../../examples/targets) is one such target,
 committed, and the static demo can load it instead of building its own.
@@ -243,7 +244,7 @@ node packages/nft-tracker/bin/validate-target.mjs examples/targets/pinball.wnft
 ```
 examples/targets/pinball.wnft
   decode      ok, format 0.3
-  target      512x640, 8 levels, 2062 keypoints, 64 patches
+  target      512x640, 8 levels, 2062 keypoints, 48 patches
   physical    210 x 262.5 mm
   set         orb/hamming/bits/256 by jsfeatnext, 2062 rows, 32 B each
   usable      yes on 'jsfeatnext' via orb/hamming/256 (probe: 32 B/descriptor, hamming)

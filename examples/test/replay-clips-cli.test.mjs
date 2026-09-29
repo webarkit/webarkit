@@ -59,6 +59,6 @@ describe("replay-clips.mjs command line", () => {
     it("refuses a target the tracker would not track under the options given", () => {
         const r = run("--seed", "1", "--options", "minTrackedPatches:100");
         expect(r.status).toBe(2);
-        expect(r.stderr).toMatch(/64 patches.*minTrackedPatches \(100\).*detection-only/);
+        expect(r.stderr).toMatch(/\d+ patches.*minTrackedPatches \(100\).*detection-only/);
     });
 });

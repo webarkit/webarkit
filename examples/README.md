@@ -224,8 +224,8 @@ percentiles are taken over the frames that detected.
 with `buildTargetFromImage`, from `images/pinball.jpg` at 640 px on its long
 side; that target has no patches, and a run with no parameters stays the run
 this page always measured. The other choice is `targets/pinball.wnft`,
-fetched and decoded, never built here — the only target with patches (64 of
-16 × 16, all from level 0) — and the tracking mode selects it. Start refuses
+fetched and decoded, never built here — the only target with patches (48 of
+16 × 16, 47 of them from level 0) — and the tracking mode selects it. Start refuses
 to track a target the tracker would not track, before any source starts,
 rather than run detection-only under the tracking label. The export's
 `target` records which one a run used: `file`, the file's `sha256`,

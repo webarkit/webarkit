@@ -128,8 +128,9 @@ export function pyramidScales(scaleStep: number, count: number): Float64Array | 
  * - **`compile-target` does this**, at the target's own `scaleStep`, and
  *   names this function in `info.compiler.patchPyramid`; files compiled
  *   before it did name a stand-in box filter there instead. On
- *   `examples/targets/pinball.wnft` the point is moot for now: all 64 of
- *   its patches come from level 0, which no filter touches.
+ *   `examples/targets/pinball.wnft` it matters for one patch: 47 of its 48
+ *   come from level 0, which no filter touches, and one from level 1, whose
+ *   pixels this function produced.
  * - **Filtered alike is not blurred alike.** Alignment reads a patch on the
  *   frame level nearest its scale, usually a shallower one — a level-3 patch
  *   on frame level 0 — and the frame carries its camera's blur besides,

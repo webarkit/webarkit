@@ -108,8 +108,9 @@ const DEFAULT_MAX_SIDE = 640;
 
 /*
  * Tracking-patch defaults (§5.7). First choices with their reasons, measured
- * on `examples/images/pinball.jpg` at the default cap; the M2 tuning pass,
- * which can measure alignment itself, is expected to revise them, which is
+ * on `examples/images/pinball.jpg` at the default cap, and revised by M3's
+ * tuning pass where it measured alignment on the reference device
+ * (docs/benchmarks/README.md, "2026-09-28 — M3: the tuning pass"), which is
  * why each one is an option rather than a constant.
  */
 
@@ -118,25 +119,43 @@ const DEFAULT_MAX_SIDE = 640;
  * interior gradient samples — enough to condition a translation + gain/bias
  * fit on real texture, where 8 (§9's example) leaves 36 — while staying
  * local: 16 level-0 px is 3% of a 512-px target, so the prediction's
- * perspective varies little across one patch. 64 of them are 16 KB.
+ * perspective varies little across one patch. 48 of them are 12 KB.
  */
 const DEFAULT_PATCH_SIZE = 16;
 
 /**
- * `maxPatches`, the budget. Tracking needs four inliers per frame; 64 leaves
- * room to lose most of them to occlusion, the frame edge and the robust fit,
- * while a frame's alignment cost stays linear in a small number.
+ * `maxPatches`, the budget. Tracking needs four inliers per frame and the
+ * tracker refuses a step with fewer than `minTrackedPatches` (8) surviving,
+ * so the budget must leave room to lose most patches to occlusion, the frame
+ * edge, alignment and the gate; while alignment is almost all of a tracking
+ * step's cost, linear in the patches attempted.
+ *
+ * 48, chosen by the tuning pass's round 2 on the reference device, where it
+ * cut the tracking step 21–29% at p50 against 64 on every bundled clip
+ * without losing lock or steadiness. 32 halved the step but lost held locks
+ * on moving footage: a hard step keeps a similar small fraction of the
+ * patches whatever their number, and at 32 that fraction fell under the
+ * minimum. It was 64 until then.
+ *
+ * The budget also sets the default spacing ({@link defaultPatchSpacing}), and
+ * the spread that buys is part of the result: 32 patches kept the lock far
+ * better spaced for 32 (76 px) than at 64's spacing (54 px). A higher
+ * `--patch-min-score` is not a substitute: at a fixed spacing it keeps the
+ * same prefix of the same selection a smaller budget would.
  */
-const DEFAULT_MAX_PATCHES = 64;
+const DEFAULT_MAX_PATCHES = 48;
 
 /**
  * How many of the target's pyramid levels patches may come from, finest
  * first. Scores are in level-0 units (`select_patches.ts`), so levels compete
  * on how precisely they localise, and a coarser level rarely wins: on the
- * pinball target all 64 patches come from level 0, and allowing six or all
- * eight levels instead of three selects exactly the same 64. (While a box
- * filter built the levels, one level-1 window won by a small margin; the
- * pyramid filter blurs more, and it lost to a level-0 window 0.87 px away.)
+ * pinball target 47 of the 48 patches come from level 0 and one from level
+ * 1, and allowing six or all eight levels instead of three selects exactly
+ * the same 48. (At the old budget of 64, spaced 54 px, all 64 came from
+ * level 0; spaced 62 px, the 48 reach further down the ranking. While a box
+ * filter built the levels, one level-1 window had won a place among the 64
+ * by a small margin; the pyramid filter blurs more, and it lost to a level-0
+ * window 0.87 px away.)
  * Three levels span a factor `2^(2/3)` ≈ 1.6 at the default step, and keep a
  * patch's footprint local (under 26 level-0 px for P=16); the limit is there
  * for the images where coarse texture would win.
@@ -159,8 +178,10 @@ const DEFAULT_PATCH_MIN_SCORE = 25;
  * image exactly; three quarters of it leaves room for about twice the budget
  * in a hexagonal packing, so the budget still fills when parts of the target
  * are flat, while forbidding the clusters a bare score ranking produces. On
- * pinball it is 54 px; at 1.0 × (72 px) only 42 of 64 patches fit, at 0.5 ×
- * (27 px) the patches cover 32 rather than 52 cells of an 8 × 8 grid.
+ * pinball, at the default budget of 48, it is 62 px. Measured at the old
+ * budget of 64 (54 px): at 1.0 × (72 px) only 42 of 64 patches fit, and at
+ * 0.5 × (27 px) the patches covered 32 rather than 52 cells of an 8 × 8
+ * grid.
  */
 function defaultPatchSpacing(width, height, maxPatches) {
     return Math.round(0.75 * Math.sqrt((width * height) / maxPatches));

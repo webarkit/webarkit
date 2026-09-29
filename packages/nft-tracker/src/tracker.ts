@@ -105,10 +105,12 @@
  * in view and extrapolate to the rest: up to 1.2 px RMS off over the patch
  * centres, 2.5 px at the far end.
  *
- * **Patch levels are the first thing the tuning pass should revisit.** Every
- * patch of `examples/targets/pinball.wnft` comes from level 0, and on the
- * camera path the target is seen at about half that scale: each patch is
- * sharper than the frame it is aligned in. That is why the basin is the
+ * **Patch levels are the first thing the tuning pass should revisit.** All
+ * but one patch of `examples/targets/pinball.wnft` come from level 0 (47 of
+ * 48; the other is from level 1), and on the camera path the target is seen
+ * at about half level 0's scale: each patch is sharper than the frame it is
+ * aligned in. The measurements below were made on the 64-patch target of
+ * M2, all of it level 0. That is why the basin is the
  * narrow one — on this suite's frames (one blur pass, noise σ = 2), 84% of
  * alignments converge from 2 px off and 68% from 3, 78% and 61% within
  * 0.5 px of the truth; unblurred, 92% and 72% (measured in review, not
