@@ -328,21 +328,21 @@ describe("compile-target", () => {
         it("writes the documented defaults, every patch exactly its level's pixels", () => {
             const out = join(work, "patches-default.wnft");
             const stdout = compile([IMAGE, "-o", out]);
-            expect(stdout).toContain("64 patches");
+            expect(stdout).toContain("48 patches");
 
             const { target, warnings } = decodeFile(out);
             expect(warnings).toEqual([]);
             const patches = target.patches!;
             expect(patches.patchSize).toBe(16);
-            expect(patches.count).toBe(64);
+            expect(patches.count).toBe(48);
             expect(Math.max(...patches.level)).toBeLessThan(3);
             expect(compilerInfo(target.info)).toMatchObject({
-                maxPatches: 64,
+                maxPatches: 48,
                 patchSize: 16,
                 patchLevels: 3,
                 patchMinScore: 25,
-                // 0.75 * sqrt(512 * 640 / 64), rounded.
-                patchSpacing: 54,
+                // 0.75 * sqrt(512 * 640 / 48), rounded.
+                patchSpacing: 62,
                 // The function the tracker builds the live frame's pyramid
                 // with (format spec §11, Q11), named so a reader can tell.
                 patchPyramid: expect.stringMatching(/^buildFramePyramid/),

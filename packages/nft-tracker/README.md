@@ -158,11 +158,11 @@ unset, which is exactly the case where the cwd is already the right answer.
 | `--max-side` | 640 | cap on the image's longer side |
 | `--seed` | 0 | RNG seed, recorded in `info.compiler` and enforced during the build |
 | `--name` | the image's base name | `info.name` |
-| `--patches` | 64 | tracking-patch budget; `0` compiles a detection-only target with no `patches` section |
+| `--patches` | 48 | tracking-patch budget; `0` compiles a detection-only target with no `patches` section. 64 until M3's tuning pass: 48 cut the tracking step 21–29% on the reference device without losing lock ([`docs/benchmarks`](../../docs/benchmarks/README.md), round 2) |
 | `--patch-size` | 16 | patch edge `P`, at least 3 |
 | `--patch-levels` | 3 | how many of the finest pyramid levels patches may come from |
 | `--patch-min-score` | 25 | minimum Shi–Tomasi score, (grey levels / level-0 px)² |
-| `--patch-spacing` | `0.75 * sqrt(W * H / patches)` | minimum distance between patch centres, level-0 px (54 on pinball) |
+| `--patch-spacing` | `0.75 * sqrt(W * H / patches)` | minimum distance between patch centres, level-0 px (62 on pinball at the default budget) |
 
 Three of those deserve a word.
 
@@ -215,8 +215,9 @@ function the tracker builds the live frame's pyramid with, so a stored patch
 and the frame level it is aligned on were filtered alike (format spec §11,
 Q11). `info.compiler.patchPyramid` names it. Files compiled before this used a
 stand-in box filter and say so there. On pinball the switch replaced the one
-level-1 patch with a level-0 window 0.87 px away, so all 64 patches are now
-level 0.
+level-1 patch with a level-0 window 0.87 px away, so all 64 patches were then
+level 0. At the default budget of 48, spaced wider, one level-1 patch is back:
+47 from level 0 and one from level 1.
 
 [`examples/targets/pinball.wnft`](../../examples/targets) is one such target,
 committed, and the static demo can load it instead of building its own.
@@ -243,7 +244,7 @@ node packages/nft-tracker/bin/validate-target.mjs examples/targets/pinball.wnft
 ```
 examples/targets/pinball.wnft
   decode      ok, format 0.3
-  target      512x640, 8 levels, 2062 keypoints, 64 patches
+  target      512x640, 8 levels, 2062 keypoints, 48 patches
   physical    210 x 262.5 mm
   set         orb/hamming/bits/256 by jsfeatnext, 2062 rows, 32 B each
   usable      yes on 'jsfeatnext' via orb/hamming/256 (probe: 32 B/descriptor, hamming)
@@ -470,9 +471,11 @@ a median of 0.079 px.
   these poses: the next step refused every lock they seeded
   (`tracker_state_machine.test.ts`). The `"DETECT"` result itself is
   returned.
-- **Patch levels** are the first thing the tuning pass should revisit: all of
-  `examples/targets/pinball.wnft`'s patches are level 0, sharper than the frame
-  they are aligned in on the camera path, which narrows the basin.
+- **Patch levels** are the first thing the tuning pass should revisit: 47 of
+  `examples/targets/pinball.wnft`'s 48 patches are level 0 and one is level 1,
+  and on the camera path, where the target is seen at about half level 0's
+  scale, every one of them is sharper than the frame it is aligned in, which
+  narrows the basin.
 
 ### The M2 tracking state
 
@@ -540,13 +543,15 @@ Their cost, in Node on a development machine, is measured by
 `scripts/bench-tracking.mjs` (`npm run build` first): at the 270×360
 camera-path frame, a four-level `∛2` pyramid takes about 1.8 ms, and a
 matched patch about 15 µs at 8 × 8 or 36 µs at `compile-target`'s 16 × 16.
-How that translates to the reference device, where 64 such patches and the
-pyramid together overrun the tracker's ~10 ms, is recorded with its caveats
-in [`docs/benchmarks/README.md`](../../docs/benchmarks/README.md). The tracker
-builds only the pyramid levels its patches start on, and on the camera path
-pinball's start on level 0 — the frame itself, nothing computed — so there the
-patches are the cost: seen at about half their scale they take more
-iterations, about 64 µs each at 16 × 16 in Node. An on-device measurement of
+How that translates to the reference device, where M2's 64 such patches and
+the pyramid together overran the tracker's ~10 ms, is recorded with its
+caveats in [`docs/benchmarks/README.md`](../../docs/benchmarks/README.md),
+with the tuning pass that lowered the default to 48. The tracker builds only
+the pyramid levels its patches start on, and on the camera path pinball's
+start on level 0 — the frame itself, nothing computed; the one level-1 patch
+too, being seen below its own scale — so there the patches are the cost:
+seen at about half their scale they take more iterations, about 64 µs each at
+16 × 16 in Node. An on-device measurement of
 a tracking frame is #48's next step.
 
 ## Conformance

@@ -1659,7 +1659,12 @@ against the new one.
   (#66 measured right fits with at least 12 inliers, and wrong ones the rules
   accepted with 8–13).
 - **Arms:** the compiler's default spacing (62 and 76 px) is the candidate;
-  `p32-s16-sp54` is the desktop control.
+  `p32-s16-sp54` is the desktop control. A fourth arm, `p64-s16-ms50`, keeps
+  64 patches and raises the minimum patch score from 25 to 50 — fewer
+  low-texture patches at the same count — since the gate refuses 8–10% of
+  right alignments on the moving clips, and a `too-few-patches` loss is in
+  part correct patches the gate discarded. Reported per configuration:
+  `right` and `right refused` beside the timings.
 - **Ends:** at the smallest `Q` that is not worse. The first `Q` that is worse
   ends the round at the one before it.
 
@@ -1716,12 +1721,29 @@ on the desktop.
 
 For each round, after its desktop grid, on `Tab_9_WiFi`, as the 2026-09-26
 runs were made (a script over the DevTools protocol, the page's own export,
-120 s idle between runs): the **baseline** (`targets/pinball.wnft`, no
-overrides) and each surviving configuration, `tracking` mode, on the three
-clips; one `stateless` run on the static clip for the jitter ratio; and the
-baseline's static run once more at the end, whose `trackStepMs` p50 must be
-within ±10% of the first or the session is inconclusive. Validity checks as
+120 s idle between runs), `tracking` mode, on the three clips, with one
+`stateless` run on the static clip for the jitter ratio. Validity checks as
 2026-09-26's 1–7, with check 2 reading the candidate's file and SHA-256.
+
+**Interleaved, from round 2 on.** Per clip the order is baseline, candidate,
+baseline, candidate, …, baseline: every candidate run is **bracketed** by the
+two baseline runs taken just before and just after it, and is compared
+against both. A difference counts as real only when it has the same sign
+against both brackets and is past the rule's bound against each; otherwise it
+is **no change**. Drift across the session — the tablet warming, the clip's
+acquire cost moving — then cancels by design instead of being absorbed by a
+margin. Jitter is read on the static clip only, as before.
+
+Why the rule changed. Round 1 ran each configuration once and repeated one
+baseline at the end. Its two static baselines were the session's first and
+last runs, 19 minutes apart, and the later was less steady: `jitterPx`
+0.148 → 0.155 over the window, 0.142 → 0.153 aligned against the stateless
+run (exported 12:32:14 and 12:51:05). That is drift's signature, though the
+compute did not slow: `trackStepMs` p50 was 12.1 ms both times and `acquire`
+fell, 41.4 → 39.2 ms. Two runs cannot tell drift from noise, and a band
+spanned by two observations understates the spread either way; bracketing
+holds under both. A session is inconclusive if two consecutive baselines of
+one clip differ in `trackStepMs` p50 by more than 10%.
 
 **File names:** `YYYY-MM-DD-tab9-tuning-r<N>-<config>-<clip>.json`, `<config>`
 being `baseline`, `p32-s16`, `iter15`, and so on. **Device exports are
@@ -1738,6 +1760,16 @@ change was adopted on.)
 - **A tracker option** (rounds 1, 4, 5): the default in `src/tracker.ts`, its
   documentation, the tests pinned on it, and a `CHANGELOG.md` line under
   `[Unreleased]`.
+- **The baseline moves with every adoption.** Recompiling
+  `examples/targets/pinball.wnft` changes the target every measurement runs
+  on, and its SHA-256 with it, so figures from before and after an adoption
+  are not directly comparable. From round 2's adoption on, M3's numbers are
+  read against the 48-patch target (SHA-256 `9e8eb486…`), not against
+  2026-09-26's 64-patch figures (`4af6a7fb…`) or rounds 1 and 2's baselines.
+  An M2 export can still be replayed on the target it ran on: `git show
+  <commit>:examples/targets/pinball.wnft` to a file, then
+  `scripts/replay-clips.mjs --target <that file> --sequence <export>`, whose
+  SHA-256 check refuses any other. (Amended at round 2's adoption.)
 - **A compiled quantity** (rounds 2, 3): `compile-target`'s default, the
   recompiled `examples/targets/pinball.wnft` with
   `crates/wnft-format/tests/real_target.rs` updated in the same commit, the
@@ -1787,6 +1819,15 @@ change was adopted on.)
 - The scaled schedule's TRACK share on the wall clip rose to 79% under both
   caps: the model's cheaper step fit inside the clip's 40.2 ms frame. That
   rested on the model's 20.4 ms of `acquire` + `gray`.
+- **The scaled-schedule trap: that 60% → 79% is not a quality result.** A
+  cheaper step skips fewer frames, so each motion between two processed
+  frames is smaller and a lock survives longer; a configuration that tracks
+  *worse* frame for frame can still post a higher TRACK share there. Tracking
+  quality is read on the **every-frame** columns ("ef"), where both
+  configurations see the same frames — and there a cap of 20 was slightly
+  worse (TRACK share 69.5% → 65.4–65.9%, held-lock steps lost 2 → 9). The
+  scaled schedule answers a different question, whether a cheaper step keeps
+  up with the clip, and only the device settles that: here it did not (below).
 
 **On `Tab_9_WiFi`** (eight runs, every one at its first attempt). The
 round adopted nothing, and its exports are committed because this verdict
@@ -1838,3 +1879,144 @@ rests on them, as `2026-09-28-tab9-tuning-r1-<run>.json`:
   have called the baseline worse than itself. Every later round's jitter
   verdict needs a bound set against this session-to-session spread, before
   it is read.
+
+#### Round 2 — patch count (2026-09-29): 48 patches pass, 32 do not
+
+**Desktop** (five targets, three seeds, interleaved; per seed in
+[`2026-09-29-desktop-tuning-r2.md`](./2026-09-29-desktop-tuning-r2.md)),
+read on the every-frame columns, against today's 64 patches:
+
+| target | step p50, static / wall / table | wall: TRACK share, held-lock steps lost | static `jitterPx` | right alignments the gate refused, static / wall / table |
+|---|---|---|---|---|
+| 64, 54 px (today) | 4.3–4.6 / 6.6–7.6 / 5.5–6.3 ms | 69.5%, 2 of 413 | 0.131 | 3.5% / 8.4% / 10.1% |
+| 48, 62 px | −11 to −24% / −30% / −30% | 67.6–68.1%, 6 of 402–405 | 0.131 | 4.4% / 6.1% / 7.4% |
+| 32, 76 px | −50% / −50% / −50% | 66.9–67.3%, 4–5 of 398–400 | 0.135–0.136 | 9.8% / 10.7% / 15.8% |
+| 32, 54 px (control) | −45% / −48% / −44% | **59.9–60.6%, 17 of 356–360** | 0.129–0.130 | 3.8% / 9.1% / 12.0% |
+| 62, 54 px, min score 50 | no change | 69.5%, 2 of 413 | 0.132 | 3.6% / 8.6% / 10.4% |
+
+- **The spread keeps the lock, not the number.** At 32 patches, the
+  control's 54 px spacing lost 9 points of wall-clip TRACK share and four
+  times the held locks; spread to 76 px, 32 patches held nearly as well as
+  64. The candidates are the compiler's default spacing for their count.
+- **At 32 the gate refuses almost three times the share of right alignments
+  on the static clip** (9.8%, against 3.5% at 64 and 3.8% for the 54 px
+  control). At a fixed count, wider spacing does choose lower-scoring
+  patches: the 32 at 76 px have a minimum Shi–Tomasi score of 101 and a
+  median of 406, the control's 297 and 694. **But the score does not predict
+  the refusals across configurations** — today's 64 have the lowest scores
+  of all (minimum 45, median 297) and the fewest refusals — so "wide spacing
+  reaches weaker texture" is not an established mechanism for them. On the
+  static clip, the one compared on the same frames, the refusal share has no
+  clean trend with count either: 3.5% at 64, 3.6% at 62, 4.8% at 48 and 3.8%
+  at 32, all at 54 px.
+- **A minimum score of 50 changes nothing**: two patches drop out. That arm
+  did not bind, so it did not test what it was meant to; the next paragraph
+  does.
+
+**A minimum score is the patch budget, at a fixed spacing.** `selectPatches`
+chooses greedily in descending score order, skipping a window too close to
+one already chosen, so its choices come in descending score. A budget stops
+that sequence after `Q` patches; a minimum score stops it where the scores
+fall under the threshold. Both keep a prefix of the same sequence: the
+min-score-50 target is today's first 62 patches, and the 54 px control
+today's first 32. Checked directly: `--patch-min-score 129.48260498046875`
+(today's 48th score) and `--patches 48 --patch-spacing 54` compile identical
+patch tables, pixel for pixel. So the score threshold reaches no lever the
+count does not: dropping the weakest patches is dropping the last ones
+chosen, and it loses their coverage just as a smaller budget does. The
+binding threshold, run against the adopted 48 in one session (three seeds):
+
+| 48 patches, chosen by | step p50, static / wall / table | wall: TRACK share, held-lock steps lost | right alignments the gate refused, static / wall / table |
+|---|---|---|---|
+| budget, spread at 62 px | 3.1–3.3 / 4.6–4.8 / 3.6–3.9 ms | 67.6–68.1%, 6 of 402–405 | 4.4% / 6.1% / 7.4% |
+| minimum score 129.48, at 54 px | 3.1–3.2 / 4.8–5.2 / 4.0–4.2 ms | 65.9–66.8%, 9–10 of 392–397 | 4.8% / 8.7% / 10.7% |
+
+It buys no time over the adopted 48, holds the wall clip slightly worse —
+against today's 64 its held-lock losses rise 1.8–2.0 points, at the plan's
+2-point bound — and the gate refuses at least as large a share of its right
+alignments as at 64. Higher scores did not make patches correlate better with
+the frame. The arm ends on the desktop. Raising patch quality without losing
+coverage would take a different selection rule, such as the best patch per
+cell of a grid above a quality floor: a change to `selectPatches`, not a
+value to tune.
+
+**On `Tab_9_WiFi`** (16 runs, bracketed as the plan now requires; per clip:
+baseline, 48, baseline, 32, baseline; one stateless static run). Committed as
+`2026-09-29-tab9-tuning-r2-<run>.json`, since this verdict rests on them. The
+session stopped once, 18 minutes in, when the tablet locked itself; the
+static clip's six runs were complete, the driver was stopped before the wall
+runs could fail again, and it resumed at the first wall run after the tablet
+was unlocked, so every clip's block of runs is contiguous.
+
+| clip | baselines' step p50 | 48 patches: step p50, against the two brackets | 32 patches: step p50, against the two brackets |
+|---|---|---|---|
+| static | 12.2 / 12.2 / 12.1 ms | 9.6 ms (−21.3%, −21.3%) | 6.1 ms (−50.0%, −49.6%) |
+| wall | 20.9 / 20.3 / 19.6 ms | 14.8 ms (−29.2%, −27.1%) | 9.5 ms (−53.2%, −51.5%) |
+| table | 18.0 / 18.3 / 18.0 ms | 13.6 ms (−24.4%, −25.7%) | 8.7 ms (−52.5%, −51.7%) |
+
+| clip | 48 patches, against the two brackets | 32 patches, against the two brackets |
+|---|---|---|
+| static | TRACK 100%, 0 held locks lost; `jitterPx` 0.144 against 0.160 and 0.167 (−10.0%, −13.8%), ratio 3.48 | TRACK 100%, 0 lost; `jitterPx` 0.157 against 0.167 and 0.164 (−6.0%, −4.3%), ratio 3.08 |
+| wall | TRACK 56.7% (+8.7, +7.0 pts); held lost 7.6% (−4.9, −3.8 pts); first confirmed 13.2% (−3.5, −2.6 pts) | TRACK 45.0% (−4.7, −3.7 pts); **held lost 17.8% (+6.3, +6.1 pts)**; first confirmed 18.5% (+2.7, +4.2 pts) |
+| table | TRACK 78.3% (+10.3, +2.7 pts); held lost 3.4% (−4.4, −1.4 pts); first confirmed 22.9% (−1.1, −2.1 pts) | TRACK 77.7% (+2.0, +7.0 pts); held lost 3.0% (−1.9, −3.1 pts); first confirmed 18.9% (−6.1, −3.7 pts) |
+
+- **Validity:** every export is Android and `Tab_9_WiFi`, 300 frames, the
+  planned target by file and SHA-256 (`9e8eb486…` for 48, `97874170…` for
+  32, `4af6a7fb…` for the baseline). Consecutive baselines of each clip
+  differ in step p50 by 0.0–3.4%, under the 10% that would make the session
+  inconclusive; `acquire` held within 2 ms per clip.
+- **48 patches: better.** Faster by 21–29% against both brackets on every
+  clip, and not worse on any rule. Static jitter fell against both brackets.
+- **32 patches: worse.** Twice as fast, but on the wall clip held-lock losses
+  rose by more than 2 points of held steps against both brackets (17.8%
+  against 11.5% and 11.7%). The table clip's first steps confirmed fell 6.1
+  and 3.7 points, past 5 against one bracket only, so not counted.
+- **Why 32 fails, from its losses, not from texture.** Of the 26 held steps
+  32 lost on the wall clip (loop wraps included), 24 were `too-few-patches`,
+  every one with the whole target in view — 0 patches culled on all 24 — and a median
+  of 7 patches surviving alignment and the gate, one under
+  `minTrackedPatches` (8). The three baselines lost 18–20, of which 8–13 were
+  `too-few-patches`, with 5–6 of 64 surviving. On a hard step a similar
+  small fraction of the patches survives whatever the count, and at 32 that
+  fraction falls under the fixed minimum more often. That is a count effect
+  against `minTrackedPatches`, which round 4 tunes. The desktop's
+  every-frame runs did not show it (held-lock losses 4–5 of about 400): with
+  every frame processed, the motion between two steps is small. On the
+  tablet every wall-clip run, 32 patches included, stepped two frames apart
+  at the median (7–14% of steps one frame apart), so each step met twice the
+  motion. The scaled schedule predicted that 32 would keep up with the clip;
+  it assumed round 1's 20.4 ms of `acquire` and `gray` there, and the tablet
+  took 25–26 ms of `acquire` alone.
+- **What the device's lock figures are, and are not.** On the tablet the
+  step's speed also decides how many frames are skipped (round 1's
+  scaled-schedule trap), so 48's gains on the moving clips — wall TRACK share
+  +7 to +9 points, fewer held locks lost — come mostly from keeping up better,
+  not from tracking better. Frame for frame, on the desktop's every-frame
+  runs, 48 is slightly worse on the wall clip (TRACK 69.5% → 67.6–68.1%, held
+  locks lost 2 → 6 of about 405). Both readings are inside the plan's bounds,
+  and the device's is the one a user sees.
+
+**ADR-0001 point 5 is read at p95**, and so is this table (the same runs and
+brackets):
+
+| clip | baselines' `trackStepMs` p95 | 48 patches: p95, against the two brackets | 32 patches: p95, against the two brackets |
+|---|---|---|---|
+| static | 21.2 / 21.6 / 20.7 ms | 15.4 ms (−27.4%, −28.7%) | 11.8 ms (−45.4%, −43.0%) |
+| wall | 25.6 / 25.4 / 24.9 ms | 18.9 ms (−26.2%, −25.6%) | 12.0 ms (−52.8%, −51.8%) |
+| table | 26.0 / 26.6 / 27.6 ms | 19.8 ms (−23.8%, −25.6%) | 11.9 ms (−55.3%, −56.9%) |
+
+At 48 patches the tracking step's p95 is 15.4–19.8 ms, still 1.9–2.5× point
+5's 8 ms. Even 32, which fails on the lock, stays at 11.8–12.0 ms, 1.5×.
+
+**One patch of the 48 is from level 1.** The adopted target has 47 level-0
+patches and one level-1 patch (the 64 had none): 62 px spacing pushes the
+selection far enough down the list that a level-1 window wins a place. It
+changed nothing measurable here — the tablet built one frame level on every
+TRACK frame of every 48-patch run, `pyramidMs` p95 0.1 ms, since on these
+paths the target is seen below the level-1 patch's scale too — but the
+committed target now depends on the pyramid filter behind its level images,
+which the format specification leaves open (Q11, #71).
+
+**Verdict: 48 patches, at the compiler's default spacing (62 px), is better
+by the plan's rules; 32 is worse.** Adopted by @kalwalt: `compile-target`'s
+default budget becomes 48, in its own commit after this one.

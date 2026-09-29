@@ -62,12 +62,16 @@
  * frame, it lost 6 to 60 of 63,000–75,000 patch alignments (5–7 distinct
  * patches), none of them enough to lose the pose.
  *
- * What it saves, measured: pinball's compiled patches are all level 0, and on
- * the 270 × 360 camera path the target appears at about half its compiled
- * size, so every one starts — and ends — on frame level 0, and one level is
- * all it needs: the frame itself, by reference, nothing computed. Four levels
- * cost 1.85 ms in Node here, an estimated 5.6–7.5 ms on the reference device
- * (docs/benchmarks/README.md), and align those patches bit-identically.
+ * What it saves, measured on M2's pinball target, whose 64 compiled patches
+ * are all level 0 (as the tests' fixture still is): on the 270 × 360 camera
+ * path the target appears at about half its compiled size, so every one
+ * starts — and ends — on frame level 0, and one level is all it needs: the
+ * frame itself, by reference, nothing computed. Four levels cost 1.85 ms in
+ * Node here, an estimated 5.6–7.5 ms on the reference device
+ * (docs/benchmarks/README.md), and align those patches bit-identically. The
+ * committed target's 48 patches since M3's tuning pass include one of level
+ * 1; it is seen below its own scale too, and the reference device built one
+ * frame level on every tracking frame with it (the 2026-09-29 runs).
  *
  * What building fewer levels than this would cost: a patch seen larger than
  * its own scale (σ > √r) then starts on level 0, read through footprints from

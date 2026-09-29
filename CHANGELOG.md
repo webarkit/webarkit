@@ -49,6 +49,15 @@ release pull request's body and the GitHub Release's notes.
   `ratio` outside `(0, 1]`, `ransacThreshold` not finite and positive — where 0.3.0 passed the
   value to the backend and, for `maxSceneKeypoints: NaN`, silently detected nothing
   ([#78](https://github.com/webarkit/webarkit/pull/78)).
+- **`compile-target` selects 48 tracking patches by default (was 64)**, and so spaces them 62 px
+  apart on pinball (was 54), by its unchanged spacing rule; `examples/targets/pinball.wnft` is
+  recompiled with them and now carries one level-1 patch among 47 of level 0. On the reference
+  device this cut the tracking step 21–29% at p50 and 24–29% at p95 on every bundled clip,
+  without losing lock or steadiness; the step's p95 is still 15–20 ms, about twice ADR-0001
+  point 5's 8 ms. A target compiled with the old default keeps working: the patch count is data,
+  not format. Measurements before and after this change ran on different targets and are not
+  directly comparable ([`docs/benchmarks/README.md`](docs/benchmarks/README.md), "M3: the tuning
+  pass", round 2).
 
 ## [0.3.0] - 2026-09-26
 
