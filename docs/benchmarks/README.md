@@ -2111,17 +2111,27 @@ which the format specification leaves open (Q11, #71).
 by the plan's rules; 32 is worse.** Adopted by @kalwalt: `compile-target`'s
 default budget becomes 48, in its own commit after this one.
 
-#### Round 4 — `minTrackedPatches` (2026-09-29): the desktop's prediction
+#### Round 4 — `minTrackedPatches` (2026-09-29): no adoption, and no device session
 
-Desktop only so far; the device session waits on @kalwalt, with this
-prediction. Evidence in
+**Verdict: the round ends without an adoption and without a session on the
+device. `minTrackedPatches` stays 8.** Decided by @kalwalt on the desktop's
+evidence, for a reason that is a rule of this plan and the precedent for any
+later round that ends on the desktop: **a device run can confirm an adoption;
+it cannot rescue a configuration the ground truth rejected** ("What every
+round is judged on"). The tablet measures time and lock; only the tracker's
+synthetic suites know the true pose. Here the ground truth rejected every
+lower minimum (below), so there was no adoption for the device to confirm,
+and a tablet run could only have timed configurations already refused — a
+better time does not redeem a wrong pose.
+
+Evidence in
 [`2026-09-29-desktop-tuning-r4.md`](./2026-09-29-desktop-tuning-r4.md):
 ground truth from the tracker's synthetic sequences and its perturbation
 sweep (1,370 single steps per patch set and minimum), and the bundled clips
 replayed at three seeds.
 
 **Minimum 7 shows a correctness signal, so by the amended rule the round
-stops at 7.**
+stopped at 7.**
 
 - **Lowering the minimum won no right fit.** In the sweep, right fits stayed
   at 787 (M2's 64 patches), 788 (the adopted 48) and 753 (32) at 8, 7 and 6.
@@ -2169,19 +2179,14 @@ stops at 7.**
   which cannot see this. Not a gross pose — the visible part is sub-pixel —
   but a degradation the adoption did not measure, recorded here.
 
-**Prediction: no change.** 8 stays for both targets: on the adopted 48, 7
-buys about a point of TRACK share on one clip and no time, and admits the
-class of fit the ground truth shows to be wrong; on 32, 7 cannot address the
-wrong pose above, whatever it does to the lock on the tablet.
-
-**Closed (2026-09-29) without a device session, on @kalwalt's decision: no
-change, `minTrackedPatches` stays 8.** The rejection rests on correctness,
-which only the synthetic suites can judge; a tablet run would have measured
-the time of a configuration the ground truth had already refused, and a
-better time does not redeem a wrong pose — the asymmetry now stated once in
-"What every round is judged on". Nor was 32 at minimum 7 run for knowledge:
-32 accepts a 9.1 px pose on 10 inliers, so no minimum up to 10 refuses it,
-and no setting of the threshold makes 32 adoptable. No exports were added.
+**Per target:** on the adopted 48, 7 buys about a point of TRACK share on
+one clip and no time, and admits the class of fit the ground truth shows to
+be wrong; on 32, 7 cannot address the wrong pose above, whatever it does to
+the lock on the tablet. Nor was 32 at minimum 7 run on the tablet for
+knowledge: 32 accepts a 9.1 px pose on 10 inliers, so no minimum up to 10
+refuses it, and no setting of the threshold makes 32 adoptable — the
+knowledge that run would have bought is already in hand. No exports were
+added.
 
 **The round's result is the extrapolation finding**, and what it changed:
 
