@@ -1869,3 +1869,71 @@ rests on them, as `2026-09-28-tab9-tuning-r1-<run>.json`:
   have called the baseline worse than itself. Every later round's jitter
   verdict needs a bound set against this session-to-session spread, before
   it is read.
+
+#### Round 2 — patch count (2026-09-29): 48 patches pass, 32 do not
+
+**Desktop** (five targets, three seeds, interleaved; per seed in
+[`2026-09-29-desktop-tuning-r2.md`](./2026-09-29-desktop-tuning-r2.md)),
+read on the every-frame columns, against today's 64 patches:
+
+| target | step p50, static / wall / table | wall: TRACK share, held-lock steps lost | static `jitterPx` | right alignments the gate refused, static / wall / table |
+|---|---|---|---|---|
+| 64, 54 px (today) | 4.3–4.6 / 6.6–7.6 / 5.5–6.3 ms | 69.5%, 2 of 413 | 0.131 | 3.5% / 8.4% / 10.1% |
+| 48, 62 px | −11 to −24% / −30% / −30% | 67.6–68.1%, 6 of 402–405 | 0.131 | 4.4% / 6.1% / 7.4% |
+| 32, 76 px | −50% / −50% / −50% | 66.9–67.3%, 4–5 of 398–400 | 0.135–0.136 | 9.8% / 10.7% / 15.8% |
+| 32, 54 px (control) | −45% / −48% / −44% | **59.9–60.6%, 17 of 356–360** | 0.129–0.130 | 3.8% / 9.1% / 12.0% |
+| 62, 54 px, min score 50 | no change | 69.5%, 2 of 413 | 0.132 | 3.6% / 8.6% / 10.4% |
+
+- **The spread keeps the lock, not the number.** At 32 patches, the
+  control's 54 px spacing lost 9 points of wall-clip TRACK share and four
+  times the held locks; spread to 76 px, 32 patches held nearly as well as
+  64. The candidates are the compiler's default spacing for their count.
+- **At 32 the gate refuses almost three times the share of right alignments
+  on the static clip**: wide spacing reaches weaker texture. At 48 the share
+  falls on the moving clips.
+- **A minimum score of 50 changes nothing**: two patches drop out. That arm
+  ends on the desktop.
+
+**On `Tab_9_WiFi`** (16 runs, bracketed as the plan now requires; per clip:
+baseline, 48, baseline, 32, baseline; one stateless static run). Committed as
+`2026-09-29-tab9-tuning-r2-<run>.json`, since this verdict rests on them. The
+session stopped once, 18 minutes in, when the tablet locked itself; the
+static clip's six runs were complete, the driver was stopped before the wall
+runs could fail again, and it resumed at the first wall run after the tablet
+was unlocked, so every clip's block of runs is contiguous.
+
+| clip | baselines' step p50 | 48 patches: step p50, against the two brackets | 32 patches: step p50, against the two brackets |
+|---|---|---|---|
+| static | 12.2 / 12.2 / 12.1 ms | 9.6 ms (−21.3%, −21.3%) | 6.1 ms (−50.0%, −49.6%) |
+| wall | 20.9 / 20.3 / 19.6 ms | 14.8 ms (−29.2%, −27.1%) | 9.5 ms (−53.2%, −51.5%) |
+| table | 18.0 / 18.3 / 18.0 ms | 13.6 ms (−24.4%, −25.7%) | 8.7 ms (−52.5%, −51.7%) |
+
+| clip | 48 patches, against the two brackets | 32 patches, against the two brackets |
+|---|---|---|
+| static | TRACK 100%, 0 held locks lost; `jitterPx` 0.144 against 0.160 and 0.167 (−10.0%, −13.8%), ratio 3.48 | TRACK 100%, 0 lost; `jitterPx` 0.157 against 0.167 and 0.164 (−6.0%, −4.3%), ratio 3.08 |
+| wall | TRACK 56.7% (+8.7, +7.0 pts); held lost 7.6% (−4.9, −3.8 pts); first confirmed 13.2% (−3.5, −2.6 pts) | TRACK 45.0% (−4.7, −3.7 pts); **held lost 17.8% (+6.3, +6.1 pts)**; first confirmed 18.5% (+2.7, +4.2 pts) |
+| table | TRACK 78.3% (+10.3, +2.7 pts); held lost 3.4% (−4.4, −1.4 pts); first confirmed 22.9% (−1.1, −2.1 pts) | TRACK 77.7% (+2.0, +7.0 pts); held lost 3.0% (−1.9, −3.1 pts); first confirmed 18.9% (−6.1, −3.7 pts) |
+
+- **Validity:** every export is Android and `Tab_9_WiFi`, 300 frames, the
+  planned target by file and SHA-256 (`9e8eb486…` for 48, `97874170…` for
+  32, `4af6a7fb…` for the baseline). Consecutive baselines of each clip
+  differ in step p50 by 0.0–3.4%, under the 10% that would make the session
+  inconclusive; `acquire` held within 2 ms per clip.
+- **48 patches: better.** Faster by 21–29% against both brackets on every
+  clip, and not worse on any rule. Static jitter fell against both brackets.
+- **32 patches: worse.** Twice as fast, but on the wall clip held-lock losses
+  rose by more than 2 points of held steps against both brackets (17.8%
+  against 11.5% and 11.7%). The table clip's first steps confirmed fell 6.1
+  and 3.7 points, past 5 against one bracket only, so not counted.
+- **What the device's lock figures are, and are not.** On the tablet the
+  step's speed also decides how many frames are skipped (round 1's
+  scaled-schedule trap), so 48's gains on the moving clips — wall TRACK share
+  +7 to +9 points, fewer held locks lost — come mostly from keeping up better,
+  not from tracking better. Frame for frame, on the desktop's every-frame
+  runs, 48 is slightly worse on the wall clip (TRACK 69.5% → 67.6–68.1%, held
+  locks lost 2 → 6 of about 405). Both readings are inside the plan's bounds,
+  and the device's is the one a user sees.
+
+**Verdict: 48 patches, at the compiler's default spacing (62 px), is better
+by the plan's rules; 32 is worse.** Adopting 48 is the separate commit the
+plan describes; it is @kalwalt's decision, not taken here.
