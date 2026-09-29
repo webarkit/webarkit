@@ -57,8 +57,16 @@
  * defaults, these stay: this fixture exercises the tracker, and a fixture
  * that chased the default would move counts in tests unrelated to the
  * change, so "the default changed" and "something broke" could no longer be
- * told apart. The shipped configuration is pinned where it ships, by
- * `crates/wnft-format/tests/real_target.rs` on `examples/targets/pinball.wnft`.
+ * told apart. The shipped configuration is pinned where it ships: its file
+ * by `crates/wnft-format/tests/real_target.rs`, and its tracking on ground
+ * truth by the blocks that decode `examples/targets/pinball.wnft` itself — in
+ * `tracker_state_machine.test.ts` (the camera-path sequences, with the error
+ * over the whole target and over the part in view) and in
+ * `tracking/track_frame.test.ts` (the single-step perturbation sweep). Those
+ * are the tests a change to the default is meant to move. The rule was
+ * completed at M3's tuning pass, round 4, when a degradation of the shipped
+ * target on ground truth (extrapolation as the target leaves the frame) was
+ * found that no test on this fixture could see.
  */
 
 import type { CvBackend } from "@webarkit/cv-backend-spec";

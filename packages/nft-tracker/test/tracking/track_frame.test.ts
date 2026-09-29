@@ -44,9 +44,11 @@
 // noise and a changed exposure. The numbers each test pins are stated beside
 // it; the whole step is deterministic, so counts are pinned exactly.
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import type { GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
-import { alignPatch, buildFramePyramid } from "../../src/index.js";
+import { alignPatch, buildFramePyramid, decode } from "../../src/index.js";
 import { PatchOutcome, trackFrame, trackTarget } from "../../src/tracking/track_frame.js";
 import type {
     TrackFrameOptions,
@@ -604,4 +606,56 @@ describe("trackFrame", () => {
         }
         expect(t.pyramidMs + t.alignMs + t.fitMs).toBeLessThanOrEqual(t.trackMs);
     });
+});
+
+/**
+ * The shipped configuration on this suite's ground truth: the patches of the
+ * committed `examples/targets/pinball.wnft`, stepped from the same 137
+ * predictions as the judgement's margins above (translations to 8 px in 16
+ * directions, roll to ±6°, scale to ±12%), on both views of this render, with
+ * the tracker's default options. The fixture above stays at M2's 64 patches
+ * on purpose; this block follows compile-target's default, so a change to it
+ * that admits a wrong fit fails here. Errors are measured at the fixture's
+ * 64 patch centres, as everywhere in this file.
+ */
+describe("trackFrame with the shipped target's patches", () => {
+    const decoded = decode(
+        new Uint8Array(
+            readFileSync(
+                fileURLToPath(
+                    new URL("../../../../examples/targets/pinball.wnft", import.meta.url),
+                ),
+            ),
+        ),
+    );
+    if (!decoded.ok) throw new Error(`pinball.wnft: ${decoded.error}`);
+    const shipped = trackTarget(decoded.target.patches!, decoded.target.pyramid.scaleStep);
+
+    it("accepts no wrong fit from 137 predictions on either view: 158 right, the rest refused", () => {
+        // Measured on five renders (1,370 steps): 788 right fits, none
+        // wrong; the minimum of 8 correspondences never binds on a right fit
+        // (at least 11 inliers). Lowered to 7 it admits one fit 1.2 px off,
+        // to 6 one 17.5 px off, and no right fit either way
+        // (docs/benchmarks/README.md, round 4).
+        const deg = (a: number) => (a * Math.PI) / 180;
+        const errors: Mat3[] = [translation(0, 0)];
+        for (const d of [1, 2, 3, 4, 5, 6, 8]) errors.push(...shifts(d));
+        for (const a of [1, 2, 3, 4, 5, 6]) errors.push(rotation(deg(a)), rotation(deg(-a)));
+        for (const f of [1.02, 1.04, 1.06, 1.08, 1.1, 1.12])
+            errors.push(scaling(f), scaling(1 / f));
+        expect(errors.length).toBe(137);
+        const right: number[] = [];
+        const wrong: number[] = [];
+        VIEWS.forEach((H, v) => {
+            for (const E of errors) {
+                const r = trackFrame(FRAMES[v], shipped, null, about(E, H), OPTIONS, null);
+                if (!r.ok) continue;
+                if (centreRms(r.H, H) < 0.5) right.push(r.stats.inliers);
+                else wrong.push(centreRms(r.H, H));
+            }
+        });
+        expect(wrong).toEqual([]);
+        expect(right.length).toBe(158);
+        expect(Math.min(...right)).toBeGreaterThanOrEqual(11);
+    }, 30_000);
 });
