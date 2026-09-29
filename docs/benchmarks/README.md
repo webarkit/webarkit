@@ -1827,10 +1827,12 @@ size is judged by what a clone pays — its size stored in git history — not
 by its size on disk, which mostly says that JSON compresses well: at round 4
 it was 18.6 MB on disk and 3.5 MB stored (3.1 MB of it the exports), in a
 9.4 MB packed repository.
-Each round's PR reports both; the trigger is the stored size:
+Each round's PR reports both; the trigger is the stored size, measured on
+the round's own branch — `HEAD`, not `dev` — so the exports it adds count
+in the PR that adds them:
 
 ```bash
-git rev-list --objects origin/dev -- docs/benchmarks \
+git rev-list --objects HEAD -- docs/benchmarks \
   | awk 'NF == 2 && $2 ~ /^docs\/benchmarks\// { print $1 }' \
   | git cat-file --batch-check='%(objecttype) %(objectsize:disk)' \
   | awk '$1 == "blob" { s += $2 } END { printf "%.1f MB stored\n", s / 1e6 }'
@@ -2196,9 +2198,12 @@ added.
   the committed `examples/targets/pinball.wnft`: the camera-path sequences in
   `tracker_state_machine.test.ts` (states, and pose errors over the whole
   target and in view) and the perturbation sweep in
-  `tracking/track_frame.test.ts` (no wrong fit; 158 right on the suite's
-  render). They are the tests a change to the default is meant to move; each
-  was checked to fail on M2's 64-patch target and on round 2's 32.
+  `tracking/track_frame.test.ts` (no wrong fit, 788 right, on five renders,
+  at the tracker's own defaults). They are the tests a change to a default is
+  meant to move: each was checked to fail on M2's 64-patch target and on
+  round 2's 32, and the sweep to fail with `DEFAULT_MIN_TRACKED_PATCHES`
+  lowered to 7 — which is why it covers five renders, not the suite's one,
+  where minimum 7 admits nothing.
 - **Round 2's adoption stands** (in view the error is unchanged, the time gain
   large and measured, the degradation second order), and its `CHANGELOG.md`
   line now says what it cost: "without losing lock or steadiness" held on the
