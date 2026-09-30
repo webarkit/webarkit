@@ -293,7 +293,7 @@ export const DEFINITIONS = Object.freeze({
     unlockedResidualMs:
         "{ n, min, p50, p95, max } of timings.total − timings.acquire − timings.gray − timings.detectionPost, per unlocked frame (state not TRACK), each frame's own: a frame that did not post carries no detectionPost and subtracts none. What is left of an unlocked frame once its acquisition, its grey conversion and its post are taken off: in a worker run, a process call that finds no lock and no detection; in a synchronous run, the tracker's own detection.",
     detectionTime:
-        "Where detection's time goes, on the frame loop and off it, over the window's frames and the jobs (one per detection posted to the worker) posted from them. onLoop: the main thread's detection-related time, the sum of the detection stages (detect, describe, match, filterMatches, estimateHomography) of the frames that ran the tracker's own detection (detectionUse internal; an export older than the field reads every frame that is not TRACK so), timings.detectionPost of the frames that posted, and each job's handlerMs, the result handler, which runs between frames and is outside timings.total. share: that time ÷ (Σ timings.total + Σ handlerMs). msPerVideoSecond: that time per second of video covered, which is the counted loops' whole duration (their number × clipDurationS) in a summary that has them, else the media time between consecutive frames, a loop wrap counting nothing. postMs: { n, min, p50, p95, max } of timings.detectionPost over the frames that carry one (a frame that did not post carries none), and handlerMs the same of the jobs' handlerMs. offLoop: workerMs, { n, min, p50, p95, max } of each job's workerMs.total, the worker's pipeline time on its own clock, and msPerVideoSecond, the sum of those per second of video covered. postToArrivalMs: { n, min, p50, p95, max } of each job's arrivedAtMs − postedAtMs, both on the main thread's clock: the latency of a detection from its post to its result's arrival.",
+        "Where detection's time goes, on the frame loop and off it, over the window's frames and the jobs (one per detection posted to the worker) posted from them. onLoop: the main thread's detection-related time, the sum of the detection stages (detect, describe, match, filterMatches, estimateHomography) of the frames that ran the tracker's own detection (detectionUse internal; an export older than the field reads every frame that is not TRACK so), timings.detectionPost of the frames that posted, and each job's handlerMs, the result handler, which runs between frames and is outside timings.total. share: that time ÷ (Σ timings.total + Σ handlerMs). msPerVideoSecond: that time per second of video covered, which is the counted loops' whole duration (their number × clipDurationS) in a summary that has them, and null there unless the run covered those loops whole (trackTimeShare.complete): an empty or partial window covers less than that duration, and would read 0 or a rate biased low; else the media time between consecutive frames, a loop wrap counting nothing, and null when that is 0. postMs: { n, min, p50, p95, max } of timings.detectionPost over the frames that carry one (a frame that did not post carries none), and handlerMs the same of the jobs' handlerMs. offLoop: workerMs, { n, min, p50, p95, max } of each job's workerMs.total, the worker's pipeline time on its own clock, and msPerVideoSecond, the sum of those per second of video covered. postToArrivalMs: { n, min, p50, p95, max } of each job's arrivedAtMs − postedAtMs, both on the main thread's clock: the latency of a detection from its post to its result's arrival.",
 });
 
 /** Whether the video looped between two consecutive frames: media time went back. */
@@ -651,9 +651,17 @@ function coveredVideoSeconds(frames) {
  * detections it posted, of which this reads `handlerMs`, `workerMs.total`,
  * `postedAtMs` and `arrivedAtMs`. The video the time is per second of is
  * that of the counted `loops` (`{ firstLoop, loopCount }`, needing
- * `clipDurationS`) when they are given, else what `frames` cover.
+ * `clipDurationS`) when they are given, else what `frames` cover. The counted
+ * loops' duration is the video `frames` cover only when the run covered them
+ * all, so with `loops` both rates are `null` unless `complete` is `true`: the
+ * run's `trackTimeShare.complete`, which `summarizeRun` passes in. An empty or
+ * a partial window would otherwise read 0, or a rate biased low.
  */
-export function detectionTime(frames, jobs = [], { clipDurationS = null, loops = null } = {}) {
+export function detectionTime(
+    frames,
+    jobs = [],
+    { clipDurationS = null, loops = null, complete = false } = {},
+) {
     let stagesMs = 0;
     let totalMs = 0;
     const posts = [];
@@ -674,8 +682,12 @@ export function detectionTime(frames, jobs = [], { clipDurationS = null, loops =
         .map((j) => j.arrivedAtMs - j.postedAtMs);
     const onLoopMs = stagesMs + sum(posts) + sum(handlers);
     const loopMs = totalMs + sum(handlers);
-    const videoS = loops
-        ? countedLoops({ clipDurationS, ...loops }).loopCount * clipDurationS
+    const counted = loops ? countedLoops({ clipDurationS, ...loops }) : null;
+    // With counted loops that are not complete there is no video to divide by.
+    const videoS = counted
+        ? complete === true
+            ? counted.loopCount * clipDurationS
+            : 0
         : coveredVideoSeconds(frames);
     const perVideoSecond = (ms) => (videoS > 0 ? ms / videoS : null);
     return {
@@ -808,6 +820,7 @@ export function summarizeRun(
     for (const f of stepped)
         frameLevels[f.tracking.frameLevels] = (frameLevels[f.tracking.frameLevels] ?? 0) + 1;
     const fits = frames.filter((f) => f.tracking && f.tracking.fitConverged !== null);
+    const lock = loops ? trackTimeShare(runFrames, { clipDurationS, ...loops }) : null;
     return {
         frames: frames.length,
         states,
@@ -830,7 +843,7 @@ export function summarizeRun(
         trackedPatches: stats(stepped.map((f) => f.tracking.inliers)),
         lowQualityTrackFrames: track.filter((f) => f.quality <= LOW_QUALITY).length,
         ...cornerJitter(frames),
-        trackTimeShare: loops ? trackTimeShare(runFrames, { clipDurationS, ...loops }) : null,
+        trackTimeShare: lock,
         detectionLocks: detectionLocks(frames),
         firstStepLatency: firstStepLatency(frames, { clipDurationS }),
         detectionOutcomes: detectionOutcomes(frames),
@@ -840,6 +853,8 @@ export function summarizeRun(
         detectionTime: detectionTime(frames, loops ? jobsPostedFrom(jobs, frames) : jobs, {
             clipDurationS,
             loops,
+            // Per second of the counted loops' video only when the run covered them all.
+            complete: lock?.complete === true,
         }),
         detectionAccounting: accounting
             ? { ...accounting, error: accountingError(accounting) }

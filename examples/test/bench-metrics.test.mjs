@@ -1116,15 +1116,39 @@ describe("frame time and where detection's time goes", () => {
         const bare = detectionTime(frames, [job]);
         expect(bare.onLoop.msPerVideoSecond).toBe(150 / 1.5);
         expect(bare.offLoop.msPerVideoSecond).toBe(30 / 1.5);
-        // The counted loops' whole duration, when they are given: 4 loops of 2 s.
+        // The counted loops' whole duration, when they are given and complete: 4 loops of 2 s.
         const loops = { firstLoop: 1, loopCount: 4 };
-        const counted = detectionTime(frames, [job], { clipDurationS: 2, loops });
+        const counted = detectionTime(frames, [job], { clipDurationS: 2, loops, complete: true });
         expect(counted.onLoop.msPerVideoSecond).toBe(150 / 8);
         expect(counted.offLoop.msPerVideoSecond).toBe(30 / 8);
         // No frames, no video, no rate.
         expect(detectionTime([]).onLoop.msPerVideoSecond).toBeNull();
         expect(detectionTime([]).onLoop.share).toBeNull();
         expect(() => detectionTime(frames, [], { loops })).toThrow(/clipDurationS/);
+    });
+
+    // The counted loops' duration is the video a window covers only when it covers them all:
+    // an empty window read 0 ms per second, and a partial one a rate biased low, and either
+    // entered an average as a measurement.
+    it("gives no rate per second of video over counted loops that are not complete", () => {
+        const loops = { firstLoop: 1, loopCount: 4 };
+        const at = (mediaTimeSeconds) =>
+            rec("DETECT", { detect: 30, total: 100 }, { mediaTimeSeconds });
+        const job = { postedAtMs: 0, arrivedAtMs: 60, handlerMs: 0, workerMs: { total: 30 } };
+        // No counted frame at all: no rate, where it read 0.
+        const empty = detectionTime([], [], { clipDurationS: 2, loops });
+        expect(empty.onLoop.msPerVideoSecond).toBeNull();
+        expect(empty.offLoop.msPerVideoSecond).toBeNull();
+        // Counted frames, but loops not known to be complete: no rate either.
+        const unknown = detectionTime([at(0), at(0.5)], [job], { clipDurationS: 2, loops });
+        expect(unknown.onLoop.msPerVideoSecond).toBeNull();
+        expect(unknown.offLoop.msPerVideoSecond).toBeNull();
+        const partial = { clipDurationS: 2, loops, complete: false };
+        expect(detectionTime([at(0), at(0.5)], [job], partial).onLoop.msPerVideoSecond).toBeNull();
+        // The share of the loop's time does not depend on the video: it stays.
+        expect(unknown.onLoop.share).toBe(0.3);
+        // Without loops, the video the frames cover decides, as before.
+        expect(detectionTime([at(0), at(0.5)], [job]).onLoop.msPerVideoSecond).toBe(60 / 0.5);
     });
 
     it("reproduces the synchronous baseline the plan quotes, from the exports it was read from", () => {
@@ -1591,6 +1615,20 @@ describe("summarizeRun", () => {
 
         // The counted loops need the clip's duration.
         expect(() => summarizeRun(run, { loops })).toThrow(/clipDurationS/);
+
+        // A run that stops in loop 2 covers one counted loop and part of the next: a rate over
+        // the four loops' duration would be biased low, so it has none. The complete run above
+        // keeps the rates it always had.
+        const stopped = summarizeRun(run.slice(0, 8), { clipDurationS: D, loops, jobs, accounting });
+        expect(stopped.trackTimeShare.complete).toBe(false);
+        expect(stopped.frames).toBe(5);
+        expect(stopped.detectionTime.onLoop.msPerVideoSecond).toBeNull();
+        expect(stopped.detectionTime.offLoop.msPerVideoSecond).toBeNull();
+        // One that never left the warm-up has no counted frame: no rate, where it read 0.
+        const warmUp = summarizeRun(run.slice(0, 3), { clipDurationS: D, loops, jobs, accounting });
+        expect(warmUp.frames).toBe(0);
+        expect(warmUp.detectionTime.onLoop.msPerVideoSecond).toBeNull();
+        expect(warmUp.detectionTime.offLoop.msPerVideoSecond).toBeNull();
     });
 
     it("carries the accounting and its error in the summary", () => {
