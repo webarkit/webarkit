@@ -2550,6 +2550,25 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
         ["a run that failed", { run: run({ endedBy: "failed" }) }, /^run\.endedBy failed: /],
         ["an export that says nothing of its end", { run: run({ endedBy: undefined }) }, /^run\.endedBy none: /],
         ["a window that lost frames", { windowSize: 1200 }, /^the window kept 1200 of 1512 frames: /],
+        // Review I2: both fields absent compared equal, and passed.
+        [
+            "an export that records neither ticks nor windowSize",
+            { ticks: undefined, windowSize: undefined },
+            /^the window kept none of none frames: /,
+        ],
+        [
+            "an export whose ticks are not a whole number",
+            { ticks: 1512.5, windowSize: 1512.5 },
+            /^the window kept 1512\.5 of 1512\.5 frames: /,
+        ],
+        // Review M2: an export with no detection record was read as a synchronous one's, so a
+        // worker export missing it skipped the accounting.
+        ["an export that records no detection path", { detection: undefined }, /^detection\.path none: /],
+        [
+            "an export whose detection path is neither sync nor worker",
+            { detection: { path: "gpu", accounting: null } },
+            /^detection\.path gpu: /,
+        ],
         [
             "a tracking run whose lock was not read over whole loops",
             { runSummary: { trackTimeShare: { share: null, complete: false } } },
@@ -2587,6 +2606,10 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
             { processingBox: { width: 360, height: 360 } },
             /^processingBox 360×360, not the page's default 480×360/,
         ],
+        // An export that records none of these is a gap, never a pass.
+        ["an export that records no target", { target: undefined }, /^target none: /],
+        ["an export that records no scene keypoint budget", { maxKeypoints: undefined }, /^maxKeypoints none, /],
+        ["an export that records no processing box", { processingBox: undefined }, /^processingBox none, /],
     ])("names %s, and only that, in one line", (_, o, why) => {
         const gaps = sessionRunGaps(sessionExport(o), DEFAULTS);
         expect(gaps).toHaveLength(1);
@@ -2600,6 +2623,27 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
             DEFAULTS,
         );
         expect(gaps).toHaveLength(3);
+    });
+
+    // Review M2: a caller that omitted maxKeypoints passed an export that lacked it too, the two
+    // absent values comparing equal. A default the caller does not give is refused, never a pass.
+    it.each([
+        ["targetFile", { targetFile: undefined }],
+        ["processingBox", { processingBox: undefined }],
+        ["maxKeypoints", { maxKeypoints: undefined }],
+        ["trackerOptions", { trackerOptions: undefined }],
+        [
+            "trackerOptions.minPatchZncc",
+            { trackerOptions: { ...DEFAULTS.trackerOptions, minPatchZncc: undefined } },
+        ],
+    ])("refuses a caller that does not give the default %s", (name, o) => {
+        const lacking = sessionExport({ maxKeypoints: undefined, target: undefined });
+        const defaults = { ...DEFAULTS, ...o };
+        expect(() => sessionRunGaps(lacking, defaults)).toThrow(TypeError);
+        expect(() => sessionRunGaps(lacking, defaults)).toThrow(
+            new RegExp(`needs the page's defaults: ${name.replace(".", "\\.")} missing`),
+        );
+        expect(() => sessionRunGaps(sessionExport(), undefined)).toThrow(TypeError);
     });
 });
 

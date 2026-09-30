@@ -430,10 +430,12 @@ or `failed`. For example:
 `DEFINITIONS.protocol`): whether the run is one of the device session's, and
 what keeps it from being one, a line each. A session run is a tracking or a
 stateless run of a bundled clip with `?loops=4`, `?run=` and a window that kept
-every frame (`?window=2000`), which ended itself (`done`); a tracking run's
-`trackTimeShare` is complete, and a worker run's accounting holds; and it ran
-at the page's defaults — `targets/pinball.wnft` (no `?targetFile=`), no
-`?tracker=`, the default scene keypoint budget and processing box. The page
+every frame (`?window=2000`), which ended itself (`done`) and records its
+detection path; a tracking run's `trackTimeShare` is complete, and a worker
+run's accounting holds; and it ran at the page's defaults —
+`targets/pinball.wnft` (no `?targetFile=`), no `?tracker=`, the default scene
+keypoint budget and processing box. A field the export does not record is a
+gap, never a pass. The page
 exports a run with gaps all the same, since an exploratory run is legitimate,
 and says so on one line without touching the status row: `Exported; not a
 session run: <gaps>`. `scripts/replay-clips.mjs --transfer` reads session runs

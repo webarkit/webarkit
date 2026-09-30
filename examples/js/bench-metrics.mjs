@@ -323,7 +323,7 @@ export const DEFINITIONS = Object.freeze({
     endedBy:
         "How a run ended, in the export's run record beside order, startedAtIso and endedAtIso: done (a ?loops= run, on its first frame after its counted loops), stopped (Stop) or failed (the run could not go on; a worker run that failed is not exported).",
     protocol:
-        "{ sessionRun, gaps }: whether the run followed the device session's protocol (docs/benchmarks/README.md, 2026-09-29), and what keeps it from it, one line each (sessionRunGaps): a tracking or stateless run of a bundled clip, over one warm-up loop and loops 1 to 4 counted (loops), with its place in the session's order (run.order), that ended itself (run.endedBy done) with every frame it processed in its window (ticks = windowSize); in the tracking mode its lock read over those loops whole (trackTimeShare.complete), in a worker run its accounting holding (detectionAccounting); at the page's defaults: the committed target, loaded, no tracker option overridden (?tracker=), the default scene keypoint budget and processing box. The page exports a run with gaps all the same, and says so; replay-clips --transfer reads only session runs.",
+        "{ sessionRun, gaps }: whether the run followed the device session's protocol (docs/benchmarks/README.md, 2026-09-29), and what keeps it from it, one line each (sessionRunGaps): a tracking or stateless run of a bundled clip, over one warm-up loop and loops 1 to 4 counted (loops), with its place in the session's order (run.order), that ended itself (run.endedBy done) with every frame it processed in its window (ticks, a whole number, = windowSize), recording its detection path (detection.path sync or worker); in the tracking mode its lock read over those loops whole (trackTimeShare.complete), in a worker run its accounting holding (detectionAccounting); at the page's defaults: the committed target, loaded, no tracker option overridden (?tracker=), the default scene keypoint budget and processing box. What the export does not record is a gap, never a pass. The page exports a run with gaps all the same, and says so; replay-clips --transfer reads only session runs.",
     detectionAccounting:
         "A worker run's detection requests and what became of each, counted over the whole run, not the window: requests (results that said needsDetection) = consumptions (detections handed to process and used) + dropped (requests made while a detection was in flight or held) + discardedAtStop (a detection in flight, or held, at Stop), and ignored (detections handed in while a lock held) = 0; posted counts the requests that started a job. accountingError checks both, and a run that fails either is not exported. In the summary the accounting is carried as given, with error: accountingError's line saying what is wrong, or null when nothing is; the summary has null for a run that gave none.",
     detectionUseFallbackFrames:
@@ -1483,24 +1483,45 @@ export const SESSION_LOOPS = Object.freeze({ firstLoop: 1, loopCount: 4 });
  * A session run is a tracking or a stateless run of a bundled clip, over one
  * warm-up loop and {@link SESSION_LOOPS}' counted ones, with its place in the
  * session's order (`run.order`), that ended itself (`run.endedBy` `done`) with
- * every frame it processed still in its window (`ticks === windowSize`); a
+ * every frame it processed still in its window (`ticks`, a whole number, equal
+ * to `windowSize`); it records its detection path (`detection.path`, sync or
+ * worker: an export without one is not read as a synchronous run's here); a
  * tracking run's lock was read over its counted loops whole
  * (`trackTimeShare.complete`), and a worker run's accounting holds
  * ({@link accountingError}). And it ran at the page's defaults, read from the
  * export's own `target`, `tracker`, `maxKeypoints` and `processingBox`: the
  * committed target, loaded; no tracker option overridden
  * ({@link TUNABLE_TRACKER_OPTIONS}, `?tracker=`); the default scene keypoint
- * budget and processing box.
+ * budget and processing box. What the export does not record is a gap, never a
+ * pass.
  *
  * `defaults` is `{ targetFile, processingBox, maxKeypoints, trackerOptions }`,
  * which the page builds from its own constants and the tracker's `DEFAULT_*`:
  * this module imports no package (the worker's core imports it, and imports
- * none), so the tracker's defaults reach it from its caller, never as copies.
+ * none), so the tracker's defaults reach it from its caller, never as copies. A
+ * default the caller does not give — any of the four, a box's side, a tunable
+ * option — throws a `TypeError` naming it: compared with an export that lacks
+ * the same field, an absent default would pass it.
  */
 export function sessionRunGaps(e, defaults) {
-    if (!defaults?.processingBox || !defaults.trackerOptions) {
+    const missing = [];
+    if (typeof defaults?.targetFile !== "string") missing.push("targetFile");
+    if (defaults?.processingBox == null) missing.push("processingBox");
+    else {
+        for (const side of ["width", "height"]) {
+            if (!Number.isFinite(defaults.processingBox[side])) missing.push(`processingBox.${side}`);
+        }
+    }
+    if (!Number.isFinite(defaults?.maxKeypoints)) missing.push("maxKeypoints");
+    if (defaults?.trackerOptions == null) missing.push("trackerOptions");
+    else {
+        for (const key of TUNABLE_TRACKER_OPTIONS) {
+            if (defaults.trackerOptions[key] == null) missing.push(`trackerOptions.${key}`);
+        }
+    }
+    if (missing.length > 0) {
         throw new TypeError(
-            "sessionRunGaps needs the page's defaults: { targetFile, processingBox, maxKeypoints, trackerOptions }",
+            `sessionRunGaps needs the page's defaults: ${missing.join(", ")} missing ({ targetFile, processingBox, maxKeypoints, trackerOptions })`,
         );
     }
     const gaps = [];
@@ -1531,7 +1552,8 @@ export function sessionRunGaps(e, defaults) {
             `run.endedBy ${shown(e?.run?.endedBy)}: a session run ends itself on the first frame after its counted loops (done)`,
         );
     }
-    if (e?.ticks !== e?.windowSize) {
+    // Both absent would compare equal: the evidence that no frame was lost must be there.
+    if (!(Number.isInteger(e?.ticks) && e.ticks === e?.windowSize)) {
         gaps.push(
             `the window kept ${shown(e?.windowSize)} of ${shown(e?.ticks)} frames: a session run keeps every frame it processed (?window=2000)`,
         );
@@ -1541,7 +1563,15 @@ export function sessionRunGaps(e, defaults) {
             "trackTimeShare is not complete: a tracking run's lock is read over its counted loops whole",
         );
     }
-    if (exportDetectionPath(e) === "worker") {
+    // Not exportDetectionPath's reading of an older export: a worker export that lost its
+    // detection record would be read as synchronous, and skip its accounting.
+    const path = e?.detection?.path;
+    if (!DETECTION_PATHS.includes(path)) {
+        gaps.push(
+            `detection.path ${shown(path)}: a session run records its detection path, sync or worker`,
+        );
+    }
+    if (path === "worker") {
         const acc = e.detection?.accounting;
         const why =
             acc == null
