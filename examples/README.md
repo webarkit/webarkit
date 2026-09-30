@@ -368,9 +368,10 @@ grey pixels to the worker — transferred, not copied — if no detection is in
 flight or held, and drops the request otherwise; the result is held and handed
 to the next frame's `process`, whose tracking step confirms or refuses it.
 The stats list shows the jobs posted and consumed, the requests dropped and
-the job in flight. A job the worker fails, or leaves unanswered for 5 s,
-stops the run with the error, and that run is not exported: reload the page to
-run again.
+the job in flight. A job the worker fails, or leaves unanswered for 5 s, or a
+throw anywhere in a frame's worker path — the policy, the tracker's `process`,
+the post — stops the run with the error, and that run is not exported: reload
+the page to run again.
 
 A worker run's export adds `detection`: its `path`, `policy`,
 `workerBundleSha256`, `accounting`, `staleReplies` (replies to an earlier run

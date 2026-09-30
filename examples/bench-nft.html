@@ -1531,8 +1531,9 @@
        * detects itself (`externalDetection`): each frame takes the detection the
        * policy holds, if any, and after `process` the policy settles it and posts
        * the frame when the tracker asks (`settleFrame`), inside the frame's
-       * `total`. A `?loops=` run stops itself on its first frame of the loop
-       * after the counted ones, with the status `done`.
+       * `total`; a throw from any of the three fails the run (`failRun`). A
+       * `?loops=` run stops itself on its first frame of the loop after the
+       * counted ones, with the status `done`.
        */
       function runBenchmark(cv, targetDb, mode, windowSize, maxKeypoints, box, run) {
         lastRafFrameTime = -1;
@@ -1605,18 +1606,25 @@
           const frame = toGrayTimed(video, video.videoWidth, video.videoHeight, box.width, box.height, timings);
           // Read before `process`: whether a detection was in flight while it ran.
           const inFlight = run.policy?.inFlight ?? false;
-          const handed = run.policy ? takeDetection(run) : null;
-          const result = tracker
-            ? tracker.process(frame, t0, handed)
-            : runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, t0, maxKeypoints);
+          let result;
           let settled = null;
           if (run.policy) {
+            // A worker run's frame, whole: what any of it throws — the policy,
+            // the tracker's `process`, the post — stops the run (`failRun`),
+            // which is then never exported. Escaping the frame callback instead
+            // would leave the loop dead with the run still live, no error shown,
+            // and a balanced accounting at Stop.
             try {
+              result = tracker.process(frame, t0, takeDetection(run));
               settled = settleFrame(run, result, { frame, t0, mediaTimeSeconds, tick: ticks });
             } catch (e) {
               failRun(run, `The worker path failed on frame ${ticks}: ${e.message}`);
               return;
             }
+          } else {
+            result = tracker
+              ? tracker.process(frame, t0, null)
+              : runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, t0, maxKeypoints);
           }
 
           timings.total = performance.now() - t0;
