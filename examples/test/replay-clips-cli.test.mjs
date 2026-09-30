@@ -171,6 +171,40 @@ describe("replay-clips.mjs command line", () => {
             expect(r.stderr.trim().split("\n")).toHaveLength(1);
         });
 
+        // A session holding an invalid worker run is an invalid session: the
+        // accounting the page asserted before it exported is asserted again.
+        it("refuses a worker export whose accounting does not balance, or has none, naming it", () => {
+            const unbalanced = transfer({
+                "worker-1.json": pageExport("worker", {
+                    detection: {
+                        path: "worker",
+                        jobs: [],
+                        accounting: {
+                            requests: 5,
+                            posted: 3,
+                            consumptions: 2,
+                            ignored: 0,
+                            dropped: 1,
+                            discardedAtStop: 1,
+                        },
+                    },
+                }),
+                "sync-1.json": pageExport("sync"),
+            });
+            expect(unbalanced.status).toBe(1);
+            expect(unbalanced.stderr).toMatch(
+                /worker-1\.json.*detection accounting does not balance: requests 5/,
+            );
+            expect(unbalanced.stderr.trim().split("\n")).toHaveLength(1);
+            const none = transfer({
+                "worker-1.json": pageExport("worker"),
+                "sync-1.json": pageExport("sync"),
+            });
+            expect(none.status).toBe(1);
+            expect(none.stderr).toMatch(/worker-1\.json.*no detection accounting/);
+            expect(none.stderr.trim().split("\n")).toHaveLength(1);
+        });
+
         it("refuses a file that is not JSON, naming it", () => {
             const r = transfer({ "truncated.json": '{"frames": [' });
             expect(r.status).toBe(1);

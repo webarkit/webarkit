@@ -154,10 +154,13 @@
  * and is printed. Files are read in name order, since the draws index the
  * samples. The replay's target must be the one the exports name (`target.sha256`):
  * a clip whose exports name another, or that has exports of one path only, is
- * refused (exit 1), before any clip is decoded. Prints, per clip, each arm's
- * `trackTimeShare` and the difference, worker minus sync, in points. Not with
- * `--external`, `--sequence` or `--device-ratio`; `--tracking-only` has
- * nothing to skip.
+ * refused (exit 1), before any clip is decoded; so is a worker export whose
+ * detection accounting does not hold (`accountingError`, which the page
+ * checked before exporting it) or that records none — a session holding an
+ * invalid run is an invalid session, not a file to skip. Prints, per clip,
+ * each arm's `trackTimeShare` and the difference, worker minus sync, in
+ * points. Not with `--external`, `--sequence` or `--device-ratio`;
+ * `--tracking-only` has nothing to skip.
  *
  * The transfer explains a device result and weighs in when the table clip is
  * inconclusive; it never overrides the device. Both modes run as external
@@ -960,8 +963,9 @@ function readTransferDir(dir) {
  * (`transferPlan`): the latency of every job drawn with replacement from its
  * samples, the acquisition, and the step. Sync first, then worker, and per
  * clip the difference in `trackTimeShare`, worker minus sync, in points.
- * Everything a directory can get wrong (its files, its target, a mode with
- * nothing to draw) is refused before the first clip is decoded.
+ * Everything a directory can get wrong (its files, its target, a worker run's
+ * accounting, a mode with nothing to draw) is refused before the first clip is
+ * decoded.
  */
 async function transferArms() {
     const files = readTransferDir(TRANSFER_DIR);

@@ -1417,7 +1417,11 @@ function transferProfile(path, named) {
  *    to transfer between;
  * 2. an export of another target (`target.sha256`, none in an older export):
  *    the session's latencies are those of the pipeline on its target;
- * 3. a mode with no latency sample, no acquisition or no step to replay with.
+ * 3. a worker export whose `detection.accounting` fails {@link accountingError},
+ *    or that records none: checked again on reading, as the page checked it
+ *    before exporting, since a session holding an invalid run is an invalid
+ *    session, not a directory with a file to skip;
+ * 4. a mode with no latency sample, no acquisition or no step to replay with.
  */
 export function transferPlan(files, { clips, sha256 }) {
     const skipped = [];
@@ -1448,6 +1452,13 @@ export function transferPlan(files, { clips, sha256 }) {
                     `${clip}: ${name} names target sha256 ${e.target?.sha256 ?? "(none)"}, not ${sha256} (the replay's target)`,
                 );
             }
+        }
+    }
+    for (const [clip, { worker }] of present) {
+        for (const { name, e } of worker) {
+            const acc = e.detection?.accounting;
+            const why = acc == null ? "it records no detection accounting" : accountingError(acc);
+            if (why) return refuse(`${clip}: ${name} is not a valid worker run: ${why}`);
         }
     }
     const planned = [];

@@ -2230,6 +2230,16 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
         frame("TRACK", { acquire: 18, gray: 2 }, { detectionUse: "none" }),
     ];
 
+    // A worker run's accounting that balances: 4 requests = 2 consumed + 1 dropped + 1 discarded.
+    const BALANCED = Object.freeze({
+        requests: 4,
+        posted: 3,
+        consumptions: 2,
+        ignored: 0,
+        dropped: 1,
+        discardedAtStop: 1,
+    });
+
     // Two jobs that came back, 75 and 110 ms after their posts, and one that never did; two
     // unlocked frames, one of which consumed a detection, 32 and 36 ms of acquisition; three steps.
     const workerExport = (o = {}) =>
@@ -2250,10 +2260,14 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
                         { postedAtMs: 500, arrivedAtMs: null },
                         { postedAtMs: 900, arrivedAtMs: 1010 },
                     ],
+                    accounting: { ...BALANCED },
                 },
                 ...o,
             },
         );
+    // The fixture's worker export with its detection record's `accounting` replaced.
+    const withAccounting = (accounting) =>
+        workerExport({ detection: { ...workerExport().detection, accounting } });
 
     const plan = (exports, sha256 = SHA) =>
         transferPlan(
@@ -2353,6 +2367,42 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
         expect(p.clips[0].sync.files).toEqual(["export-1.json"]);
     });
 
+    it("skips a worker export it reads nothing from, whatever its accounting", () => {
+        // The skip rules come first: an export nothing is read from is not checked, so a replay's
+        // or a stateless run's is still a note, not a refusal.
+        const p = plan([
+            workerExport(),
+            pageExport("sync", syncFrames()),
+            { ...withAccounting(null), bundledClip: "other.mp4" },
+            { ...withAccounting({ ...BALANCED, requests: 5 }), mode: "stateless" },
+            { ...withAccounting(undefined), kind: "replay" },
+        ]);
+        expect(p.refusal).toBeNull();
+        expect(p.skipped.map((s) => s.name)).toEqual([
+            "export-2.json",
+            "export-3.json",
+            "export-4.json",
+        ]);
+    });
+
+    it("accepts a sync export with no accounting, an older one with no detection record too", () => {
+        // Only a worker run keeps an accounting: the page exports `accounting: null` for a
+        // synchronous one.
+        const sync = pageExport("sync", syncFrames());
+        sync.detection.accounting = null;
+        const older = pageExport(
+            null,
+            syncFrames().map(({ detectionUse, ...rest }) => rest),
+        );
+        const p = plan([workerExport(), sync, pageExport("sync", syncFrames()), older]);
+        expect(p.refusal).toBeNull();
+        expect(p.clips[0].sync.files).toEqual([
+            "export-1.json",
+            "export-2.json",
+            "export-3.json",
+        ]);
+    });
+
     describe("refuses, in one line, and names what it found", () => {
         const refusal = (exports, sha256) => {
             const r = plan(exports, sha256).refusal;
@@ -2397,10 +2447,64 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
             expect(r).toMatch(/no worker and sync exports/);
         });
 
+        // Spec: "bench-metrics.mjs checks them again on reading an export". A session holding an
+        // invalid run is an invalid session, not a directory with a file to skip.
+        it.each([
+            [
+                "does not balance",
+                { ...BALANCED, requests: 5 },
+                /does not balance: requests 5 ≠ consumptions 2 \+ dropped 1 \+ discardedAtStop 1/,
+            ],
+            ["has an ignored detection", { ...BALANCED, ignored: 1 }, /handed in while a lock held/],
+            [
+                "has a count that is not a whole number",
+                { ...BALANCED, dropped: -1 },
+                /dropped is -1, not a whole number/,
+            ],
+        ])(
+            "refuses a worker export whose accounting %s, naming the file and accountingError's line",
+            (_, accounting, why) => {
+                const r = refusal([withAccounting(accounting), pageExport("sync", syncFrames())]);
+                expect(r).toMatch(/pinball-bench\.mp4/);
+                expect(r).toMatch(/export-0\.json/);
+                expect(r).toContain(accountingError(accounting));
+                expect(r).toMatch(why);
+            },
+        );
+
+        it("refuses a worker export with no accounting", () => {
+            for (const none of [undefined, null]) {
+                const r = refusal([withAccounting(none), pageExport("sync", syncFrames())]);
+                expect(r, String(none)).toMatch(/pinball-bench\.mp4/);
+                expect(r, String(none)).toMatch(/export-0\.json/);
+                expect(r, String(none)).toMatch(/no detection accounting/);
+            }
+        });
+
+        it("reads a clip's targets before a worker export's accounting", () => {
+            // Both faults: the other target is the one named.
+            const r = refusal([
+                withAccounting({ ...BALANCED, requests: 5 }),
+                pageExport("sync", syncFrames(), { target: { sha256: "cd" } }),
+            ]);
+            expect(r).toMatch(/sha256 cd/);
+        });
+
+        it("reads a worker export's accounting before what its modes give", () => {
+            // Both faults: no latency sample, and an accounting that does not balance.
+            const worker = workerExport({
+                detection: { path: "worker", jobs: [], accounting: { ...BALANCED, requests: 5 } },
+            });
+            expect(refusal([worker, pageExport("sync", syncFrames())])).toMatch(/does not balance/);
+        });
+
         it.each([
             [
                 "detection latency",
-                () => workerExport({ detection: { path: "worker", jobs: [] } }),
+                () =>
+                    workerExport({
+                        detection: { path: "worker", jobs: [], accounting: { ...BALANCED } },
+                    }),
                 /worker exports.*latency/,
             ],
             [
@@ -2419,7 +2523,11 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
 
         it("counts a job that never arrived as no latency at all", () => {
             const worker = workerExport({
-                detection: { path: "worker", jobs: [{ postedAtMs: 1, arrivedAtMs: null }] },
+                detection: {
+                    path: "worker",
+                    jobs: [{ postedAtMs: 1, arrivedAtMs: null }],
+                    accounting: { ...BALANCED },
+                },
             });
             expect(refusal([worker, pageExport("sync", syncFrames())])).toMatch(/latency/);
         });
