@@ -45,14 +45,19 @@ function run(...args) {
 describe("replay-clips.mjs command line", () => {
     // Found in review: a trailing flag read as absent, so the replay ran the
     // default target or options while the command named a candidate.
-    it.each(["--target", "--options", "--seed", "--device-ratio", "--out", "--sequence"])(
-        "refuses %s given last, with no value",
-        (flag) => {
-            const r = run("--tracking-only", flag);
-            expect(r.status).toBe(2);
-            expect(r.stderr).toMatch(new RegExp(`${flag} expects a value`));
-        },
-    );
+    it.each([
+        "--target",
+        "--options",
+        "--seed",
+        "--device-ratio",
+        "--out",
+        "--sequence",
+        "--external",
+    ])("refuses %s given last, with no value", (flag) => {
+        const r = run("--tracking-only", flag);
+        expect(r.status).toBe(2);
+        expect(r.stderr).toMatch(new RegExp(`${flag} expects a value`));
+    });
 
     // Found in review: the probe mirrored a lock the tracker never took, and
     // reported a divergence where the run was simply detection-only.
@@ -61,4 +66,22 @@ describe("replay-clips.mjs command line", () => {
         expect(r.status).toBe(2);
         expect(r.stderr).toMatch(/\d+ patches.*minTrackedPatches \(100\).*detection-only/);
     });
+
+    // --external replaces the run table with the M3 arms, and --sequence
+    // replays a device export's frames one by one: the two are different runs.
+    it("refuses --external with --sequence", () => {
+        const r = run("--external", "70", "--sequence", "export.json");
+        expect(r.status).toBe(2);
+        expect(r.stderr).toMatch(/--external.*--sequence/);
+    });
+
+    it.each(["abc", "-5", "", "Infinity"])(
+        "refuses a latency that is not a number of milliseconds (%j)",
+        (latency) => {
+            const r = run("--external", latency);
+            expect(r.status).toBe(2);
+            expect(r.stderr).toMatch(/--external expects/);
+            expect(r.stderr.trim().split("\n")).toHaveLength(1);
+        },
+    );
 });

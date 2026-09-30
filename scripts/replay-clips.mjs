@@ -34,6 +34,7 @@
  *     npm run build
  *     node scripts/replay-clips.mjs [--out <dir>]
  *     node scripts/replay-clips.mjs --sequence <tracking export.json>
+ *     node scripts/replay-clips.mjs --external <latencyMs> [--seed <n>] [--out <dir>]
  *
  * **Not an on-device measurement, and not the browser's pixels.** ffmpeg and
  * ffprobe (on PATH) decode the clips and scale them (bilinear) where the page
@@ -81,6 +82,39 @@
  *   lets it show; the fixed 15 and 25 ms schedules stay for comparison with
  *   M2's replay.
  *
+ * **External detection** (M3's desktop pre-flight; the plan is in
+ * docs/benchmarks/README.md, "2026-09-29 — M3: detection off the frame,
+ * measured", "The desktop pre-flight"). `--external <latencyMs>` replaces the
+ * run table with five tracking arms on each clip, over `M3_LOOPS` loops with
+ * `trackTimeShare` read over the counted ones (loops 1 to 4), as the device
+ * reads it: every frame, synchronous; every frame, worker; every frame, the
+ * synchronous mode run as external detection at its device latency (the
+ * fallback's re-check); device schedule with the scaled step, synchronous; and
+ * the same, worker. The worker arms run the page's own on-demand policy
+ * (`createDetectionPolicy`) on the tracker's `externalDetection`: on a frame
+ * whose result says `needsDetection`, with nothing in flight, that frame is
+ * detected (inside the seed) and its result handed to the first frame
+ * processed at or after the post plus the latency, the post being the end of
+ * that frame's main-thread work — its acquisition, and a tracking step if one
+ * ran — and the latency, as on the device, counted from it. Requests made
+ * while one is in flight are dropped. On the device schedule a frame that
+ * waits costs its acquisition (and its step, if it ran one); the synchronous
+ * arms keep the model's 83.2 ms detection. The acquisition is `M3_ACQUIRE_MS`
+ * — round 2's run of the adopted target — in every arm, not the older
+ * `DEVICE_ACQUIRE_MS`, and every arm's frames are stamped on the loops'
+ * continuous timeline, so no latency goes negative at a wrap. The scaled step
+ * is used on the every-frame worker arms too, as the model of when the device
+ * would have posted.
+ *
+ * What the model leaves out, besides the default runs' list: the frame's copy
+ * and the two messages, the worker's core and the handler, which the latency
+ * is for; and anything the frame that consumes a detection and locks on it
+ * costs beyond its acquisition and its step, so that it is busy no longer than
+ * any tracking frame (the synchronous arms' frame that detected is busy 83.2
+ * ms longer), a simplification the plan keeps. The tuning probe does not run:
+ * it mirrors the default mode's lock. The external arms' detection accounting
+ * is asserted (`accountingError`): an unbalanced one exits 1.
+ *
  * The every-frame tracking run also runs the step probe
  * (`scripts/tuning-probe.mjs`), which re-runs each tracking step beside the
  * tracker, stops the script if the two ever disagree, and prints a second
@@ -103,9 +137,13 @@ import {
 import {
     decode,
     DEFAULT_MIN_TRACKED_PATCHES,
+    detectTarget,
     NftTracker,
+    prepareDetection,
 } from "../packages/nft-tracker/dist/index.js";
+import { createDetectionPolicy } from "../examples/js/detection-policy.mjs";
 import {
+    accountingError,
     compareExports,
     framesAt,
     frameRecord,
@@ -140,6 +178,21 @@ const DEVICE_ACQUIRE_MS = {
 };
 /** detect + describe + match + estimateHomography p50 on the camera path (the rear-camera runs): 7.1 + 10.3 + 64.0 + 1.8. */
 const DEVICE_DETECT_MS = 83.2;
+/**
+ * `--external`'s acquisition, for both modes in its arms: acquire + gray p50 of
+ * round 2's runs of the adopted 48-patch target on Tab_9_WiFi (on unlocked
+ * frames on either moving clip, over all of the static clip's frames), which
+ * replace `DEVICE_ACQUIRE_MS` there so that a frame boundary falls where the
+ * device's does.
+ */
+const M3_ACQUIRE_MS = {
+    "pinball-static.mp4": 42.2,
+    "pinball-bench.mp4": 27.7,
+    "pinball-bench-table.mp4": 50.0,
+};
+/** `--external`'s loops per run: loop 0 warms up, loops 1 to 4 are counted, loop 5 closes them (`trackTimeShare`). */
+const M3_LOOPS = 6;
+const M3_COUNTED = { firstLoop: 1, loopCount: 4 };
 const LOOPS = 2;
 const RUNS = [
     { mode: "tracking", schedule: "every frame", stepMs: null },
@@ -186,6 +239,18 @@ if (!(Number.isFinite(DEVICE_RATIO) && DEVICE_RATIO > 0)) {
 if (arg("--sequence") && arg("--options") !== null) {
     usage(
         "--sequence replays an export with its own recorded options; --options cannot change them",
+    );
+}
+const EXTERNAL_ARG = arg("--external");
+// A blank value would read as 0, a latency no command line meant.
+const EXTERNAL_MS =
+    EXTERNAL_ARG === null ? null : EXTERNAL_ARG.trim() === "" ? NaN : Number(EXTERNAL_ARG);
+if (EXTERNAL_MS !== null && !(Number.isFinite(EXTERNAL_MS) && EXTERNAL_MS >= 0)) {
+    usage(`--external expects a latency in milliseconds, a number ≥ 0, got "${EXTERNAL_ARG}"`);
+}
+if (EXTERNAL_MS !== null && arg("--sequence")) {
+    usage(
+        "--external runs its own arms over the bundled clips; --sequence replays one export's frames: the two cannot be combined",
     );
 }
 
@@ -312,31 +377,86 @@ const targetRec = targetRecord({
     db: target,
 });
 
-/**
- * One replay: `order` is the frame indices to process, or null for the device
- * schedule over `LOOPS` loops; `options` are the tracker's (its defaults unless
- * an export recorded others).
- */
-function replay({ clip, frames, pts, K, mode, stepMs, order, options = OVERRIDES, probe = null }) {
-    return seeded(() => replayRun({ clip, frames, pts, K, mode, stepMs, order, options, probe }));
+/** A clip's duration on the looping timeline, seconds: its span plus the gap the first two frames show. */
+const loopPeriod = (pts) => pts[pts.length - 1] - pts[0] + (pts[1] - pts[0]);
+
+/** `loops` loops of the clip's frame times on one continuous timeline, seconds, as the page's looping <video> plays them. */
+function loopTimes(pts, loops) {
+    const period = loopPeriod(pts);
+    return Array.from(
+        { length: loops * pts.length },
+        (_, k) => pts[k % pts.length] + Math.floor(k / pts.length) * period,
+    );
 }
 
-function replayRun({ clip, frames, pts, K, mode, stepMs, order, options, probe }) {
+/**
+ * One replay: `order` is the frame indices to process, or null for the device
+ * schedule over `loops` loops (`LOOPS` unless a caller says more); `options` are
+ * the tracker's (its defaults unless an export recorded others). `acquireMs` is
+ * the device schedule's acquisition (the clip's `DEVICE_ACQUIRE_MS` unless a
+ * caller says another), and `unwrapped` stamps each frame with its time on the
+ * loops' continuous timeline rather than its media time, which goes back to
+ * about 0 at every wrap.
+ */
+function replay({
+    clip,
+    frames,
+    pts,
+    K,
+    mode,
+    stepMs,
+    order,
+    options = OVERRIDES,
+    probe = null,
+    loops = LOOPS,
+    acquireMs = DEVICE_ACQUIRE_MS[clip],
+    unwrapped = false,
+}) {
+    return seeded(() =>
+        replayRun({
+            frames,
+            pts,
+            K,
+            mode,
+            stepMs,
+            order,
+            options,
+            probe,
+            loops,
+            acquireMs,
+            unwrapped,
+        }),
+    );
+}
+
+function replayRun({
+    frames,
+    pts,
+    K,
+    mode,
+    stepMs,
+    order,
+    options,
+    probe,
+    loops,
+    acquireMs,
+    unwrapped,
+}) {
     const tracker = new NftTracker(cv, target, K, {
         ...options,
         detectionOnly: mode === "detection-only",
         clock: () => performance.now(),
     });
     const records = [];
-    const push = (i) => {
-        const result = tracker.process(frames[i], pts[i] * 1000);
+    const push = (i, timestampMs = pts[i] * 1000) => {
+        const result = tracker.process(frames[i], timestampMs);
         probe?.frame(frames[i], result);
         records.push(
             frameRecord({
                 mode,
                 result,
                 stageTimings: {},
-                timestampMs: pts[i] * 1000,
+                timestampMs,
                 mediaTimeSeconds: pts[i],
                 targetPoints,
             }),
@@ -347,20 +467,15 @@ function replayRun({ clip, frames, pts, K, mode, stepMs, order, options, probe }
         for (const i of order) push(i);
         return records;
     }
-    // LOOPS loops on one continuous timeline, as the page's looping <video> plays them.
-    const period = pts[pts.length - 1] - pts[0] + (pts[1] - pts[0]);
-    const times = Array.from(
-        { length: LOOPS * pts.length },
-        (_, k) => pts[k % pts.length] + Math.floor(k / pts.length) * period,
-    );
+    const times = loopTimes(pts, loops);
     for (let k = 0; k < times.length; ) {
-        const result = push(k % pts.length);
+        const result = push(k % pts.length, unwrapped ? times[k] * 1000 : undefined);
         if (stepMs === null) {
             k++;
             continue;
         }
         const busy =
-            DEVICE_ACQUIRE_MS[clip] +
+            acquireMs +
             (result.tracking ? stepMs : 0) +
             (result.state === "TRACK" ? 0 : DEVICE_DETECT_MS);
         k = nextFrameIndex(times, k, busy);
@@ -368,7 +483,117 @@ function replayRun({ clip, frames, pts, K, mode, stepMs, order, options, probe }
     return records;
 }
 
-const exportOf = (clip, run, res, records) => ({
+/**
+ * One run of `--external`'s arms that detects off the frame: the tracker in
+ * `externalDetection` mode, and the page's own on-demand policy
+ * (`createDetectionPolicy`) deciding what is asked and what is handed in. On a
+ * frame whose result says `needsDetection`, with nothing in flight or held,
+ * this detects that very frame now (inside the run's seed, so it repeats) and
+ * holds the result back until the first frame processed at or after
+ *
+ *     post + latencyMs, where post = the frame's time + acquireMs + stepMs,
+ *
+ * the step counted when the frame ran one: the post comes at the end of the
+ * frame's main-thread work before it, and the latency counts from the post, as
+ * the device measures it (`detectionPostToArrivalMs`). Requests made while a
+ * job is in flight are dropped. Frames are stamped with their time on the
+ * loops' continuous timeline, so a detection posted before a wrap and consumed
+ * after it has a latency that is not negative; `mediaTimeSeconds` stays the
+ * clip's own.
+ *
+ * `everyFrame` processes every frame; otherwise a frame that waits costs the
+ * device only `acquireMs` and a step if it ran one (`nextFrameIndex`), and so
+ * does a frame that consumes a detection: the synchronous mode's 83.2 ms
+ * detection is not in this loop's busy time. `stepMs` is the device's tracking
+ * step, which this needs on the every-frame schedule too, as a model of when
+ * the device would have posted.
+ *
+ * Returns the frame records, one record per job posted (`jobs`: on the timeline
+ * in ms, `postedAtMs` the post and `arrivedAtMs` the post plus the latency,
+ * `handlerMs` and `workerMs` not modelled) and the policy's accounting, which
+ * the caller asserts.
+ */
+function replayExternal({ frames, pts, K, options, stepMs, everyFrame, latencyMs, acquireMs }) {
+    const tracker = new NftTracker(cv, target, K, {
+        ...options,
+        externalDetection: true,
+        clock: () => performance.now(),
+    });
+    // The tracker's own setup, from the options it was given.
+    const setup = prepareDetection(cv, target, options);
+    const policy = createDetectionPolicy();
+    const times = loopTimes(pts, M3_LOOPS);
+    const records = [];
+    const jobs = [];
+    // The one job the policy allows, while it is in flight or held: what the
+    // worker will answer, and when.
+    let pending = null;
+    for (let k = 0; k < times.length; ) {
+        const i = k % pts.length;
+        const timestampMs = times[k] * 1000;
+        if (policy.inFlight && times[k] >= pending.readyS) policy.arrive(pending.detection);
+        const handed = policy.take();
+        const settled = handed === null ? null : pending;
+        if (settled) pending = null;
+        const inFlight = policy.inFlight;
+        const tick = records.length;
+        const result = tracker.process(frames[i], timestampMs, handed);
+        const workMs = acquireMs + (result.tracking ? stepMs : 0);
+        policy.afterProcess(result, () => {
+            const postedAtMs = timestampMs + workMs;
+            const job = {
+                jobId: jobs.length + 1,
+                tick,
+                postedAtMs,
+                arrivedAtMs: postedAtMs + latencyMs,
+                handlerMs: null,
+                workerMs: null,
+                frameTimestampMs: timestampMs,
+                frameMediaTimeSeconds: pts[i],
+                consumedAtTick: null,
+                outcome: null,
+            };
+            jobs.push(job);
+            pending = {
+                job,
+                detection: detectTarget(cv, setup, frames[i], timestampMs),
+                readyS: times[k] + (workMs + latencyMs) / 1000,
+            };
+        });
+        let detectedAt = null;
+        if (settled) {
+            const { job } = settled;
+            job.outcome = result.detectionUse;
+            if (result.detectionUse === "consumed") {
+                job.consumedAtTick = tick;
+                detectedAt = {
+                    timestampMs: job.frameTimestampMs,
+                    mediaTimeSeconds: job.frameMediaTimeSeconds,
+                    framesAgo: tick - job.tick,
+                };
+            }
+        }
+        records.push(
+            frameRecord({
+                mode: "tracking",
+                result,
+                stageTimings: {},
+                timestampMs,
+                mediaTimeSeconds: pts[i],
+                targetPoints,
+                detection: { inFlight, detectedAt },
+            }),
+        );
+        k = everyFrame ? k + 1 : nextFrameIndex(times, k, workMs);
+    }
+    // The run's end: a job still in flight (or held) is discarded, and counted.
+    if (policy.inFlight || policy.held) pending.job.outcome = "discardedAtStop";
+    policy.stop();
+    return { records, jobs, accounting: policy.accounting() };
+}
+
+/** `summary` is `summarizeRun`'s options: none for the default runs, the counted loops for `--external`'s. */
+const exportOf = (clip, run, res, records, summary = {}) => ({
     kind: "replay",
     metricsVersion: METRICS_VERSION,
     exportedAt: new Date().toISOString(),
@@ -379,12 +604,208 @@ const exportOf = (clip, run, res, records) => ({
     source: "bundled",
     bundledClip: clip,
     processingResolution: res,
-    runSummary: summarizeRun(records),
+    runSummary: summarizeRun(records, summary),
     frames: records,
 });
 
 const fmt = (v, d = 2) => (v === null || v === undefined ? "—" : v.toFixed(d));
 const pct = (v) => (v === null ? "—" : `${(100 * v).toFixed(1)}%`);
+
+const TABLE_COLUMNS = [
+    "clip, at",
+    "mode, schedule",
+    "frames",
+    "TRACK share",
+    "re-acq. (at wraps)",
+    "wraps",
+    "first steps confirmed",
+    "held-lock steps lost (at wraps)",
+    "lock losses",
+    "trackStepMs p50 / p95",
+    "align share",
+    "frame levels",
+    "capped / fits",
+    "fit iterations p50",
+    "quality min",
+    "quality ≤ 0.20",
+    "jitterPx",
+    "spreadPx",
+];
+/** What `--external`'s table adds to the run table's columns. */
+const EXTERNAL_COLUMNS = [
+    "trackTimeShare",
+    "trackTimeShare per loop",
+    "detection locks: first steps confirmed",
+    "first-step latency p50 (video ms)",
+    "detection requests = consumed + dropped + discarded at Stop",
+];
+
+/** A markdown table's header and separator lines, for `columns`. */
+const tableHead = (columns) =>
+    `| ${columns.join(" | ")} |\n|${columns.map(() => "---").join("|")}|`;
+
+/** One row of the run table for summary `s`, then a cell for each of `extra`. */
+function tableRow(clip, width, height, run, s, extra = []) {
+    const losses =
+        Object.entries(s.lockLosses)
+            .map(([k, v]) => `${k} ${v}`)
+            .join(", ") || "—";
+    const align = s.alignMs.n > 0 ? fmt(s.alignMs.p50 / s.trackStepMs.p50) : "—";
+    return `| ${clip}, ${width}×${height} | ${run.mode}, ${run.schedule} | ${s.frames} | ${pct(s.trackShare)} | ${s.reacquisitions} (${s.reacquisitionsAtLoopWrap}) | ${s.loopWraps} | ${s.firstSteps.confirmed} / ${s.firstSteps.n} | ${s.heldLockSteps.lost} / ${s.heldLockSteps.n} (${s.heldLockSteps.lostAtLoopWrap}) | ${losses} | ${fmt(s.trackStepMs.p50)} / ${fmt(s.trackStepMs.p95)} | ${align} | ${JSON.stringify(s.frameLevels)} | ${s.fits.capped} / ${s.fits.n} | ${s.fits.iterations.p50 ?? "—"} | ${fmt(s.quality.min)} | ${s.lowQualityTrackFrames} | ${fmt(s.jitterPx, 3)} | ${fmt(s.spreadPx, 3)} |${extra.map((cell) => ` ${cell} |`).join("")}`;
+}
+
+/** With `--out`, an export in `outDir`, named for its clip, mode and planned schedule. */
+function writeExport(clip, planned, e) {
+    if (!outDir) return;
+    const schedule = planned.schedule.replace(/[^a-z0-9]+/gi, "-").replace(/-$/, "");
+    const slug = `${clip.replace(/\.mp4$/, "")}-${e.mode}-${schedule}`;
+    writeFileSync(join(outDir, `replay-${slug}.json`), JSON.stringify(e, null, 2));
+}
+
+/**
+ * `--external`'s five arms on every clip, as the plan's desktop pre-flight
+ * reads them (docs/benchmarks/README.md, "The desktop pre-flight"), each over
+ * `M3_LOOPS` loops with `trackTimeShare` read over the counted ones:
+ *
+ * 1. `every frame, sync`: the tracker detects on the frame loop, every frame
+ *    processed.
+ * 2. `every frame, worker`: detection off the frame at the latency given.
+ * 3. `every frame, sync as external at its device latency`: the fallback
+ *    re-check: the synchronous mode's detection, modelled as an external one
+ *    that arrives 83.2 ms after the frame's work.
+ * 4. `device scaled step, sync`: the device schedule of the default runs.
+ * 5. `device scaled step, worker`: the same schedule, detection off the frame.
+ *
+ * The scaled step is arm 1's `trackStepMs` p50 times `--device-ratio`, as the
+ * default runs' is. The arms on the every-frame schedule use it only as the
+ * model of when the device would have posted.
+ */
+async function externalArms() {
+    const label = (clip) => clip.replace(/^pinball-|\.mp4$/g, "");
+    console.log(
+        `external detection: latency ${EXTERNAL_MS} ms, counted from the post; acquisition (acquire + gray p50) ${CLIPS.map((clip) => `${label(clip)} ${M3_ACQUIRE_MS[clip]} ms`).join(", ")}; the synchronous mode's detection ${DEVICE_DETECT_MS} ms; ${M3_LOOPS} loops a run, loop 0 warm-up, loops 1–${M3_COUNTED.loopCount} counted
+`,
+    );
+    console.log(tableHead([...TABLE_COLUMNS, ...EXTERNAL_COLUMNS]));
+    const arms = [
+        { schedule: "every frame, sync", everyFrame: true, path: "sync", latencyMs: null },
+        {
+            schedule: `every frame, worker (${EXTERNAL_MS} ms)`,
+            everyFrame: true,
+            path: "worker",
+            latencyMs: EXTERNAL_MS,
+        },
+        {
+            schedule: "every frame, sync as external at its device latency",
+            everyFrame: true,
+            path: "sync",
+            latencyMs: DEVICE_DETECT_MS,
+        },
+        { schedule: "device scaled step, sync", everyFrame: false, path: "sync", latencyMs: null },
+        {
+            schedule: `device scaled step, worker (${EXTERNAL_MS} ms)`,
+            everyFrame: false,
+            path: "worker",
+            latencyMs: EXTERNAL_MS,
+        },
+    ];
+    for (const clip of CLIPS) {
+        const { frames, pts, width, height } = await loadClip(clip);
+        const K = intrinsics(width, height);
+        const acquireMs = M3_ACQUIRE_MS[clip];
+        const clipDurationS = loopPeriod(pts);
+        let scaledStepMs = null;
+        for (const arm of arms) {
+            const external = arm.latencyMs !== null;
+            // Arm 1 has no step to model: it is the run the scaled one comes from.
+            const stepMs = arm.everyFrame && !external ? null : scaledStepMs;
+            let records;
+            let jobs = [];
+            let accounting = null;
+            if (external) {
+                ({ records, jobs, accounting } = seeded(() =>
+                    replayExternal({
+                        frames,
+                        pts,
+                        K,
+                        options: OVERRIDES,
+                        stepMs,
+                        everyFrame: arm.everyFrame,
+                        latencyMs: arm.latencyMs,
+                        acquireMs,
+                    }),
+                ));
+                const unbalanced = accountingError(accounting);
+                if (unbalanced) {
+                    console.error(`replay-clips: ${clip}, ${arm.schedule}: ${unbalanced}`);
+                    process.exit(1);
+                }
+            } else {
+                records = replay({
+                    clip,
+                    frames,
+                    pts,
+                    K,
+                    mode: "tracking",
+                    stepMs,
+                    order: null,
+                    loops: M3_LOOPS,
+                    acquireMs,
+                    unwrapped: true,
+                });
+            }
+            const run = { mode: "tracking", schedule: arm.schedule };
+            const e = exportOf(clip, run, { width, height }, records, {
+                clipDurationS,
+                loops: M3_COUNTED,
+                jobs,
+                accounting,
+            });
+            e.trackerOptions = OVERRIDES;
+            e.seed = SEED;
+            e.loops = M3_COUNTED;
+            e.clipDurationS = clipDurationS;
+            e.stepMs = stepMs;
+            e.detection = {
+                path: arm.path,
+                external,
+                model: { latencyMs: arm.latencyMs, acquireMs, detectMs: DEVICE_DETECT_MS },
+                jobs,
+                accounting,
+            };
+            const s = e.runSummary;
+            if (!s.trackTimeShare.complete) {
+                console.error(
+                    `replay-clips: ${clip}, ${arm.schedule}: trackTimeShare is incomplete: the run does not reach loop ${M3_COUNTED.firstLoop + M3_COUNTED.loopCount}`,
+                );
+                process.exit(1);
+            }
+            if (scaledStepMs === null) {
+                // This configuration's own step, on the device: arm 1's
+                // every-frame p50 here, times the measured device ÷ desktop ratio.
+                scaledStepMs = (s.trackStepMs.p50 ?? 0) * DEVICE_RATIO;
+            }
+            const t = s.trackTimeShare;
+            const a = accounting;
+            console.log(
+                tableRow(clip, width, height, run, s, [
+                    pct(t.share),
+                    t.perLoop.map(pct).join(" / "),
+                    `${s.detectionLocks.confirmed} / ${s.detectionLocks.n}`,
+                    fmt(s.firstStepLatency.videoMs.p50, 1),
+                    a
+                        ? `${a.requests} = ${a.consumptions} + ${a.dropped} + ${a.discardedAtStop}`
+                        : "—",
+                ]),
+            );
+            writeExport(clip, run, e);
+        }
+        console.log(
+            `\n${clip}: the scaled step is ${fmt(scaledStepMs, 1)} ms (every-frame trackStepMs p50 × ${DEVICE_RATIO})\n`,
+        );
+    }
+}
+
 console.log(
     `Node ${process.version}, ${process.platform}/${process.arch}, ${cpus()[0]?.model ?? "unknown CPU"}\n`,
 );
@@ -469,10 +890,11 @@ console.log(
     `target ${targetFile} (sha256 ${targetRec.sha256.slice(0, 12)}…): ${patchTable ? `${patchTable.count} patches of ${patchTable.patchSize} × ${patchTable.patchSize}` : "no patches"}; options ${Object.keys(OVERRIDES).length > 0 ? JSON.stringify(OVERRIDES) : "defaults"}; seed ${SEED ?? "none"}; device ratio ${DEVICE_RATIO}
 `,
 );
-console.log(
-    "| clip, at | mode, schedule | frames | TRACK share | re-acq. (at wraps) | wraps | first steps confirmed | held-lock steps lost (at wraps) | lock losses | trackStepMs p50 / p95 | align share | frame levels | capped / fits | fit iterations p50 | quality min | quality ≤ 0.20 | jitterPx | spreadPx |",
-);
-console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+if (EXTERNAL_MS !== null) {
+    await externalArms();
+    process.exit(0);
+}
+console.log(tableHead(TABLE_COLUMNS));
 const probeRows = [];
 const runs = TRACKING_ONLY ? RUNS.filter((r) => r.mode === "tracking") : RUNS;
 for (const clip of CLIPS) {
@@ -512,19 +934,8 @@ for (const clip of CLIPS) {
             e.tuningProbe = probeSummary;
         }
         exports.push(e);
-        const s = e.runSummary;
-        const losses =
-            Object.entries(s.lockLosses)
-                .map(([k, v]) => `${k} ${v}`)
-                .join(", ") || "—";
-        const align = s.alignMs.n > 0 ? fmt(s.alignMs.p50 / s.trackStepMs.p50) : "—";
-        console.log(
-            `| ${clip}, ${width}×${height} | ${run.mode}, ${run.schedule} | ${s.frames} | ${pct(s.trackShare)} | ${s.reacquisitions} (${s.reacquisitionsAtLoopWrap}) | ${s.loopWraps} | ${s.firstSteps.confirmed} / ${s.firstSteps.n} | ${s.heldLockSteps.lost} / ${s.heldLockSteps.n} (${s.heldLockSteps.lostAtLoopWrap}) | ${losses} | ${fmt(s.trackStepMs.p50)} / ${fmt(s.trackStepMs.p95)} | ${align} | ${JSON.stringify(s.frameLevels)} | ${s.fits.capped} / ${s.fits.n} | ${s.fits.iterations.p50 ?? "—"} | ${fmt(s.quality.min)} | ${s.lowQualityTrackFrames} | ${fmt(s.jitterPx, 3)} | ${fmt(s.spreadPx, 3)} |`,
-        );
-        if (outDir) {
-            const slug = `${clip.replace(/\.mp4$/, "")}-${run.mode}-${planned.schedule.replace(/[^a-z0-9]+/gi, "-")}`;
-            writeFileSync(join(outDir, `replay-${slug}.json`), JSON.stringify(e, null, 2));
-        }
+        console.log(tableRow(clip, width, height, run, e.runSummary));
+        writeExport(clip, planned, e);
     }
     if (probeSummary) {
         probeRows.push({

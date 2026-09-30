@@ -2143,6 +2143,16 @@ describe("the review's fixes", () => {
             expect(sequenceRefusal(e(), expected)).toBeNull();
         });
 
+        // A worker run's frames wait for detections the sequence replay never
+        // hands in: it would answer them `no-detection`, on a lock the device
+        // took.
+        it("refuses to replay a worker run's frames as a sequence", () => {
+            const r = sequenceRefusal(e({ detection: { path: "worker" } }), expected);
+            expect(r).toMatch(/worker/);
+            expect(r).not.toMatch(/\n/);
+            expect(sequenceRefusal(e({ detection: { path: "sync" } }), expected)).toBeNull();
+        });
+
         it("replays with the export's own processing box and tracker options, not the defaults", () => {
             const settings = sequenceSettings(e());
             expect(settings).toEqual({
