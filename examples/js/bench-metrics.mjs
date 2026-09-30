@@ -162,6 +162,21 @@ export function framesForStage(frames, stage) {
     }
 }
 
+/**
+ * The backend stages the detection pipeline runs on a frame, in the order it
+ * runs them: what a detection worker reports the time of. `filterMatches` is
+ * listed for the backends that have one; a backend without it has no such
+ * stage. Not the pose (`pose`), which the tracker computes from the homography
+ * a detection returns, on the main thread.
+ */
+export const DETECTION_STAGES = Object.freeze([
+    "detect",
+    "describe",
+    "match",
+    "filterMatches",
+    "estimateHomography",
+]);
+
 /** Bumped whenever a definition in {@link DEFINITIONS} changes meaning; every export records it. */
 export const METRICS_VERSION = 1;
 

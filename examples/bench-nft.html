@@ -422,6 +422,7 @@
         DEFAULT_TUKEY_C,
       } from "@webarkit/nft-tracker";
       import { toGrayTimed } from "./js/pinball-shared.mjs";
+      import { instrumentBackend } from "./js/instrument-backend.mjs";
       import {
         clockResolution,
         DEFINITIONS,
@@ -644,35 +645,6 @@
           target.addEventListener(resolveEvent, onResolve, { once: true });
           target.addEventListener(errorEvent, onError, { once: true });
         });
-      }
-
-      /**
-       * Wraps a `CvBackend` so every call to the five stages the contract
-       * documents is timed into `timings`, in place. This is what lets both
-       * pipelines below be timed stage-by-stage without instrumenting either
-       * one directly: `NftTracker` only ever reaches the backend through the
-       * instance handed to its constructor, and the stateless pipeline calls
-       * the same instance directly, so one wrapper covers both.
-       */
-      function instrumentBackend(cv, timings) {
-        const time = (name, fn) => {
-          const t0 = performance.now();
-          const result = fn();
-          timings[name] += performance.now() - t0;
-          return result;
-        };
-        const wrapped = {
-          capabilities: cv.capabilities,
-          detect: (...args) => time("detect", () => cv.detect(...args)),
-          describe: (...args) => time("describe", () => cv.describe(...args)),
-          match: (...args) => time("match", () => cv.match(...args)),
-          estimateHomography: (...args) => time("estimateHomography", () => cv.estimateHomography(...args)),
-          poseFromHomography: (...args) => time("pose", () => cv.poseFromHomography(...args)),
-        };
-        if (cv.filterMatches) {
-          wrapped.filterMatches = (...args) => time("filterMatches", () => cv.filterMatches(...args));
-        }
-        return wrapped;
       }
 
       function resetTimings(timings) {
