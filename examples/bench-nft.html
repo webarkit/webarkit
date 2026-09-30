@@ -1013,17 +1013,26 @@
       }
 
       /**
-       * A worker run that cannot go on — the worker failed or went silent, or
-       * the policy or a post threw — stops at once, rather than run on with its
-       * policy stuck in flight; it shows why, and is never exported. The worker
-       * is not trusted again: Start stays disabled until the page is reloaded.
+       * A run that cannot go on — the worker failed or went silent, the policy
+       * or a post threw, or anything in a frame's callback threw — stops at
+       * once, rather than run on with its policy stuck in flight or its loop
+       * dead: status `failed`, `endedBy` `failed`, and why, the cause on its own
+       * line. A worker run is never exported, and its worker is not trusted
+       * again: Start stays disabled until the page is reloaded. A synchronous
+       * run's export stays possible, and its `protocol` says it is not a
+       * session run.
        */
       function failRun(run, message) {
         if (run.failure !== null) return;
         run.failure = message;
-        detectionWorker.failure ??= message;
+        const worker = run.path === "worker";
+        if (worker) detectionWorker.failure ??= message;
         stopRun("failed");
-        showError(`${message}\n\nThe run stopped, and it will not be exported. Reload the page to run again.`);
+        showError(
+          worker
+            ? `${message}\n\nThe run stopped, and it will not be exported. Reload the page to run again.`
+            : `${message}\n\nThe run stopped. Its export stays possible, and is not a session run.`,
+        );
       }
 
       /**
@@ -1571,9 +1580,10 @@
        * detects itself (`externalDetection`): each frame takes the detection the
        * policy holds, if any, and after `process` the policy settles it and posts
        * the frame when the tracker asks (`settleFrame`), inside the frame's
-       * `total`; a throw from any of the three fails the run (`failRun`). A
-       * `?loops=` run stops itself on its first frame of the loop after the
-       * counted ones, with the status `done`.
+       * `total`; a throw from any of the three fails the run (`failRun`), as a
+       * throw from anywhere else in a frame's callback does, in either path
+       * (`tick`). A `?loops=` run stops itself on its first frame of the loop
+       * after the counted ones, with the status `done`.
        */
       function runBenchmark(cv, targetDb, mode, windowSize, maxKeypoints, box, run) {
         lastRafFrameTime = -1;
@@ -1632,7 +1642,8 @@
         let fps = 0;
         const loop = run.loops ? { index: 0, lastMediaTime: null } : null;
 
-        const tick = (_now, metadata) => {
+        // One frame, as it always ran; `tick` below wraps it.
+        const frameStep = (_now, metadata) => {
           if (!running) return;
           resetTimings(timings);
           const t0 = performance.now();
@@ -1735,6 +1746,21 @@
             return;
           }
           scheduleNextTick(tick);
+        };
+
+        // The frame callback: `frameStep`, wrapped, never reordered — its timed
+        // region and its work are the frame's as before. Whatever it throws —
+        // the overlay, the stats, the record, anything past the worker path's
+        // own guard — ends the run through `failRun`, naming the frame, rather
+        // than escape the callback and leave the loop dead with the run live,
+        // no error shown, and an export at Stop that looks whole.
+        const tick = (now, metadata) => {
+          const frameIndex = ticks;
+          try {
+            frameStep(now, metadata);
+          } catch (e) {
+            failRun(run, `The run failed on frame ${frameIndex}: ${e.message}`);
+          }
         };
 
         liveRun = run;

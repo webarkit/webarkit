@@ -371,9 +371,14 @@ flight or held, and drops the request otherwise; the result is held and handed
 to the next frame's `process`, whose tracking step confirms or refuses it.
 The stats list shows the jobs posted and consumed, the requests dropped and
 the job in flight. A job the worker fails, or leaves unanswered for 5 s, or a
-throw anywhere in a frame's worker path — the policy, the tracker's `process`,
-the post — stops the run with the error, and that run is not exported: reload
-the page to run again.
+throw anywhere in a frame's callback — the policy, the tracker's `process`,
+the post, and everything after them, the frame's record, the overlay, the
+stats — stops the run with the status `failed` and the error, its cause naming
+the frame on one line, and that run is not exported: reload the page to run
+again. A synchronous run stops the same way on a throw anywhere in a frame's
+callback, rather than leave its loop dead with no error shown; its export stays
+possible, with `run.endedBy: "failed"`, and its `protocol` says it is not a
+session run.
 
 A worker run's export adds `detection`: its `path`, `policy`,
 `workerBundleSha256`, `accounting`, `staleReplies` (the worker's replies to
