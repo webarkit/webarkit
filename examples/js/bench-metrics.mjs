@@ -205,6 +205,48 @@ export function framesForStage(frames, stage) {
 }
 
 /**
+ * Each of `stages`' samples over `frames`, in the order given, as
+ * `[stage, values]`: a stage over the frames that ran it
+ * ({@link framesForStage}), and `detectionPost`, a worker run's post of a frame
+ * to its worker, over the frames that carry one (a frame that did not post
+ * carries none at all). The page's stage table, and {@link stageSummary}.
+ */
+export function stageSamples(frames, stages) {
+    return stages.map((stage) => [
+        stage,
+        stage === "detectionPost"
+            ? frames.map((f) => f.timings.detectionPost).filter(Number.isFinite)
+            : framesForStage(frames, stage).map((f) => f.timings[stage]),
+    ]);
+}
+
+/**
+ * The export's `summaryMs` (`DEFINITIONS.summaryMs`): `{ p50, p95, max }` of
+ * each of `stages`, in the order given, over {@link stageSamples}; `null`
+ * statistics for a stage with no sample. `stages` are the page's: the stages its
+ * backend runs, and in a worker run `detectionPost` before `total`.
+ *
+ * Given `clipDurationS` and `loops` (`{ firstLoop, loopCount }`), it reads the
+ * frames of the counted loops ({@link countedLoopFrames}), as `summarizeRun`
+ * does: never the warm-up loop, whose first acquisition is cold, and which
+ * the thermal rule must not read. A clip duration shorter than the clip is
+ * refused, as there.
+ */
+export function stageSummary(frames, { stages, clipDurationS = null, loops = null }) {
+    const read = loops ? countedLoopFrames(frames, { clipDurationS, ...loops }) : frames;
+    const summary = {};
+    for (const [stage, samples] of stageSamples(read, stages)) {
+        const values = samples.sort((a, b) => a - b);
+        summary[stage] = {
+            p50: values.length ? percentile(values, 50) : null,
+            p95: values.length ? percentile(values, 95) : null,
+            max: values.length ? values[values.length - 1] : null,
+        };
+    }
+    return summary;
+}
+
+/**
  * The backend stages the detection pipeline runs on a frame, in the order it
  * runs them: what a detection worker reports the time of. `filterMatches` is
  * listed for the backends that have one; a backend without it has no such
@@ -274,6 +316,10 @@ export const DEFINITIONS = Object.freeze({
         "Two exports of the same footage compared on common frames: each restricted to its frames with corners at the media times, to the microsecond, where both have a frame with corners (every occurrence kept when a loop revisits one); jitterPx and spreadPx are then taken over each restricted run as defined above.",
     detectionPath:
         "The run's detection path, from ?detection=. sync: the tracker detects on the frame loop (M2); worker: a module worker detects, under the on-demand policy (docs/benchmarks/README.md, 2026-09-29).",
+    summaryMs:
+        "Per stage, { p50, p95, max } of its timing in ms (stageSummary): each stage over the frames that ran it (framesForStage), a worker run's detectionPost over the frames that posted, over the frames summaryMsFrames names. In a ?loops= run those are the counted loops' frames, as the run summary's, never the warm-up loop's, whose first acquisition is cold.",
+    summaryMsFrames:
+        "Which frames summaryMs reads: counted loops (a ?loops= run: loops 1 to its loop count, as the run summary reads them) or window (the window's frames).",
     endedBy:
         "How a run ended, in the export's run record beside order, startedAtIso and endedAtIso: done (a ?loops= run, on its first frame after its counted loops), stopped (Stop) or failed (the run could not go on; a worker run that failed is not exported).",
     protocol:

@@ -432,13 +432,14 @@
         DEFAULT_TARGET_FILE,
         DEFINITIONS,
         frameRecord,
-        framesForStage,
         METRICS_VERSION,
         parsePositiveInt,
         parseRunParams,
         percentile,
         sessionRunGaps,
         sha256Hex,
+        stageSamples,
+        stageSummary,
         startRefusal,
         summarizeRun,
         targetCorners,
@@ -801,23 +802,19 @@
       }
 
       /**
-       * Each stage's samples over `frames`, in table order: `activeStages()`,
-       * each over the frames that ran it, and in a worker run the post to the
-       * worker, before `total`, over the frames that posted — a frame that did
-       * not post carries no `detectionPost` at all.
+       * The stages the stage table and the export's summaryMs show, in table
+       * order: `activeStages()`, and in a worker run the post to the worker
+       * before `total` (`stageSamples` takes it over the frames that posted).
        */
-      function stageSamples(frames) {
-        const rows = activeStages().map((s) => [s, framesForStage(frames, s).map((f) => f.timings[s])]);
-        if (lastRun?.path === "worker") {
-          const posts = frames.map((f) => f.timings.detectionPost).filter(Number.isFinite);
-          rows.splice(rows.length - 1, 0, ["detectionPost", posts]);
-        }
-        return rows;
+      function tableStages() {
+        const stages = activeStages();
+        if (lastRun?.path !== "worker") return stages;
+        return [...stages.slice(0, -1), "detectionPost", stages[stages.length - 1]];
       }
 
       function renderPercentiles() {
         percentilesBody.replaceChildren();
-        const rows = stageSamples(history).map(([s, values]) => [STAGE_LABELS[s], values]);
+        const rows = stageSamples(history, tableStages()).map(([s, values]) => [STAGE_LABELS[s], values]);
         if (lastMode !== "stateless") {
           const track = history.filter((f) => f.state === "TRACK" && f.trackerTimings);
           for (const k of TRACKER_STAGES) rows.push([TRACKER_STAGE_LABELS[k], track.map((f) => f.trackerTimings[k])]);
@@ -1795,30 +1792,23 @@
           showError(`Not exported: ${refusal}`);
           return;
         }
-        // Over the same frames as summaryMs, or with ?loops= over the counted
-        // loops' frames; see definitions. What it cannot read — a clip duration
-        // shorter than the clip, which unwrapMediaTimes refuses — refuses the
-        // export in one line, rather than throw out of the click.
+        // Both over the window, or with ?loops= over the counted loops' frames
+        // (summaryMsFrames says which; see definitions). What they cannot read —
+        // a clip duration shorter than the clip, which unwrapMediaTimes refuses —
+        // refuses the export in one line, rather than throw out of the click.
+        const counted = { clipDurationS: run?.clipDurationS ?? null, loops: run?.loops ?? null };
+        let summary;
         let runSummary;
         try {
+          summary = stageSummary(history, { stages: tableStages(), ...counted });
           runSummary = summarizeRun(history, {
-            clipDurationS: run?.clipDurationS ?? null,
-            loops: run?.loops ?? null,
+            ...counted,
             jobs: run?.jobs ?? [],
             accounting: run?.policy ? run.policy.accounting() : null,
           });
         } catch (e) {
           showError(`Not exported: ${e.message}`);
           return;
-        }
-        const summary = {};
-        for (const [s, samples] of stageSamples(history)) {
-          const values = samples.sort((a, b) => a - b);
-          summary[s] = {
-            p50: values.length ? percentile(values, 50) : null,
-            p95: values.length ? percentile(values, 95) : null,
-            max: values.length ? values[values.length - 1] : null,
-          };
         }
 
         const payload = {
@@ -1887,7 +1877,11 @@
           processingBox: lastProcessingBox,
           processingResolution: lastProcessingResolution,
           windowSize: history.length,
+          // Each stage's p50, p95 and max (stageSummary), over the frames
+          // summaryMsFrames names: the counted loops' in a ?loops= run, as
+          // runSummary's, else the window's.
           summaryMs: summary,
+          summaryMsFrames: run?.loops ? "counted loops" : "window",
           runSummary,
           definitions: DEFINITIONS,
           frames: history,

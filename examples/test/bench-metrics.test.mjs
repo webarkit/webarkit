@@ -60,6 +60,7 @@ import {
     sequenceSettings,
     sessionRunGaps,
     sha256Hex,
+    stageSummary,
     startRefusal,
     stats,
     summarizeRun,
@@ -489,6 +490,63 @@ describe("framesForStage", () => {
         ];
         expect(framesForStage(older, "detect")).toEqual([older[0], older[2], older[4]]);
         expect(framesForStage(older, "estimateHomography")).toEqual([older[0], older[2]]);
+    });
+});
+
+describe("stageSummary: the export's per-stage p50, p95 and max", () => {
+    const dir = fileURLToPath(new URL("../../docs/benchmarks/", import.meta.url));
+    const frame = (mediaTimeSeconds, acquire, o = {}) => ({
+        state: "LOST",
+        ok: false,
+        reason: "no-detection",
+        mediaTimeSeconds,
+        timings: { acquire, gray: 1, total: acquire + 2 },
+        detectionUse: "none",
+        ...o,
+    });
+
+    it("gives the summaryMs the page exported, from the same frames", () => {
+        for (const clip of ["wall", "table"]) {
+            const e = JSON.parse(
+                readFileSync(`${dir}2026-09-29-tab9-tuning-r2-p48-s16-${clip}.json`, "utf8"),
+            );
+            expect(stageSummary(e.frames, { stages: Object.keys(e.summaryMs) }), clip).toEqual(
+                e.summaryMs,
+            );
+        }
+    });
+
+    it("takes a stage over the frames that ran it, and the post over the frames that posted", () => {
+        const frames = [
+            frame(0, 20, { timings: { acquire: 20, detect: 9, detectionPost: 0.3, total: 40 } }),
+            frame(0.1, 22, { state: "TRACK", detectionUse: "none", timings: { acquire: 22, detect: 0, total: 30 } }),
+            frame(0.2, 24, { detectionUse: "internal", timings: { acquire: 24, detect: 7, total: 50 } }),
+        ];
+        const s = stageSummary(frames, { stages: ["acquire", "detect", "detectionPost", "total"] });
+        expect(Object.keys(s)).toEqual(["acquire", "detect", "detectionPost", "total"]);
+        expect(s.acquire).toEqual({ p50: 22, p95: 24, max: 24 });
+        // Only the frame that ran the tracker's own detection detected.
+        expect(s.detect).toEqual({ p50: 7, p95: 7, max: 7 });
+        expect(s.detectionPost).toEqual({ p50: 0.3, p95: 0.3, max: 0.3 });
+        expect(stageSummary([], { stages: ["acquire"] })).toEqual({
+            acquire: { p50: null, p95: null, max: null },
+        });
+    });
+
+    // The thermal rule reads `acquire` p50 from summaryMs, and the spec reads every row over the
+    // counted loops: the warm-up's cold first acquisition was in the window's max.
+    it("reads a loops run's counted loops: the warm-up's cold acquisition is not in its max", () => {
+        const D = 1;
+        // Loop 0 (the warm-up, its first acquisition cold), loop 1 counted, loop 2's first frame.
+        const run = [frame(0, 400), frame(0.5, 30), frame(0.2, 31), frame(0.7, 29), frame(0.1, 45)];
+        const stages = ["acquire", "total"];
+        expect(stageSummary(run, { stages }).acquire.max).toBe(400);
+        const loops = { firstLoop: 1, loopCount: 1 };
+        const counted = stageSummary(run, { stages, clipDurationS: D, loops });
+        expect(counted.acquire).toEqual({ p50: 31, p95: 31, max: 31 });
+        expect(counted.total.max).toBe(33);
+        // A clip duration shorter than the clip is refused, as the run summary refuses it.
+        expect(() => stageSummary(run, { stages, clipDurationS: 0.6, loops })).toThrow(RangeError);
     });
 });
 

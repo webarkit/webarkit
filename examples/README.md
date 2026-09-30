@@ -396,8 +396,10 @@ and no jobs.
 whole loops of the clip: loop 0, from the run's first frame, warms up, loops 1
 to N are counted, and the page stops itself on its first frame of loop N + 1,
 with the status `done`. The export records `loops: { firstLoop: 1, loopCount:
-N }` and `clipDurationS`, and its `runSummary` reads the counted loops'
-frames, except `trackTimeShare` — the share of video time with a confirmed
+N }` and `clipDurationS`, and its stage summary `summaryMs` and its
+`runSummary` read the counted loops' frames — never the warm-up loop's, whose
+first acquisition is cold; `summaryMsFrames` says `counted loops`, and
+`window` in a run without `?loops=` — except `trackTimeShare` — the share of video time with a confirmed
 lock, over those loops on a fixed grid of media time — which reads them all,
 and is `complete` only if the window still holds the warm-up's last frame:
 give a run of several loops `?window=2000`. Media time is unwrapped with the
