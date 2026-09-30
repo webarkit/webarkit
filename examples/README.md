@@ -405,9 +405,24 @@ clip's duration (`clipDurationS`, the browser's `video.duration`); a frame past
 it by more than 1 ms would lay the loops over each other, so it is refused
 rather than read: the `trackTimeShare` row shows why, and Download refuses the
 run in one line. `?run=` is the run's place in a
-session's order, exported as `run.order` beside `run.startedAtIso` and
-`run.endedAtIso`. For example:
+session's order, exported as `run.order` beside `run.startedAtIso`,
+`run.endedAtIso` and `run.endedBy`, how the run ended: `done`, `stopped` (Stop)
+or `failed`. For example:
 `bench-nft.html?mode=tracking&detection=worker&clip=pinball-bench.mp4&window=2000&loops=4&run=2`.
+
+**A session run.** Every export records `protocol: { sessionRun, gaps }`
+(`sessionRunGaps` in [`js/bench-metrics.mjs`](./js/bench-metrics.mjs),
+`DEFINITIONS.protocol`): whether the run is one of the device session's, and
+what keeps it from being one, a line each. A session run is a tracking or a
+stateless run of a bundled clip with `?loops=4`, `?run=` and a window that kept
+every frame (`?window=2000`), which ended itself (`done`); a tracking run's
+`trackTimeShare` is complete, and a worker run's accounting holds; and it ran
+at the page's defaults — `targets/pinball.wnft` (no `?targetFile=`), no
+`?tracker=`, the default scene keypoint budget and processing box. The page
+exports a run with gaps all the same, since an exploratory run is legitimate,
+and says so on one line without touching the status row: `Exported; not a
+session run: <gaps>`. `scripts/replay-clips.mjs --transfer` reads session runs
+only: a tracking run's export that is not one refuses the whole directory.
 
 ## The bundled reference clips: `videos/pinball-*.mp4`
 

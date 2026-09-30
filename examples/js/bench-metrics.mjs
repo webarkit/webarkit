@@ -274,6 +274,10 @@ export const DEFINITIONS = Object.freeze({
         "Two exports of the same footage compared on common frames: each restricted to its frames with corners at the media times, to the microsecond, where both have a frame with corners (every occurrence kept when a loop revisits one); jitterPx and spreadPx are then taken over each restricted run as defined above.",
     detectionPath:
         "The run's detection path, from ?detection=. sync: the tracker detects on the frame loop (M2); worker: a module worker detects, under the on-demand policy (docs/benchmarks/README.md, 2026-09-29).",
+    endedBy:
+        "How a run ended, in the export's run record beside order, startedAtIso and endedAtIso: done (a ?loops= run, on its first frame after its counted loops), stopped (Stop) or failed (the run could not go on; a worker run that failed is not exported).",
+    protocol:
+        "{ sessionRun, gaps }: whether the run followed the device session's protocol (docs/benchmarks/README.md, 2026-09-29), and what keeps it from it, one line each (sessionRunGaps): a tracking or stateless run of a bundled clip, over one warm-up loop and loops 1 to 4 counted (loops), with its place in the session's order (run.order), that ended itself (run.endedBy done) with every frame it processed in its window (ticks = windowSize); in the tracking mode its lock read over those loops whole (trackTimeShare.complete), in a worker run its accounting holding (detectionAccounting); at the page's defaults: the committed target, loaded, no tracker option overridden (?tracker=), the default scene keypoint budget and processing box. The page exports a run with gaps all the same, and says so; replay-clips --transfer reads only session runs.",
     detectionAccounting:
         "A worker run's detection requests and what became of each, counted over the whole run, not the window: requests (results that said needsDetection) = consumptions (detections handed to process and used) + dropped (requests made while a detection was in flight or held) + discardedAtStop (a detection in flight, or held, at Stop), and ignored (detections handed in while a lock held) = 0; posted counts the requests that started a job. accountingError checks both, and a run that fails either is not exported. In the summary the accounting is carried as given, with error: accountingError's line saying what is wrong, or null when nothing is; the summary has null for a run that gave none.",
     detectionUse:
@@ -703,10 +707,11 @@ export function detectionTime(
 }
 
 /**
- * The jobs a summary of `frames` reads when `frames` are a run's counted
- * loops rather than the whole run: those posted from one of them, by the
- * timestamp of the frame posted (`frameTimestampMs`, else the post's own).
- * The frames' timestamps only grow, so the first and the last bound them.
+ * The jobs a summary of `frames` reads: those posted from one of them, by the
+ * timestamp of the frame posted (`frameTimestampMs`, else the post's own) —
+ * never a job of the run posted from a frame the summary does not read, such
+ * as one before the window, or in the warm-up loop. The frames' timestamps
+ * only grow, so the first and the last bound them.
  */
 function jobsPostedFrom(jobs, frames) {
     if (frames.length === 0) return [];
@@ -792,13 +797,13 @@ export function cornerJitter(frames) {
  *
  * - `clipDurationS` and `loops` (`{ firstLoop, loopCount }`): the run's counted
  *   loops. Every key then reads the frames of those loops
- *   ({@link countedLoopFrames}), `trackTimeShare` reads all of `runFrames` over
- *   them, and the jobs are those posted from the counted frames. Without
- *   `loops`, `trackTimeShare` is `null`; `clipDurationS` alone is what
- *   `firstStepLatency` unwraps a loop wrap with. `loops` without a clip
- *   duration throws.
+ *   ({@link countedLoopFrames}), and `trackTimeShare` reads all of `runFrames`
+ *   over them. Without `loops`, `trackTimeShare` is `null`; `clipDurationS`
+ *   alone is what `firstStepLatency` unwraps a loop wrap with. `loops` without
+ *   a clip duration throws.
  * - `jobs`: the page's record of each detection it posted, for
- *   `detectionTime`; none, for a synchronous run.
+ *   `detectionTime`, which reads the jobs posted from the frames summarized,
+ *   with or without `loops`; none, for a synchronous run.
  * - `accounting`: a worker run's detection accounting, carried with its error.
  */
 export function summarizeRun(
@@ -850,7 +855,7 @@ export function summarizeRun(
         trackFramesWithDetectionInFlight: trackFramesWithDetectionInFlight(frames),
         frameMs: frameMs(frames),
         unlockedResidualMs: unlockedResidualMs(frames),
-        detectionTime: detectionTime(frames, loops ? jobsPostedFrom(jobs, frames) : jobs, {
+        detectionTime: detectionTime(frames, jobsPostedFrom(jobs, frames), {
             clipDurationS,
             loops,
             // Per second of the counted loops' video only when the run covered them all.
@@ -1151,6 +1156,12 @@ export function parseTrackerOverrides(raw) {
 }
 
 /**
+ * The committed target, as the page names it: the file a run loads with no
+ * `?targetFile=`, and the one a session run tracks ({@link sessionRunGaps}).
+ */
+export const DEFAULT_TARGET_FILE = "targets/pinball.wnft";
+
+/**
  * Why `NftTracker` would run detection-only on `db` — the constructor's rule:
  * no patches, patches under 3 × 3, or fewer than `minTrackedPatches` — or
  * `null` when it would track. The page checks this before starting a
@@ -1158,7 +1169,7 @@ export function parseTrackerOverrides(raw) {
  */
 export function trackabilityError(db, minTrackedPatches) {
     const p = db.patches;
-    const use = "choose targets/pinball.wnft";
+    const use = `choose ${DEFAULT_TARGET_FILE}`;
     if (!p) return `Tracking needs a target with patches, and this one has no patches: ${use}.`;
     if (p.patchSize < 3)
         return `This target's patches are ${p.patchSize} × ${p.patchSize}, and alignPatch needs at least 3 × 3: ${use}.`;
@@ -1187,7 +1198,7 @@ export function startRefusal({
     mode,
     target,
     minTrackedPatches,
-    file = "targets/pinball.wnft",
+    file = DEFAULT_TARGET_FILE,
     detection = "sync",
     source = null,
     loops = null,
@@ -1378,6 +1389,121 @@ export function exportDetectionPath(e) {
     return e?.detection?.path ?? "sync";
 }
 
+/** A session run's counted loops: loop 0 warms up, and loops 1 to 4 are read (docs/benchmarks/README.md). */
+export const SESSION_LOOPS = Object.freeze({ firstLoop: 1, loopCount: 4 });
+
+/**
+ * What keeps page export `e` from being a run of the device session
+ * (docs/benchmarks/README.md, "2026-09-29 — M3: detection off the frame,
+ * measured", "A device session"), one line each, or `[]` when nothing does. The
+ * page records the answer in the export (`protocol`, `DEFINITIONS.protocol`) and
+ * exports a run with gaps all the same, since an exploratory run is legitimate;
+ * `scripts/replay-clips.mjs --transfer` reads a session's runs, and no other.
+ *
+ * A session run is a tracking or a stateless run of a bundled clip, over one
+ * warm-up loop and {@link SESSION_LOOPS}' counted ones, with its place in the
+ * session's order (`run.order`), that ended itself (`run.endedBy` `done`) with
+ * every frame it processed still in its window (`ticks === windowSize`); a
+ * tracking run's lock was read over its counted loops whole
+ * (`trackTimeShare.complete`), and a worker run's accounting holds
+ * ({@link accountingError}). And it ran at the page's defaults, read from the
+ * export's own `target`, `tracker`, `maxKeypoints` and `processingBox`: the
+ * committed target, loaded; no tracker option overridden
+ * ({@link TUNABLE_TRACKER_OPTIONS}, `?tracker=`); the default scene keypoint
+ * budget and processing box.
+ *
+ * `defaults` is `{ targetFile, processingBox, maxKeypoints, trackerOptions }`,
+ * which the page builds from its own constants and the tracker's `DEFAULT_*`:
+ * this module imports no package (the worker's core imports it, and imports
+ * none), so the tracker's defaults reach it from its caller, never as copies.
+ */
+export function sessionRunGaps(e, defaults) {
+    if (!defaults?.processingBox || !defaults.trackerOptions) {
+        throw new TypeError(
+            "sessionRunGaps needs the page's defaults: { targetFile, processingBox, maxKeypoints, trackerOptions }",
+        );
+    }
+    const gaps = [];
+    const shown = (v) => (v === null || v === undefined ? "none" : v);
+    const mode = e?.mode;
+    if (mode !== "tracking" && mode !== "stateless") {
+        gaps.push(`mode ${shown(mode)}: a session run is a tracking or a stateless run`);
+    }
+    if (e?.source !== "bundled") {
+        gaps.push(`source ${shown(e?.source)}: a session run plays a bundled clip (?clip=)`);
+    } else if (!e.bundledClip) {
+        gaps.push("source bundled, no clip named: a session run plays a bundled clip (?clip=)");
+    }
+    const { firstLoop, loopCount } = SESSION_LOOPS;
+    const loops = e?.loops;
+    if (loops?.firstLoop !== firstLoop || loops?.loopCount !== loopCount) {
+        const read = loops ? `${loops.firstLoop}–${loops.firstLoop + loops.loopCount - 1}` : "none";
+        gaps.push(
+            `loops ${read}: a session run counts loops ${firstLoop}–${firstLoop + loopCount - 1} after its warm-up (?loops=${loopCount})`,
+        );
+    }
+    const order = e?.run?.order;
+    if (!(Number.isInteger(order) && order >= 1)) {
+        gaps.push(`run.order ${shown(order)}: a session run has its place in the session's order (?run=)`);
+    }
+    if (e?.run?.endedBy !== "done") {
+        gaps.push(
+            `run.endedBy ${shown(e?.run?.endedBy)}: a session run ends itself on the first frame after its counted loops (done)`,
+        );
+    }
+    if (e?.ticks !== e?.windowSize) {
+        gaps.push(
+            `the window kept ${shown(e?.windowSize)} of ${shown(e?.ticks)} frames: a session run keeps every frame it processed (?window=2000)`,
+        );
+    }
+    if (mode === "tracking" && e?.runSummary?.trackTimeShare?.complete !== true) {
+        gaps.push(
+            "trackTimeShare is not complete: a tracking run's lock is read over its counted loops whole",
+        );
+    }
+    if (exportDetectionPath(e) === "worker") {
+        const acc = e.detection?.accounting;
+        const why =
+            acc == null
+                ? "detection accounting none: a worker run's accounting is asserted, and it records none"
+                : accountingError(acc);
+        if (why) gaps.push(why);
+    }
+    if (e?.target?.source !== "wnft" || e.target.file !== defaults.targetFile) {
+        gaps.push(
+            `target ${shown(e?.target?.file)}: a session run tracks ${defaults.targetFile}, loaded (no ?targetFile=)`,
+        );
+    }
+    if (mode === "tracking") {
+        const options = e?.tracker?.options;
+        if (!options) {
+            gaps.push("tracker options none: a tracking run records the options it ran with");
+        } else {
+            for (const key of TUNABLE_TRACKER_OPTIONS) {
+                const d = defaults.trackerOptions[key];
+                if (options[key] !== d) {
+                    gaps.push(
+                        `tracker option ${key} ${shown(options[key])}, not its default ${d}: a session run uses the tracker's defaults (no ?tracker=)`,
+                    );
+                }
+            }
+        }
+    }
+    if (e?.maxKeypoints !== defaults.maxKeypoints) {
+        gaps.push(
+            `maxKeypoints ${shown(e?.maxKeypoints)}, not the page's default ${defaults.maxKeypoints}: a session run uses it (no ?maxKeypoints=)`,
+        );
+    }
+    const box = e?.processingBox;
+    const d = defaults.processingBox;
+    if (box?.width !== d.width || box?.height !== d.height) {
+        gaps.push(
+            `processingBox ${box ? `${box.width}×${box.height}` : "none"}, not the page's default ${d.width}×${d.height}: a session run uses it (no ?procWidth= or ?procHeight=)`,
+        );
+    }
+    return gaps;
+}
+
 /**
  * Why `scripts/replay-clips.mjs --transfer` reads nothing from export `e`, or
  * `null` when it reads it: a page's export of a tracking run on one of
@@ -1470,7 +1596,11 @@ function transferProfile(path, named) {
  *    or that records none: checked again on reading, as the page checked it
  *    before exporting, since a session holding an invalid run is an invalid
  *    session, not a directory with a file to skip;
- * 4. a mode with no latency sample, no acquisition or no step to replay with.
+ * 4. an export, of either path, that the page did not record as a session run
+ *    (`protocol.sessionRun` not `true`, {@link sessionRunGaps}), named with the
+ *    gaps it recorded, or that has no `protocol` record at all: the transfer
+ *    replays what the session ran, and a run outside its protocol is not that;
+ * 5. a mode with no latency sample, no acquisition or no step to replay with.
  */
 export function transferPlan(files, { clips, sha256 }) {
     const skipped = [];
@@ -1508,6 +1638,19 @@ export function transferPlan(files, { clips, sha256 }) {
             const acc = e.detection?.accounting;
             const why = acc == null ? "it records no detection accounting" : accountingError(acc);
             if (why) return refuse(`${clip}: ${name} is not a valid worker run: ${why}`);
+        }
+    }
+    for (const [clip, { sync, worker }] of present) {
+        for (const { name, e } of [...worker, ...sync]) {
+            const protocol = e.protocol;
+            if (protocol == null) return refuse(`${clip}: ${name} is not a session run (no protocol record)`);
+            if (protocol.sessionRun !== true) {
+                const gaps =
+                    Array.isArray(protocol.gaps) && protocol.gaps.length > 0
+                        ? protocol.gaps.join("; ")
+                        : "its protocol record names no gap";
+                return refuse(`${clip}: ${name} is not a session run: ${gaps}`);
+            }
         }
     }
     const planned = [];

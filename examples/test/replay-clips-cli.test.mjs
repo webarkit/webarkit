@@ -132,6 +132,8 @@ describe("replay-clips.mjs command line", () => {
             ["--external", "70"],
             ["--sequence", "export.json"],
             ["--device-ratio", "3"],
+            // The session ran the tracker's defaults, and the transfer replays what it ran.
+            ["--options", "minTrackedPatches:6"],
         ]) {
             const r = run("--transfer", "session", ...other);
             expect(r.status, other[0]).toBe(2);
@@ -202,6 +204,41 @@ describe("replay-clips.mjs command line", () => {
             });
             expect(none.status).toBe(1);
             expect(none.stderr).toMatch(/worker-1\.json.*no detection accounting/);
+            expect(none.stderr.trim().split("\n")).toHaveLength(1);
+        });
+
+        // Only a session's runs are transferred: the page records whether an export is one.
+        it("refuses a page export that is not a session run, or has no protocol record, naming it", () => {
+            const balanced = {
+                requests: 4,
+                posted: 3,
+                consumptions: 2,
+                ignored: 0,
+                dropped: 1,
+                discardedAtStop: 1,
+            };
+            const session = { sessionRun: true, gaps: [] };
+            const worker = (o = {}) =>
+                pageExport("worker", {
+                    detection: { path: "worker", jobs: [], accounting: balanced },
+                    protocol: session,
+                    ...o,
+                });
+            const stopped = transfer({
+                "worker-1.json": worker(),
+                "sync-1.json": pageExport("sync", {
+                    protocol: { sessionRun: false, gaps: ["run.endedBy stopped: by hand"] },
+                }),
+            });
+            expect(stopped.status).toBe(1);
+            expect(stopped.stderr).toMatch(/sync-1\.json is not a session run: run\.endedBy stopped: by hand/);
+            expect(stopped.stderr.trim().split("\n")).toHaveLength(1);
+            const none = transfer({
+                "worker-1.json": worker({ protocol: undefined }),
+                "sync-1.json": pageExport("sync", { protocol: session }),
+            });
+            expect(none.status).toBe(1);
+            expect(none.stderr).toMatch(/worker-1\.json is not a session run \(no protocol record\)/);
             expect(none.stderr.trim().split("\n")).toHaveLength(1);
         });
 

@@ -429,6 +429,7 @@
       import {
         accountingError,
         clockResolution,
+        DEFAULT_TARGET_FILE,
         DEFINITIONS,
         frameRecord,
         framesForStage,
@@ -436,6 +437,7 @@
         parsePositiveInt,
         parseRunParams,
         percentile,
+        sessionRunGaps,
         sha256Hex,
         startRefusal,
         summarizeRun,
@@ -455,7 +457,7 @@
        * back to the defaults, so no export carries a label it did not run with.
        */
       const TUNING = parseRunParams(location.search, { bundledClips: [] });
-      const TARGET_PATH = `targets/${TUNING.targetFile ?? "pinball.wnft"}`;
+      const TARGET_PATH = TUNING.targetFile === null ? DEFAULT_TARGET_FILE : `targets/${TUNING.targetFile}`;
       const TARGET_FILE = `./${TARGET_PATH}`;
       /**
        * Where a run's detection runs (`?detection=`, DEFINITIONS.detectionPath):
@@ -663,6 +665,15 @@
       function showError(message) {
         errorEl.textContent = message;
         setStatusText("failed");
+      }
+
+      /**
+       * One line about a Download, where errors are shown, that leaves the
+       * status row as it was: the run ended as it ended (done, stopped or
+       * failed), and a driver reading the status must still read that.
+       */
+      function showNotice(message) {
+        errorEl.textContent = message;
       }
 
       function clearError() {
@@ -929,7 +940,9 @@
        * `process`, and the replies to other runs discarded while it was the
        * latest (`staleReplies`). `?loops=` and `?run=` are the run protocol's;
        * `clipDurationS`, `startedAtIso` and `endedAtIso` are set as it starts
-       * and ends; `failure` says why a run that could not go on stopped.
+       * and ends, and `endedBy` says how it ended: `done` (a `?loops=` run on
+       * its first frame after the counted loops), `stopped` (Stop) or `failed`;
+       * `failure` says why a run that could not go on stopped.
        */
       function newRun() {
         const worker = DETECTION_PATH === "worker";
@@ -948,6 +961,7 @@
           clipDurationS: null,
           startedAtIso: null,
           endedAtIso: null,
+          endedBy: null,
           failure: null,
         };
       }
@@ -977,9 +991,16 @@
         return DETECTION_PATH !== "worker" || (detectionWorker.worker !== null && detectionWorker.failure === null);
       }
 
-      /** Stops the live run: the Stop button's `stopped`, and `done` when a `?loops=` run ends itself. */
+      /**
+       * Stops the live run: the Stop button's `stopped`, `done` when a `?loops=`
+       * run ends itself, and `failRun`'s `failed` — the status, and the run's
+       * `endedBy`.
+       */
       function stopRun(status) {
-        if (liveRun) endRun(liveRun);
+        if (liveRun) {
+          liveRun.endedBy = status;
+          endRun(liveRun);
+        }
         stopLoop();
         stopSource();
         stopButton.disabled = true;
@@ -1505,6 +1526,33 @@
         ];
       }
 
+      /** The tracking state's options at the tracker's defaults: every one `?tracker=` may override (TUNABLE_TRACKER_OPTIONS). */
+      const TRACKER_DEFAULTS = Object.freeze({
+        maxFrameLevels: DEFAULT_MAX_FRAME_LEVELS,
+        alignMaxIterations: DEFAULT_ALIGN_MAX_ITERATIONS,
+        alignEpsilon: DEFAULT_ALIGN_EPSILON,
+        photometric: DEFAULT_PHOTOMETRIC,
+        tukeyC: DEFAULT_TUKEY_C,
+        fitMaxIterations: DEFAULT_FIT_MAX_ITERATIONS,
+        fitEpsilon: DEFAULT_FIT_EPSILON,
+        minTrackedPatches: DEFAULT_MIN_TRACKED_PATCHES,
+        maxOutlierShare: DEFAULT_MAX_OUTLIER_SHARE,
+        maxFitRms: DEFAULT_MAX_FIT_RMS,
+        minPatchZncc: DEFAULT_MIN_PATCH_ZNCC,
+      });
+
+      /**
+       * What a run with none of `?targetFile=`, `?tracker=`, `?maxKeypoints=`,
+       * `?procWidth=` and `?procHeight=` runs at, as `sessionRunGaps` reads it:
+       * a session's runs run at the page's defaults.
+       */
+      const PAGE_DEFAULTS = Object.freeze({
+        targetFile: DEFAULT_TARGET_FILE,
+        processingBox: Object.freeze({ width: PROC_WIDTH, height: PROC_HEIGHT }),
+        maxKeypoints: DEFAULT_MAX_SCENE_KEYPOINTS,
+        trackerOptions: TRACKER_DEFAULTS,
+      });
+
       /**
        * The tracker's options as this page runs it: its own defaults, which the
        * page does not override, except the scene keypoint budget. Recorded in
@@ -1518,17 +1566,7 @@
           maxSceneKeypoints: maxKeypoints,
           ratio: DEFAULT_RATIO,
           ransacThreshold: DEFAULT_RANSAC_THRESHOLD,
-          maxFrameLevels: DEFAULT_MAX_FRAME_LEVELS,
-          alignMaxIterations: DEFAULT_ALIGN_MAX_ITERATIONS,
-          alignEpsilon: DEFAULT_ALIGN_EPSILON,
-          photometric: DEFAULT_PHOTOMETRIC,
-          tukeyC: DEFAULT_TUKEY_C,
-          fitMaxIterations: DEFAULT_FIT_MAX_ITERATIONS,
-          fitEpsilon: DEFAULT_FIT_EPSILON,
-          minTrackedPatches: DEFAULT_MIN_TRACKED_PATCHES,
-          maxOutlierShare: DEFAULT_MAX_OUTLIER_SHARE,
-          maxFitRms: DEFAULT_MAX_FIT_RMS,
-          minPatchZncc: DEFAULT_MIN_PATCH_ZNCC,
+          ...TRACKER_DEFAULTS,
           ...TUNING.trackerOverrides,
         };
       }
@@ -1802,9 +1840,16 @@
           // How the run detected (detectionRecord); absent in exports older
           // than the worker path, which all detected on the frame loop.
           detection: run ? detectionRecord(run) : null,
-          // The run's place in the session's order (?run=) and its wall-clock
-          // start and end, for the thermal rule.
-          run: run ? { order: run.order, startedAtIso: run.startedAtIso, endedAtIso: run.endedAtIso } : null,
+          // The run's place in the session's order (?run=), its wall-clock
+          // start and end, for the thermal rule, and how it ended: done,
+          // stopped or failed.
+          run: run
+            ? { order: run.order, startedAtIso: run.startedAtIso, endedAtIso: run.endedAtIso, endedBy: run.endedBy }
+            : null,
+          // Whether the run followed the session's protocol, and what keeps it
+          // from it (sessionRunGaps, DEFINITIONS.protocol): set below, from
+          // this record.
+          protocol: null,
           // ?loops=: the counted loops runSummary reads, loop 0 being the
           // warm-up; null for a run that set none. clipDurationS: the clip's
           // duration, null for a webcam.
@@ -1847,7 +1892,12 @@
           definitions: DEFINITIONS,
           frames: history,
         };
+        const gaps = sessionRunGaps(payload, PAGE_DEFAULTS);
+        payload.protocol = { sessionRun: gaps.length === 0, gaps };
         saveJson(payload, `bench-nft-${payload.mode}-${deviceSlug()}-${Date.now()}.json`);
+        // An exploratory run is exported all the same, and says what keeps it
+        // from being a session's, without touching the status row.
+        if (gaps.length > 0) showNotice(`Exported; not a session run: ${gaps.join("; ")}`);
       }
 
       /**

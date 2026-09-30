@@ -68,7 +68,8 @@
  *   export and the header record its path and SHA-256.
  * - `--options k:v,…`: tracker option overrides, the page's `?tracker=` syntax
  *   (`parseTrackerOverrides`), applied to every run. Not with `--sequence`,
- *   which runs the export's own options.
+ *   which runs the export's own options, nor with `--transfer`, which replays
+ *   a session's runs, all at the tracker's defaults.
  * - `--seed <n>`: `Math.random` seeded (mulberry32) at the start of every run,
  *   so RANSAC draws in the detections repeat, and a candidate's run differs
  *   from the baseline's by the candidate, not by the draws — until the two
@@ -157,10 +158,14 @@
  * refused (exit 1), before any clip is decoded; so is a worker export whose
  * detection accounting does not hold (`accountingError`, which the page
  * checked before exporting it) or that records none — a session holding an
- * invalid run is an invalid session, not a file to skip. Prints, per clip,
- * each arm's `trackTimeShare` and the difference, worker minus sync, in
- * points. Not with `--external`, `--sequence` or `--device-ratio`;
- * `--tracking-only` has nothing to skip.
+ * invalid run is an invalid session, not a file to skip — and an export of
+ * either path that the page did not record as a session run
+ * (`protocol.sessionRun`, `sessionRunGaps`), named with its gaps, or that has
+ * no protocol record. Prints, per clip, each arm's `trackTimeShare` and the
+ * difference, worker minus sync, in points. Not with `--external`,
+ * `--sequence`, `--device-ratio` or `--options`: the session ran the
+ * tracker's defaults, and the transfer replays what it ran; `--tracking-only`
+ * has nothing to skip.
  *
  * The transfer explains a device result and weighs in when the table clip is
  * inconclusive; it never overrides the device. Both modes run as external
@@ -314,6 +319,8 @@ if (TRANSFER_DIR !== null) {
             "--transfer replays the bundled clips with a session's latencies; --sequence replays one export's frames: the two cannot be combined",
         "--device-ratio":
             "--transfer steps by the session's own trackStepMs; --device-ratio scales the desktop's: the two cannot be combined",
+        "--options":
+            "--transfer replays what the session ran, the tracker at its defaults; --options would change them: the two cannot be combined",
     };
     for (const [flag, why] of Object.entries(other)) if (arg(flag) !== null) usage(why);
 }

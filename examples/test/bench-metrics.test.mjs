@@ -58,6 +58,7 @@ import {
     reprojectCorners,
     sequenceRefusal,
     sequenceSettings,
+    sessionRunGaps,
     sha256Hex,
     startRefusal,
     stats,
@@ -1631,6 +1632,41 @@ describe("summarizeRun", () => {
         expect(warmUp.detectionTime.offLoop.msPerVideoSecond).toBeNull();
     });
 
+    // A summary of a window smaller than the run read every job of the run against the window's
+    // frames: a detection posted from a frame the window no longer holds was in its latency.
+    it("reads only the jobs posted from the frames it summarizes, with or without loops", () => {
+        const rec = (timestampMs) => ({
+            state: "LOST",
+            ok: false,
+            reason: "no-detection",
+            timestampMs,
+            mediaTimeSeconds: timestampMs / 1000,
+            timings: { total: 30, acquire: 28, gray: 1.5 },
+            quality: null,
+            trackLoss: null,
+            tracking: null,
+            trackerTimings: null,
+            corners: null,
+            detectionUse: "none",
+            detectionInFlight: false,
+            detectedAt: null,
+        });
+        // The window: the run's last three frames. One job was posted from a frame before it.
+        const windowFrames = [rec(1000), rec(1100), rec(1200)];
+        const job = (frameTimestampMs, workerTotal, handlerMs) => ({
+            frameTimestampMs,
+            postedAtMs: frameTimestampMs + 5,
+            arrivedAtMs: frameTimestampMs + 5 + workerTotal + 10,
+            handlerMs,
+            workerMs: { total: workerTotal },
+        });
+        const jobs = [job(500, 70, 0.5), job(1100, 80, 0.25)];
+        const t = summarizeRun(windowFrames, { jobs }).detectionTime;
+        expect(t.offLoop.workerMs).toEqual(stats([80]));
+        expect(t.onLoop.handlerMs).toEqual(stats([0.25]));
+        expect(t.postToArrivalMs).toEqual(stats([90]));
+    });
+
     it("carries the accounting and its error in the summary", () => {
         const balanced = {
             requests: 5,
@@ -2271,15 +2307,140 @@ describe("the review's fixes", () => {
     });
 });
 
+describe("sessionRunGaps: what keeps an export from being a session run", () => {
+    // The page's defaults, as the page passes them: test values here, each tunable option given
+    // one, so an override of any of them shows.
+    const DEFAULTS = Object.freeze({
+        targetFile: "targets/pinball.wnft",
+        processingBox: { width: 480, height: 360 },
+        maxKeypoints: 300,
+        trackerOptions: Object.fromEntries(TUNABLE_TRACKER_OPTIONS.map((k, i) => [k, i + 1])),
+    });
+    const BALANCED = { requests: 4, posted: 3, consumptions: 2, ignored: 0, dropped: 1, discardedAtStop: 1 };
+    // A worker run of the session: every field the protocol reads, at what it asks.
+    const sessionExport = (o = {}) => ({
+        mode: "tracking",
+        source: "bundled",
+        bundledClip: "pinball-bench.mp4",
+        loops: { firstLoop: 1, loopCount: 4 },
+        run: {
+            order: 2,
+            startedAtIso: "2026-10-01T10:00:00.000Z",
+            endedAtIso: "2026-10-01T10:01:00.000Z",
+            endedBy: "done",
+        },
+        ticks: 1512,
+        windowSize: 1512,
+        runSummary: { trackTimeShare: { share: 0.4, perLoop: [0.4, 0.4, 0.4, 0.4], complete: true } },
+        detection: { path: "worker", accounting: { ...BALANCED } },
+        target: { source: "wnft", file: "targets/pinball.wnft", sha256: "9e8eb486" },
+        tracker: {
+            detectionOnly: false,
+            options: { detectionOnly: false, externalDetection: true, ...DEFAULTS.trackerOptions },
+        },
+        maxKeypoints: 300,
+        processingBox: { width: 480, height: 360 },
+        ...o,
+    });
+    const syncExport = (o = {}) =>
+        sessionExport({ detection: { path: "sync", accounting: null }, ...o });
+    const statelessExport = (o = {}) =>
+        sessionExport({
+            mode: "stateless",
+            tracker: null,
+            detection: { path: "sync", accounting: null },
+            runSummary: { trackTimeShare: { share: 0, complete: true } },
+            ...o,
+        });
+
+    it("finds none in a session's worker, synchronous and stateless runs", () => {
+        expect(sessionRunGaps(sessionExport(), DEFAULTS)).toEqual([]);
+        expect(sessionRunGaps(syncExport(), DEFAULTS)).toEqual([]);
+        expect(sessionRunGaps(statelessExport(), DEFAULTS)).toEqual([]);
+        // A stateless run has no lock to read over whole loops.
+        const unlocked = { trackTimeShare: { share: null, complete: false } };
+        expect(sessionRunGaps(statelessExport({ runSummary: unlocked }), DEFAULTS)).toEqual([]);
+    });
+
+    const run = (o) => ({ ...sessionExport().run, ...o });
+    const options = (o) => ({ ...sessionExport().tracker, options: { ...sessionExport().tracker.options, ...o } });
+    it.each([
+        ["a detection-only run", { mode: "detection-only" }, /^mode detection-only: /],
+        ["a webcam run", { source: "webcam", bundledClip: null }, /^source webcam: /],
+        ["a bundled run that names no clip", { bundledClip: null }, /^source bundled.*no clip/],
+        ["a run with no counted loops", { loops: null }, /^loops none: .*\?loops=4/],
+        ["a run of one counted loop", { loops: { firstLoop: 1, loopCount: 1 } }, /^loops 1–1: /],
+        ["a run with no place in the order", { run: run({ order: null }) }, /^run\.order none: .*\?run=/],
+        ["a run whose order is not a positive integer", { run: run({ order: 0 }) }, /^run\.order 0: /],
+        ["a run stopped by hand", { run: run({ endedBy: "stopped" }) }, /^run\.endedBy stopped: /],
+        ["a run that failed", { run: run({ endedBy: "failed" }) }, /^run\.endedBy failed: /],
+        ["an export that says nothing of its end", { run: run({ endedBy: undefined }) }, /^run\.endedBy none: /],
+        ["a window that lost frames", { windowSize: 1200 }, /^the window kept 1200 of 1512 frames: /],
+        [
+            "a tracking run whose lock was not read over whole loops",
+            { runSummary: { trackTimeShare: { share: null, complete: false } } },
+            /^trackTimeShare is not complete: /,
+        ],
+        [
+            "a worker run whose accounting does not balance",
+            { detection: { path: "worker", accounting: { ...BALANCED, requests: 5 } } },
+            /does not balance: requests 5/,
+        ],
+        [
+            "a worker run with no accounting",
+            { detection: { path: "worker", accounting: null } },
+            /^detection accounting none: /,
+        ],
+        [
+            "a candidate target (?targetFile=)",
+            { target: { source: "wnft", file: "targets/tuning/p32-s16.wnft" } },
+            /^target targets\/tuning\/p32-s16\.wnft: .*targets\/pinball\.wnft/,
+        ],
+        [
+            "the image target built in the page",
+            { target: { source: "image", file: "images/pinball.jpg" } },
+            /^target images\/pinball\.jpg: /,
+        ],
+        [
+            "a tracker option override (?tracker=)",
+            { tracker: options({ minTrackedPatches: 42 }) },
+            /^tracker option minTrackedPatches 42, not its default 8: /,
+        ],
+        ["a tracking run with no tracker options", { tracker: null }, /^tracker options none: /],
+        ["another scene keypoint budget", { maxKeypoints: 150 }, /^maxKeypoints 150, not the page's default 300/],
+        [
+            "another processing box",
+            { processingBox: { width: 360, height: 360 } },
+            /^processingBox 360×360, not the page's default 480×360/,
+        ],
+    ])("names %s, and only that, in one line", (_, o, why) => {
+        const gaps = sessionRunGaps(sessionExport(o), DEFAULTS);
+        expect(gaps).toHaveLength(1);
+        expect(gaps[0]).toMatch(why);
+        expect(gaps[0]).not.toMatch(/\n/);
+    });
+
+    it("names every gap of an export that has several", () => {
+        const gaps = sessionRunGaps(
+            syncExport({ run: run({ endedBy: "stopped", order: null }), maxKeypoints: 150 }),
+            DEFAULTS,
+        );
+        expect(gaps).toHaveLength(3);
+    });
+});
+
 describe("transferPlan: what --transfer reads from a session's page exports", () => {
     const CLIPS = ["pinball-static.mp4", "pinball-bench.mp4", "pinball-bench-table.mp4"];
     const SHA = "ab";
     const frame = (state, timings, o = {}) => ({ state, ok: state !== "LOST", timings, ...o });
+    // What the page records of a run that followed the session's protocol (sessionRunGaps).
+    const SESSION_RUN = Object.freeze({ sessionRun: true, gaps: [] });
     const pageExport = (path, frames, o = {}) => ({
         mode: "tracking",
         source: "bundled",
         bundledClip: "pinball-bench.mp4",
         target: { sha256: SHA },
+        protocol: SESSION_RUN,
         ...(path === null ? {} : { detection: { path, jobs: [] } }),
         frames,
         ...o,
@@ -2398,10 +2559,13 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
         const older = pageExport(
             null,
             syncFrames().map(({ detectionUse, ...rest }) => rest),
+            { protocol: undefined },
         );
         expect(exportDetectionPath(older)).toBe("sync");
         expect(exportDetectionPath(workerExport())).toBe("worker");
-        const p = plan([workerExport(), older]);
+        // Older than the protocol record too, so no session's: it is refused (below). Given one,
+        // its frames are read on M2's rule.
+        const p = plan([workerExport(), { ...older, protocol: SESSION_RUN }]);
         expect(p.refusal).toBeNull();
         expect(p.clips[0].sync.latencyMs).toEqual([69, 80]);
     });
@@ -2461,22 +2625,14 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
         ]);
     });
 
-    it("accepts a sync export with no accounting, an older one with no detection record too", () => {
+    it("accepts a sync export with no accounting", () => {
         // Only a worker run keeps an accounting: the page exports `accounting: null` for a
         // synchronous one.
         const sync = pageExport("sync", syncFrames());
         sync.detection.accounting = null;
-        const older = pageExport(
-            null,
-            syncFrames().map(({ detectionUse, ...rest }) => rest),
-        );
-        const p = plan([workerExport(), sync, pageExport("sync", syncFrames()), older]);
+        const p = plan([workerExport(), sync, pageExport("sync", syncFrames())]);
         expect(p.refusal).toBeNull();
-        expect(p.clips[0].sync.files).toEqual([
-            "export-1.json",
-            "export-2.json",
-            "export-3.json",
-        ]);
+        expect(p.clips[0].sync.files).toEqual(["export-1.json", "export-2.json"]);
     });
 
     describe("refuses, in one line, and names what it found", () => {
@@ -2564,6 +2720,55 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
                 pageExport("sync", syncFrames(), { target: { sha256: "cd" } }),
             ]);
             expect(r).toMatch(/sha256 cd/);
+        });
+
+        // A session's runs are read, and only those: an export the page did not record as a
+        // session run, of either path, is refused with the gaps the page recorded.
+        it.each(["worker", "sync"])(
+            "refuses a %s export that is not a session run, naming the file and its gaps",
+            (path) => {
+                const notSession = {
+                    sessionRun: false,
+                    gaps: ["run.endedBy stopped: by hand", "maxKeypoints 150, not the default"],
+                };
+                const worker = workerExport(path === "worker" ? { protocol: notSession } : {});
+                const sync = pageExport(
+                    "sync",
+                    syncFrames(),
+                    path === "sync" ? { protocol: notSession } : {},
+                );
+                const r = refusal([worker, sync]);
+                expect(r).toMatch(/pinball-bench\.mp4/);
+                expect(r).toMatch(path === "worker" ? /export-0\.json/ : /export-1\.json/);
+                expect(r).toMatch(
+                    /is not a session run: run\.endedBy stopped: by hand; maxKeypoints 150, not the default$/,
+                );
+            },
+        );
+
+        it("refuses an export with no protocol record, an older one among them", () => {
+            for (const sync of [
+                pageExport("sync", syncFrames(), { protocol: undefined }),
+                pageExport(null, syncFrames().map(({ detectionUse, ...rest }) => rest), {
+                    protocol: undefined,
+                }),
+            ]) {
+                expect(refusal([workerExport(), sync])).toMatch(
+                    /export-1\.json is not a session run \(no protocol record\)$/,
+                );
+            }
+            expect(refusal([workerExport({ protocol: null }), pageExport("sync", syncFrames())])).toMatch(
+                /export-0\.json is not a session run \(no protocol record\)$/,
+            );
+        });
+
+        it("reads a worker export's accounting before its protocol record", () => {
+            // Both faults: the accounting, which the spec asks to be checked again, is named.
+            const worker = workerExport({
+                protocol: undefined,
+                detection: { ...workerExport().detection, accounting: { ...BALANCED, requests: 5 } },
+            });
+            expect(refusal([worker, pageExport("sync", syncFrames())])).toMatch(/does not balance/);
         });
 
         it("reads a worker export's accounting before what its modes give", () => {
