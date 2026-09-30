@@ -376,8 +376,12 @@ the post — stops the run with the error, and that run is not exported: reload
 the page to run again.
 
 A worker run's export adds `detection`: its `path`, `policy`,
-`workerBundleSha256`, `accounting`, `staleReplies` (replies to an earlier run
-that arrived after it ended, discarded rather than handed in) and `jobs`, one
+`workerBundleSha256`, `accounting`, `staleReplies` (the worker's replies to
+this run's own jobs that arrived after it ended — each a job it discarded at
+its end, so never more than `discardedAtStop` — discarded rather than handed
+in, counted on this run whenever they arrive, between runs or during a later
+run, and exported as the count stood when the export was taken; the routing
+is `js/detection-replies.mjs`) and `jobs`, one
 per detection posted — `jobId`, `runId`, the posting frame's `tick` (its index
 since Start), `frameTimestampMs` (that frame's `timestampMs`) and
 `frameMediaTimeSeconds`; `postedAtMs` and `arrivedAtMs`, on the main thread's

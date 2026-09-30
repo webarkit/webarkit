@@ -426,6 +426,7 @@
       import { toGrayTimed } from "./js/pinball-shared.mjs";
       import { instrumentBackend } from "./js/instrument-backend.mjs";
       import { createDetectionPolicy } from "./js/detection-policy.mjs";
+      import { countLateReply, routeReply } from "./js/detection-replies.mjs";
       import {
         accountingError,
         clockResolution,
@@ -639,15 +640,15 @@
       /**
        * Runs, as `newRun` makes them. `lastRun` is the one whose frames are in
        * `history`, committed at Start with the other `last*` fields and exported
-       * with them. `latestRun` is the one the last Start click made, before its
-       * source has started: a worker's reply to any other run is counted against
-       * it (`staleReplies`). `liveRun` is the run whose frames are being
-       * processed, the only one a reply is handed to; `null` between runs.
+       * with them. `liveRun` is the run whose frames are being processed, the
+       * only one a reply is handed to; `null` between runs. `runs` holds every
+       * run the page has made, by id: a worker's reply names its run, and a late
+       * one is counted on that run (`routeReply`, `staleReplies`).
        */
       let lastRun = null;
-      let latestRun = null;
       let liveRun = null;
       let runSeq = 0;
+      const runs = new Map();
       /**
        * The detection worker, in worker mode: the `Worker`, its bundle's SHA-256,
        * the options of the last `init` sent, that `init`'s promise and, while it
@@ -936,8 +937,9 @@
        * the run it answers), the detection path, and in a worker run its own
        * policy (`createDetectionPolicy`), its jobs (one per detection posted:
        * `postDetection`), which job is at the worker, held or handed to
-       * `process`, and the replies to other runs discarded while it was the
-       * latest (`staleReplies`). `?loops=` and `?run=` are the run protocol's;
+       * `process`, and the replies to its own jobs that arrived after it ended,
+       * discarded (`staleReplies`), counted whenever they arrive. It is kept in
+       * `runs` by its id. `?loops=` and `?run=` are the run protocol's;
        * `clipDurationS`, `startedAtIso` and `endedAtIso` are set as it starts
        * and ends, and `endedBy` says how it ended: `done` (a `?loops=` run on
        * its first frame after the counted loops), `stopped` (Stop) or `failed`;
@@ -945,7 +947,7 @@
        */
       function newRun() {
         const worker = DETECTION_PATH === "worker";
-        return {
+        const run = {
           id: ++runSeq,
           path: DETECTION_PATH,
           policy: worker ? createDetectionPolicy() : null,
@@ -963,6 +965,8 @@
           endedBy: null,
           failure: null,
         };
+        runs.set(run.id, run);
+        return run;
       }
 
       /**
@@ -1343,42 +1347,34 @@
       }
 
       /**
-       * The worker's replies. `ready`, and an `error` that names no job, answer
-       * the `init` in progress. A `result` or an `error` is the live run's only
-       * when it names the live run; any other answers a run that has ended, and
-       * is discarded, never handed in. One to an earlier run is counted against
-       * the latest (`staleReplies`); one to the latest run's own job, which that
-       * run's end discarded, is already counted there (`discardedAtStop`). The
-       * handler runs between frames, on the main thread, so it is detection's
-       * time too: timed into the job's `handlerMs` from its first line, before
-       * `data` is read, which is where a reply is deserialised.
+       * The worker's replies, routed by `routeReply` (js/detection-replies.mjs):
+       * `ready`, and an `error` that names no job, answer the `init` in
+       * progress; a `result` for the live run's job in flight is held for the
+       * next frame; a reply to a job a run discarded at its end is that run's
+       * stale reply, counted on it whenever it arrives — between runs or during
+       * a later run — and never handed in; anything else fails the worker (and
+       * the live run). The handler runs between frames, on the main thread, so
+       * it is detection's time too: timed into the job's `handlerMs` from its
+       * first line, before `data` is read, which is where a reply is
+       * deserialised.
        */
       function onWorkerMessage(event) {
         const arrivedAtMs = performance.now();
         const data = event.data;
-        const type = data?.type;
-        if (type === "ready" || (type === "error" && data.jobId === undefined)) {
+        const route = routeReply(data, { liveRunId: liveRun?.id ?? null, runsById: runs });
+        if (route.kind === "init") {
           settleInit(data);
           return;
         }
-        if (type !== "result" && type !== "error") {
-          workerFailed(`The detection worker sent a message of an unknown type: ${String(type)}.`);
+        if (route.kind === "late") {
+          countLateReply(route);
           return;
         }
-        const run = liveRun;
-        if (run === null || data.runId !== run.id) {
-          if (latestRun && data.runId !== latestRun.id) latestRun.staleReplies++;
+        if (route.kind === "fail") {
+          workerFailed(route.message);
           return;
         }
-        if (type === "error") {
-          failRun(run, `The detection worker could not detect on job ${data.jobId}: ${data.message}`);
-          return;
-        }
-        const job = run.jobInFlight;
-        if (job === null || job.jobId !== data.jobId) {
-          failRun(run, `The detection worker answered job ${data.jobId}, while ${job ? `job ${job.jobId}` : "no job"} was in flight.`);
-          return;
-        }
+        const { run, job } = route;
         clearTimeout(run.replyTimer);
         run.replyTimer = null;
         job.arrivedAtMs = arrivedAtMs;
@@ -1782,7 +1778,9 @@
           workerBundleSha256: worker ? detectionWorker.bundleSha256 : null,
           jobs: run.jobs,
           accounting: worker ? run.policy.accounting() : null,
-          // Replies to other runs, discarded while this one was the latest: never handed in.
+          // Replies to this run's own jobs that arrived after it ended, discarded
+          // and never handed in (DEFINITIONS.staleReplies): the count as it
+          // stands now, when the export is taken.
           staleReplies: worker ? run.staleReplies : null,
         };
       }
@@ -2060,10 +2058,7 @@
             return;
           }
           startButton.disabled = true;
-          // Made before anything waits, so a worker's reply to the run before
-          // this one is counted against this one from the click on.
           const run = newRun();
-          latestRun = run;
           // Read once, before the source starts: the worker's `init` must be
           // for the budget the tracker runs.
           const maxKeypoints = readMaxKeypoints();
@@ -2071,7 +2066,6 @@
             try {
               await workerReady(maxKeypoints);
             } catch (e) {
-              latestRun = lastRun;
               showError(e.message);
               return;
             }
@@ -2141,7 +2135,6 @@
             run.startedAtIso = new Date().toISOString();
             runBenchmark(cv, target.db, mode, windowSize, maxKeypoints, box, run);
           } catch (e) {
-            if (lastRun !== run) latestRun = lastRun;
             if (liveRun) endRun(liveRun);
             const src = currentSource();
             // A failed worker keeps Start disabled (`startAllowed`): the source's hints would mislead.
