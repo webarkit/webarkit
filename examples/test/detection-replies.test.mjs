@@ -43,7 +43,13 @@ const newRun = (id) => ({
 function post(run) {
     let job = null;
     run.policy.afterProcess({ needsDetection: true, detectionUse: "none" }, () => {
-        job = { jobId: run.jobs.length + 1, runId: run.id, arrivedAtMs: null, outcome: null };
+        job = {
+            jobId: run.jobs.length + 1,
+            runId: run.id,
+            arrivedAtMs: null,
+            outcome: null,
+            lateReplyAtMs: null,
+        };
         run.jobs.push(job);
         run.jobInFlight = job;
     });
@@ -95,11 +101,34 @@ describe("routeReply", () => {
         const job = post(a);
         end(a);
         const route = routeReply(result(a, job), { liveRunId: null, runsById: byId(a) });
-        expect(route).toMatchObject({ kind: "late", run: a });
-        countLateReply(route);
+        expect(route).toMatchObject({ kind: "late", run: a, job });
+        countLateReply(route, 812.5);
         expect(a.staleReplies).toBe(1);
+        // The job is marked with the late reply's arrival, on the main thread's clock.
+        expect(job.lateReplyAtMs).toBe(812.5);
         // Never more than the jobs it discarded at its end.
         expect(a.staleReplies).toBeLessThanOrEqual(a.policy.accounting().discardedAtStop);
+    });
+
+    // Review M1: countLateReply never marked the job, so a duplicated reply was counted twice,
+    // and staleReplies could exceed discardedAtStop.
+    it("fails a second reply to a job whose late reply was counted", () => {
+        const a = newRun(1);
+        const job = post(a);
+        end(a);
+        countLateReply(routeReply(result(a, job), { liveRunId: null, runsById: byId(a) }), 812.5);
+        const again = routeReply(result(a, job), { liveRunId: null, runsById: byId(a) });
+        expect(again).toMatchObject({ kind: "fail", run: a });
+        expect(again.message).toMatch(/job 1 of run 1/);
+        expect(again.message).not.toMatch(/\n/);
+        expect(a.staleReplies).toBe(1);
+        // A late reply is counted with its arrival, or not at all.
+        const b = newRun(2);
+        const other = post(b);
+        end(b);
+        const late = routeReply(result(b, other), { liveRunId: null, runsById: byId(b) });
+        expect(() => countLateReply(late, undefined)).toThrow(TypeError);
+        expect(b.staleReplies).toBe(0);
     });
 
     it("routes it late during a later run too, counted on the run it names, the live run's record untouched", () => {
@@ -109,18 +138,18 @@ describe("routeReply", () => {
         const b = newRun(2);
         post(b);
         const bBefore = structuredClone({ jobs: b.jobs, staleReplies: b.staleReplies });
-        const route = routeReply(result(a, discarded), { liveRunId: b.id, runsById: byId(a, b) });
-        expect(route).toMatchObject({ kind: "late", run: a });
-        countLateReply(route);
-        expect(a.staleReplies).toBe(1);
-        expect(b.staleReplies).toBe(0);
-        expect({ jobs: b.jobs, staleReplies: b.staleReplies }).toEqual(bBefore);
         // An error the worker sends for the discarded job is a reply to it too.
         const error = { type: "error", runId: a.id, jobId: discarded.jobId, message: "late" };
         expect(routeReply(error, { liveRunId: b.id, runsById: byId(a, b) })).toMatchObject({
             kind: "late",
             run: a,
         });
+        const route = routeReply(result(a, discarded), { liveRunId: b.id, runsById: byId(a, b) });
+        expect(route).toMatchObject({ kind: "late", run: a });
+        countLateReply(route, 900);
+        expect(a.staleReplies).toBe(1);
+        expect(b.staleReplies).toBe(0);
+        expect({ jobs: b.jobs, staleReplies: b.staleReplies }).toEqual(bBefore);
     });
 
     it("fails a reply that names a run the page never had", () => {
@@ -154,8 +183,15 @@ describe("routeReply", () => {
         const b = newRun(2);
         post(b);
         const before = [a.policy.accounting(), b.policy.accounting()];
-        countLateReply(routeReply(result(a, discarded), { liveRunId: b.id, runsById: byId(a, b) }));
-        countLateReply(routeReply(result(a, discarded), { liveRunId: null, runsById: byId(a, b) }));
+        // The same reply twice, once during B and once between runs, handled as the page handles
+        // a route: counted when it is late.
+        const routes = [b.id, null].map((liveRunId, i) => {
+            const route = routeReply(result(a, discarded), { liveRunId, runsById: byId(a, b) });
+            if (route.kind === "late") countLateReply(route, 900 + i);
+            return route.kind;
+        });
+        expect(a.staleReplies).toBeLessThanOrEqual(a.policy.accounting().discardedAtStop);
+        expect(routes).toEqual(["late", "fail"]);
         expect([a.policy.accounting(), b.policy.accounting()]).toEqual(before);
     });
 

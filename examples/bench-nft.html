@@ -1376,7 +1376,7 @@
           return;
         }
         if (route.kind === "late") {
-          countLateReply(route);
+          countLateReply(route, arrivedAtMs);
           return;
         }
         if (route.kind === "fail") {
@@ -1462,6 +1462,8 @@
           workerMs: null,
           consumedAtTick: null,
           outcome: null,
+          // When a reply to this job came after its run ended (countLateReply), or null.
+          lateReplyAtMs: null,
           frameTimestampMs: t0,
           frameMediaTimeSeconds: mediaTimeSeconds,
         };

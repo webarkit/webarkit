@@ -52,14 +52,16 @@
  *   the page holds its detection for the next frame.
  * - `{ kind: "late", run, job }`: a `result` or an `error` for a job of `run`,
  *   a run that has ended, which it discarded unanswered at its end (the job's
- *   `outcome` is `discardedAtStop` and it has no arrival); counted on `run`
- *   (`countLateReply`), handed to nothing.
+ *   `outcome` is `discardedAtStop` and it has no arrival), and whose late reply
+ *   has not been counted yet (no `lateReplyAtMs`); counted on `run`
+ *   (`countLateReply`), handed to nothing. One per discarded job, so a run's
+ *   `staleReplies` never exceeds its `discardedAtStop`.
  * - `{ kind: "fail", run, message }`: anything else, which the worker cannot
  *   have meant, with one line saying what: a message of an unknown type; an
  *   `error` for the live run's job; a `result` for the live run that is not its
- *   job in flight; a reply naming a run the page never had, or a job an ended
- *   run did not discard unanswered. `run` is the run it names, when the page
- *   has it.
+ *   job in flight; a reply naming a run the page never had, a job an ended run
+ *   did not discard unanswered, or one whose late reply was already counted.
+ *   `run` is the run it names, when the page has it.
  */
 export function routeReply(data, { liveRunId, runsById }) {
     const type = data?.type;
@@ -95,13 +97,25 @@ export function routeReply(data, { liveRunId, runsById }) {
             `The detection worker answered job ${data.jobId} of run ${run.id}, which ended with no such job unanswered.`,
         );
     }
+    if (job.lateReplyAtMs != null) {
+        return fail(
+            run,
+            `The detection worker answered job ${data.jobId} of run ${run.id} a second time after the run ended.`,
+        );
+    }
     return { kind: "late", run, job };
 }
 
 /**
  * Counts a `late` route's reply on the run it names (`staleReplies`), whenever
- * it arrives: never on another run, and never in any run's accounting.
+ * it arrives — never on another run, and never in any run's accounting — and
+ * marks its job with the reply's arrival (`lateReplyAtMs`, on the main
+ * thread's clock), so that a second reply to it is no longer `late`.
  */
-export function countLateReply(route) {
+export function countLateReply(route, arrivedAtMs) {
+    if (!Number.isFinite(arrivedAtMs)) {
+        throw new TypeError(`countLateReply needs the reply's arrival time, got ${String(arrivedAtMs)}`);
+    }
+    route.job.lateReplyAtMs = arrivedAtMs;
     route.run.staleReplies++;
 }

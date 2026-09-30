@@ -382,17 +382,20 @@ session run.
 
 A worker run's export adds `detection`: its `path`, `policy`,
 `workerBundleSha256`, `accounting`, `staleReplies` (the worker's replies to
-this run's own jobs that arrived after it ended — each a job it discarded at
-its end, so never more than `discardedAtStop` — discarded rather than handed
-in, counted on this run whenever they arrive, between runs or during a later
-run, and exported as the count stood when the export was taken; the routing
-is `js/detection-replies.mjs`) and `jobs`, one
+this run's own jobs that arrived after it ended — one per job it discarded at
+its end, so never more than `discardedAtStop`; a second reply to such a job
+fails the worker — discarded rather than handed in, counted on this run
+whenever they arrive, between runs or during a later run, and exported as the
+count stood when the export was taken; the routing is
+`js/detection-replies.mjs`) and `jobs`, one
 per detection posted — `jobId`, `runId`, the posting frame's `tick` (its index
 since Start), `frameTimestampMs` (that frame's `timestampMs`) and
 `frameMediaTimeSeconds`; `postedAtMs` and `arrivedAtMs`, on the main thread's
 clock; `handlerMs`, the time of the handler that received the result;
 `workerMs`, the worker's stage times and `total`, on its own clock;
-`consumedAtTick`, and `outcome` (`consumed`, `ignored` or `discardedAtStop`).
+`consumedAtTick`, and `outcome` (`consumed`, `ignored` or `discardedAtStop`);
+and `lateReplyAtMs`, when a reply to a job discarded at the run's end arrived,
+on the main thread's clock, or `null`.
 A job that never got a reply has `null` arrival, handler and worker times. The
 accounting is asserted, not described: `requests = consumptions + dropped +
 discardedAtStop`, and `ignored = 0` (`DEFINITIONS.detectionAccounting`).
