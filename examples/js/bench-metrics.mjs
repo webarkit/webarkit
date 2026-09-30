@@ -108,6 +108,18 @@ export function reprojectCorners(H, points) {
  * `maxKeypoints`, fewer on a frame with fewer corners — `match` is a
  * brute-force search over these, so a `match` timing means nothing without
  * it — and 0 on a TRACK frame, where nothing is detected.
+ *
+ * What became of detection on the frame (`DEFINITIONS.detectionUse`) is
+ * `needsDetection`, `detectionUse` and `detectionLatencyMs`, copied from the
+ * tracker's result (`false`, `null` and `null` where it has none: the older
+ * trackers, and the stateless pipeline), `detectionInFlight` from `detection`,
+ * and `detectedAt`. `detection` is what the page knows that the result does
+ * not, and only a worker run has any: `{ inFlight, detectedAt }`, whether a
+ * detection was in flight when the frame was processed, and the frame a
+ * detection handed to `process` was computed on. `detectedAt` names the frame
+ * the used detection was computed on — `detection.detectedAt`, copied, for a
+ * consumed one; this frame, with `framesAgo: 0`, when the tracker detected on
+ * it — and is `null` when no detection was used.
  */
 export function frameRecord({
     mode,
@@ -116,8 +128,21 @@ export function frameRecord({
     timestampMs,
     mediaTimeSeconds,
     targetPoints,
+    detection = null,
 }) {
     const tracker = mode !== "stateless";
+    const detectionUse = result.detectionUse ?? null;
+    let detectedAt = null;
+    if (detectionUse === "internal") {
+        detectedAt = { timestampMs, mediaTimeSeconds, framesAgo: 0 };
+    } else if (detectionUse === "consumed" && detection?.detectedAt) {
+        const at = detection.detectedAt;
+        detectedAt = {
+            timestampMs: at.timestampMs,
+            mediaTimeSeconds: at.mediaTimeSeconds,
+            framesAgo: at.framesAgo,
+        };
+    }
     return {
         timestampMs,
         mediaTimeSeconds,
@@ -132,6 +157,11 @@ export function frameRecord({
         trackLoss: tracker ? result.trackLoss : null,
         tracking: tracker && result.tracking ? { ...result.tracking } : null,
         trackerTimings: tracker && result.timings ? { ...result.timings } : null,
+        needsDetection: tracker ? (result.needsDetection ?? false) : false,
+        detectionUse,
+        detectionLatencyMs: result.detectionLatencyMs ?? null,
+        detectionInFlight: detection?.inFlight ?? false,
+        detectedAt,
         corners: result.ok ? reprojectCorners(result.H, targetPoints) : null,
     };
 }
@@ -140,13 +170,19 @@ export function frameRecord({
  * The frames on which `stage` ran, so its percentiles are taken over frames
  * that paid for it, not diluted by frames where it was skipped and its timing
  * stayed at zero. Detection (`detect`, `describe`, `match`, `filterMatches`)
- * runs on every frame that is not TRACK — a lock that fails is detected again
- * on the same frame; `estimateHomography` on the detections that found four
- * matches; the pose on every frame with one, TRACK included; `acquire`,
- * `gray` and `total` on every frame.
+ * runs on the frames that ran the tracker's own detection
+ * (`detectionUse: "internal"`): a lock that fails is detected again on the same
+ * frame, and a frame a worker's detection was handed to, or that waited for
+ * one, ran none. A frame without a `detectionUse` — an export older than the
+ * field, or the stateless pipeline's, which records `null` — is read as M2's
+ * tracker read it: it detected on every frame that is not TRACK.
+ * `estimateHomography` runs on the detections that found four matches; the
+ * pose on every frame with one, TRACK included; `acquire`, `gray` and `total`
+ * on every frame.
  */
 export function framesForStage(frames, stage) {
-    const detected = (f) => f.state !== "TRACK";
+    const detected = (f) =>
+        f.detectionUse == null ? f.state !== "TRACK" : f.detectionUse === "internal";
     switch (stage) {
         case "detect":
         case "describe":
@@ -234,6 +270,8 @@ export const DEFINITIONS = Object.freeze({
         "The run's detection path, from ?detection=. sync: the tracker detects on the frame loop (M2); worker: a module worker detects, under the on-demand policy (docs/benchmarks/README.md, 2026-09-29).",
     detectionAccounting:
         "A worker run's detection requests and what became of each, counted over the whole run, not the window: requests (results that said needsDetection) = consumptions (detections handed to process and used) + dropped (requests made while a detection was in flight or held) + discardedAtStop (a detection in flight, or held, at Stop), and ignored (detections handed in while a lock held) = 0; posted counts the requests that started a job. accountingError checks both, and a run that fails either is not exported.",
+    detectionUse:
+        "Per frame, what became of detection, from NftTracker's result: needsDetection (the frame ended without a lock and the tracker has externalDetection: an application is asked for a detection), detectionUse (internal: the tracker detected on this frame; consumed: a detection computed elsewhere was handed to process and used; ignored: one was handed in while a lock held; none: neither; null: the stateless pipeline, and any export older than the field, which read as M2's tracker: its own detection on every frame that is not TRACK), detectionLatencyMs (this frame's timestamp minus the consumed detection's, else null), detectionInFlight (a worker's detection was in flight when process ran) and detectedAt ({ timestampMs, mediaTimeSeconds, framesAgo }, the frame the used detection was computed on: this frame, with framesAgo 0, for an internal one, and the frame the worker was given for a consumed one, framesAgo processed frames back; null when none was used).",
 });
 
 /** Whether the video looped between two consecutive frames: media time went back. */
@@ -284,6 +322,129 @@ export function lockSteps(frames) {
         }
     }
     return { firstSteps, heldLockSteps };
+}
+
+/** The loop parameters a caller may get wrong, refused by name rather than read as `NaN`. */
+function refuseUnless(ok, message) {
+    if (!ok) throw new RangeError(message);
+}
+
+const positiveNumber = (n) => Number.isFinite(n) && n > 0;
+
+const checkClipDuration = (clipDurationS) =>
+    refuseUnless(
+        positiveNumber(clipDurationS),
+        `clipDurationS must be a positive number of seconds, got ${clipDurationS}`,
+    );
+
+/**
+ * How close, in seconds, a frame's time must come to a bin's start to count
+ * as at or before it: `mediaTimeSeconds` are microseconds, and a bin's start
+ * is computed, so equality between the two has to survive rounding.
+ */
+const TIME_EPS_S = 1e-9;
+
+/**
+ * Every frame's time on one timeline, seconds: loop *k* adds *k*·D to its
+ * media time, D being `clipDurationS`, and a loop is counted at each wrap
+ * (media time going back, {@link isLoopWrap}). The first frame is in loop 0
+ * whatever its media time: a run that starts mid-clip has a first pass that is
+ * only part of one. `frames` in the order they were processed.
+ */
+export function unwrapMediaTimes(frames, clipDurationS) {
+    checkClipDuration(clipDurationS);
+    let loop = 0;
+    return frames.map((f, i) => {
+        if (i > 0 && isLoopWrap(frames[i - 1], f)) loop++;
+        return loop * clipDurationS + f.mediaTimeSeconds;
+    });
+}
+
+/** `clipDurationS`, `firstLoop` and `loopCount`, checked; the loops counted are `firstLoop` to `firstLoop + loopCount - 1`. */
+function countedLoops({ clipDurationS, firstLoop = 1, loopCount = 4 }) {
+    checkClipDuration(clipDurationS);
+    refuseUnless(
+        Number.isInteger(firstLoop) && firstLoop >= 0,
+        `firstLoop must be a whole number ≥ 0, got ${firstLoop}`,
+    );
+    refuseUnless(
+        Number.isInteger(loopCount) && loopCount >= 1,
+        `loopCount must be a whole number ≥ 1, got ${loopCount}`,
+    );
+    return { firstLoop, loopCount };
+}
+
+/**
+ * The frames of the counted loops, in the order they were processed: those
+ * whose unwrapped time ({@link unwrapMediaTimes}) is in
+ * [`firstLoop`·D, (`firstLoop` + `loopCount`)·D). A run starts at the clip's
+ * first frame, so loop 0 is a warm-up that is not counted, and the loops
+ * counted are 1 to 4 unless the caller says otherwise. See
+ * {@link trackTimeShare} for why.
+ */
+export function countedLoopFrames(frames, options) {
+    const { firstLoop, loopCount } = countedLoops(options);
+    const D = options.clipDurationS;
+    const t = unwrapMediaTimes(frames, D);
+    const from = firstLoop * D;
+    const to = (firstLoop + loopCount) * D;
+    return frames.filter((_, i) => t[i] >= from && t[i] < to);
+}
+
+/**
+ * The share of video time with a confirmed lock, over whole loops of the
+ * clip, on a fixed grid of media time, so that every schedule is read over
+ * the same video and at the same resolution rather than over its own: the
+ * loops `firstLoop` to `firstLoop + loopCount − 1`, D (`clipDurationS`) long
+ * each, on {@link unwrapMediaTimes}' timeline. Bin *j* of loop *k* starts at
+ * *k*·D + *j*·`binMs`, and takes the state of the most recent processed frame
+ * at or before its start — held across a loop wrap, so a loop's first bins
+ * take the last frame of the loop before, and its edges are closed. TRACK
+ * bins ÷ bins: a DETECT frame's pose is an unconfirmed detection, and counts
+ * as no lock.
+ *
+ * `{ share, perLoop, binMs, loops: [first, last], complete }`; `perLoop` is
+ * each counted loop's own share. `complete` is `false`, and `share` and
+ * `perLoop` `null`, unless the grid has a frame behind every bin and the last
+ * bin has its close: some frame at or before loop `firstLoop`'s first bin,
+ * and some frame at or after the start of loop `firstLoop + loopCount` — for
+ * the default 1 and 4, a run that recorded a frame of loop 5. A run that
+ * starts mid-clip has no frame before loop 0, so it cannot count it.
+ *
+ * Deleting a frame whose state equals both its neighbours' cannot change the
+ * share: the bins that took its state take a neighbour's, which is the same.
+ * That is why a schedule that processes more frames — a worker's waiting
+ * frames, which cannot change state — does not move it, where a per-frame
+ * share moves with the schedule. The test file checks it on committed
+ * exports; docs/benchmarks/2026-09-29-m3-lock-metric.md has the experiment.
+ */
+export function trackTimeShare(frames, options) {
+    const { firstLoop, loopCount } = countedLoops(options);
+    const D = options.clipDurationS;
+    const binMs = options.binMs ?? 10;
+    refuseUnless(positiveNumber(binMs), `binMs must be a positive number, got ${binMs}`);
+    const loops = [firstLoop, firstLoop + loopCount - 1];
+    const t = unwrapMediaTimes(frames, D);
+    const complete =
+        t.length > 0 &&
+        t[0] <= firstLoop * D + TIME_EPS_S &&
+        t[t.length - 1] >= (firstLoop + loopCount) * D;
+    if (!complete) return { share: null, perLoop: null, binMs, loops, complete: false };
+    const binsPerLoop = Math.ceil((D * 1000) / binMs - 1e-9);
+    const perLoop = [];
+    let trackBins = 0;
+    let j = 0;
+    for (let k = firstLoop; k < firstLoop + loopCount; k++) {
+        let track = 0;
+        for (let b = 0; b < binsPerLoop; b++) {
+            const start = k * D + (b * binMs) / 1000;
+            while (j + 1 < t.length && t[j + 1] <= start + TIME_EPS_S) j++;
+            if (frames[j].state === "TRACK") track++;
+        }
+        perLoop.push(track / binsPerLoop);
+        trackBins += track;
+    }
+    return { share: trackBins / (binsPerLoop * loopCount), perLoop, binMs, loops, complete: true };
 }
 
 /**

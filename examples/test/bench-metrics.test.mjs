@@ -25,11 +25,14 @@
  *
  */
 
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
     accountingError,
     clockResolution,
     cornerJitter,
+    countedLoopFrames,
     countLoopWraps,
     DEFINITIONS,
     DETECTION_PATHS,
@@ -58,7 +61,9 @@ import {
     texturedFrame,
     timeRepeated,
     trackabilityError,
+    trackTimeShare,
     TUNABLE_TRACKER_OPTIONS,
+    unwrapMediaTimes,
 } from "../js/bench-metrics.mjs";
 
 describe("percentile", () => {
@@ -180,6 +185,11 @@ describe("frameRecord", () => {
             trackLoss: null,
             tracking,
             trackerTimings,
+            needsDetection: false,
+            detectionUse: null,
+            detectionLatencyMs: null,
+            detectionInFlight: false,
+            detectedAt: null,
             corners: [
                 [5, 7],
                 [7, 7],
@@ -281,6 +291,129 @@ describe("frameRecord", () => {
             corners: null,
         });
     });
+
+    it("records what became of detection on every frame", () => {
+        const tracked = {
+            ok: true,
+            state: "TRACK",
+            quality: 0.9,
+            numMatches: 50,
+            numInliers: 48,
+            H,
+            pose: {},
+            sceneKeypoints: [],
+            trackLoss: null,
+            tracking,
+            timings: trackerTimings,
+        };
+        const detectedAt = { timestampMs: 100, mediaTimeSeconds: 0.2, framesAgo: 3 };
+
+        // A detection computed on a frame three processed frames back, handed in and used.
+        const consumed = frameRecord({
+            mode: "tracking",
+            result: {
+                ...tracked,
+                needsDetection: false,
+                detectionUse: "consumed",
+                detectionLatencyMs: 92.5,
+            },
+            detection: { inFlight: false, detectedAt },
+            ...base,
+        });
+        expect(consumed).toMatchObject({
+            needsDetection: false,
+            detectionUse: "consumed",
+            detectionLatencyMs: 92.5,
+            detectionInFlight: false,
+            detectedAt,
+        });
+        expect(consumed.detectedAt).not.toBe(detectedAt);
+
+        // The tracker's own detection is of the frame it ran on: this one.
+        const internal = frameRecord({
+            mode: "tracking",
+            result: {
+                ...tracked,
+                state: "DETECT",
+                needsDetection: false,
+                detectionUse: "internal",
+                detectionLatencyMs: null,
+            },
+            ...base,
+        });
+        expect(internal).toMatchObject({
+            needsDetection: false,
+            detectionUse: "internal",
+            detectionLatencyMs: null,
+            detectionInFlight: false,
+            detectedAt: { timestampMs: 1000, mediaTimeSeconds: 1.5, framesAgo: 0 },
+        });
+
+        // A frame that asked for a detection while one was in flight used none.
+        const waiting = frameRecord({
+            mode: "tracking",
+            result: {
+                ok: false,
+                state: "LOST",
+                quality: 0,
+                reason: "no-detection",
+                numMatches: 0,
+                numInliers: 0,
+                H: null,
+                pose: null,
+                sceneKeypoints: [],
+                trackLoss: null,
+                tracking: null,
+                timings: trackerTimings,
+                needsDetection: true,
+                detectionUse: "none",
+                detectionLatencyMs: null,
+            },
+            detection: { inFlight: true },
+            ...base,
+        });
+        expect(waiting).toMatchObject({
+            needsDetection: true,
+            detectionUse: "none",
+            detectionInFlight: true,
+            detectedAt: null,
+        });
+
+        // A detection that was ignored was not used: it is of no frame the record names.
+        const ignored = frameRecord({
+            mode: "tracking",
+            result: {
+                ...tracked,
+                needsDetection: false,
+                detectionUse: "ignored",
+                detectionLatencyMs: null,
+            },
+            detection: { inFlight: false, detectedAt },
+            ...base,
+        });
+        expect(ignored).toMatchObject({ detectionUse: "ignored", detectedAt: null });
+
+        // The stateless pipeline has no tracker: every frame detects, and none says so.
+        const stateless = frameRecord({
+            mode: "stateless",
+            result: {
+                ok: true,
+                numMatches: 90,
+                numInliers: 60,
+                H,
+                pose: {},
+                sceneKeypoints: [],
+            },
+            ...base,
+        });
+        expect(stateless).toMatchObject({
+            needsDetection: false,
+            detectionUse: null,
+            detectionLatencyMs: null,
+            detectionInFlight: false,
+            detectedAt: null,
+        });
+    });
 });
 
 describe("framesForStage", () => {
@@ -315,6 +448,37 @@ describe("framesForStage", () => {
     it("takes acquire, gray and total over every frame", () => {
         for (const s of ["acquire", "gray", "total"])
             expect(framesForStage(frames, s)).toEqual(frames);
+    });
+
+    it("takes the detection stages over the frames that ran the tracker's own detection, and reads older exports as M2's", () => {
+        const record = [
+            f("LOST", { detectionUse: "none" }), // a worker run's waiting frame: not unlocked-and-detecting
+            f("DETECT", { detectionUse: "consumed" }), // a detection computed elsewhere
+            f("TRACK", { detectionUse: "none" }),
+            f("TRACK", { detectionUse: "ignored" }),
+            f("DETECT", { detectionUse: "internal" }), // the tracker's own
+            f("LOST", { detectionUse: "internal", reason: "too-few-matches" }),
+            f("LOST", { detectionUse: "internal" }),
+        ];
+        for (const s of ["detect", "describe", "match", "filterMatches"]) {
+            expect(framesForStage(record, s)).toEqual([record[4], record[5], record[6]]);
+        }
+        expect(framesForStage(record, "estimateHomography")).toEqual([record[4], record[6]]);
+        // The other stages do not read it.
+        expect(framesForStage(record, "pose")).toEqual(record.filter((r) => r.ok));
+        expect(framesForStage(record, "total")).toEqual(record);
+
+        // Older exports have no detectionUse; the stateless mode's is null. Both detect on
+        // every frame that is not TRACK, which is what M2's tracker did.
+        const older = [
+            f("LOST"),
+            f("TRACK"),
+            f("DETECT", { detectionUse: null }),
+            f("TRACK", { detectionUse: null }),
+            f("LOST", { detectionUse: null, reason: "too-few-matches" }),
+        ];
+        expect(framesForStage(older, "detect")).toEqual([older[0], older[2], older[4]]);
+        expect(framesForStage(older, "estimateHomography")).toEqual([older[0], older[2]]);
     });
 });
 
@@ -398,6 +562,187 @@ describe("loop wraps, re-acquisitions and lock steps", () => {
             firstSteps: { n: 0, confirmed: 0 },
             heldLockSteps: { n: 0, lost: 0, lostAtLoopWrap: 0 },
         });
+    });
+});
+
+describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
+    // A 1-second clip, D = 1: loop k's frame at media time m is at k + m on the unwrapped
+    // timeline, and 10 ms bins make 100 to a loop. Times are chosen to be exact in binary.
+    const D = 1;
+    const frame = (state, mediaTimeSeconds, o = {}) => ({ state, mediaTimeSeconds, ...o });
+    const closeTo = (actual, expected) => {
+        expect(actual).toHaveLength(expected.length);
+        actual.forEach((t, i) => expect(t).toBeCloseTo(expected[i], 9));
+    };
+    // Unwrapped time in the comment. Loop 0 is the warm-up; its last frame holds a lock.
+    const run = [
+        frame("LOST", 0), // 0
+        frame("TRACK", 0.5), // 0.5
+        frame("TRACK", 0.9), // 0.9: the warm-up's last frame
+        frame("TRACK", 0.5), // 1.5: loop 1
+        frame("LOST", 0.25), // 2.25: loop 2
+        frame("TRACK", 0.75), // 2.75
+        frame("TRACK", 0.5), // 3.5: loop 3
+        frame("LOST", 0.25), // 4.25: loop 4
+        frame("LOST", 0.1), // 5.1: loop 5, which closes loop 4
+    ];
+
+    it("puts every frame on one timeline, loop k adding k times the clip's duration", () => {
+        closeTo(unwrapMediaTimes(run, D), [0, 0.5, 0.9, 1.5, 2.25, 2.75, 3.5, 4.25, 5.1]);
+        // A run that starts mid-clip: its first pass is loop 0 all the same.
+        closeTo(
+            unwrapMediaTimes([frame("LOST", 10.8), frame("LOST", 11.9), frame("LOST", 0.1)], 11.96),
+            [10.8, 11.9, 12.06],
+        );
+        expect(unwrapMediaTimes([], D)).toEqual([]);
+    });
+
+    it("takes the frames whose unwrapped time is in [first · D, (first + count) · D)", () => {
+        expect(countedLoopFrames(run, { clipDurationS: D, firstLoop: 1, loopCount: 2 })).toEqual([
+            run[3],
+            run[4],
+            run[5],
+        ]);
+        // Loops 1 to 4 by default.
+        expect(countedLoopFrames(run, { clipDurationS: D })).toEqual(run.slice(3, 8));
+        // The first frame of a loop, at its media time 0, is inside it; the next loop's is not.
+        const edges = [
+            frame("LOST", 0.5),
+            frame("LOST", 0.9),
+            frame("TRACK", 0), // 1
+            frame("TRACK", 0.5), // 1.5
+            frame("LOST", 0), // 2
+        ];
+        expect(countedLoopFrames(edges, { clipDurationS: D, firstLoop: 1, loopCount: 1 })).toEqual(
+            [edges[2], edges[3]],
+        );
+    });
+
+    it("reads the lock over loops 1 to 4 on a fixed grid, holding the state across a wrap", () => {
+        const r = trackTimeShare(run, { clipDurationS: D });
+        // Loop 1: TRACK from 1.5, and the warm-up's last frame's TRACK before it, so all of it.
+        // Loop 2: TRACK to 2.25, LOST to 2.75, TRACK after: half. Loop 3: TRACK throughout.
+        // Loop 4: TRACK to 4.25, LOST after: a quarter.
+        expect(r.perLoop).toEqual([1, 0.5, 1, 0.25]);
+        expect(r.perLoop[0]).toBe(1);
+        expect(r.share).toBe(275 / 400);
+        expect(r.loops).toEqual([1, 4]);
+        expect(r.complete).toBe(true);
+        // The same options, spelled out.
+        expect(trackTimeShare(run, { clipDurationS: D, firstLoop: 1, loopCount: 4 })).toEqual(r);
+        // Fewer loops: the first two of them.
+        expect(trackTimeShare(run, { clipDurationS: D, loopCount: 2 })).toMatchObject({
+            perLoop: [1, 0.5],
+            share: 0.75,
+            loops: [1, 2],
+            complete: true,
+        });
+    });
+
+    it("reports a run incomplete when loop 5 was not reached or loop 1 has no frame before it", () => {
+        // Loop 5 was not reached: the last frame is in loop 4.
+        const short = run.slice(0, -1);
+        expect(trackTimeShare(short, { clipDurationS: D })).toEqual({
+            share: null,
+            perLoop: null,
+            binMs: 10,
+            loops: [1, 4],
+            complete: false,
+        });
+        // Nothing precedes loop 0's first bin when the run starts mid-clip: loop 0 is never
+        // complete there, and loop 1, which the warm-up's frames precede, is.
+        const midClip = [frame("TRACK", 0.3), ...run.slice(2)];
+        expect(trackTimeShare(midClip, { clipDurationS: D, firstLoop: 0, loopCount: 1 })).toEqual({
+            share: null,
+            perLoop: null,
+            binMs: 10,
+            loops: [0, 0],
+            complete: false,
+        });
+        expect(trackTimeShare(midClip, { clipDurationS: D, loopCount: 1 }).complete).toBe(true);
+        // No frames at all.
+        expect(trackTimeShare([], { clipDurationS: D })).toMatchObject({
+            share: null,
+            perLoop: null,
+            complete: false,
+        });
+    });
+
+    it("uses the bin size it reports", () => {
+        // TRACK for two 10 ms bins of loop 1, from 1.05 to 1.07, and no longer.
+        const brief = [
+            frame("LOST", 0),
+            frame("LOST", 0.95),
+            frame("TRACK", 0.05), // 1.05
+            frame("LOST", 0.07), // 1.07
+            frame("LOST", 0.02), // 2.02: loop 2
+        ];
+        const fine = trackTimeShare(brief, { clipDurationS: D, loopCount: 1 });
+        expect(fine).toMatchObject({ binMs: 10, share: 0.02, complete: true });
+        // 100 ms bins, at 1.0, 1.1, …, never see it.
+        const coarse = trackTimeShare(brief, { clipDurationS: D, loopCount: 1, binMs: 100 });
+        expect(coarse).toMatchObject({ binMs: 100, share: 0, perLoop: [0], complete: true });
+    });
+
+    it("refuses a clip duration, bin size or loop count that cannot be read", () => {
+        expect(() => unwrapMediaTimes(run, 0)).toThrow(/clipDurationS/);
+        expect(() => trackTimeShare(run, { clipDurationS: NaN })).toThrow(/clipDurationS/);
+        expect(() => trackTimeShare(run, { clipDurationS: D, binMs: 0 })).toThrow(/binMs/);
+        expect(() => trackTimeShare(run, { clipDurationS: D, loopCount: 0 })).toThrow(/loopCount/);
+        expect(() => countedLoopFrames(run, { clipDurationS: D, firstLoop: -1 })).toThrow(
+            /firstLoop/,
+        );
+    });
+});
+
+describe("trackTimeShare on the tablet's committed exports", () => {
+    // Round 2's tablet runs, 300 frames each, all on a moving clip. Their first frame is
+    // mid-clip, so loop 0 is never a whole loop: loops 1 on are counted, up to the last
+    // frame's loop, which closes the loop before it.
+    const CLIP_DURATION_S = { "pinball-bench.mp4": 11.96, "pinball-bench-table.mp4": 8.9 };
+    const dir = fileURLToPath(new URL("../../docs/benchmarks/", import.meta.url));
+    const names = readdirSync(dir)
+        .filter((n) => /^2026-09-29-tab9-tuning-r2-.+-(wall|table)[^/]*\.json$/.test(n))
+        .sort();
+
+    /** Every second frame whose state equals both its neighbours': removed frames are never adjacent. */
+    const thinInsideRuns = (frames) => {
+        let seen = 0;
+        return frames.filter((f, i) => {
+            const inside =
+                i > 0 &&
+                i + 1 < frames.length &&
+                frames[i - 1].state === f.state &&
+                frames[i + 1].state === f.state;
+            return !(inside && seen++ % 2 === 1);
+        });
+    };
+
+    it("is exactly unchanged when frames inside a run of equal states are removed", () => {
+        expect(names.length, "the round 2 wall and table exports").toBeGreaterThanOrEqual(10);
+        for (const name of names) {
+            const e = JSON.parse(readFileSync(dir + name, "utf8"));
+            const D = CLIP_DURATION_S[e.bundledClip];
+            expect(D, `${name}: ${e.bundledClip} has no known duration`).toBeGreaterThan(0);
+            // The last frame is in loop `wraps`, which closes loops 1 to wraps − 1.
+            const loopCount = countLoopWraps(e.frames) - 1;
+            expect(loopCount, `${name}: no whole loop after its first wrap`).toBeGreaterThanOrEqual(
+                1,
+            );
+            const options = { clipDurationS: D, firstLoop: 1, loopCount };
+
+            const full = trackTimeShare(e.frames, options);
+            expect(full.complete, name).toBe(true);
+            expect(full.share, name).toBeGreaterThan(0);
+            expect(full.share, name).toBeLessThan(1);
+            expect(full.perLoop, name).toHaveLength(loopCount);
+
+            const thinned = thinInsideRuns(e.frames);
+            expect(thinned.length, `${name}: nothing was removed`).toBeLessThan(e.frames.length);
+            const result = trackTimeShare(thinned, options);
+            expect(result.share, name).toBe(full.share);
+            expect(result.perLoop, name).toEqual(full.perLoop);
+        }
     });
 });
 
