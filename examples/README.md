@@ -400,7 +400,11 @@ N }` and `clipDurationS`, and its `runSummary` reads the counted loops'
 frames, except `trackTimeShare` — the share of video time with a confirmed
 lock, over those loops on a fixed grid of media time — which reads them all,
 and is `complete` only if the window still holds the warm-up's last frame:
-give a run of several loops `?window=2000`. `?run=` is the run's place in a
+give a run of several loops `?window=2000`. Media time is unwrapped with the
+clip's duration (`clipDurationS`, the browser's `video.duration`); a frame past
+it by more than 1 ms would lay the loops over each other, so it is refused
+rather than read: the `trackTimeShare` row shows why, and Download refuses the
+run in one line. `?run=` is the run's place in a
 session's order, exported as `run.order` beside `run.startedAtIso` and
 `run.endedAtIso`. For example:
 `bench-nft.html?mode=tracking&detection=worker&clip=pinball-bench.mp4&window=2000&loops=4&run=2`.

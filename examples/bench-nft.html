@@ -1486,7 +1486,14 @@
         if (!run.loops) return [];
         const { loopCount } = run.loops;
         if (!endsRun) return [["trackTimeShare", `in loop ${loopIndex}: loop 0 warms up, loops 1–${loopCount} count`]];
-        const s = trackTimeShare(history, { clipDurationS: run.clipDurationS, ...run.loops });
+        let s;
+        try {
+          s = trackTimeShare(history, { clipDurationS: run.clipDurationS, ...run.loops });
+        } catch (e) {
+          // A clip duration shorter than the clip (unwrapMediaTimes): its line, never a share
+          // read on loops laid over each other.
+          return [["trackTimeShare", e.message]];
+        }
         const pct = (v) => `${(100 * v).toFixed(1)}%`;
         return [
           [
@@ -1750,6 +1757,22 @@
           showError(`Not exported: ${refusal}`);
           return;
         }
+        // Over the same frames as summaryMs, or with ?loops= over the counted
+        // loops' frames; see definitions. What it cannot read — a clip duration
+        // shorter than the clip, which unwrapMediaTimes refuses — refuses the
+        // export in one line, rather than throw out of the click.
+        let runSummary;
+        try {
+          runSummary = summarizeRun(history, {
+            clipDurationS: run?.clipDurationS ?? null,
+            loops: run?.loops ?? null,
+            jobs: run?.jobs ?? [],
+            accounting: run?.policy ? run.policy.accounting() : null,
+          });
+        } catch (e) {
+          showError(`Not exported: ${e.message}`);
+          return;
+        }
         const summary = {};
         for (const [s, samples] of stageSamples(history)) {
           const values = samples.sort((a, b) => a - b);
@@ -1820,14 +1843,7 @@
           processingResolution: lastProcessingResolution,
           windowSize: history.length,
           summaryMs: summary,
-          // Over the same frames as summaryMs, or with ?loops= over the counted
-          // loops' frames; see definitions.
-          runSummary: summarizeRun(history, {
-            clipDurationS: run?.clipDurationS ?? null,
-            loops: run?.loops ?? null,
-            jobs: run?.jobs ?? [],
-            accounting: run?.policy ? run.policy.accounting() : null,
-          }),
+          runSummary,
           definitions: DEFINITIONS,
           frames: history,
         };

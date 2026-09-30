@@ -702,6 +702,44 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
             /firstLoop/,
         );
     });
+
+    // A duration shorter than the clip unwraps each loop onto the next: the run's time overlaps
+    // itself, and a share read on it is not the lock's, yet it read `complete: true`.
+    it("refuses a clip duration shorter than the clip, naming the frame, its media time and D", () => {
+        const short = 0.8; // the run's clip is 1 s long: frame 2, at 0.9 s, is past 0.8 s
+        const past = /^frame 2: media time 0\.9 s is past clipDurationS 0\.8 s/;
+        for (const read of [
+            () => unwrapMediaTimes(run, short),
+            () => countedLoopFrames(run, { clipDurationS: short }),
+            () => trackTimeShare(run, { clipDurationS: short }),
+            () => summarizeRun(run, { clipDurationS: short, loops: { firstLoop: 1, loopCount: 4 } }),
+        ]) {
+            expect(read).toThrow(RangeError);
+            expect(read).toThrow(past);
+            let message = "";
+            try {
+                read();
+            } catch (e) {
+                message = e.message;
+            }
+            expect(message).not.toMatch(/\n/);
+        }
+        // The same run read with its own duration is complete, as before.
+        expect(trackTimeShare(run, { clipDurationS: D }).complete).toBe(true);
+    });
+
+    it("allows a frame up to 1 ms past D, and refuses unwrapped time that goes back", () => {
+        // A media time a fraction of a millisecond past the end is rounding, not a shorter clip.
+        closeTo(unwrapMediaTimes([frame("LOST", 0.5), frame("LOST", 1.0005)], D), [0.5, 1.0005]);
+        // 0.8 ms past D passes the first check, but the wrap after it lands the next frame
+        // before it: loop 1's first frame, at 1.0, is earlier than loop 0's last, at 1.0008.
+        const back = [frame("LOST", 0.2), frame("LOST", 1.0008), frame("LOST", 0)];
+        expect(() => unwrapMediaTimes(back, D)).toThrow(RangeError);
+        expect(() => unwrapMediaTimes(back, D)).toThrow(
+            /^frame 2: media time 0 s unwraps to 1 s, before frame 1's 1\.0008 s \(clipDurationS 1 s\)/,
+        );
+        expect(() => trackTimeShare(back, { clipDurationS: D, loopCount: 1 })).toThrow(/^frame 2:/);
+    });
 });
 
 describe("trackTimeShare on the tablet's committed exports", () => {
