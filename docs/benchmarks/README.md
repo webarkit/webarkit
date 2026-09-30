@@ -3004,6 +3004,17 @@ at the median, and the results then say so.
   it does not fall: the modelled loop is not processing the waiting frames
   it should.
 
+**It ran on 2026-09-30** ([the record](./2026-09-30-desktop-m3-preflight.md)),
+after the predictions above and their correction were committed. The
+harness is deterministic in latency and seed; the scaled steps sat inside
+every falsifier's range; every falsifier above holds, and every first-step
+latency is the frame the account predicts. One prediction that carries no
+refusal missed upward: on the wall clip at 100 ms the worker came out above
+the synchronous run's range, its first steps confirming more often at the
+same 160.5 ms, for a reason the frame account does not reach and the record
+leaves open for row five on the tablet. Nothing registered for the device
+changes.
+
 ### A device session
 
 - **First, a check that the worker loads on the tablet.** The page with
