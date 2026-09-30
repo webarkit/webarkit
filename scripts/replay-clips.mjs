@@ -756,11 +756,12 @@ function runExternal(clip, arm, params) {
 /**
  * One external arm's export: its `records` summarised over the counted loops,
  * and what it was run with (`model`, and the seed, options, loops and step). An
- * arm is `{ schedule, path, external }`. Exits 1, one line, when the summary
- * refuses the clip's duration (`unwrapMediaTimes`: a frame past it, whose loops
- * would lie over each other), and when `trackTimeShare` is incomplete: the run
- * does not reach loop `firstLoop + loopCount`, and a share read short of it is
- * not the device's.
+ * arm is `{ schedule, path, external }`, and its path is the summary's, which
+ * refuses a worker arm's frame without `detectionUse`. Exits 1, one line, when
+ * the summary refuses the arm (the clip's duration, `unwrapMediaTimes`: a frame
+ * past it, whose loops would lie over each other; or such a frame), and when
+ * `trackTimeShare` is incomplete: the run does not reach loop
+ * `firstLoop + loopCount`, and a share read short of it is not the device's.
  */
 function armExport({
     clip,
@@ -783,6 +784,7 @@ function armExport({
             loops: M3_COUNTED,
             jobs,
             accounting,
+            path: arm.path,
         });
     } catch (err) {
         if (!(err instanceof RangeError)) throw err;

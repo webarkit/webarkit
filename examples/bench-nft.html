@@ -1807,6 +1807,8 @@
             ...counted,
             jobs: run?.jobs ?? [],
             accounting: run?.policy ? run.policy.accounting() : null,
+            // A worker run's frames all say what became of detection: none is read by M2's rule.
+            path: run?.path ?? null,
           });
         } catch (e) {
           showNotice(`Not exported: ${e.message}`);

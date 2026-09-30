@@ -326,6 +326,8 @@ export const DEFINITIONS = Object.freeze({
         "{ sessionRun, gaps }: whether the run followed the device session's protocol (docs/benchmarks/README.md, 2026-09-29), and what keeps it from it, one line each (sessionRunGaps): a tracking or stateless run of a bundled clip, over one warm-up loop and loops 1 to 4 counted (loops), with its place in the session's order (run.order), that ended itself (run.endedBy done) with every frame it processed in its window (ticks = windowSize); in the tracking mode its lock read over those loops whole (trackTimeShare.complete), in a worker run its accounting holding (detectionAccounting); at the page's defaults: the committed target, loaded, no tracker option overridden (?tracker=), the default scene keypoint budget and processing box. The page exports a run with gaps all the same, and says so; replay-clips --transfer reads only session runs.",
     detectionAccounting:
         "A worker run's detection requests and what became of each, counted over the whole run, not the window: requests (results that said needsDetection) = consumptions (detections handed to process and used) + dropped (requests made while a detection was in flight or held) + discardedAtStop (a detection in flight, or held, at Stop), and ignored (detections handed in while a lock held) = 0; posted counts the requests that started a job. accountingError checks both, and a run that fails either is not exported. In the summary the accounting is carried as given, with error: accountingError's line saying what is wrong, or null when nothing is; the summary has null for a run that gave none.",
+    detectionUseFallbackFrames:
+        "The summarized frames without a detectionUse (absent or null), which every metric that reads it takes as M2's tracker did: detected on the frame loop unless TRACK. Every frame of an export older than the field, and of the stateless pipeline; 0 in a current tracking run. A worker run's waiting frames do not detect, so its summary is refused, not read, if it has any (summarizeRun's path).",
     staleReplies:
         "A worker run's replies from the worker to its own jobs that arrived after the run ended, discarded and never handed in. Each is to a job the run discarded at its end, already counted in discardedAtStop, so staleReplies ≤ discardedAtStop. Counted on the run the reply names, whenever it arrives, between runs or during a later run, never on another run; the export records the count as it stood when the export was taken. A reply naming a run the page never had, or a job the run did not discard unanswered, fails the worker instead.",
     detectionUse:
@@ -853,12 +855,31 @@ export function cornerJitter(frames) {
  *   `detectionTime`, which reads the jobs posted from the frames summarized,
  *   with or without `loops`; none, for a synchronous run.
  * - `accounting`: a worker run's detection accounting, carried with its error.
+ * - `path`: the run's detection path, `"sync"` or `"worker"`
+ *   (`DEFINITIONS.detectionPath`), or `null` when the caller does not say. A
+ *   frame without `detectionUse` is read as M2's tracker's: it detected on the
+ *   frame loop unless it is TRACK. A worker run's waiting frames do not detect,
+ *   so a worker run's summary refuses such a frame, in one line, rather than
+ *   read it so; every summary says how many frames that fallback read
+ *   (`detectionUseFallbackFrames`).
  */
 export function summarizeRun(
     runFrames,
-    { clipDurationS = null, loops = null, jobs = [], accounting = null } = {},
+    { clipDurationS = null, loops = null, jobs = [], accounting = null, path = null } = {},
 ) {
+    refuseUnless(
+        path === null || DETECTION_PATHS.includes(path),
+        `path must be ${DETECTION_PATHS.join(" or ")} or null, got ${path}`,
+    );
     const frames = loops ? countedLoopFrames(runFrames, { clipDurationS, ...loops }) : runFrames;
+    // The frames detectionUseOf reads by M2's rule: none may be a worker run's.
+    const fallback = frames.filter((f) => f.detectionUse == null);
+    if (path === "worker" && fallback.length > 0) {
+        const f = fallback[0];
+        throw new RangeError(
+            `summarizeRun: frame ${frames.indexOf(f)} of a worker run (media time ${f.mediaTimeSeconds} s) has no detectionUse, which would be read as a detection on the frame loop: a worker run's waiting frames do not detect`,
+        );
+    }
     const states = { LOST: 0, DETECT: 0, TRACK: 0 };
     const lockLosses = {};
     for (const f of frames) {
@@ -912,6 +933,7 @@ export function summarizeRun(
         detectionAccounting: accounting
             ? { ...accounting, error: accountingError(accounting) }
             : null,
+        detectionUseFallbackFrames: fallback.length,
     };
 }
 

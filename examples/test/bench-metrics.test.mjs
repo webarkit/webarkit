@@ -1431,6 +1431,7 @@ describe("summarizeRun", () => {
         "unlockedResidualMs",
         "detectionTime",
         "detectionAccounting",
+        "detectionUseFallbackFrames",
     ];
     const withoutNew = (s) => Object.fromEntries(Object.entries(s).filter(([k]) => !NEW_KEYS.includes(k)));
 
@@ -1688,6 +1689,69 @@ describe("summarizeRun", () => {
         expect(warmUp.frames).toBe(0);
         expect(warmUp.detectionTime.onLoop.msPerVideoSecond).toBeNull();
         expect(warmUp.detectionTime.offLoop.msPerVideoSecond).toBeNull();
+    });
+
+    // detectionUseOf reads a frame without detectionUse as M2's tracker did: every frame that is not
+    // TRACK detected. In a worker run that is false — a waiting frame does not detect — so the
+    // fallback must never fire there, and every summary says how often it fired.
+    describe("the fallback for frames without detectionUse", () => {
+        const dir = fileURLToPath(new URL("../../docs/benchmarks/", import.meta.url));
+        const rec = (state, detectionUse, mediaTimeSeconds) => ({
+            state,
+            ok: state !== "LOST",
+            reason: state === "LOST" ? "no-detection" : null,
+            mediaTimeSeconds,
+            timestampMs: mediaTimeSeconds * 1000,
+            timings: { total: 30, acquire: 28, gray: 1 },
+            quality: null,
+            trackLoss: null,
+            tracking: null,
+            trackerTimings: null,
+            corners: null,
+            detectionInFlight: false,
+            detectedAt: null,
+            ...(detectionUse === undefined ? {} : { detectionUse }),
+        });
+        const current = [rec("LOST", "none", 0), rec("LOST", "none", 0.04), rec("DETECT", "consumed", 0.08)];
+
+        it("refuses a worker run's frame that lacks detectionUse, in one line", () => {
+            const lacking = [current[0], rec("LOST", undefined, 0.04), current[2]];
+            const read = () => summarizeRun(lacking, { path: "worker" });
+            expect(read).toThrow(/^summarizeRun: frame 1 of a worker run \(media time 0\.04 s\) has no detectionUse/);
+            let message = "";
+            try {
+                read();
+            } catch (e) {
+                message = e.message;
+            }
+            expect(message).not.toMatch(/\n/);
+            // null reads as absent, as the fallback reads it.
+            const nulled = [current[0], rec("LOST", null, 0.04), current[2]];
+            expect(() => summarizeRun(nulled, { path: "worker" })).toThrow(/frame 1 of a worker run/);
+            // The same frames summarized as a synchronous run's, or with no path given, are read.
+            expect(summarizeRun(lacking, { path: "sync" }).detectionUseFallbackFrames).toBe(1);
+            expect(summarizeRun(lacking).detectionUseFallbackFrames).toBe(1);
+        });
+
+        it("counts the frames an older export's synchronous summary reads by the fallback", () => {
+            const e = JSON.parse(
+                readFileSync(`${dir}2026-09-29-tab9-tuning-r2-p48-s16-wall.json`, "utf8"),
+            );
+            expect(e.frames[0].detectionUse).toBeUndefined();
+            expect(summarizeRun(e.frames, { path: "sync" }).detectionUseFallbackFrames).toBe(
+                e.frames.length,
+            );
+        });
+
+        it("counts none in a current export, of either path", () => {
+            expect(summarizeRun(current, { path: "worker" }).detectionUseFallbackFrames).toBe(0);
+            expect(summarizeRun(current, { path: "sync" }).detectionUseFallbackFrames).toBe(0);
+            expect(summarizeRun(current).detectionUseFallbackFrames).toBe(0);
+        });
+
+        it("refuses a path that is neither sync nor worker", () => {
+            expect(() => summarizeRun(current, { path: "gpu" })).toThrow(/path/);
+        });
     });
 
     // A summary of a window smaller than the run read every job of the run against the window's
