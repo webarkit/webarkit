@@ -230,6 +230,10 @@ export const DEFINITIONS = Object.freeze({
         "√(Σ|cᵢ − c̄|² ÷ (4 · n)), frame px, over the n frames with corners, c̄ being each corner's mean: the corners' standard deviation over the run. It counts any motion of the target in the image, and a clip's drift, along with jitter.",
     alignment:
         "Two exports of the same footage compared on common frames: each restricted to its frames with corners at the media times, to the microsecond, where both have a frame with corners (every occurrence kept when a loop revisits one); jitterPx and spreadPx are then taken over each restricted run as defined above.",
+    detectionPath:
+        "The run's detection path, from ?detection=. sync: the tracker detects on the frame loop (M2); worker: a module worker detects, under the on-demand policy (docs/benchmarks/README.md, 2026-09-29).",
+    detectionAccounting:
+        "A worker run's detection requests and what became of each, counted over the whole run, not the window: requests (results that said needsDetection) = consumptions (detections handed to process and used) + dropped (requests made while a detection was in flight or held) + discardedAtStop (a detection in flight, or held, at Stop), and ignored (detections handed in while a lock held) = 0; posted counts the requests that started a job. accountingError checks both, and a run that fails either is not exported.",
 });
 
 /** Whether the video looped between two consecutive frames: media time went back. */
@@ -450,6 +454,44 @@ export function compareExports(first, second) {
 /** The page's modes, as its `<select>` and the `?mode=` parameter name them. */
 export const MODES = Object.freeze(["stateless", "detection-only", "tracking"]);
 
+/** Where a run's detection happens, as `?detection=` names it: see `DEFINITIONS.detectionPath`. */
+export const DETECTION_PATHS = Object.freeze(["sync", "worker"]);
+
+/** The counts a detection policy keeps (`detection-policy.mjs`), whole numbers all. */
+const ACCOUNTING_COUNTS = Object.freeze([
+    "requests",
+    "posted",
+    "consumptions",
+    "ignored",
+    "dropped",
+    "discardedAtStop",
+]);
+
+/**
+ * Whether `acc`, a worker run's detection accounting, is what the policy
+ * guarantees, as one line saying what is not, or `null` when it is: every
+ * count a whole number ≥ 0, `requests = consumptions + dropped +
+ * discardedAtStop`, and `ignored = 0` (`DEFINITIONS.detectionAccounting`). An
+ * ignored detection is reported before the imbalance it causes: the request
+ * it leaves unresolved is the symptom, not the defect.
+ */
+export function accountingError(acc) {
+    for (const key of ACCOUNTING_COUNTS) {
+        const n = acc?.[key];
+        if (!(Number.isInteger(n) && n >= 0)) {
+            return `detection accounting: ${key} is ${String(n)}, not a whole number ≥ 0`;
+        }
+    }
+    if (acc.ignored !== 0) {
+        const n = acc.ignored;
+        return `${n} ${n === 1 ? "detection was" : "detections were"} handed in while a lock held (ignored), where the policy allows none`;
+    }
+    if (acc.requests !== acc.consumptions + acc.dropped + acc.discardedAtStop) {
+        return `detection accounting does not balance: requests ${acc.requests} ≠ consumptions ${acc.consumptions} + dropped ${acc.dropped} + discardedAtStop ${acc.discardedAtStop}`;
+    }
+    return null;
+}
+
 /**
  * A positive integer from `raw`, or `null` for anything else (empty, `abc`,
  * `0`, `-5`, `1e999`), so a malformed URL parameter or an emptied field falls
@@ -478,6 +520,14 @@ export function parsePositiveInt(raw) {
  * and refuses to start on. Dropping it would run the defaults under a URL
  * that names a candidate — an export labelled with parameters it did not run
  * with, the one failure a tuning round cannot afford.
+ *
+ * The worker path's three are handled the same way, for the same reason: a
+ * run that fell back to `sync` under a URL that asked for the worker would be
+ * exported as what it was not. `?detection=` is one of
+ * {@link DETECTION_PATHS} and is `"sync"` when absent, and `?loops=` (the
+ * clip loops a run lasts) and `?run=` (its place in the session's order) are
+ * positive integers, `null` when absent; one present and unreadable goes in
+ * `paramErrors`.
  */
 export function parseRunParams(search, { bundledClips }) {
     const p = new URLSearchParams(search);
@@ -497,6 +547,24 @@ export function parseRunParams(search, { bundledClips }) {
     }
     const overrides = parseTrackerOverrides(p.get("tracker"));
     if (!overrides.ok) paramErrors.push(`?tracker=: ${overrides.error}`);
+    const rawDetection = p.get("detection");
+    let detection = "sync";
+    if (rawDetection !== null) {
+        if (DETECTION_PATHS.includes(rawDetection)) detection = rawDetection;
+        else
+            paramErrors.push(
+                `?detection=${rawDetection}: expected ${DETECTION_PATHS.join(" or ")}`,
+            );
+    }
+    const positive = (name) => {
+        const raw = p.get(name);
+        const n = parsePositiveInt(raw);
+        if (raw !== null && n === null)
+            paramErrors.push(`?${name}=${raw}: expected a positive integer`);
+        return n;
+    };
+    const loops = positive("loops");
+    const run = positive("run");
     return {
         maxKeypoints: parsePositiveInt(p.get("maxKeypoints")),
         procWidth: parsePositiveInt(p.get("procWidth")),
@@ -508,6 +576,9 @@ export function parseRunParams(search, { bundledClips }) {
         clip: bundledClips.includes(p.get("clip")) ? p.get("clip") : null,
         targetFile,
         trackerOverrides: overrides.ok ? overrides.options : {},
+        detection,
+        loops,
+        run,
         paramErrors,
     };
 }
@@ -636,10 +707,32 @@ export function trackabilityError(db, minTrackedPatches) {
  * that did not load, or a tracking run on a target the tracker would not
  * track (`trackabilityError`). Checked before any source starts. `file` is
  * the target file the page tried to load, for the message.
+ *
+ * Three more refusals for the worker's run parameters, none of which applies
+ * to a caller that passes none of them: `detection` `"worker"` outside the
+ * tracking mode, or on a `target` that is not the `.wnft` (its
+ * `record.source`, from {@link targetRecord}: the worker decodes the file's
+ * bytes, and the page's built image target has none); and `loops` on a
+ * `source` (the media source, `"webcam"` among them) that does not loop.
  */
-export function startRefusal({ mode, target, minTrackedPatches, file = "targets/pinball.wnft" }) {
+export function startRefusal({
+    mode,
+    target,
+    minTrackedPatches,
+    file = "targets/pinball.wnft",
+    detection = "sync",
+    source = null,
+    loops = null,
+}) {
     if (!MODES.includes(mode)) return `Unknown mode "${mode}": choose one of ${MODES.join(", ")}.`;
     if (!target) return `${file} is not loaded (see above).`;
+    if (detection === "worker") {
+        if (mode !== "tracking") return "?detection=worker runs in tracking mode only.";
+        if (target.record?.source !== "wnft") {
+            return "?detection=worker needs the .wnft target: the worker decodes its bytes.";
+        }
+    }
+    if (loops !== null && source === "webcam") return "?loops= needs a looping clip, not the webcam.";
     return mode === "tracking" ? trackabilityError(target.db, minTrackedPatches) : null;
 }
 

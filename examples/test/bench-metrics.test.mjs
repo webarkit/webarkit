@@ -27,10 +27,12 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    accountingError,
     clockResolution,
     cornerJitter,
     countLoopWraps,
     DEFINITIONS,
+    DETECTION_PATHS,
     frameRecord,
     framesAt,
     framesForStage,
@@ -628,7 +630,8 @@ describe("summarizeRun", () => {
     it("defines every metric it reports, once, in DEFINITIONS", () => {
         for (const key of Object.keys(summarizeRun(window)))
             expect(DEFINITIONS, key).toHaveProperty(key);
-        for (const key of ["corners", "alignment"]) expect(DEFINITIONS).toHaveProperty(key);
+        for (const key of ["corners", "alignment", "detectionAccounting", "detectionPath"])
+            expect(DEFINITIONS).toHaveProperty(key);
         expect(Object.isFrozen(DEFINITIONS)).toBe(true);
         expect(METRICS_VERSION).toBe(1);
     });
@@ -656,8 +659,46 @@ describe("parsePositiveInt and parseRunParams", () => {
             clip: null,
             targetFile: null,
             trackerOverrides: {},
+            detection: "sync",
+            loops: null,
+            run: null,
             paramErrors: [],
         });
+    });
+
+    it("reads the detection path, the loops a run lasts and its place in the session", () => {
+        expect(DETECTION_PATHS).toEqual(["sync", "worker"]);
+        expect(Object.isFrozen(DETECTION_PATHS)).toBe(true);
+        const p = parseRunParams("?mode=tracking&detection=worker&loops=4&run=3", {
+            bundledClips: clips,
+        });
+        expect(p).toMatchObject({ detection: "worker", loops: 4, run: 3, paramErrors: [] });
+        const sync = parseRunParams("?detection=sync", { bundledClips: clips });
+        expect(sync).toMatchObject({ detection: "sync", paramErrors: [] });
+    });
+
+    it("refuses, rather than drops, a detection path or a loops or run it cannot read", () => {
+        // The same reason as the tuning parameters: a run that fell back to sync
+        // under a URL that asked for the worker would be exported as what it was not.
+        const gpu = parseRunParams("?detection=gpu", { bundledClips: clips });
+        expect(gpu.detection).toBe("sync");
+        expect(gpu.paramErrors).toHaveLength(1);
+        expect(gpu.paramErrors[0]).toMatch(/\?detection=gpu: expected sync or worker/);
+        expect(parseRunParams("?detection=", { bundledClips: clips }).paramErrors).toHaveLength(1);
+
+        for (const [query, key] of [
+            ["?loops=0", "loops"],
+            ["?loops=abc", "loops"],
+            ["?loops=", "loops"],
+            ["?run=-2", "run"],
+            ["?run=x", "run"],
+        ]) {
+            const p = parseRunParams(query, { bundledClips: clips });
+            expect(p[key], query).toBeNull();
+            expect(p.paramErrors, query).toHaveLength(1);
+            expect(p.paramErrors[0], query).toMatch(new RegExp(`\\?${key}=`));
+            expect(p.paramErrors[0], query).not.toMatch(/\n/);
+        }
     });
 
     it("reads a candidate target under targets/tuning/ and tracker overrides", () => {
@@ -836,6 +877,124 @@ describe("startRefusal names the target file it was given", () => {
         expect(startRefusal({ mode: "tracking", target: null, minTrackedPatches: 8 })).toMatch(
             /targets\/pinball\.wnft is not loaded/,
         );
+    });
+});
+
+describe("startRefusal and the detection worker", () => {
+    const wnft = { db: { patches: { count: 64, patchSize: 16 } }, record: { source: "wnft" } };
+    const image = { db: { patches: { count: 64, patchSize: 16 } }, record: { source: "image" } };
+    const worker = { detection: "worker", source: "bundled", loops: 4 };
+
+    it("starts the worker in tracking mode on the .wnft target and a bundled clip", () => {
+        expect(startRefusal({ mode: "tracking", target: wnft, minTrackedPatches: 8, ...worker }))
+            .toBeNull();
+    });
+
+    it.each([
+        [
+            "a mode other than tracking",
+            { mode: "detection-only", target: wnft },
+            /^\?detection=worker runs in tracking mode only\.$/,
+        ],
+        [
+            "the stateless mode",
+            { mode: "stateless", target: wnft },
+            /^\?detection=worker runs in tracking mode only\.$/,
+        ],
+        [
+            "a target that is not the .wnft",
+            { mode: "tracking", target: image },
+            /^\?detection=worker needs the \.wnft target: the worker decodes its bytes\.$/,
+        ],
+        [
+            "loops on the webcam",
+            { mode: "tracking", target: wnft, detection: "sync", source: "webcam", loops: 4 },
+            /^\?loops= needs a looping clip, not the webcam\.$/,
+        ],
+    ])("refuses %s, in one line", (_, args, expected) => {
+        const message = startRefusal({ minTrackedPatches: 8, ...worker, ...args });
+        expect(message).toMatch(expected);
+        expect(message).not.toMatch(/\n/);
+    });
+
+    it("leaves the other paths alone: no new argument, no new refusal", () => {
+        expect(startRefusal({ mode: "tracking", target: wnft, minTrackedPatches: 8 })).toBeNull();
+        expect(
+            startRefusal({ mode: "detection-only", target: image, minTrackedPatches: 8 }),
+        ).toBeNull();
+        // The webcam is fine without loops.
+        expect(
+            startRefusal({ mode: "tracking", target: wnft, minTrackedPatches: 8, source: "webcam" }),
+        ).toBeNull();
+    });
+});
+
+describe("accountingError", () => {
+    const balanced = {
+        requests: 41,
+        posted: 31,
+        consumptions: 30,
+        ignored: 0,
+        dropped: 10,
+        discardedAtStop: 1,
+    };
+
+    it("accepts a run whose every request ended in one consumption, a drop or Stop", () => {
+        expect(accountingError(balanced)).toBeNull();
+        expect(
+            accountingError({
+                requests: 0,
+                posted: 0,
+                consumptions: 0,
+                ignored: 0,
+                dropped: 0,
+                discardedAtStop: 0,
+            }),
+        ).toBeNull();
+    });
+
+    it("names the counts of a run that does not balance", () => {
+        for (const broken of [
+            { ...balanced, requests: 42 },
+            { ...balanced, consumptions: 29 },
+            { ...balanced, dropped: 11 },
+            { ...balanced, discardedAtStop: 0 },
+        ]) {
+            const message = accountingError(broken);
+            expect(message).toMatch(/does not balance/);
+            expect(message).toBe(
+                `detection accounting does not balance: requests ${broken.requests} ≠ consumptions ${broken.consumptions} + dropped ${broken.dropped} + discardedAtStop ${broken.discardedAtStop}`,
+            );
+        }
+    });
+
+    it("refuses a detection handed in while a lock held, however the rest balances", () => {
+        expect(accountingError({ ...balanced, ignored: 1 })).toMatch(/ignored/);
+        expect(accountingError({ ...balanced, ignored: 2 })).toBe(
+            "2 detections were handed in while a lock held (ignored), where the policy allows none",
+        );
+        expect(accountingError({ ...balanced, ignored: 1 })).toMatch(/^1 detection was handed in/);
+    });
+
+    it.each([
+        ["a negative count", { ...balanced, dropped: -1 }],
+        ["a fractional count", { ...balanced, consumptions: 1.5 }],
+        ["an infinite count", { ...balanced, requests: Infinity }],
+        ["a text count", { ...balanced, posted: "31" }],
+        ["a missing count", { requests: 1 }],
+        ["no accounting at all", undefined],
+    ])("refuses %s as not a whole number", (_, acc) => {
+        expect(accountingError(acc)).toMatch(/whole number/);
+    });
+
+    it("says it in one line, whatever is wrong", () => {
+        for (const acc of [
+            { ...balanced, requests: 42 },
+            { ...balanced, ignored: 3 },
+            { ...balanced, dropped: -1 },
+            null,
+        ])
+            expect(accountingError(acc)).not.toMatch(/\n/);
     });
 });
 
