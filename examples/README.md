@@ -11,7 +11,9 @@ Prerequisites: Node.js as pinned in [`.nvmrc`](../.nvmrc) (currently v24.18.0), 
 
 ```bash
 npm install
-npm run build          # the examples load the built dist/, not the sources
+npm run build          # the examples load the built dist/, not the sources;
+                       # this also bundles bench-nft.html's detection worker
+                       # into examples/dist/ (git-ignored)
 npx http-server -p 8080 -s
 ```
 
@@ -148,7 +150,8 @@ still fills the measurement window and a run can be repeated; a webcam is
 already live and has no clip to loop. It changes nothing
 about how the pipeline runs — it only times it, in eight stages per frame
 (frame acquisition, grayscale conversion, `detect`, `describe`, `match`,
-`estimateHomography`, `poseFromHomography` and the frame total) and, when
+`estimateHomography`, `poseFromHomography` and the frame total; a worker
+run adds a ninth, `detectionPost`, below) and, when
 `NftTracker` runs, in its own timings of its tracking step.
 p50, p95 and max are kept over a configurable window (frame count), and the
 whole window is downloadable as JSON, with the user agent, the source and
@@ -267,10 +270,25 @@ export has always had (`numSceneKeypoints`, `numMatches`, `numInliers`, `ok`,
 step's patch counts and its fit's `inliers`, `rmsError`, `fitIterations` and
 `fitConverged`) and `trackerTimings` — copied as the tracker reports them,
 `null` without a tracker — and `corners`, the target's four corners
-reprojected into the frame by the frame's homography.
+reprojected into the frame by the frame's homography. Five fields say what
+became of detection on the frame (`DEFINITIONS.detectionUse`):
+`needsDetection` (the frame ended without a lock and the tracker asks an
+application for a detection — only a worker run's tracker does),
+`detectionUse` (`internal`: the tracker detected on this frame; `consumed`: a
+worker's detection was handed to `process` and used; `ignored`: one was handed
+in while a lock held, which the policy never does; `none`; `null` for the
+stateless pipeline), `detectionLatencyMs` (this frame's timestamp minus the
+consumed detection's), `detectionInFlight` (a worker's detection was in
+flight while `process` ran) and `detectedAt` (`{ timestampMs,
+mediaTimeSeconds, framesAgo }`: the frame the used detection was computed on
+— this one for the tracker's own, the frame posted to the worker for a
+consumed one — or `null`). A worker run's frames that posted to the worker
+also time the post, `timings.detectionPost`, inside `total`; it is absent,
+not 0, on every other frame.
 
 **The run summary.** The "Run summary" panel, and the export's `runSummary`,
-over the same window as the stage percentiles: the frames per state and the
+over the same window as the stage percentiles (the export's, with `?loops=`,
+over the counted loops: see the run protocol below): the frames per state and the
 **TRACK share**; **re-acquisitions** (a re-detection on the first frame after
 a loop wrap counted apart); a lock's **first steps**, and how many were
 confirmed, and a **held lock's steps**, and how many were lost (a loss on the
@@ -317,7 +335,72 @@ runs after 50 warm-up), downloaded as its own JSON.
 and `?camera=`: `?mode=`, `?target=`, `?window=` (10–2000 frames) and
 `?clip=` (a bundled clip's file name, which also selects that source) — e.g.
 `bench-nft.html?mode=tracking&window=300&clip=pinball-static.mp4`
-(tracking defaults to `target=wnft`).
+(tracking defaults to `target=wnft`); and `?detection=`, `?loops=` and
+`?run=`, below. A value of one of those three that cannot be read refuses
+Start rather than fall back to a default.
+
+### Detection off the frame loop: `?detection=worker`
+
+In the tracking mode, `?detection=worker` moves the detection pipeline off the
+frame loop into a module worker — the measurement
+[`docs/benchmarks/README.md`](../docs/benchmarks/README.md) plans in
+"2026-09-29 — M3: detection off the frame, measured". `?detection=sync`, the
+default, is the tracker's own detection on the frame loop, and stays the
+baseline. The worker is `js/detection-worker.mjs` over
+`js/detection-worker-core.mjs`. A module worker does not read the page's
+import map, so **`npm run build` bundles it** with esbuild into
+`dist/detection-worker.mjs` (git-ignored, like the packages' `dist/`); without
+that build the page says so, naming the file, and does not start.
+
+At load the page starts the worker and sends it the `.wnft` bytes and the
+detection options the tracker runs with (`init` is sent again at Start if the
+keypoint budget changed). Start is enabled only once the worker answers
+`ready` with the SHA-256 of the target the page decoded; a worker that fails to
+load or to prepare the target keeps Start disabled and shows why — never a
+silent fall back to `sync` under a URL that asked for the worker. Start refuses,
+in one line and before any source starts, the worker outside the tracking
+mode or with the in-page image target.
+
+The tracker then runs with `externalDetection` and never detects itself, and
+the page follows the on-demand policy (`js/detection-policy.mjs`): a frame
+that ends without a lock asks for a detection; the page posts that frame's
+grey pixels to the worker — transferred, not copied — if no detection is in
+flight or held, and drops the request otherwise; the result is held and handed
+to the next frame's `process`, whose tracking step confirms or refuses it.
+The stats list shows the jobs posted and consumed, the requests dropped and
+the job in flight. A job the worker fails, or leaves unanswered for 5 s,
+stops the run with the error, and that run is not exported: reload the page to
+run again.
+
+A worker run's export adds `detection`: its `path`, `policy`,
+`workerBundleSha256`, `accounting`, `staleReplies` (replies to an earlier run
+that arrived after it ended, discarded rather than handed in) and `jobs`, one
+per detection posted — `jobId`, `runId`, the posting frame's `tick` (its index
+since Start), `frameTimestampMs` (that frame's `timestampMs`) and
+`frameMediaTimeSeconds`; `postedAtMs` and `arrivedAtMs`, on the main thread's
+clock; `handlerMs`, the time of the handler that received the result;
+`workerMs`, the worker's stage times and `total`, on its own clock;
+`consumedAtTick`, and `outcome` (`consumed`, `ignored` or `discardedAtStop`).
+A job that never got a reply has `null` arrival, handler and worker times. The
+accounting is asserted, not described: `requests = consumptions + dropped +
+discardedAtStop`, and `ignored = 0` (`DEFINITIONS.detectionAccounting`).
+**Download refuses** — one line, nothing saved — a worker run that fails
+either, one that stopped on an error, and one still going, whose accounting
+closes when it ends. A synchronous run's export has `detection.path: "sync"`
+and no jobs.
+
+**The run protocol.** `?loops=N` (a clip, not the webcam) makes a run of
+whole loops of the clip: loop 0, from the run's first frame, warms up, loops 1
+to N are counted, and the page stops itself on its first frame of loop N + 1,
+with the status `done`. The export records `loops: { firstLoop: 1, loopCount:
+N }` and `clipDurationS`, and its `runSummary` reads the counted loops'
+frames, except `trackTimeShare` — the share of video time with a confirmed
+lock, over those loops on a fixed grid of media time — which reads them all,
+and is `complete` only if the window still holds the warm-up's last frame:
+give a run of several loops `?window=2000`. `?run=` is the run's place in a
+session's order, exported as `run.order` beside `run.startedAtIso` and
+`run.endedAtIso`. For example:
+`bench-nft.html?mode=tracking&detection=worker&clip=pinball-bench.mp4&window=2000&loops=4&run=2`.
 
 ## The bundled reference clips: `videos/pinball-*.mp4`
 
