@@ -2524,6 +2524,12 @@ which nothing in this plan changes. The comparison is the synchronous
 tracking mode in the same session, on the adopted 48-patch target, bracketed
 as the tuning rounds were.
 
+**M3 buys frame time, not re-acquisition latency** — which its predictions,
+as corrected before the pre-flight ran (below), make plain: unlocked frames
+drop from 107.4 ms (wall) and 140.4 ms (table) of `total` to about their
+acquisition, and lock quality holds. M3 is not measured as a re-acquisition
+improvement, and is not to be read as one.
+
 ### What the synchronous mode spends on detection
 
 Round 2's tablet runs of the adopted target (`Tab_9_WiFi`, synchronous
@@ -2543,7 +2549,10 @@ frame that is not TRACK. The lock is read over each run's whole loops (two
 on either moving clip): per processed frame, and by video time, which is
 `trackTimeShare`, defined below. While it detects, the synchronous loop skips the frames that
 go by: after a frame that detected, the next processed frame comes 120 ms of
-video later on the wall clip and 133 ms on the table clip, at the median, so
+video later on the wall clip and 133 ms on the table clip, at the median.
+After one whose detection found the target — the frame the first tracking
+step follows — it comes 160.5 ms later on the wall clip, and 133.3 or 166.7
+ms on the table clip, whose 48 such frames split evenly between the two, so
 a detection's first tracking step already meets that much motion.
 
 ### The policy
@@ -2854,7 +2863,9 @@ a frame boundary falls where the device's does. Both modes run on every
 schedule, at three seeds, into loop 5, and the replay reads
 `trackTimeShare` over loops 1 to 4, as the device does.
 
-**Latency is modelled in media time at 70, 100 and 130 ms.** The band
+**Latency is modelled in media time at 70, 100 and 130 ms**, and at 50 ms
+for the table clip's falsifier (below), which the band's floor sits too
+close to. The band
 brackets the device's latency; it does not reproduce it. Its floor is the
 pipeline as the tablet ran it on the main thread in round 2 — 68.6 ms p50 on
 the wall clip, 79.5 on the table clip. What a worker adds, the desktop
@@ -2901,32 +2912,63 @@ at the median, and the results then say so.
   step at least as fresh; at 100 ms within the synchronous run's range or
   just below it — on the same frame after a failed step, a frame later only
   after a detection that found nothing; at 130 ms below it, a frame later
-  throughout. On the table clip: at 70 ms not below the synchronous run's
-  range — 33.3 ms sooner, by a margin of 2 ms of latency that a scaled step
-  above 13.3 ms erases; at 100 and 130 ms below it, 33.3 ms later. *Refused
-  if*, on the wall clip, the worker's mean over the seeds is not above the
-  synchronous run's mean at 70 ms, or not below it at 130 ms: the
-  frame-boundary account is then wrong, and the plan says so before the
-  session. (The verification's scratch model gave the
+  throughout. On the table clip: at 50 ms above the synchronous run's —
+  33.3 ms sooner after a failed step, as often after a detection that found
+  nothing; at 100 and 130 ms below it — 33.3 ms later after a failed step,
+  a waiting frame less often after a detection that found nothing; and at
+  70 ms nothing, for the reason its falsifier gives. *Refused if*, on the
+  wall clip, the worker's mean is not above the synchronous run's mean at
+  70 ms (over seeds 2 and 3; the correction below says why), or not below
+  it at 130 ms (over the three seeds): the frame-boundary account is then
+  wrong, and the plan says so before the session. *Refused if*, on the
+  table clip, the worker's mean over the three seeds is not above the
+  synchronous run's at 50 ms, or not below it at 100 ms or at 130 ms. The
+  model makes the table clip's worker trail inside a band of latency: above
+  83.3 ms less the scaled step — about 72 ms at seed 1's — its result lands
+  while a waiting frame's 50 ms acquisition overruns the next frame, and its
+  first step comes at least 33.3 ms after the synchronous one; below that
+  floor it comes 33.3 ms sooner. 100 and 130 ms lie above the floor at any
+  scaled step. 70 ms lies 2 ms under it at seed 1's step and above it for a
+  step over 13.3 ms, so the table clip's 70 ms point decides nothing, and
+  50 ms — 22 ms under the floor — is run for the band's lower side. (The
+  verification's scratch model gave the
   worker +18.7, +6.1 and +2.6 points at 70, 100 and 130 ms; it counted the
   worker's latency from its frame rather than from the post, crediting it
   with the frame's acquisition, and those figures are withdrawn.) *Refused
   if* at 70 ms the worker loses more than 5 points of video time on the
-  wall clip: the device prediction is then "worse" before the session, and
-  the plan records it so before running it.
+  wall clip (over seeds 2 and 3): the device prediction is then "worse"
+  before the session, and the plan records it so before running it.
 
   *Corrected on 2026-09-30, before the pre-flight ran.* The first version
   of this prediction took the synchronous first step at 120.4 and 133.3 ms
   — the gap after a detecting frame that ran no step — where almost every
   detection follows a failed step, whose synchronous first step comes a
   frame later; its refusal at 100 ms would have fired against a worker that
-  lands on the synchronous frame. One run of the replay, at 70 ms and seed 1
-  only, had checked the committed loop before the correction, and is
-  disclosed with it: first-step latency p50 120.4 ms for the worker against
-  160.5 for the synchronous run on the wall clip, 133.3 against 166.7 on the
-  table clip; `trackTimeShare` 45.2% against 40.4%, and 73.4% against 71.4%.
-  The 100 and 130 ms predictions, and seeds 2 and 3, are still ahead of
-  their runs.
+  lands on the synchronous frame. The correction rests on round 2's
+  committed tablet exports, not on the replay output, so its evidence is
+  independent of the run already done: one run of the replay, at 70 ms and
+  seed 1 only, which had checked the committed loop before the correction
+  and is disclosed with it — first-step latency p50 120.4 ms for the worker
+  against 160.5 for the synchronous run on the wall clip, 133.3 against
+  166.7 on the table clip; `trackTimeShare` 45.2% against 40.4%, and 73.4%
+  against 71.4%. On the device, the correction moves the expectation
+  against the result that had been seen: 45.2% against 40.4% was observed,
+  and the expected improvement was then removed. (The working ruling that
+  first found the late synchronous step, read from the same exports before
+  the replay's loop existed, had expected a worker a frame sooner on the
+  tablet; read further, the exports put it on the synchronous frame at equal
+  speed. That ruling is a working note, not in this repository, so its
+  order cannot be checked from here.) A contaminated correction almost
+  always moves the other way, to make an observed result look predicted. On
+  the desktop, at 70 ms, it does move the other way — from within the
+  synchronous run's range to above it — and so the wall clip's 70 ms point
+  is not load-bearing: seeds 2 and 3 and the 100 and 130 ms points, all run
+  after the correction, carry the verdict. Running seed 1 at 70 ms again
+  does not cleanse it: a replay deterministic in latency and seed
+  reproduces it exactly, which proves nothing about the order of
+  operations. It is run again anyway, first, as a check of the harness: if
+  its outputs are not identical, that is a finding about the replay, needed
+  before it produces the other numbers.
 - The fallback's withdrawal is re-checked by committed code: on the
   every-frame schedule, the synchronous mode run as external detection whose
   result is consumed at the first frame at or after its frame's work plus
