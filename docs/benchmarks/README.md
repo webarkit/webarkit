@@ -3069,6 +3069,95 @@ at the median, and the results then say so.
   `<date>-tab9-m3-<sync|worker|stateless>-<clip>[-<n>].json`; the PR reports
   the directory's size on disk and stored.
 
+### The session's runbook
+
+Written on 2026-09-30, before the session, so that a session started fresh
+can run it as it stands; its rules are those above, in the order the
+session meets them. It needs a whole session: the thirteen runs take about
+40 minutes with their idles (a run is five loops of its clip: 61 s static,
+60 s wall, 45 s table), re-runs up to 20 more, and a block interrupted
+halfway is run again from its opening synchronous run, never resumed. It
+does not start on what is left of a day's budget.
+
+1. **Before the tablet.** The branch's code built (`npm run build`, which
+   bundles the worker last), its gates green, and the desktop pre-flight's
+   record committed with no refusal left unexplained.
+2. **The tablet**, `Tab_9_WiFi` (ADR-0001's reference device) and no other:
+   the repository root served over HTTP with range requests and module MIME
+   types, on the port `adb reverse` maps; DevTools forwarded; and one bench
+   tab driven — the tablet's other tabs are never touched. A watchdog stops
+   the driver if the lock screen shows; the device's owner unlocks it, never
+   the driver, and the block under way is run again from its opening
+   synchronous run.
+3. **The ready check**, before any run:
+   `examples/bench-nft.html?mode=tracking&target=wnft&detection=worker&clip=pinball-bench.mp4`.
+   Start is enabled once the worker has answered `ready`; one Start, until
+   the stats list shows a job posted and consumed; Stop; no error in the
+   console; nothing downloaded. If it fails, the session does not run.
+4. **Every run's URL, and nothing else on it** — no `targetFile`, `tracker`,
+   `maxKeypoints`, `procWidth`, `procHeight` or `camera`:
+   `examples/bench-nft.html?mode=tracking&target=wnft&detection=<sync|worker>&clip=<clip>&loops=4&window=2000&run=<n>`;
+   the stateless run's is
+   `?mode=stateless&target=wnft&clip=pinball-static.mp4&loops=4&window=2000&run=5`.
+   The driver sets the device label to `Tab_9_WiFi` before Start.
+5. **The order**, *n* being `?run=`:
+
+   | *n* | clip | path |
+   |---|---|---|
+   | 1–4 | `pinball-static.mp4` | sync, worker, worker, sync |
+   | 5 | `pinball-static.mp4` | stateless |
+   | 6–9 | `pinball-bench.mp4` (wall) | sync, worker, worker, sync |
+   | 10–13 | `pinball-bench-table.mp4` (table) | sync, worker, worker, sync |
+
+   The null control goes first, so that a session whose static clip moves
+   stops before the moving clips spend device time; the wall clip, which
+   carries the verdict, goes before the table clip.
+6. **Each run** (the driver, which lives outside this repository): load its
+   URL in the bench tab; wait for Start to be enabled; Start; wait for the
+   status `done` — `failed`, `stopped`, or no `done` within three minutes
+   makes the run invalid; Download, keeping the page's export unchanged;
+   then 120 s on an idle page that holds the wake lock.
+7. **Each export is checked before the next run**, and a run that fails a
+   check is invalid, not a result: `Android` in `userAgent`; `deviceLabel`
+   `Tab_9_WiFi`; `target.sha256` `9e8eb486…`; `detection.path` the one the
+   URL asked (`sync` for the stateless run); `run.order` its *n*;
+   `protocol.sessionRun` true — which covers the loops, the window, how the
+   run ended, the tracker's defaults, the counted loops' completeness and a
+   worker run's accounting; in a tracking run
+   `runSummary.detectionUseFallbackFrames` 0 (a stateless run's frames carry
+   no `detectionUse`, and the fallback's reading — every frame detected — is
+   right for them); and in a worker run
+   `runSummary.trackFramesWithDetectionInFlight` 0. An invalid
+   run is run again in its place, once; invalid twice, the session stops
+   until the cause is explained.
+8. **After the static block (runs 1–4)**, the null control: TRACK 100% in
+   all four runs; the worker runs' mean `trackStepMs` p50 and `total` p50
+   within 10% of the synchronous runs' mean; their mean `jitterPx` not above
+   the synchronous runs' mean by more than the two synchronous runs differ.
+   If it fails, the session stops, inconclusive until explained.
+9. **After every block**, the thermal rule: if the closing synchronous run
+   is slower than the opening one — `trackStepMs` p50 by more than 6.6%, or
+   `acquire` p50 (`summaryMs`, read only from an export whose
+   `summaryMsFrames` is `counted loops`) by more than 1.9 ms —
+   the block is run again, once, at once; if the re-run trips the rule too,
+   it is read as measured, and the slowing is recorded as a cost the worker
+   mode causes.
+10. **After the wall block (runs 6–9)**, the spread rules: if the
+    synchronous runs' eight loops spread by more than 5 points (standard
+    deviation), or the two worker runs differ by more than 6.6 points, the
+    wall block is run once more and the rules are read again on both
+    blocks' loops pooled; if one still trips, the wall verdict is
+    inconclusive.
+11. **After the table block (runs 10–13)**: if its two synchronous runs'
+    `trackTimeShare` differ by more than 5 points, the table clip's reading
+    is inconclusive — it could not refuse in any case, and the latency
+    transfer then speaks for it. (Added on 2026-09-30, before the session.)
+12. **After the session**: the exports named as above in `docs/benchmarks/`
+    and committed, with both sizes reported; `node scripts/replay-clips.mjs
+    --transfer <their directory>` at seeds 1, 2 and 3; then the table below,
+    row by row and clip by clip, after the validity checks and the static
+    clip.
+
 ### Predictions, and what would refuse each
 
 On the device, per clip, the two worker runs against the two synchronous
