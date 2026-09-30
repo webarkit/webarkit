@@ -787,17 +787,69 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
         expect(trackTimeShare(run, { clipDurationS: D }).complete).toBe(true);
     });
 
-    it("allows a frame up to 1 ms past D, and refuses unwrapped time that goes back", () => {
-        // A media time a fraction of a millisecond past the end is rounding, not a shorter clip.
-        closeTo(unwrapMediaTimes([frame("LOST", 0.5), frame("LOST", 1.0005)], D), [0.5, 1.0005]);
-        // 0.8 ms past D passes the first check, but the wrap after it lands the next frame
-        // before it: loop 1's first frame, at 1.0, is earlier than loop 0's last, at 1.0008.
-        const back = [frame("LOST", 0.2), frame("LOST", 1.0008), frame("LOST", 0)];
-        expect(() => unwrapMediaTimes(back, D)).toThrow(RangeError);
-        expect(() => unwrapMediaTimes(back, D)).toThrow(
-            /^frame 2: media time 0 s unwraps to 1 s, before frame 1's 1\.0008 s \(clipDurationS 1 s\)/,
+    // Review I1: a frame the tolerance accepted used to be refused at the wrap after it, since the
+    // next loop's first frame unwrapped before it; whether a run was refused then depended on
+    // which frames its schedule processed. It now stands at D.
+    it("reads a frame up to 1 ms past D as at D, across the wrap after it, and refuses a D short by more", () => {
+        // 0.5 ms past D, then the wrap to the next loop's first frame, at media time 0: accepted.
+        const rounding = [frame("LOST", 0.5), frame("TRACK", 1.0005), frame("TRACK", 0), frame("LOST", 0.5)];
+        closeTo(unwrapMediaTimes(rounding, D), [0.5, 1, 1, 1.5]);
+        // The review's probe, at the table clip's duration.
+        closeTo(unwrapMediaTimes([frame("LOST", 8.8), frame("LOST", 8.9005), frame("LOST", 0)], 8.9), [
+            8.8, 8.9, 8.9,
+        ]);
+        // Its loop still reads whole: loop 1's first bins take the frame standing at D.
+        const whole = [...rounding, frame("LOST", 0.2)]; // 2.2: loop 2 closes loop 1
+        expect(trackTimeShare(whole, { clipDurationS: D, loopCount: 1 })).toMatchObject({
+            share: 0.5,
+            complete: true,
+        });
+        // A D short by more than 1 ms is refused before a wrap, on loop 0's last frame…
+        const before = [frame("LOST", 0.5), frame("LOST", 1.0015), frame("LOST", 0)];
+        expect(() => unwrapMediaTimes(before, D)).toThrow(RangeError);
+        expect(() => unwrapMediaTimes(before, D)).toThrow(
+            /^frame 1: media time 1\.0015 s is past clipDurationS 1 s by more than 1 ms/,
         );
-        expect(() => trackTimeShare(back, { clipDurationS: D, loopCount: 1 })).toThrow(/^frame 2:/);
+        // …and after one, on a later loop's frame, the first loop having skipped its end.
+        const after = [frame("LOST", 0.5), frame("LOST", 0.9), frame("LOST", 0.2), frame("LOST", 1.002)];
+        expect(() => unwrapMediaTimes(after, D)).toThrow(
+            /^frame 3: media time 1\.002 s is past clipDurationS 1 s by more than 1 ms/,
+        );
+        expect(() => trackTimeShare(after, { clipDurationS: D, loopCount: 1 })).toThrow(/^frame 3:/);
+        // Unwrapped time that goes back is still refused, strictly: a media time below 0 after a
+        // wrap is the only way left to it.
+        expect(() => unwrapMediaTimes([frame("LOST", 0.9), frame("LOST", -0.2)], D)).toThrow(
+            /^frame 1: media time -0\.2 s unwraps to 0\.8 s, before frame 0's 0\.9 s \(clipDurationS 1 s\)/,
+        );
+    });
+
+    // Review M7: a frame without a finite media time unwrapped to NaN, and the grid walk stopped
+    // advancing at it, so every later bin took the state before it.
+    it("refuses a media time that is not a finite number, naming the frame", () => {
+        for (const m of [undefined, null, NaN, Infinity]) {
+            expect(() => unwrapMediaTimes([frame("LOST", 0.5), frame("LOST", m)], D), String(m)).toThrow(
+                new RegExp(`^frame 1: media time ${String(m)} is not a finite number of seconds`),
+            );
+        }
+        // The review's probe: TRACK on loop 0's first frame, a frame with no media time, and LOST
+        // throughout loops 1 to 4. The walk stuck at the NaN read every bin as TRACK: share 1.
+        const probe = [
+            frame("TRACK", 0),
+            frame("LOST", undefined),
+            frame("LOST", 0.5),
+            ...[1, 2, 3, 4].flatMap(() => [frame("LOST", 0.2), frame("LOST", 0.7)]),
+            frame("LOST", 0.1), // loop 5
+        ];
+        const read = () => trackTimeShare(probe, { clipDurationS: D });
+        expect(read).toThrow(RangeError);
+        expect(read).toThrow(/^frame 1: media time undefined is not a finite number of seconds/);
+        let message = "";
+        try {
+            read();
+        } catch (e) {
+            message = e.message;
+        }
+        expect(message).not.toMatch(/\n/);
     });
 });
 

@@ -417,7 +417,9 @@ give a run of several loops `?window=2000`. Media time is unwrapped with the
 clip's duration (`clipDurationS`, the browser's `video.duration`); a frame past
 it by more than 1 ms would lay the loops over each other, so it is refused
 rather than read: the `trackTimeShare` row shows why, and Download refuses the
-run in one line. `?run=` is the run's place in a
+run in one line. A frame past it by at most 1 ms is rounding, and stands at the
+clip's end, whatever frame the run processed next; a frame with no finite
+media time is refused the same way. `?run=` is the run's place in a
 session's order, exported as `run.order` beside `run.startedAtIso`,
 `run.endedAtIso` and `run.endedBy`, how the run ended: `done`, `stopped` (Stop)
 or `failed`. For example:

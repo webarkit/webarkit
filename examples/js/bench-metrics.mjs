@@ -333,7 +333,7 @@ export const DEFINITIONS = Object.freeze({
     detectionUse:
         "Per frame, what became of detection, from NftTracker's result: needsDetection (the frame ended without a lock and the tracker has externalDetection: an application is asked for a detection), detectionUse (internal: the tracker detected on this frame; consumed: a detection computed elsewhere was handed to process and used; ignored: one was handed in while a lock held; none: neither; null: the stateless pipeline, and any export older than the field, which read as M2's tracker: its own detection on every frame that is not TRACK), detectionLatencyMs (this frame's timestamp minus the consumed detection's, else null), detectionInFlight (a worker's detection was in flight when process ran) and detectedAt ({ timestampMs, mediaTimeSeconds, framesAgo }, the frame the used detection was computed on: this frame, with framesAgo 0, for an internal one, and the frame the worker was given for a consumed one, framesAgo processed frames back; null when none was used).",
     trackTimeShare:
-        "The share of video time with a confirmed lock, over whole loops of the clip, on a fixed grid of media time: { share, perLoop, binMs, loops: [first, last], complete }, from every frame's state and mediaTimeSeconds. Media time is unwrapped onto one timeline, loop k covering [k·D, (k + 1)·D), D being the clip's duration, and the run's first pass is loop 0, a warm-up that is not counted: loops 1 to 4 are. A D shorter than the clip would lay the loops over each other, so a frame whose media time is past D by more than 1 ms, or whose unwrapped time comes before the frame's before it, is refused, not read. Bin j of loop k starts at k·D + j·binMs (binMs 10) and takes the state of the most recent processed frame at or before its start, held across a loop wrap; share = bins in TRACK ÷ all bins, and perLoop is each counted loop's own. A DETECT frame's pose is an unconfirmed detection and counts as no lock. It reads all the run's frames, not only the counted loops': the frame before a loop supplies the state its first bins take, and a frame of the loop after the last closes it. Deleting a frame whose state equals both its neighbours' cannot change it, so a schedule that processes more frames, a worker's waiting ones, does not move it as it moves trackShare, which counts processed frames. complete is false, and share and perLoop null, unless a frame stands at or before the first bin and one at or after the start of the loop after the last; a summary given no counted loops has null.",
+        "The share of video time with a confirmed lock, over whole loops of the clip, on a fixed grid of media time: { share, perLoop, binMs, loops: [first, last], complete }, from every frame's state and mediaTimeSeconds. Media time is unwrapped onto one timeline, loop k covering [k·D, (k + 1)·D), D being the clip's duration, and the run's first pass is loop 0, a warm-up that is not counted: loops 1 to 4 are. A D shorter than the clip would lay the loops over each other, so a frame whose media time is past D by more than 1 ms, or whose unwrapped time comes before the frame's before it, is refused, not read; one past D by at most 1 ms, rounding, stands at D, across the wrap after it too. A frame whose media time is not a finite number is refused. Bin j of loop k starts at k·D + j·binMs (binMs 10) and takes the state of the most recent processed frame at or before its start, held across a loop wrap; share = bins in TRACK ÷ all bins, and perLoop is each counted loop's own. A DETECT frame's pose is an unconfirmed detection and counts as no lock. It reads all the run's frames, not only the counted loops': the frame before a loop supplies the state its first bins take, and a frame of the loop after the last closes it. Deleting a frame whose state equals both its neighbours' cannot change it, so a schedule that processes more frames, a worker's waiting ones, does not move it as it moves trackShare, which counts processed frames. complete is false, and share and perLoop null, unless a frame stands at or before the first bin and one at or after the start of the loop after the last; a summary given no counted loops has null.",
     detectionLocks:
         "{ n, confirmed, refused, reacquisitions, reacquisitionsAtLoopWrap }: the locks the tracker set from a detection, by one rule for the synchronous and the worker modes, from each frame's state, detectionUse, reason, tracking and trackLoss. A lock is set on a DETECT frame that ran the tracker's own detection (detectionUse internal; an export older than the field reads every DETECT frame so), and on a frame that consumed a detection (consumed) and is TRACK or has the reason unconfirmed. Its first step is the tracking step that carries the detection's pose to a frame: the next frame's (its tracking not null) after the tracker's own detection, the same frame's after a consumed one. n: the locks whose first step is in the window; confirmed: those whose first step returned TRACK; refused: the rest, per that step's trackLoss (in a worker run, the stale refusals). reacquisitions: the locks set after an earlier frame of the window had a pose, other than on the first frame after a loop wrap, which reacquisitionsAtLoopWrap counts apart: the jump there is the clip's. On a synchronous run n and confirmed equal firstSteps.n and firstSteps.confirmed, and both reacquisitions keys those of the same names, which stay under their own definitions.",
     firstStepLatency:
@@ -441,9 +441,13 @@ const seconds = (s) => `${+s.toFixed(6)} s`;
  * on that timeline would look whole while it is not the run's, so it is
  * refused, in one line naming the frame, its media time and D: a `RangeError`
  * when a frame's media time is past D by more than 1 ms, or when a frame's
- * unwrapped time comes before the frame's before it. What unwraps through this
- * — {@link countedLoopFrames}, {@link trackTimeShare}, `summarizeRun` with
- * `loops` — refuses with it.
+ * unwrapped time comes before the frame's before it. A frame past D by at most
+ * 1 ms — rounding between the duration and the frames' times — stands at D, so
+ * the next loop's first frame, at k·D, does not come before it, whichever
+ * frames the run's schedule processed. A media time that is not a finite number
+ * has no place on the timeline, and is refused in the same way. What unwraps
+ * through this — {@link countedLoopFrames}, {@link trackTimeShare},
+ * `summarizeRun` with `loops` — refuses with it.
  */
 export function unwrapMediaTimes(frames, clipDurationS) {
     checkClipDuration(clipDurationS);
@@ -453,13 +457,19 @@ export function unwrapMediaTimes(frames, clipDurationS) {
     let previous = -Infinity;
     return frames.map((f, i) => {
         const m = f.mediaTimeSeconds;
+        if (!Number.isFinite(m)) {
+            throw new RangeError(
+                `frame ${i}: media time ${String(m)} is not a finite number of seconds: it has no place on the run's timeline`,
+            );
+        }
         if (m > clipDurationS + CLIP_END_TOLERANCE_S) {
             throw new RangeError(
                 `frame ${i}: media time ${seconds(m)} is past clipDurationS ${D} by more than 1 ms: ${overlaps}`,
             );
         }
         if (i > 0 && isLoopWrap(frames[i - 1], f)) loop++;
-        const t = loop * clipDurationS + m;
+        // Up to 1 ms past D, a frame stands at D: the tolerance holds across the wrap after it.
+        const t = loop * clipDurationS + Math.min(m, clipDurationS);
         if (t < previous) {
             throw new RangeError(
                 `frame ${i}: media time ${seconds(m)} unwraps to ${seconds(t)}, before frame ${i - 1}'s ${seconds(previous)} (clipDurationS ${D}): ${overlaps}`,
