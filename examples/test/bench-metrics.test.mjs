@@ -39,6 +39,7 @@ import {
     detectionLocks,
     detectionOutcomes,
     detectionTime,
+    exportDetectionPath,
     firstStepLatency,
     frameMs,
     frameRecord,
@@ -68,6 +69,7 @@ import {
     trackabilityError,
     trackFramesWithDetectionInFlight,
     trackTimeShare,
+    transferPlan,
     TUNABLE_TRACKER_OPTIONS,
     unlockedResidualMs,
     unwrapMediaTimes,
@@ -2189,6 +2191,237 @@ describe("the review's fixes", () => {
             ["a p50 is 0", { n: 200, p50: 14 }, { n: 200, p50: 0 }],
         ])("is null, not 0 or Infinity, when %s", (_, device, here) => {
             expect(proxyRatio(device, here)).toBeNull();
+        });
+    });
+});
+
+describe("transferPlan: what --transfer reads from a session's page exports", () => {
+    const CLIPS = ["pinball-static.mp4", "pinball-bench.mp4", "pinball-bench-table.mp4"];
+    const SHA = "ab";
+    const frame = (state, timings, o = {}) => ({ state, ok: state !== "LOST", timings, ...o });
+    const pageExport = (path, frames, o = {}) => ({
+        mode: "tracking",
+        source: "bundled",
+        bundledClip: "pinball-bench.mp4",
+        target: { sha256: SHA },
+        ...(path === null ? {} : { detection: { path, jobs: [] } }),
+        frames,
+        ...o,
+    });
+    const track = (trackMs) =>
+        frame("TRACK", { acquire: 18, gray: 2 }, { detectionUse: "none", trackerTimings: { trackMs } });
+
+    // Two detections on the frame loop, 69 and 80 ms of pipeline; two unlocked frames, 22 and 26
+    // ms of acquisition; two steps, 5 and 7 ms.
+    const syncFrames = () => [
+        frame(
+            "DETECT",
+            { acquire: 20, gray: 2, detect: 7, describe: 10, match: 50, estimateHomography: 2, pose: 9 },
+            { detectionUse: "internal" },
+        ),
+        track(5),
+        frame(
+            "LOST",
+            { acquire: 24, gray: 2, detect: 6, describe: 10, match: 60, filterMatches: 1, estimateHomography: 3 },
+            { detectionUse: "internal" },
+        ),
+        track(7),
+        // No tracker timings: not a sample of the step.
+        frame("TRACK", { acquire: 18, gray: 2 }, { detectionUse: "none" }),
+    ];
+
+    // Two jobs that came back, 75 and 110 ms after their posts, and one that never did; two
+    // unlocked frames, one of which consumed a detection, 32 and 36 ms of acquisition; three steps.
+    const workerExport = (o = {}) =>
+        pageExport(
+            "worker",
+            [
+                frame("LOST", { acquire: 30, gray: 2 }, { detectionUse: "none" }),
+                frame("LOST", { acquire: 34, gray: 2 }, { detectionUse: "consumed" }),
+                track(4),
+                track(6),
+                track(8),
+            ],
+            {
+                detection: {
+                    path: "worker",
+                    jobs: [
+                        { postedAtMs: 100, arrivedAtMs: 175 },
+                        { postedAtMs: 500, arrivedAtMs: null },
+                        { postedAtMs: 900, arrivedAtMs: 1010 },
+                    ],
+                },
+                ...o,
+            },
+        );
+
+    const plan = (exports, sha256 = SHA) =>
+        transferPlan(
+            exports.map((e, i) => ({ name: `export-${i}.json`, e })),
+            { clips: CLIPS, sha256 },
+        );
+
+    it("reads each mode's latency samples, acquisition and step from its exports", () => {
+        const p = plan([workerExport(), pageExport("sync", syncFrames())]);
+        expect(p.refusal).toBeNull();
+        expect(p.skipped).toEqual([]);
+        expect(p.clips.map((c) => c.clip)).toEqual(["pinball-bench.mp4"]);
+        const { sync, worker } = p.clips[0];
+
+        // The worker's: arrival minus post, over the jobs that came back.
+        expect(worker.latencyMs).toEqual([75, 110]);
+        expect(worker.latency).toEqual(stats([75, 110]));
+        // The synchronous mode's: the stages' sum on the frames that ran the tracker's own
+        // detection, filterMatches when there is one, and not the pose.
+        expect(sync.latencyMs).toEqual([69, 80]);
+        // acquire + gray on the unlocked frames, a frame that consumed a detection among them.
+        expect(worker.acquireMs).toBe(36);
+        expect(sync.acquireMs).toBe(26);
+        // trackerTimings.trackMs on the TRACK frames that have it, p50 as trackStepMs is.
+        expect(worker.stepMs).toBe(6);
+        expect(sync.stepMs).toBe(7);
+        expect(worker.path).toBe("worker");
+        expect(sync.path).toBe("sync");
+    });
+
+    it("pools a mode's exports of a clip, and names the files it read", () => {
+        const second = pageExport("sync", [
+            frame(
+                "DETECT",
+                { acquire: 40, gray: 2, detect: 8, describe: 11, match: 70, estimateHomography: 1 },
+                { detectionUse: "internal" },
+            ),
+            track(9),
+        ]);
+        const p = plan([workerExport(), pageExport("sync", syncFrames()), second]);
+        const sync = p.clips[0].sync;
+        expect(sync.latencyMs).toEqual([69, 80, 90]);
+        expect(sync.acquireMs).toBe(26); // 22, 26, 42
+        expect(sync.stepMs).toBe(7); // 5, 7, 9
+        expect(sync.files).toEqual(["export-1.json", "export-2.json"]);
+        expect(p.clips[0].worker.files).toEqual(["export-0.json"]);
+    });
+
+    it("reads an export with no detection record as a synchronous run's, on M2's rule", () => {
+        // Older than the worker path: no `detection`, and no `detectionUse` on its frames, so it
+        // detected on every frame that is not TRACK.
+        const older = pageExport(
+            null,
+            syncFrames().map(({ detectionUse, ...rest }) => rest),
+        );
+        expect(exportDetectionPath(older)).toBe("sync");
+        expect(exportDetectionPath(workerExport())).toBe("worker");
+        const p = plan([workerExport(), older]);
+        expect(p.refusal).toBeNull();
+        expect(p.clips[0].sync.latencyMs).toEqual([69, 80]);
+    });
+
+    it("groups by clip, and leaves out a clip with no exports", () => {
+        const table = (path, frames, o = {}) =>
+            pageExport(path, frames, { bundledClip: "pinball-bench-table.mp4", ...o });
+        const p = plan([
+            table("sync", syncFrames()),
+            workerExport(),
+            table("worker", workerExport().frames, { detection: workerExport().detection }),
+            pageExport("sync", syncFrames()),
+        ]);
+        expect(p.refusal).toBeNull();
+        // In the order of the clips given, not of the files.
+        expect(p.clips.map((c) => c.clip)).toEqual(["pinball-bench.mp4", "pinball-bench-table.mp4"]);
+    });
+
+    it.each([
+        ["a stateless run", { mode: "stateless" }, /stateless run, not a tracking run/],
+        ["a detection-only run", { mode: "detection-only" }, /detection-only run/],
+        ["a webcam run", { source: "webcam", bundledClip: null }, /bundled clip/],
+        ["another clip", { bundledClip: "other.mp4" }, /bundled clip/],
+        ["a replay's export", { kind: "replay" }, /replay's export/],
+        ["an export with no frames", { frames: undefined }, /not a page export/],
+        ["an unknown detection path", { detection: { path: "gpu" } }, /neither sync nor worker/],
+    ])("skips %s, saying why, and reads no more from it", (_, o, why) => {
+        const p = plan([
+            workerExport(),
+            pageExport("sync", syncFrames()),
+            pageExport("sync", syncFrames(), o),
+        ]);
+        expect(p.refusal).toBeNull();
+        expect(p.skipped).toHaveLength(1);
+        expect(p.skipped[0].name).toBe("export-2.json");
+        expect(p.skipped[0].why).toMatch(why);
+        expect(p.skipped[0].why).not.toMatch(/\n/);
+        // Nothing of it in the profile: the two sync exports' worth is one export's.
+        expect(p.clips[0].sync.files).toEqual(["export-1.json"]);
+    });
+
+    describe("refuses, in one line, and names what it found", () => {
+        const refusal = (exports, sha256) => {
+            const r = plan(exports, sha256).refusal;
+            expect(r).not.toBeNull();
+            expect(r).not.toMatch(/\n/);
+            return r;
+        };
+
+        it("refuses a clip with exports of one path only", () => {
+            const r = refusal([pageExport("sync", syncFrames()), pageExport("sync", syncFrames())]);
+            expect(r).toMatch(/no worker and sync exports/);
+            expect(r).toMatch(/pinball-bench\.mp4/);
+            expect(r).toMatch(/worker 0, sync 2/);
+            expect(refusal([workerExport()])).toMatch(/worker 1, sync 0/);
+        });
+
+        it("refuses a directory with no export of any clip, though it read files", () => {
+            expect(refusal([])).toMatch(/no worker and sync exports/);
+            expect(refusal([pageExport("sync", [], { mode: "stateless" })])).toMatch(
+                /no worker and sync exports/,
+            );
+        });
+
+        it("refuses a clip whose export names another target, by file and by sha256", () => {
+            const r = refusal([
+                workerExport(),
+                pageExport("sync", syncFrames(), { target: { sha256: "cd" } }),
+            ]);
+            expect(r).toMatch(/pinball-bench\.mp4/);
+            expect(r).toMatch(/export-1\.json/);
+            expect(r).toMatch(/sha256 cd/);
+            expect(r).toMatch(/not ab/);
+            // An older export records no target at all.
+            expect(
+                refusal([workerExport(), pageExport("sync", syncFrames(), { target: undefined })]),
+            ).toMatch(/sha256 \(none\)/);
+        });
+
+        it("reads a clip's paths before its targets", () => {
+            // Both faults: the missing path is the one named.
+            const r = refusal([pageExport("sync", syncFrames(), { target: { sha256: "cd" } })]);
+            expect(r).toMatch(/no worker and sync exports/);
+        });
+
+        it.each([
+            [
+                "detection latency",
+                () => workerExport({ detection: { path: "worker", jobs: [] } }),
+                /worker exports.*latency/,
+            ],
+            [
+                "acquisition",
+                () => workerExport({ frames: [track(4)] }),
+                /worker exports.*acquisition/,
+            ],
+            [
+                "step",
+                () => workerExport({ frames: [frame("LOST", { acquire: 30, gray: 2 })] }),
+                /worker exports.*step/,
+            ],
+        ])("refuses a mode that gives no %s", (_, worker, why) => {
+            expect(refusal([worker(), pageExport("sync", syncFrames())])).toMatch(why);
+        });
+
+        it("counts a job that never arrived as no latency at all", () => {
+            const worker = workerExport({
+                detection: { path: "worker", jobs: [{ postedAtMs: 1, arrivedAtMs: null }] },
+            });
+            expect(refusal([worker, pageExport("sync", syncFrames())])).toMatch(/latency/);
         });
     });
 });

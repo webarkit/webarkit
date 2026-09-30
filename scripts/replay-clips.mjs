@@ -35,6 +35,7 @@
  *     node scripts/replay-clips.mjs [--out <dir>]
  *     node scripts/replay-clips.mjs --sequence <tracking export.json>
  *     node scripts/replay-clips.mjs --external <latencyMs> [--seed <n>] [--out <dir>]
+ *     node scripts/replay-clips.mjs --transfer <dir> [--seed <n>] [--out <dir>]
  *
  * **Not an on-device measurement, and not the browser's pixels.** ffmpeg and
  * ffprobe (on PATH) decode the clips and scale them (bilinear) where the page
@@ -123,10 +124,54 @@
  * losses had left. Iterations, correlations and counts are functions of the
  * pixels, not of this machine's speed, so the desktop measures them as the
  * device would, up to ffmpeg's decoding against the browser's.
+ *
+ * **The latency transfer** (after a device session; the plan is in
+ * docs/benchmarks/README.md, "2026-09-29 — M3: detection off the frame,
+ * measured", "The lock metric, tested before any device time": the gate).
+ * `--transfer <dir>` reads every `*.json` page export in `<dir>` (not its
+ * subdirectories), keeps the tracking runs of a bundled clip, groups them by
+ * clip and `detection.path` (an export with none is a synchronous run's), and
+ * on each clip replays the device schedule twice as external detection, on
+ * `replayExternal`, the loop `--external` runs: once with the worker runs'
+ * latencies and once with the synchronous runs', so that a difference in
+ * latency is translated into points of lock. What a mode's arm takes from its
+ * exports, pooled, the warm-up loop's frames and jobs included (`transferPlan`
+ * in bench-metrics.mjs):
+ *
+ * - the latency of each job posted, drawn with replacement from that mode's
+ *   samples: the worker's `arrivedAtMs − postedAtMs` on the jobs that came
+ *   back, the synchronous mode's `DETECTION_STAGES` sum on the frames that ran
+ *   the tracker's own detection, both counted from the end of the detected
+ *   frame's work, which is where the loop's post is;
+ * - the acquisition: the p50 of `acquire` + `gray` over the frames that are not
+ *   TRACK;
+ * - the step: the p50 of `trackerTimings.trackMs` over TRACK frames, the
+ *   session's own `trackStepMs`, in place of `--device-ratio`'s scaled one.
+ *
+ * The draws come from their own seeded stream (mulberry32 of the seed XOR a
+ * constant), at the start of each arm, so a run repeats, and neither arm's
+ * draws move the RANSAC draws' `Math.random`. `--seed` defaults to 1 here,
+ * and is printed. Files are read in name order, since the draws index the
+ * samples. The replay's target must be the one the exports name (`target.sha256`):
+ * a clip whose exports name another, or that has exports of one path only, is
+ * refused (exit 1), before any clip is decoded. Prints, per clip, each arm's
+ * `trackTimeShare` and the difference, worker minus sync, in points. Not with
+ * `--external`, `--sequence` or `--device-ratio`; `--tracking-only` has
+ * nothing to skip.
+ *
+ * The transfer explains a device result and weighs in when the table clip is
+ * inconclusive; it never overrides the device. Both modes run as external
+ * detection, the synchronous one too: what a schedule processes while a
+ * detection is in flight does not move `trackTimeShare`, so the modes differ
+ * here by what the session measured of them and by nothing the loop does. The
+ * replay's model is `--external`'s, with what it leaves out, and a frame that
+ * consumes a detection is busy no longer than any tracking frame. One seed is
+ * one draw of the latencies and of the detections' RANSAC; the seeds' range is
+ * the spread.
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { cpus } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -158,6 +203,7 @@ import {
     summarizeRun,
     targetCorners,
     targetRecord,
+    transferPlan,
 } from "../examples/js/bench-metrics.mjs";
 import { fitSize } from "../examples/js/pinball-shared.mjs";
 import { createStepProbe } from "./tuning-probe.mjs";
@@ -227,7 +273,10 @@ const TARGET_PATH = resolve(arg("--target") ?? join(EXAMPLES, "targets/pinball.w
 const parsedOverrides = parseTrackerOverrides(arg("--options"));
 if (!parsedOverrides.ok) usage(`--options: ${parsedOverrides.error}`);
 const OVERRIDES = parsedOverrides.options;
-const SEED = arg("--seed") === null ? null : Number(arg("--seed"));
+const TRANSFER_DIR = arg("--transfer");
+// --transfer draws latencies, and a draw that could not be repeated would not
+// be a result: it always has a seed, 1 unless --seed says another.
+const SEED = arg("--seed") === null ? (TRANSFER_DIR === null ? null : 1) : Number(arg("--seed"));
 if (SEED !== null && !(Number.isSafeInteger(SEED) && Math.abs(SEED) <= 0xffffffff)) {
     usage(`--seed expects an integer in [-4294967295, 4294967295], got "${arg("--seed")}"`);
 }
@@ -252,6 +301,18 @@ if (EXTERNAL_MS !== null && arg("--sequence")) {
     usage(
         "--external runs its own arms over the bundled clips; --sequence replays one export's frames: the two cannot be combined",
     );
+}
+if (TRANSFER_DIR !== null) {
+    // What each of these would give the transfer, it takes from the session.
+    const other = {
+        "--external":
+            "--transfer draws its latencies from a session's exports; --external gives one: the two cannot be combined",
+        "--sequence":
+            "--transfer replays the bundled clips with a session's latencies; --sequence replays one export's frames: the two cannot be combined",
+        "--device-ratio":
+            "--transfer steps by the session's own trackStepMs; --device-ratio scales the desktop's: the two cannot be combined",
+    };
+    for (const [flag, why] of Object.entries(other)) if (arg(flag) !== null) usage(why);
 }
 
 /** mulberry32, as compile-target and the tests' seeded_rng use it. */
@@ -508,12 +569,17 @@ function replayRun({
  * step, which this needs on the every-frame schedule too, as a model of when
  * the device would have posted.
  *
+ * `latencyMs` is a number, the latency of every job, or a function, called once
+ * for each job at its post and returning that job's: `--transfer` draws them
+ * from a session's measured latencies.
+ *
  * Returns the frame records, one record per job posted (`jobs`: on the timeline
  * in ms, `postedAtMs` the post and `arrivedAtMs` the post plus the latency,
  * `handlerMs` and `workerMs` not modelled) and the policy's accounting, which
  * the caller asserts.
  */
 function replayExternal({ frames, pts, K, options, stepMs, everyFrame, latencyMs, acquireMs }) {
+    const latencyOf = typeof latencyMs === "function" ? latencyMs : () => latencyMs;
     const tracker = new NftTracker(cv, target, K, {
         ...options,
         externalDetection: true,
@@ -540,12 +606,13 @@ function replayExternal({ frames, pts, K, options, stepMs, everyFrame, latencyMs
         const result = tracker.process(frames[i], timestampMs, handed);
         const workMs = acquireMs + (result.tracking ? stepMs : 0);
         policy.afterProcess(result, () => {
+            const latency = latencyOf();
             const postedAtMs = timestampMs + workMs;
             const job = {
                 jobId: jobs.length + 1,
                 tick,
                 postedAtMs,
-                arrivedAtMs: postedAtMs + latencyMs,
+                arrivedAtMs: postedAtMs + latency,
                 handlerMs: null,
                 workerMs: null,
                 frameTimestampMs: timestampMs,
@@ -557,7 +624,7 @@ function replayExternal({ frames, pts, K, options, stepMs, everyFrame, latencyMs
             pending = {
                 job,
                 detection: detectTarget(cv, setup, frames[i], timestampMs),
-                readyS: times[k] + (workMs + latencyMs) / 1000,
+                readyS: times[k] + (workMs + latency) / 1000,
             };
         });
         let detectedAt = null;
@@ -663,6 +730,76 @@ function writeExport(clip, planned, e) {
 }
 
 /**
+ * `replayExternal` inside the run's seed, its accounting asserted: an unbalanced
+ * one exits 1, one line naming the clip and the arm.
+ */
+function runExternal(clip, arm, params) {
+    const run = seeded(() => replayExternal(params));
+    const unbalanced = accountingError(run.accounting);
+    if (unbalanced) {
+        console.error(`replay-clips: ${clip}, ${arm.schedule}: ${unbalanced}`);
+        process.exit(1);
+    }
+    return run;
+}
+
+/**
+ * One external arm's export: its `records` summarised over the counted loops,
+ * and what it was run with (`model`, and the seed, options, loops and step). An
+ * arm is `{ schedule, path, external }`. Exits 1, one line, when
+ * `trackTimeShare` is incomplete: the run does not reach loop
+ * `firstLoop + loopCount`, and a share read short of it is not the device's.
+ */
+function armExport({
+    clip,
+    width,
+    height,
+    arm,
+    records,
+    jobs,
+    accounting,
+    stepMs,
+    acquireMs,
+    clipDurationS,
+    model,
+}) {
+    const run = { mode: "tracking", schedule: arm.schedule };
+    const e = exportOf(clip, run, { width, height }, records, {
+        clipDurationS,
+        loops: M3_COUNTED,
+        jobs,
+        accounting,
+    });
+    e.trackerOptions = OVERRIDES;
+    e.seed = SEED;
+    e.loops = M3_COUNTED;
+    e.clipDurationS = clipDurationS;
+    e.stepMs = stepMs;
+    e.detection = { path: arm.path, external: arm.external, model, jobs, accounting };
+    if (!e.runSummary.trackTimeShare.complete) {
+        console.error(
+            `replay-clips: ${clip}, ${arm.schedule}: trackTimeShare is incomplete: the run does not reach loop ${M3_COUNTED.firstLoop + M3_COUNTED.loopCount}`,
+        );
+        process.exit(1);
+    }
+    return e;
+}
+
+/** An arm's row of the external table: the run table's columns for its export `e`, then the ones `--external` adds. */
+function externalRow(clip, width, height, e) {
+    const s = e.runSummary;
+    const t = s.trackTimeShare;
+    const a = e.detection.accounting;
+    return tableRow(clip, width, height, e, s, [
+        pct(t.share),
+        t.perLoop.map(pct).join(" / "),
+        `${s.detectionLocks.confirmed} / ${s.detectionLocks.n}`,
+        fmt(s.firstStepLatency.videoMs.p50, 1),
+        a ? `${a.requests} = ${a.consumptions} + ${a.dropped} + ${a.discardedAtStop}` : "—",
+    ]);
+}
+
+/**
  * `--external`'s five arms on every clip, as the plan's desktop pre-flight
  * reads them (docs/benchmarks/README.md, "The desktop pre-flight"), each over
  * `M3_LOOPS` loops with `trackTimeShare` read over the counted ones:
@@ -723,23 +860,16 @@ async function externalArms() {
             let jobs = [];
             let accounting = null;
             if (external) {
-                ({ records, jobs, accounting } = seeded(() =>
-                    replayExternal({
-                        frames,
-                        pts,
-                        K,
-                        options: OVERRIDES,
-                        stepMs,
-                        everyFrame: arm.everyFrame,
-                        latencyMs: arm.latencyMs,
-                        acquireMs,
-                    }),
-                ));
-                const unbalanced = accountingError(accounting);
-                if (unbalanced) {
-                    console.error(`replay-clips: ${clip}, ${arm.schedule}: ${unbalanced}`);
-                    process.exit(1);
-                }
+                ({ records, jobs, accounting } = runExternal(clip, arm, {
+                    frames,
+                    pts,
+                    K,
+                    options: OVERRIDES,
+                    stepMs,
+                    everyFrame: arm.everyFrame,
+                    latencyMs: arm.latencyMs,
+                    acquireMs,
+                }));
             } else {
                 records = replay({
                     clip,
@@ -754,54 +884,155 @@ async function externalArms() {
                     unwrapped: true,
                 });
             }
-            const run = { mode: "tracking", schedule: arm.schedule };
-            const e = exportOf(clip, run, { width, height }, records, {
+            const e = armExport({
+                clip,
+                width,
+                height,
+                arm: { ...arm, external },
+                records,
+                jobs,
+                accounting,
+                stepMs,
+                acquireMs,
                 clipDurationS,
-                loops: M3_COUNTED,
-                jobs,
-                accounting,
-            });
-            e.trackerOptions = OVERRIDES;
-            e.seed = SEED;
-            e.loops = M3_COUNTED;
-            e.clipDurationS = clipDurationS;
-            e.stepMs = stepMs;
-            e.detection = {
-                path: arm.path,
-                external,
                 model: { latencyMs: arm.latencyMs, acquireMs, detectMs: DEVICE_DETECT_MS },
-                jobs,
-                accounting,
-            };
-            const s = e.runSummary;
-            if (!s.trackTimeShare.complete) {
-                console.error(
-                    `replay-clips: ${clip}, ${arm.schedule}: trackTimeShare is incomplete: the run does not reach loop ${M3_COUNTED.firstLoop + M3_COUNTED.loopCount}`,
-                );
-                process.exit(1);
-            }
+            });
             if (scaledStepMs === null) {
                 // This configuration's own step, on the device: arm 1's
                 // every-frame p50 here, times the measured device ÷ desktop ratio.
-                scaledStepMs = (s.trackStepMs.p50 ?? 0) * DEVICE_RATIO;
+                scaledStepMs = (e.runSummary.trackStepMs.p50 ?? 0) * DEVICE_RATIO;
             }
-            const t = s.trackTimeShare;
-            const a = accounting;
-            console.log(
-                tableRow(clip, width, height, run, s, [
-                    pct(t.share),
-                    t.perLoop.map(pct).join(" / "),
-                    `${s.detectionLocks.confirmed} / ${s.detectionLocks.n}`,
-                    fmt(s.firstStepLatency.videoMs.p50, 1),
-                    a
-                        ? `${a.requests} = ${a.consumptions} + ${a.dropped} + ${a.discardedAtStop}`
-                        : "—",
-                ]),
-            );
-            writeExport(clip, run, e);
+            console.log(externalRow(clip, width, height, e));
+            writeExport(clip, arm, e);
         }
         console.log(
             `\n${clip}: the scaled step is ${fmt(scaledStepMs, 1)} ms (every-frame trackStepMs p50 × ${DEVICE_RATIO})\n`,
+        );
+    }
+}
+
+/**
+ * XORed into the seed for the latency draws' own stream, so that they neither
+ * consume nor shift the RANSAC draws' (`Math.random`, seeded from the seed
+ * itself).
+ */
+const LATENCY_STREAM = 0x9e3779b9;
+
+/**
+ * A function that draws one of `samples`, with replacement, each call: the same
+ * draws, in the same order, for the same seed.
+ */
+function latencyDrawer(samples) {
+    const random = mulberry32(SEED ^ LATENCY_STREAM);
+    return () => samples[Math.floor(random() * samples.length)];
+}
+
+/**
+ * The `*.json` files of `dir` (its files, not its subdirectories) as
+ * `{ name, e }`, in name order: the order the samples are drawn from. Exits 2,
+ * a usage error, on a directory it cannot read, and 1 on a file that is not
+ * JSON, one line naming it.
+ */
+function readTransferDir(dir) {
+    let names;
+    try {
+        names = readdirSync(dir, { withFileTypes: true })
+            .filter((entry) => entry.isFile() && /\.json$/i.test(entry.name))
+            .map((entry) => entry.name)
+            .sort();
+    } catch (err) {
+        usage(`--transfer: cannot read ${dir}: ${err.code ?? err.message}`);
+    }
+    return names.map((name) => {
+        try {
+            return { name, e: JSON.parse(readFileSync(join(dir, name), "utf8")) };
+        } catch (err) {
+            const why = String(err.message).split("\n")[0];
+            console.error(`replay-clips: --transfer ${dir}: ${name} is not readable JSON: ${why}`);
+            process.exit(1);
+        }
+    });
+}
+
+/**
+ * `--transfer`: on each clip the session exported, two arms on the device
+ * schedule, each `replayExternal` with what that mode's exports measured
+ * (`transferPlan`): the latency of every job drawn with replacement from its
+ * samples, the acquisition, and the step. Sync first, then worker, and per
+ * clip the difference in `trackTimeShare`, worker minus sync, in points.
+ * Everything a directory can get wrong (its files, its target, a mode with
+ * nothing to draw) is refused before the first clip is decoded.
+ */
+async function transferArms() {
+    const files = readTransferDir(TRANSFER_DIR);
+    const plan = transferPlan(files, { clips: CLIPS, sha256: targetRec.sha256 });
+    for (const { name, why } of plan.skipped) console.log(`skipped ${name}: ${why}`);
+    if (plan.refusal) {
+        console.error(`replay-clips: --transfer ${TRANSFER_DIR}: ${plan.refusal}`);
+        process.exit(1);
+    }
+    const seedNote = arg("--seed") === null ? " (the default: --seed was not given)" : "";
+    console.log(
+        `latency transfer from ${TRANSFER_DIR}: ${files.length - plan.skipped.length} page exports; each job's latency drawn with replacement from its mode's samples, counted from the post, seed ${SEED}${seedNote}; each mode's acquisition (acquire + gray p50 on frames that are not TRACK) and tracking step (trackMs p50 on TRACK frames) from its own exports; the device schedule; ${M3_LOOPS} loops a run, loop 0 warm-up, loops 1–${M3_COUNTED.loopCount} counted
+`,
+    );
+    for (const { clip, sync, worker } of plan.clips) {
+        for (const p of [sync, worker]) {
+            const l = p.latency;
+            const from = `${p.files.length} export${p.files.length === 1 ? "" : "s"} (${p.files.join(", ")})`;
+            console.log(
+                `${clip}, ${p.path}: ${from}; latency n ${l.n}, p50 ${fmt(l.p50, 1)} / p95 ${fmt(l.p95, 1)} ms; acquisition ${fmt(p.acquireMs, 1)} ms; step ${fmt(p.stepMs, 1)} ms`,
+            );
+        }
+    }
+    console.log("");
+    console.log(tableHead([...TABLE_COLUMNS, ...EXTERNAL_COLUMNS]));
+    for (const { clip, sync, worker } of plan.clips) {
+        const { frames, pts, width, height } = await loadClip(clip);
+        const K = intrinsics(width, height);
+        const clipDurationS = loopPeriod(pts);
+        const shares = {};
+        for (const p of [sync, worker]) {
+            const arm = {
+                schedule: `device, ${p.path}'s measured latencies`,
+                path: p.path,
+                external: true,
+            };
+            const { records, jobs, accounting } = runExternal(clip, arm, {
+                frames,
+                pts,
+                K,
+                options: OVERRIDES,
+                stepMs: p.stepMs,
+                everyFrame: false,
+                latencyMs: latencyDrawer(p.latencyMs),
+                acquireMs: p.acquireMs,
+            });
+            const e = armExport({
+                clip,
+                width,
+                height,
+                arm,
+                records,
+                jobs,
+                accounting,
+                stepMs: p.stepMs,
+                acquireMs: p.acquireMs,
+                clipDurationS,
+                model: {
+                    latencyMs: null,
+                    drawnFrom: { files: p.files, ...p.latency },
+                    acquireMs: p.acquireMs,
+                    detectMs: null,
+                },
+            });
+            console.log(externalRow(clip, width, height, e));
+            writeExport(clip, { schedule: `transfer, ${p.path}` }, e);
+            shares[p.path] = e.runSummary.trackTimeShare.share;
+        }
+        const points = 100 * (shares.worker - shares.sync);
+        console.log(
+            `\n${clip}: trackTimeShare worker ${pct(shares.worker)} against sync ${pct(shares.sync)}: worker minus sync ${points >= 0 ? "+" : ""}${fmt(points, 1)} points\n`,
         );
     }
 }
@@ -887,9 +1118,13 @@ const outDir = arg("--out");
 if (outDir) mkdirSync(outDir, { recursive: true });
 const patchTable = target.patches;
 console.log(
-    `target ${targetFile} (sha256 ${targetRec.sha256.slice(0, 12)}…): ${patchTable ? `${patchTable.count} patches of ${patchTable.patchSize} × ${patchTable.patchSize}` : "no patches"}; options ${Object.keys(OVERRIDES).length > 0 ? JSON.stringify(OVERRIDES) : "defaults"}; seed ${SEED ?? "none"}; device ratio ${DEVICE_RATIO}
+    `target ${targetFile} (sha256 ${targetRec.sha256.slice(0, 12)}…): ${patchTable ? `${patchTable.count} patches of ${patchTable.patchSize} × ${patchTable.patchSize}` : "no patches"}; options ${Object.keys(OVERRIDES).length > 0 ? JSON.stringify(OVERRIDES) : "defaults"}; seed ${SEED ?? "none"}${TRANSFER_DIR === null ? `; device ratio ${DEVICE_RATIO}` : ""}
 `,
 );
+if (TRANSFER_DIR !== null) {
+    await transferArms();
+    process.exit(0);
+}
 if (EXTERNAL_MS !== null) {
     await externalArms();
     process.exit(0);

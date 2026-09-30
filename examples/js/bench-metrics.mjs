@@ -1320,3 +1320,156 @@ export function framesAt(pts, mediaTimes) {
         return i;
     });
 }
+
+/**
+ * The detection path a page export ran on: its `detection.path`, and `"sync"`
+ * for one older than the worker path, which all detected on the frame loop.
+ */
+export function exportDetectionPath(e) {
+    return e?.detection?.path ?? "sync";
+}
+
+/**
+ * Why `scripts/replay-clips.mjs --transfer` reads nothing from export `e`, or
+ * `null` when it reads it: a page's export of a tracking run on one of
+ * `clips`, that ran on one of the detection paths. Not the replay's own
+ * exports (`kind: "replay"`, whose timings are modelled, not measured), and
+ * not a stateless or detection-only run, which a session also exports.
+ */
+function transferSkip(e, clips) {
+    if (!Array.isArray(e?.frames)) return "not a page export: it has no frames";
+    if (e.kind === "replay") return "a replay's export, not a page's";
+    if (e.mode !== "tracking") return `a ${e.mode ?? "(no mode)"} run, not a tracking run`;
+    if (e.source !== "bundled" || !clips.includes(e.bundledClip)) {
+        return `it did not run on a bundled clip (source ${e.source}, clip ${e.bundledClip ?? "(none)"})`;
+    }
+    const path = exportDetectionPath(e);
+    if (!DETECTION_PATHS.includes(path)) return `its detection path ${path} is neither sync nor worker`;
+    return null;
+}
+
+/**
+ * What one mode's page exports of a clip measured, pooled: the latency samples
+ * a detection takes in that mode, the acquisition a frame costs it, and the
+ * tracking step. `named` are `{ name, e }` of one `path`.
+ *
+ * - `latencyMs`: the worker's `arrivedAtMs − postedAtMs` over the jobs that
+ *   came back (a job that never did has none); the synchronous mode's, the
+ *   sum of the `DETECTION_STAGES` timings of each frame that ran the tracker's
+ *   own detection (`detectionUse` internal, as {@link framesForStage} reads
+ *   it). Both are counted from the end of the detected frame's main-thread
+ *   work, which is where the replay's post is.
+ * - `acquireMs`: the p50 of `acquire` + `gray` over the frames that are not
+ *   TRACK.
+ * - `stepMs`: the p50 of `trackerTimings.trackMs` over TRACK frames, the
+ *   `trackStepMs` definition.
+ *
+ * Every frame and job of every export is read, the warm-up loop's included.
+ * A quantity that has no sample is `null`, and its statistics are.
+ */
+function transferProfile(path, named) {
+    const latencyMs = [];
+    const acquire = [];
+    const steps = [];
+    for (const { e } of named) {
+        if (path === "worker") {
+            for (const job of e.detection?.jobs ?? []) {
+                if (Number.isFinite(job.postedAtMs) && Number.isFinite(job.arrivedAtMs)) {
+                    latencyMs.push(job.arrivedAtMs - job.postedAtMs);
+                }
+            }
+        }
+        for (const f of e.frames) {
+            if (path === "sync" && detectionUseOf(f) === "internal") {
+                const stages = finite(DETECTION_STAGES.map((stage) => f.timings?.[stage]));
+                if (stages.length > 0) latencyMs.push(sum(stages));
+            }
+            if (f.state === "TRACK") {
+                steps.push(f.trackerTimings?.trackMs);
+            } else {
+                acquire.push((f.timings?.acquire ?? NaN) + (f.timings?.gray ?? NaN));
+            }
+        }
+    }
+    return {
+        path,
+        files: named.map(({ name }) => name),
+        latencyMs,
+        latency: stats(latencyMs),
+        acquireMs: stats(finite(acquire)).p50,
+        stepMs: stats(finite(steps)).p50,
+    };
+}
+
+/**
+ * What `scripts/replay-clips.mjs --transfer` replays, from the page exports of a
+ * session: `files` are `{ name, e }`, and `clips` the bundled clips (in the
+ * order they are replayed) and `sha256` the target the replay runs. Returns
+ * `{ clips, skipped, refusal }`. `clips` has, for each clip with an export,
+ * its `sync` and `worker` profile (`transferProfile`): `{ path, files,
+ * latencyMs, latency, acquireMs, stepMs }`. A clip with no export is not
+ * replayed, and is no refusal. `skipped` are the files nothing is read from,
+ * `{ name, why }` ({@link transferSkip}). `refusal` is one line, or `null`
+ * when the plan can be replayed, and is read in this order, so that what is
+ * wrong with a directory is named before what is wrong with its contents:
+ *
+ * 1. a clip with exports of one path only, or no clip with any, has nothing
+ *    to transfer between;
+ * 2. an export of another target (`target.sha256`, none in an older export):
+ *    the session's latencies are those of the pipeline on its target;
+ * 3. a mode with no latency sample, no acquisition or no step to replay with.
+ */
+export function transferPlan(files, { clips, sha256 }) {
+    const skipped = [];
+    const byClip = new Map(clips.map((clip) => [clip, { sync: [], worker: [] }]));
+    for (const file of files) {
+        const why = transferSkip(file.e, clips);
+        if (why) skipped.push({ name: file.name, why });
+        else byClip.get(file.e.bundledClip)[exportDetectionPath(file.e)].push(file);
+    }
+    const refuse = (refusal) => ({ clips: [], skipped, refusal });
+    const present = [...byClip].filter(([, { sync, worker }]) => sync.length + worker.length > 0);
+    if (present.length === 0) {
+        return refuse(
+            `no worker and sync exports of any clip (${files.length} files read, none a tracking export of a bundled clip)`,
+        );
+    }
+    for (const [clip, { sync, worker }] of present) {
+        if (sync.length === 0 || worker.length === 0) {
+            return refuse(
+                `${clip}: no worker and sync exports to transfer between (worker ${worker.length}, sync ${sync.length})`,
+            );
+        }
+    }
+    for (const [clip, { sync, worker }] of present) {
+        for (const { name, e } of [...worker, ...sync]) {
+            if (e.target?.sha256 !== sha256) {
+                return refuse(
+                    `${clip}: ${name} names target sha256 ${e.target?.sha256 ?? "(none)"}, not ${sha256} (the replay's target)`,
+                );
+            }
+        }
+    }
+    const planned = [];
+    for (const [clip, named] of present) {
+        const profiles = {
+            clip,
+            sync: transferProfile("sync", named.sync),
+            worker: transferProfile("worker", named.worker),
+        };
+        for (const path of ["worker", "sync"]) {
+            const p = profiles[path];
+            const lacks =
+                p.latencyMs.length === 0
+                    ? `no detection latency to draw from (${path === "worker" ? "no job that arrived" : "no frame that ran the tracker's own detection"})`
+                    : p.acquireMs === null
+                      ? "no acquisition (no acquire + gray timing on a frame that is not TRACK)"
+                      : p.stepMs === null
+                        ? "no tracking step (no trackerTimings.trackMs on a TRACK frame)"
+                        : null;
+            if (lacks) return refuse(`${clip}: the ${path} exports (${p.files.join(", ")}) give ${lacks}`);
+        }
+        planned.push(profiles);
+    }
+    return { clips: planned, skipped, refusal: null };
+}
