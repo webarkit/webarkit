@@ -167,22 +167,28 @@ export function frameRecord({
 }
 
 /**
+ * What became of detection on a frame, `DEFINITIONS.detectionUse`'s word for
+ * it. A frame without a `detectionUse` — an export older than the field, or the
+ * stateless pipeline's, which records `null` — is read as M2's tracker read
+ * it: it detected on every frame that is not TRACK.
+ */
+function detectionUseOf(f) {
+    return f.detectionUse ?? (f.state === "TRACK" ? "none" : "internal");
+}
+
+/**
  * The frames on which `stage` ran, so its percentiles are taken over frames
  * that paid for it, not diluted by frames where it was skipped and its timing
  * stayed at zero. Detection (`detect`, `describe`, `match`, `filterMatches`)
  * runs on the frames that ran the tracker's own detection
- * (`detectionUse: "internal"`): a lock that fails is detected again on the same
- * frame, and a frame a worker's detection was handed to, or that waited for
- * one, ran none. A frame without a `detectionUse` — an export older than the
- * field, or the stateless pipeline's, which records `null` — is read as M2's
- * tracker read it: it detected on every frame that is not TRACK.
- * `estimateHomography` runs on the detections that found four matches; the
- * pose on every frame with one, TRACK included; `acquire`, `gray` and `total`
- * on every frame.
+ * (`detectionUse: "internal"`, as {@link detectionUseOf} reads it): a lock that
+ * fails is detected again on the same frame, and a frame a worker's detection
+ * was handed to, or that waited for one, ran none. `estimateHomography` runs on
+ * the detections that found four matches; the pose on every frame with one,
+ * TRACK included; `acquire`, `gray` and `total` on every frame.
  */
 export function framesForStage(frames, stage) {
-    const detected = (f) =>
-        f.detectionUse == null ? f.state !== "TRACK" : f.detectionUse === "internal";
+    const detected = (f) => detectionUseOf(f) === "internal";
     switch (stage) {
         case "detect":
         case "describe":
@@ -224,7 +230,7 @@ export const JITTER_WINDOW_S = 1;
 
 /** What each exported metric means, in the words the page shows and every export carries. */
 export const DEFINITIONS = Object.freeze({
-    frames: "Frames in the window: the last windowSize ticks of the run, one per video frame the page processed.",
+    frames: "Frames in the window: the last windowSize ticks of the run, one per video frame the page processed. A run summarized over its counted loops (summarizeRun's loops) has the frames of those loops instead, and every key below reads them, except trackTimeShare, which reads all the run's frames, and detectionAccounting, which counts the whole run.",
     states: "Frames per state. NftTracker's result.state; the stateless pipeline has no tracker, and its frames are DETECT with a pose and LOST without one, as a detection-only tracker's are for the same frame (M1).",
     trackShare:
         "TRACK frames ÷ frames. Counted per processed frame: a TRACK frame costs less than a DETECT frame, so more of them fit in a second of video.",
@@ -269,9 +275,25 @@ export const DEFINITIONS = Object.freeze({
     detectionPath:
         "The run's detection path, from ?detection=. sync: the tracker detects on the frame loop (M2); worker: a module worker detects, under the on-demand policy (docs/benchmarks/README.md, 2026-09-29).",
     detectionAccounting:
-        "A worker run's detection requests and what became of each, counted over the whole run, not the window: requests (results that said needsDetection) = consumptions (detections handed to process and used) + dropped (requests made while a detection was in flight or held) + discardedAtStop (a detection in flight, or held, at Stop), and ignored (detections handed in while a lock held) = 0; posted counts the requests that started a job. accountingError checks both, and a run that fails either is not exported.",
+        "A worker run's detection requests and what became of each, counted over the whole run, not the window: requests (results that said needsDetection) = consumptions (detections handed to process and used) + dropped (requests made while a detection was in flight or held) + discardedAtStop (a detection in flight, or held, at Stop), and ignored (detections handed in while a lock held) = 0; posted counts the requests that started a job. accountingError checks both, and a run that fails either is not exported. In the summary the accounting is carried as given, with error: accountingError's line saying what is wrong, or null when nothing is; the summary has null for a run that gave none.",
     detectionUse:
         "Per frame, what became of detection, from NftTracker's result: needsDetection (the frame ended without a lock and the tracker has externalDetection: an application is asked for a detection), detectionUse (internal: the tracker detected on this frame; consumed: a detection computed elsewhere was handed to process and used; ignored: one was handed in while a lock held; none: neither; null: the stateless pipeline, and any export older than the field, which read as M2's tracker: its own detection on every frame that is not TRACK), detectionLatencyMs (this frame's timestamp minus the consumed detection's, else null), detectionInFlight (a worker's detection was in flight when process ran) and detectedAt ({ timestampMs, mediaTimeSeconds, framesAgo }, the frame the used detection was computed on: this frame, with framesAgo 0, for an internal one, and the frame the worker was given for a consumed one, framesAgo processed frames back; null when none was used).",
+    trackTimeShare:
+        "The share of video time with a confirmed lock, over whole loops of the clip, on a fixed grid of media time: { share, perLoop, binMs, loops: [first, last], complete }, from every frame's state and mediaTimeSeconds. Media time is unwrapped onto one timeline, loop k covering [k·D, (k + 1)·D), D being the clip's duration, and the run's first pass is loop 0, a warm-up that is not counted: loops 1 to 4 are. Bin j of loop k starts at k·D + j·binMs (binMs 10) and takes the state of the most recent processed frame at or before its start, held across a loop wrap; share = bins in TRACK ÷ all bins, and perLoop is each counted loop's own. A DETECT frame's pose is an unconfirmed detection and counts as no lock. It reads all the run's frames, not only the counted loops': the frame before a loop supplies the state its first bins take, and a frame of the loop after the last closes it. Deleting a frame whose state equals both its neighbours' cannot change it, so a schedule that processes more frames, a worker's waiting ones, does not move it as it moves trackShare, which counts processed frames. complete is false, and share and perLoop null, unless a frame stands at or before the first bin and one at or after the start of the loop after the last; a summary given no counted loops has null.",
+    detectionLocks:
+        "{ n, confirmed, refused, reacquisitions, reacquisitionsAtLoopWrap }: the locks the tracker set from a detection, by one rule for the synchronous and the worker modes, from each frame's state, detectionUse, reason, tracking and trackLoss. A lock is set on a DETECT frame that ran the tracker's own detection (detectionUse internal; an export older than the field reads every DETECT frame so), and on a frame that consumed a detection (consumed) and is TRACK or has the reason unconfirmed. Its first step is the tracking step that carries the detection's pose to a frame: the next frame's (its tracking not null) after the tracker's own detection, the same frame's after a consumed one. n: the locks whose first step is in the window; confirmed: those whose first step returned TRACK; refused: the rest, per that step's trackLoss (in a worker run, the stale refusals). reacquisitions: the locks set after an earlier frame of the window had a pose, other than on the first frame after a loop wrap, which reacquisitionsAtLoopWrap counts apart: the jump there is the clip's. On a synchronous run n and confirmed equal firstSteps.n and firstSteps.confirmed, and both reacquisitions keys those of the same names, which stay under their own definitions.",
+    firstStepLatency:
+        "{ ms, videoMs, frames }, each { n, min, p50, p95, max }, of the latency from a detection to its lock's first step (detectionLocks), over the locks whose first step is in the window: from the frame the detection was computed on to the frame of that step. The detected frame is detectedAt for a consumed detection (a lock whose frame has none is not counted here) and the DETECT frame itself for the tracker's own. ms: the first-step frame's timestampMs minus the detected frame's, on the main thread's clock. videoMs: the same on mediaTimeSeconds, in ms, with the clip's duration added when the video looped between the two frames; a summary given no clip duration counts only the locks with no loop wrap between them. frames: processed frames from the detected frame to the first step's: detectedAt.framesAgo + 1 after the tracker's own detection, whose first step is the next frame, and detectedAt.framesAgo after a consumed one, whose first step is the consuming frame.",
+    detectionOutcomes:
+        "{ used, failed, locked, ignored }: what became of each detection, from detectionUse, state and reason. used: the frames whose detection the tracker ran itself (internal; an export older than the field reads every frame that is not TRACK so) or was handed and consumed. failed, per reason: those whose detection itself failed (too-few-matches, no-consensus). locked: those that set a lock, as detectionLocks counts them, whose first step detectionLocks then counts as confirmed or refused per trackLoss; used is locked plus failed, except for a detection handed to a detection-only tracker, which sets no lock. ignored: the frames whose detectionUse is ignored, a detection handed in while a lock held: 0 under the on-demand policy, and a defect otherwise.",
+    trackFramesWithDetectionInFlight:
+        "TRACK frames whose detectionInFlight is true: process ran on them while a worker detection was in flight. 0 by construction under the on-demand policy, which starts a detection only when the tracker says needsDetection, and it says so only on a frame that ended without a lock: a check that the policy that ran is the one planned. 0 in a synchronous run, and in an export older than the field.",
+    frameMs:
+        "{ all, track, unlocked }, each { n, min, p50, p95, max } of timings.total: the main thread's time for one processed frame, its acquisition, its grey conversion, the tracker's process and, in a worker run, the post of a frame to the worker (detectionPost). all: every frame; track: the TRACK frames; unlocked: the frames that are not TRACK, whatever they did.",
+    unlockedResidualMs:
+        "{ n, min, p50, p95, max } of timings.total − timings.acquire − timings.gray − timings.detectionPost, per unlocked frame (state not TRACK), each frame's own: a frame that did not post carries no detectionPost and subtracts none. What is left of an unlocked frame once its acquisition, its grey conversion and its post are taken off: in a worker run, a process call that finds no lock and no detection; in a synchronous run, the tracker's own detection.",
+    detectionTime:
+        "Where detection's time goes, on the frame loop and off it, over the window's frames and the jobs (one per detection posted to the worker) posted from them. onLoop: the main thread's detection-related time, the sum of the detection stages (detect, describe, match, filterMatches, estimateHomography) of the frames that ran the tracker's own detection (detectionUse internal; an export older than the field reads every frame that is not TRACK so), timings.detectionPost of the frames that posted, and each job's handlerMs, the result handler, which runs between frames and is outside timings.total. share: that time ÷ (Σ timings.total + Σ handlerMs). msPerVideoSecond: that time per second of video covered, which is the counted loops' whole duration (their number × clipDurationS) in a summary that has them, else the media time between consecutive frames, a loop wrap counting nothing. postMs: { n, min, p50, p95, max } of timings.detectionPost over the frames that carry one (a frame that did not post carries none), and handlerMs the same of the jobs' handlerMs. offLoop: workerMs, { n, min, p50, p95, max } of each job's workerMs.total, the worker's pipeline time on its own clock, and msPerVideoSecond, the sum of those per second of video covered. postToArrivalMs: { n, min, p50, p95, max } of each job's arrivedAtMs − postedAtMs, both on the main thread's clock: the latency of a detection from its post to its result's arrival.",
 });
 
 /** Whether the video looped between two consecutive frames: media time went back. */
@@ -447,6 +469,209 @@ export function trackTimeShare(frames, options) {
     return { share: trackBins / (binsPerLoop * loopCount), perLoop, binMs, loops, complete: true };
 }
 
+/** The finite numbers among `values`: a record that lacks a timing is not a sample of it. */
+const finite = (values) => values.filter(Number.isFinite);
+
+const sum = (values) => values.reduce((a, b) => a + b, 0);
+
+/** Whether `f` set a lock from a detection, `use` being {@link detectionUseOf} of it. */
+function setsLock(f, use) {
+    if (use === "internal") return f.state === "DETECT";
+    if (use === "consumed") return f.state === "TRACK" || f.reason === "unconfirmed";
+    return false;
+}
+
+/**
+ * Every detection lock of `frames`, in the order set, by the one rule of
+ * `DEFINITIONS.detectionLocks`: `{ consumed, step, detected, afterPose, atWrap }`.
+ * `step` is the frame of the lock's first step: the lock's own frame for a
+ * consumed detection, the next frame for the tracker's own if a tracking step
+ * ran on it, else `null`. `detected` is the frame the detection was computed
+ * on, `{ timestampMs, mediaTimeSeconds, framesAgo }`, `null` for a consumed
+ * detection that names none. `afterPose` is whether an earlier frame had a
+ * pose, `atWrap` whether the lock's frame is the first after a loop wrap.
+ */
+function detectionLockList(frames) {
+    const locks = [];
+    let hadPose = false;
+    for (let i = 0; i < frames.length; i++) {
+        const f = frames[i];
+        const use = detectionUseOf(f);
+        if (setsLock(f, use)) {
+            const consumed = use === "consumed";
+            const next = frames[i + 1];
+            locks.push({
+                consumed,
+                step: consumed ? f : next?.tracking ? next : null,
+                detected: consumed
+                    ? (f.detectedAt ?? null)
+                    : {
+                          timestampMs: f.timestampMs,
+                          mediaTimeSeconds: f.mediaTimeSeconds,
+                          framesAgo: 0,
+                      },
+                afterPose: hadPose,
+                atWrap: i > 0 && isLoopWrap(frames[i - 1], f),
+            });
+        }
+        if (f.ok) hadPose = true;
+    }
+    return locks;
+}
+
+/** See `DEFINITIONS.detectionLocks`. `frames` in the order they were processed. */
+export function detectionLocks(frames) {
+    const out = { n: 0, confirmed: 0, refused: {}, reacquisitions: 0, reacquisitionsAtLoopWrap: 0 };
+    for (const lock of detectionLockList(frames)) {
+        if (lock.afterPose) {
+            if (lock.atWrap) out.reacquisitionsAtLoopWrap++;
+            else out.reacquisitions++;
+        }
+        if (!lock.step) continue;
+        out.n++;
+        if (lock.step.state === "TRACK") out.confirmed++;
+        else out.refused[lock.step.trackLoss] = (out.refused[lock.step.trackLoss] ?? 0) + 1;
+    }
+    return out;
+}
+
+/**
+ * See `DEFINITIONS.firstStepLatency`. `clipDurationS`, when given, is what a
+ * loop wrap between a detection and its first step is unwrapped with, as
+ * {@link unwrapMediaTimes} does. Without it, the locks with a wrap between
+ * the two frames are left out of `videoMs` alone, and nothing throws: a
+ * webcam run has no clip, and so no duration.
+ */
+export function firstStepLatency(frames, { clipDurationS = null } = {}) {
+    if (clipDurationS !== null) checkClipDuration(clipDurationS);
+    const ms = [];
+    const videoMs = [];
+    const processed = [];
+    for (const { consumed, step, detected } of detectionLockList(frames)) {
+        if (!step || !detected) continue;
+        ms.push(step.timestampMs - detected.timestampMs);
+        processed.push(consumed ? detected.framesAgo : detected.framesAgo + 1);
+        let video = step.mediaTimeSeconds - detected.mediaTimeSeconds;
+        if (video < 0 && clipDurationS !== null) video += clipDurationS;
+        if (video >= 0) videoMs.push(video * 1000);
+    }
+    return {
+        ms: stats(finite(ms)),
+        videoMs: stats(finite(videoMs)),
+        frames: stats(finite(processed)),
+    };
+}
+
+/** See `DEFINITIONS.detectionOutcomes`. */
+export function detectionOutcomes(frames) {
+    const out = { used: 0, failed: {}, locked: 0, ignored: 0 };
+    for (const f of frames) {
+        const use = detectionUseOf(f);
+        if (use === "ignored") out.ignored++;
+        if (use !== "internal" && use !== "consumed") continue;
+        out.used++;
+        if (setsLock(f, use)) out.locked++;
+        else if (!f.ok) out.failed[f.reason] = (out.failed[f.reason] ?? 0) + 1;
+    }
+    return out;
+}
+
+/** See `DEFINITIONS.trackFramesWithDetectionInFlight`. */
+export function trackFramesWithDetectionInFlight(frames) {
+    return frames.filter((f) => f.state === "TRACK" && f.detectionInFlight).length;
+}
+
+/** See `DEFINITIONS.frameMs`. */
+export function frameMs(frames) {
+    const totals = (of) => stats(finite(of.map((f) => f.timings?.total)));
+    return {
+        all: totals(frames),
+        track: totals(frames.filter((f) => f.state === "TRACK")),
+        unlocked: totals(frames.filter((f) => f.state !== "TRACK")),
+    };
+}
+
+/** See `DEFINITIONS.unlockedResidualMs`. */
+export function unlockedResidualMs(frames) {
+    const residuals = frames
+        .filter((f) => f.state !== "TRACK" && f.timings)
+        .map((f) => {
+            const t = f.timings;
+            return t.total - t.acquire - t.gray - (t.detectionPost ?? 0);
+        });
+    return stats(finite(residuals));
+}
+
+/** Seconds of video between consecutive frames, a loop wrap (media time going back) counting for nothing. */
+function coveredVideoSeconds(frames) {
+    let seconds = 0;
+    for (let i = 1; i < frames.length; i++) {
+        const gap = frames[i].mediaTimeSeconds - frames[i - 1].mediaTimeSeconds;
+        if (gap > 0) seconds += gap;
+    }
+    return seconds;
+}
+
+/**
+ * See `DEFINITIONS.detectionTime`. `jobs` are the page's records of the
+ * detections it posted, of which this reads `handlerMs`, `workerMs.total`,
+ * `postedAtMs` and `arrivedAtMs`. The video the time is per second of is
+ * that of the counted `loops` (`{ firstLoop, loopCount }`, needing
+ * `clipDurationS`) when they are given, else what `frames` cover.
+ */
+export function detectionTime(frames, jobs = [], { clipDurationS = null, loops = null } = {}) {
+    let stagesMs = 0;
+    let totalMs = 0;
+    const posts = [];
+    for (const f of frames) {
+        const t = f.timings;
+        if (!t) continue;
+        if (Number.isFinite(t.total)) totalMs += t.total;
+        if (detectionUseOf(f) === "internal") {
+            stagesMs += sum(finite(DETECTION_STAGES.map((stage) => t[stage])));
+        }
+        if (Number.isFinite(t.detectionPost)) posts.push(t.detectionPost);
+    }
+    const handlers = finite(jobs.map((j) => j.handlerMs));
+    const workers = finite(jobs.map((j) => j.workerMs?.total));
+    // A job that never arrived has no latency: null would otherwise subtract as 0.
+    const arrivals = jobs
+        .filter((j) => Number.isFinite(j.postedAtMs) && Number.isFinite(j.arrivedAtMs))
+        .map((j) => j.arrivedAtMs - j.postedAtMs);
+    const onLoopMs = stagesMs + sum(posts) + sum(handlers);
+    const loopMs = totalMs + sum(handlers);
+    const videoS = loops
+        ? countedLoops({ clipDurationS, ...loops }).loopCount * clipDurationS
+        : coveredVideoSeconds(frames);
+    const perVideoSecond = (ms) => (videoS > 0 ? ms / videoS : null);
+    return {
+        onLoop: {
+            share: loopMs > 0 ? onLoopMs / loopMs : null,
+            msPerVideoSecond: perVideoSecond(onLoopMs),
+            postMs: stats(posts),
+            handlerMs: stats(handlers),
+        },
+        offLoop: { workerMs: stats(workers), msPerVideoSecond: perVideoSecond(sum(workers)) },
+        postToArrivalMs: stats(arrivals),
+    };
+}
+
+/**
+ * The jobs a summary of `frames` reads when `frames` are a run's counted
+ * loops rather than the whole run: those posted from one of them, by the
+ * timestamp of the frame posted (`frameTimestampMs`, else the post's own).
+ * The frames' timestamps only grow, so the first and the last bound them.
+ */
+function jobsPostedFrom(jobs, frames) {
+    if (frames.length === 0) return [];
+    const from = frames[0].timestampMs;
+    const to = frames[frames.length - 1].timestampMs;
+    return jobs.filter((j) => {
+        const t = j.frameTimestampMs ?? j.postedAtMs;
+        return t >= from && t <= to;
+    });
+}
+
 /**
  * See `DEFINITIONS.jitterPx`, `spreadPx`, `posedFrames` and `jitterWindows`.
  * `frames` in the order they were processed: a loop wrap is read from it.
@@ -514,8 +739,27 @@ export function cornerJitter(frames) {
     };
 }
 
-/** A run's summary over its window of frame records. Every key is defined in {@link DEFINITIONS}. */
-export function summarizeRun(frames) {
+/**
+ * A run's summary over its window of frame records. Every key is defined in
+ * {@link DEFINITIONS}. Given nothing else, it reads every frame of the window;
+ * the options are what a worker-detection session adds:
+ *
+ * - `clipDurationS` and `loops` (`{ firstLoop, loopCount }`): the run's counted
+ *   loops. Every key then reads the frames of those loops
+ *   ({@link countedLoopFrames}), `trackTimeShare` reads all of `runFrames` over
+ *   them, and the jobs are those posted from the counted frames. Without
+ *   `loops`, `trackTimeShare` is `null`; `clipDurationS` alone is what
+ *   `firstStepLatency` unwraps a loop wrap with. `loops` without a clip
+ *   duration throws.
+ * - `jobs`: the page's record of each detection it posted, for
+ *   `detectionTime`; none, for a synchronous run.
+ * - `accounting`: a worker run's detection accounting, carried with its error.
+ */
+export function summarizeRun(
+    runFrames,
+    { clipDurationS = null, loops = null, jobs = [], accounting = null } = {},
+) {
+    const frames = loops ? countedLoopFrames(runFrames, { clipDurationS, ...loops }) : runFrames;
     const states = { LOST: 0, DETECT: 0, TRACK: 0 };
     const lockLosses = {};
     for (const f of frames) {
@@ -552,6 +796,20 @@ export function summarizeRun(frames) {
         trackedPatches: stats(stepped.map((f) => f.tracking.inliers)),
         lowQualityTrackFrames: track.filter((f) => f.quality <= LOW_QUALITY).length,
         ...cornerJitter(frames),
+        trackTimeShare: loops ? trackTimeShare(runFrames, { clipDurationS, ...loops }) : null,
+        detectionLocks: detectionLocks(frames),
+        firstStepLatency: firstStepLatency(frames, { clipDurationS }),
+        detectionOutcomes: detectionOutcomes(frames),
+        trackFramesWithDetectionInFlight: trackFramesWithDetectionInFlight(frames),
+        frameMs: frameMs(frames),
+        unlockedResidualMs: unlockedResidualMs(frames),
+        detectionTime: detectionTime(frames, loops ? jobsPostedFrom(jobs, frames) : jobs, {
+            clipDurationS,
+            loops,
+        }),
+        detectionAccounting: accounting
+            ? { ...accounting, error: accountingError(accounting) }
+            : null,
     };
 }
 
