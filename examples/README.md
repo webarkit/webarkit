@@ -357,7 +357,9 @@ detection options the tracker runs with (`init` is sent again at Start if the
 keypoint budget changed). Start is enabled only once the worker answers
 `ready` with the SHA-256 of the target the page decoded; a worker that fails to
 load or to prepare the target keeps Start disabled and shows why — never a
-silent fall back to `sync` under a URL that asked for the worker. Start refuses,
+silent fall back to `sync` under a URL that asked for the worker — and one that
+fails after `ready`, even while a Start is starting its source, refuses that
+Start with its own error, before any frame is processed. Start refuses,
 in one line and before any source starts, the worker outside the tracking
 mode or with the in-page image target.
 

@@ -2054,6 +2054,12 @@
             if (run.loops && run.clipDurationS === null) {
               throw new Error("?loops= needs a clip whose duration the browser reports, and this one reports none.");
             }
+            // The worker may have failed since `workerReady`, while the source
+            // started, with no run live for `workerFailed` to fail: refused with
+            // its own cause, rather than a run started on a dead worker that
+            // fails 5 s later on a timeout whose message hides it. Nothing
+            // awaits from here to `runBenchmark`, which makes the run live.
+            if (run.path === "worker" && detectionWorker.failure !== null) throw new Error(detectionWorker.failure);
 
             lastRun = run;
             lastSource = source;
@@ -2074,12 +2080,15 @@
             if (lastRun !== run) latestRun = lastRun;
             if (liveRun) endRun(liveRun);
             const src = currentSource();
+            // A failed worker keeps Start disabled (`startAllowed`): the source's hints would mislead.
             const hint =
-              src === "webcam"
-                ? "A webcam source needs camera permission and a secure context (https://, or http://localhost)."
-                : src === "bundled"
-                  ? `The bundled clip needs the tab in the foreground to autoplay, and examples/videos/${bundledClipSelect.value} served alongside this page.`
-                  : "A video file source needs a file chosen and, for autoplay, the tab in the foreground.";
+              run.path === "worker" && detectionWorker.failure !== null
+                ? "The run did not start, and nothing was exported. Reload the page to run again."
+                : src === "webcam"
+                  ? "A webcam source needs camera permission and a secure context (https://, or http://localhost)."
+                  : src === "bundled"
+                    ? `The bundled clip needs the tab in the foreground to autoplay, and examples/videos/${bundledClipSelect.value} served alongside this page.`
+                    : "A video file source needs a file chosen and, for autoplay, the tab in the foreground.";
             showError(`${e.message}\n\n${hint}`);
             // A camera stream can be live (getUserMedia succeeded, then
             // loadedmetadata or play() failed) or an object URL allocated
