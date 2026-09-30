@@ -425,7 +425,8 @@ clip's end, whatever frame the run processed next; a frame with no finite
 media time is refused the same way. `?run=` is the run's place in a
 session's order, exported as `run.order` beside `run.startedAtIso`,
 `run.endedAtIso` and `run.endedBy`, how the run ended: `done`, `stopped` (Stop)
-or `failed`. For example:
+or `failed` — a run that failed is `failed` whatever ended it first — with
+`run.failure`, the cause the page showed, or `null`. For example:
 `bench-nft.html?mode=tracking&detection=worker&clip=pinball-bench.mp4&window=2000&loops=4&run=2`.
 
 **A session run.** Every export records `protocol: { sessionRun, gaps }`

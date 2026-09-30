@@ -1019,12 +1019,15 @@
        * dead: status `failed`, `endedBy` `failed`, and why, the cause on its own
        * line. A worker run is never exported, and its worker is not trusted
        * again: Start stays disabled until the page is reloaded. A synchronous
-       * run's export stays possible, and its `protocol` says it is not a
-       * session run.
+       * run's export stays possible, carries the cause (`run.failure`), and its
+       * `protocol` says it is not a session run. `endedBy` is set here, not only
+       * through `stopRun`: a run whose own end threw — `stopRun("done")` after
+       * `endRun` — is no longer live when it fails, and would keep `done`.
        */
       function failRun(run, message) {
         if (run.failure !== null) return;
         run.failure = message;
+        run.endedBy = "failed";
         const worker = run.path === "worker";
         if (worker) detectionWorker.failure ??= message;
         stopRun("failed");
@@ -1867,10 +1870,16 @@
           // than the worker path, which all detected on the frame loop.
           detection: run ? detectionRecord(run) : null,
           // The run's place in the session's order (?run=), its wall-clock
-          // start and end, for the thermal rule, and how it ended: done,
-          // stopped or failed.
+          // start and end, for the thermal rule, how it ended (done, stopped or
+          // failed), and why it failed, if it did (the cause failRun showed).
           run: run
-            ? { order: run.order, startedAtIso: run.startedAtIso, endedAtIso: run.endedAtIso, endedBy: run.endedBy }
+            ? {
+                order: run.order,
+                startedAtIso: run.startedAtIso,
+                endedAtIso: run.endedAtIso,
+                endedBy: run.endedBy,
+                failure: run.failure,
+              }
             : null,
           // Whether the run followed the session's protocol, and what keeps it
           // from it (sessionRunGaps, DEFINITIONS.protocol): set below, from
