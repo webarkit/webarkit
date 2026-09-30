@@ -548,6 +548,37 @@ describe("stageSummary: the export's per-stage p50, p95 and max", () => {
         // A clip duration shorter than the clip is refused, as the run summary refuses it.
         expect(() => stageSummary(run, { stages, clipDurationS: 0.6, loops })).toThrow(RangeError);
     });
+
+    // Review M5: a caller of stageSummary alone, on a worker export, took the detection stages by
+    // M2's fallback — every frame that is not TRACK detected — which a waiting frame does not.
+    it("refuses a worker run's frame that lacks detectionUse, in one line, as the run summary does", () => {
+        const lacking = [
+            frame(0, 20),
+            frame(0.1, 22, { detectionUse: undefined, timings: { acquire: 22, detect: 9, total: 30 } }),
+        ];
+        const stages = ["acquire", "detect", "total"];
+        const read = () => stageSummary(lacking, { stages, path: "worker" });
+        expect(read).toThrow(RangeError);
+        expect(read).toThrow(
+            /^stageSummary: frame 1 of a worker run \(media time 0\.1 s\) has no detectionUse/,
+        );
+        let message = "";
+        try {
+            read();
+        } catch (e) {
+            message = e.message;
+        }
+        expect(message).not.toMatch(/\n/);
+        // Over the counted loops, the frames it reads are the counted ones.
+        const loops = { firstLoop: 0, loopCount: 1 };
+        expect(() => stageSummary(lacking, { stages, clipDurationS: 1, loops, path: "worker" })).toThrow(
+            /^stageSummary: frame 1 of a worker run/,
+        );
+        // A synchronous run's frames are read by M2's rule: the frame detected.
+        expect(stageSummary(lacking, { stages, path: "sync" }).detect).toEqual({ p50: 9, p95: 9, max: 9 });
+        expect(stageSummary(lacking, { stages }).detect).toEqual({ p50: 9, p95: 9, max: 9 });
+        expect(() => stageSummary(lacking, { stages, path: "gpu" })).toThrow(/path/);
+    });
 });
 
 describe("loop wraps, re-acquisitions and lock steps", () => {

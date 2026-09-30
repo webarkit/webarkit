@@ -220,6 +220,32 @@ export function stageSamples(frames, stages) {
     ]);
 }
 
+/** A run's detection path as a summary is given it: `"sync"`, `"worker"` or `null` (`DETECTION_PATHS`). */
+function checkPath(path) {
+    refuseUnless(
+        path === null || DETECTION_PATHS.includes(path),
+        `path must be ${DETECTION_PATHS.join(" or ")} or null, got ${path}`,
+    );
+}
+
+/**
+ * The frames of `frames` that {@link detectionUseOf} reads by M2's rule — no
+ * `detectionUse`, absent or `null` — which `detectionUseFallbackFrames` counts.
+ * In a worker run there may be none: its waiting frames do not detect, and a
+ * frame read as one that did would bias every detection metric, so `caller`
+ * refuses it, in one line naming the frame and its media time.
+ */
+function fallbackFrames(frames, path, caller) {
+    const fallback = frames.filter((f) => f.detectionUse == null);
+    if (path === "worker" && fallback.length > 0) {
+        const f = fallback[0];
+        throw new RangeError(
+            `${caller}: frame ${frames.indexOf(f)} of a worker run (media time ${f.mediaTimeSeconds} s) has no detectionUse, which would be read as a detection on the frame loop: a worker run's waiting frames do not detect`,
+        );
+    }
+    return fallback;
+}
+
 /**
  * The export's `summaryMs` (`DEFINITIONS.summaryMs`): `{ p50, p95, max }` of
  * each of `stages`, in the order given, over {@link stageSamples}; `null`
@@ -230,10 +256,15 @@ export function stageSamples(frames, stages) {
  * frames of the counted loops ({@link countedLoopFrames}), as `summarizeRun`
  * does: never the warm-up loop, whose first acquisition is cold, and which
  * the thermal rule must not read. A clip duration shorter than the clip is
- * refused, as there.
+ * refused, as there. `path`, the run's detection path (`"sync"`, `"worker"` or
+ * `null`), is `summarizeRun`'s too: a worker run's frame without `detectionUse`
+ * would give the detection stages by M2's rule, which a waiting frame does not
+ * follow, so it is refused, in one line.
  */
-export function stageSummary(frames, { stages, clipDurationS = null, loops = null }) {
+export function stageSummary(frames, { stages, clipDurationS = null, loops = null, path = null }) {
+    checkPath(path);
     const read = loops ? countedLoopFrames(frames, { clipDurationS, ...loops }) : frames;
+    fallbackFrames(read, path, "stageSummary");
     const summary = {};
     for (const [stage, samples] of stageSamples(read, stages)) {
         const values = samples.sort((a, b) => a - b);
@@ -317,7 +348,7 @@ export const DEFINITIONS = Object.freeze({
     detectionPath:
         "The run's detection path, from ?detection=. sync: the tracker detects on the frame loop (M2); worker: a module worker detects, under the on-demand policy (docs/benchmarks/README.md, 2026-09-29).",
     summaryMs:
-        "Per stage, { p50, p95, max } of its timing in ms (stageSummary): each stage over the frames that ran it (framesForStage), a worker run's detectionPost over the frames that posted, over the frames summaryMsFrames names. In a ?loops= run those are the counted loops' frames, as the run summary's, never the warm-up loop's, whose first acquisition is cold.",
+        "Per stage, { p50, p95, max } of its timing in ms (stageSummary): each stage over the frames that ran it (framesForStage), a worker run's detectionPost over the frames that posted, over the frames summaryMsFrames names. In a ?loops= run those are the counted loops' frames, as the run summary's, never the warm-up loop's, whose first acquisition is cold. A worker run's frame without detectionUse is refused here as in the run summary (detectionUseFallbackFrames).",
     summaryMsFrames:
         "Which frames summaryMs reads: counted loops (a ?loops= run: loops 1 to its loop count, as the run summary reads them) or window (the window's frames).",
     endedBy:
@@ -877,19 +908,9 @@ export function summarizeRun(
     runFrames,
     { clipDurationS = null, loops = null, jobs = [], accounting = null, path = null } = {},
 ) {
-    refuseUnless(
-        path === null || DETECTION_PATHS.includes(path),
-        `path must be ${DETECTION_PATHS.join(" or ")} or null, got ${path}`,
-    );
+    checkPath(path);
     const frames = loops ? countedLoopFrames(runFrames, { clipDurationS, ...loops }) : runFrames;
-    // The frames detectionUseOf reads by M2's rule: none may be a worker run's.
-    const fallback = frames.filter((f) => f.detectionUse == null);
-    if (path === "worker" && fallback.length > 0) {
-        const f = fallback[0];
-        throw new RangeError(
-            `summarizeRun: frame ${frames.indexOf(f)} of a worker run (media time ${f.mediaTimeSeconds} s) has no detectionUse, which would be read as a detection on the frame loop: a worker run's waiting frames do not detect`,
-        );
-    }
+    const fallback = fallbackFrames(frames, path, "summarizeRun");
     const states = { LOST: 0, DETECT: 0, TRACK: 0 };
     const lockLosses = {};
     for (const f of frames) {
