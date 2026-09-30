@@ -2565,9 +2565,10 @@ what the application decides is this:
    against the 70–80 ms a detection takes. With
    one in flight the accounting is exact: every request ends in exactly one
    consumption, or at Stop.
-3. **The page sends the frame that asked**, its grey pixels copied into a
-   transferable buffer, stamped with that frame's start on the main
-   thread's clock, so `detectionLatencyMs` is measured on one clock.
+3. **The page sends the frame that asked**: its grey pixels, in the buffer
+   the acquisition allocated for that frame alone, are transferred, not
+   copied, stamped with that frame's start on the main thread's clock, so
+   `detectionLatencyMs` is measured on one clock.
 4. **Stale results are handed in, never filtered.** The tracker's
    confirming step is the check (#78: no staleness limit). The page counts
    what became of each detection: its first step confirmed; refused as
@@ -2616,9 +2617,9 @@ neither modelled on the desktop nor run on the device.
   own clock with the stage names the page instruments, and posts back the
   detection and its timings. Worker timestamps are never subtracted from
   the main thread's: only durations cross.
-- **On the main thread**, posting — copying the frame's pixels and posting
-  them — is a new stage, `detectionPost`, inside the frame's `total`; its
-  times are `detectionPostMs`. The handler that receives a result runs
+- **On the main thread**, posting — transferring the frame's grey buffer to
+  the worker with the job's message — is a new stage, `detectionPost`,
+  inside the frame's `total`; its times are `detectionPostMs`. The handler that receives a result runs
   between frames; it is timed apart and counted with detection's time on the
   main thread.
 - **The export** records the path (`sync` or `worker`), the policy, the
@@ -2832,13 +2833,14 @@ device.
 
 ### The desktop pre-flight
 
-`scripts/replay-clips.mjs` does not yet drive external detection — the
-fixed-latency loop exists only as `runExternal` in
-`packages/nft-tracker/test/tracker_external_detection.test.ts`, on synthetic
-camera paths — so it gains the policy's loop, on the clips: on a frame
-whose result says `needsDetection`, with nothing in flight, it detects that
-frame (under the run's seed) and hands the result to the first frame
-processed at or after the post plus the latency. The post comes at the end
+`scripts/replay-clips.mjs --external <latencyMs>` drives external
+detection on the clips, with the page's own policy
+(`createDetectionPolicy`) — the fixed-latency loop of `runExternal` in
+`packages/nft-tracker/test/tracker_external_detection.test.ts` runs only on
+synthetic camera paths: on a frame whose result says `needsDetection`, with
+nothing in flight, it detects that frame (under the run's seed) and hands
+the result to the first frame processed at or after the post plus the
+latency. The post comes at the end
 of the frame's main-thread work before it — its acquisition, and a tracking
 step if one ran and failed on that frame — and the latency counts, as it is
 measured on the device, from the post to the result's arrival; requests
@@ -2856,7 +2858,7 @@ schedule, at three seeds, into loop 5, and the replay reads
 brackets the device's latency; it does not reproduce it. Its floor is the
 pipeline as the tablet ran it on the main thread in round 2 — 68.6 ms p50 on
 the wall clip, 79.5 on the table clip. What a worker adds, the desktop
-cannot see: the frame's copy and the two messages, the core the worker lands
+cannot see: the frame's transfer and the two messages, the core the worker lands
 on, and the main thread's acquisition sharing the chip with it. The top,
 130 ms, allows the worker to run the table clip's pipeline 1.6 times slower
 than the main thread did. The wait for the next processed frame after a
@@ -2871,27 +2873,60 @@ at the median, and the results then say so.
 
 **The desktop's predictions, before it runs:**
 
-- On the device schedule (scaled step), the worker's first step lands on
-  the frame the synchronous mode's would when its result arrives after the
-  frame before that one and not after that frame: the synchronous first
-  step waits for the frame's work, the modelled 83.2 ms detection and the
-  next frame after them, the worker's for the same work, its latency and the
-  next frame. With round 2's acquisition that frame is 120.4 ms after the
-  detected one on the wall clip, reached for a latency up to about 93 ms,
-  and 133.3 ms on the table clip, up to about 83 ms; a longer latency costs
-  one frame on the wall clip and one waiting frame (66.7 ms) on the table
-  clip, and a much shorter one gains a frame. Predicted: at 70 ms the
-  worker's `trackTimeShare` within the seeds' range of the synchronous
-  run's, on both moving clips; at 100 and 130 ms, below it on both. *Refused
-  if*, at 100 or 130 ms, the worker's mean over the seeds is not below the
-  synchronous run's on the wall clip: the frame-boundary account is then
-  wrong, and the plan says so before the session. (The verification's scratch model gave the
+- On the device schedule (scaled step), the post comes where the
+  synchronous detection starts: at the end of the frame's acquisition and
+  of the tracking step it ran. The two modes' first steps after a detection
+  therefore differ only by where the latency, against the modelled 83.2 ms,
+  falls among the frame boundaries. The frames that detect are almost all
+  frames whose tracking step — a held lock's, or a detection's first — has
+  just failed: 93 of the 106 detections that found the target on the wall
+  clip in round 2, 39 of 48 on the table clip. With round 2's acquisition
+  and the scaled step (15.2 ms on the wall clip, 11.3 on the table clip, in
+  the replay's check at seed 1), such a frame's work ends 42.9 ms after it
+  on the wall clip and 61.3 on the table clip. The synchronous first step
+  then comes 160.5 ms after the detected frame on the wall clip (work and
+  detection end at 126.1 ms, past the third frame) and 166.7 ms on the
+  table clip (144.5 ms). The worker's comes on the first frame processed at
+  or after the post plus the latency. On the wall clip a waiting frame
+  costs its acquisition and ends before the next frame, so that frame is
+  120.4 ms after the detected one for a latency up to about 77 ms, 160.5 up
+  to about 117, and 200.6 above. On the table clip a waiting frame's 50 ms
+  acquisition spans the next frame, so frames are processed every 66.7 ms:
+  133.3 ms up to about 72 ms, and 200.0 up to about 139. After a detection
+  that found nothing, the worker's next attempt starts from the frame that
+  consumed it, with no step before its post: as often as the synchronous
+  mode's attempts at 70 ms, a frame less often at 100 and 130 ms.
+  Predicted, on the wall clip: at 70 ms the worker's `trackTimeShare` above
+  the synchronous run's — a frame sooner on every attempt, and every first
+  step at least as fresh; at 100 ms within the synchronous run's range or
+  just below it — on the same frame after a failed step, a frame later only
+  after a detection that found nothing; at 130 ms below it, a frame later
+  throughout. On the table clip: at 70 ms not below the synchronous run's
+  range — 33.3 ms sooner, by a margin of 2 ms of latency that a scaled step
+  above 13.3 ms erases; at 100 and 130 ms below it, 33.3 ms later. *Refused
+  if*, on the wall clip, the worker's mean over the seeds is not above the
+  synchronous run's mean at 70 ms, or not below it at 130 ms: the
+  frame-boundary account is then wrong, and the plan says so before the
+  session. (The verification's scratch model gave the
   worker +18.7, +6.1 and +2.6 points at 70, 100 and 130 ms; it counted the
   worker's latency from its frame rather than from the post, crediting it
   with the frame's acquisition, and those figures are withdrawn.) *Refused
   if* at 70 ms the worker loses more than 5 points of video time on the
   wall clip: the device prediction is then "worse" before the session, and
   the plan records it so before running it.
+
+  *Corrected on 2026-09-30, before the pre-flight ran.* The first version
+  of this prediction took the synchronous first step at 120.4 and 133.3 ms
+  — the gap after a detecting frame that ran no step — where almost every
+  detection follows a failed step, whose synchronous first step comes a
+  frame later; its refusal at 100 ms would have fired against a worker that
+  lands on the synchronous frame. One run of the replay, at 70 ms and seed 1
+  only, had checked the committed loop before the correction, and is
+  disclosed with it: first-step latency p50 120.4 ms for the worker against
+  160.5 for the synchronous run on the wall clip, 133.3 against 166.7 on the
+  table clip; `trackTimeShare` 45.2% against 40.4%, and 73.4% against 71.4%.
+  The 100 and 130 ms predictions, and seeds 2 and 3, are still ahead of
+  their runs.
 - The fallback's withdrawal is re-checked by committed code: on the
   every-frame schedule, the synchronous mode run as external detection whose
   result is consumed at the first frame at or after its frame's work plus
@@ -2980,10 +3015,10 @@ table, says which refusals decide.
 | **Detection leaves the frame loop** | detection's time on the main thread under 1% of the loop's time on both moving clips, from 40.5% (wall) and 22.1% (table), attributed to its two parts: `detectionPostMs` and the result handler | a tenth of the synchronous share or more stays on the loop: 4.1% on the wall clip, 2.2% on the table clip |
 | **Unlocked frames cost their acquisition, and nothing unaccounted** | on unlocked frames, the residual `total` − (`acquire` + `gray` + `detectionPostMs`), taken frame by frame (a frame that did not post subtracts no post), under 1 ms at p50 — what remains is a `process` call that finds no lock and no detection — from 107.4 ms of `total` (wall) and 140.4 (table) | the residual's p50 is 3 ms or more on either moving clip |
 | **The loop loses detection's tail** | all frames' `total` p95 within 10 ms of the TRACK frames' p95, from 136.7 ms (wall) and 149.4 (table) | on either moving clip, all frames' p95 − TRACK frames' p95 above 25 ms, or all frames' p95 above 90 ms: either refuses |
-| **The lock holds, by video time** | the worker runs' `trackTimeShare` within the synchronous runs' range if `detectionPostToArrivalMs` p50 is under about 93 ms on the wall clip, and below it by the lock one frame of latency costs if above (the pre-flight's first prediction) | on the wall clip, the worker runs' mean more than 5 points below the synchronous runs': the adoption rule, below. The table clip cannot refuse |
+| **The lock holds, by video time** | the worker runs' `trackTimeShare` within the synchronous runs' range on the wall clip while `detectionPostToArrivalMs` p50 stays within about 9 ms below and 31 ms above the session's synchronous pipeline p50. The post comes where the synchronous detection starts, after the frame's acquisition and step, so a result that arrives when the synchronous detection would have ended is consumed on the frame the synchronous first step runs on; round 2's detecting ticks ended 8.8 ms past a frame at the median, 31.3 ms before the next. Faster than that, above the range, a frame sooner; slower, below it by the lock one frame costs (the pre-flight's first prediction). On the table clip, whose waiting frames are processed every 66.7 ms, a result that arrives while one is being acquired waits a frame: at equal speed the worker's first step can lag the synchronous one by 33.3 ms, and its runs are predicted at or below the synchronous runs' range | on the wall clip, the worker runs' mean more than 5 points below the synchronous runs': the adoption rule, below. The table clip cannot refuse |
 | **First steps confirm as often; stale refusals do not rise** | detection locks' first steps confirmed within 5 points of the synchronous runs' (13% wall, 23% table in round 2) — the refused rest reported per `trackLoss`, the stale refusals | the worker runs' mean more than 5 points below on the wall clip |
 | **Held locks and the step are untouched** — no detection runs while a lock holds; attribution | held-lock losses per held step within 2 points of the synchronous runs' rate; `trackStepMs` p50 within 10%; reported with the TRACK frames' whole cost distribution, the frames before a loss included | more than 2 points, or 10%, worse: the prediction is refused and explained, and adoption is not decided here |
-| **Latency** — attribution | `detectionPostToArrivalMs` p50 about the synchronous pipeline's time (68.6 ms wall, 79.5 table in round 2), within 25%; the worker's first-step latency — its consumption latency, the same number — p50 equal to the synchronous runs' (120.4 ms on the wall clip, 133.3 on the table clip) while post to arrival stays under about 93 and 83 ms, one frame later above that, one earlier below about 52 ms on the wall clip | post to arrival p50 more than 25% above the session's synchronous pipeline, or a first-step latency p50 other than post to arrival implies: the prediction is refused and explained, through the latency transfer. Adoption is not decided here: a difference in first-step latency acts through the lock, which row four reads, and one wall-clip frame of it is worth up to 12.6 points in the model |
+| **Latency** — attribution | `detectionPostToArrivalMs` p50 about the synchronous pipeline's time (68.6 ms wall, 79.5 table in round 2), within 25%; the worker's first-step latency — its consumption latency, the same number — p50 equal to the synchronous runs' on the wall clip (160.5 ms in round 2, the median of 106 detections that found the target, 50 of them at 160.5) while post to arrival stays within row four's slack, a frame sooner if faster, later if slower; on the table clip, the synchronous runs' 133.3 or 166.7 ms (round 2's 48 split evenly: 133–167 ms), and the worker's up to a waiting frame, 33.3 ms, later at equal speed | post to arrival p50 more than 25% above the session's synchronous pipeline, or a first-step latency p50 other than post to arrival implies: the prediction is refused and explained, through the latency transfer. Adoption is not decided here: a difference in first-step latency acts through the lock, which row four reads, and one wall-clip frame of it is worth up to 12.6 points in the model |
 | **The static clip is unchanged** — the null control | TRACK 100%; the worker runs' mean `trackStepMs` p50 and `total` p50 within 10% of the synchronous runs' mean, and mean `jitterPx` within the synchronous runs' | TRACK under 100% in any run; the worker mean of `trackStepMs` or `total` p50 more than 10% from the synchronous mean, either way; or the worker mean `jitterPx` above the synchronous mean by more than the two synchronous runs differ: the session is inconclusive until explained |
 | **The policy ran as written** | 0 TRACK frames with a detection in flight, 0 detections ignored, every job consumed once or discarded at Stop | any other count: the run is invalid, not a result |
 
