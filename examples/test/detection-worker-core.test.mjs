@@ -176,7 +176,12 @@ describe("runWorkerDetection", () => {
             expect.arrayContaining(["detect", "describe", "match", "estimateHomography", "total"]),
         );
         expect(stages).not.toContain("filterMatches"); // jsfeatNext has none
-        for (const ms of Object.values(reply.workerMs)) expect(ms).toBeGreaterThanOrEqual(0);
+
+        // Strictly positive, not merely >= 0: a backend that bypassed the timing wrapper would
+        // report 0 for every stage. This frame is detected, so every stage ran, the homography too.
+        for (const stage of ["detect", "describe", "match", "estimateHomography", "total"]) {
+            expect(reply.workerMs[stage], stage).toBeGreaterThan(0);
+        }
 
         const { total, ...perStage } = reply.workerMs;
         const sum = Object.values(perStage).reduce((a, b) => a + b, 0);
