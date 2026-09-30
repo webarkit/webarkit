@@ -3,20 +3,41 @@
 The pre-flight [the M3 plan](./README.md#the-desktop-pre-flight) registered
 before it ran: `scripts/replay-clips.mjs --external <latency> --seed <seed>
 --out <dir>`, for latencies of 50, 70, 100 and 130 ms and seeds 1, 2 and 3,
-at commit `3bd0c1a`, one run at a time on an otherwise idle machine (Node
-v24.21.0, Windows, Intel Core i7-9700), each (latency, seed) in its own
+at commit `3bd0c1a`, one run at a time with no other agent or test running
+on the machine (Node v24.21.0, Windows, Intel Core i7-9700; whether any
+other application was busy was not checked), each (latency, seed) in its own
 output directory. Each run replays the three bundled clips with the
 committed 48-patch target (`9e8eb486…`) in five tracking arms: every frame,
 synchronous; every frame, worker at the latency; every frame, the
 synchronous mode as external detection at its modelled 83.2 ms; the device
 schedule (scaled step), synchronous; the device schedule, worker at the
-latency. Fourteen runs, about two minutes each, 21:08 to 21:34.
+latency. Thirteen runs — the twelve (latency, seed) points and a repeat of
+seed 1 at 70 ms — about two minutes each, 21:08 to 21:34.
 
-**Every registered falsifier holds.** The model's frame-boundary account is
-confirmed exactly: every arm's first-step latency p50 is the frame the
-account predicted. One prediction that carries no refusal missed upward
-(the wall clip at 100 ms), and one reading of a falsifier's wording over
-the point added today does not hold; both are below, with what was found.
+**Every registered falsifier holds**: nine registered conditions, seven
+distinct measurements. The table clip's 100 and 130 ms runs land on the
+same frames (one row below), its 50 ms run on the same frames as its
+70 ms run, and the wall clip's two 70 ms conditions read one measurement.
+The weakest is the wall clip at 130 ms, which holds on the mean over three
+seeds with one seed the other way. The model's frame-boundary account is
+confirmed exactly: every
+arm's first-step latency p50 is the frame the account predicted. One
+prediction that carries no refusal missed upward (the wall clip at
+100 ms): examined after this record was first committed, it is an artefact of which frames each
+mode's chain attempts, not a difference in how often a first step
+confirms. One reading of a falsifier's wording over the point added
+before the run does not hold. Both are below, with what was found.
+
+*Corrected on 2026-09-30, after this record was first committed; no verdict changes.* The first version said
+fourteen runs (there were thirteen), called the machine otherwise idle
+(only other agents and tests had been kept off it), listed each table-clip latency as a
+separate hold (two of its four points are distinct), did not mark the
+wall clip's 130 ms verdict as the weakest, reported the static clip as a
+check without saying it is saturated, and never read the detection
+accounting its script collected. Each is corrected where it stood, and the
+100 ms examination, the accounting and the scripts that produced them are
+added below. The commit that first recorded this run counts nine
+falsifiers held; they are nine conditions on seven measurements.
 
 ## The harness is deterministic in latency and seed
 
@@ -87,7 +108,22 @@ first steps confirmed over the counted loops.
 ### Static clip
 
 TRACK over all of loops 1–4 in every arm of every run: `trackTimeShare`
-100%, no detection lock after the first.
+100%, no detection lock after the first. That makes it a saturated control:
+at 100% in every arm it cannot show a difference in either direction, so it
+confirms only weakly that nothing else moved, and it could not have
+detected a regression. Worth having; not counted as a strong check.
+
+## The accounting
+
+Every arm that detects externally — both worker arms and the every-frame
+synchronous-as-external arm, on each of the three clips — carries the
+policy's accounting. In all 117 such arms of the thirteen runs, requests =
+consumptions + dropped + discarded at Stop, and none was ignored: pooled,
+47,009 = 13,692 + 33,308 + 9, with 13,701 jobs posted. The replay asserts
+this on every such arm and exits 1 otherwise; all thirteen runs exited 0.
+The first version of `analyze.mjs` collected each arm's accounting and never
+read it; it now reads it (108 of the 108 arms of the twelve points, below),
+and the repeat of seed 1 at 70 ms adds the other nine.
 
 ## The falsifiers
 
@@ -95,10 +131,9 @@ TRACK over all of loops 1–4 in every arm of every run: `trackTimeShare`
 |---|---|---|---|
 | wall clip: the worker above the synchronous run at 70 ms | seeds 2 and 3 (seed 1 weightless) | 44.1% against 39.4% (+6.8, +2.8) | holds |
 | wall clip: the worker not more than 5 points below at 70 ms | seeds 2 and 3 | +4.8 points | holds |
-| wall clip: the worker below the synchronous run at 130 ms | seeds 1–3 | 36.5% against 39.7% (−5.4, +2.3, −6.7) | holds |
-| table clip: the worker above the synchronous run at 50 ms | seeds 1–3 | 74.0% against 71.4% (+2.1, +2.5, +3.1) | holds |
-| table clip: the worker below the synchronous run at 100 ms | seeds 1–3 | 68.5% against 71.4% (−4.0, −4.5, −0.2) | holds |
-| table clip: the worker below the synchronous run at 130 ms | seeds 1–3 | 68.5% against 71.4% (the same frames as at 100 ms) | holds |
+| wall clip: the worker below the synchronous run at 130 ms | seeds 1–3 | 36.5% against 39.7% (−5.4, +2.3, −6.7) | holds on the mean, with one seed of three the other way — the weakest verdict here, and the device has two worker runs, not three seeds |
+| table clip: the worker above the synchronous run at 50 ms — the same frames as its 70 ms run | seeds 1–3 as registered; its weight rests on seeds 2 and 3 | 74.0% against 71.4% (+2.1, +2.5, +3.1); seeds 2 and 3, 74.3% against 71.5% | holds. Seed 1 is identical to the 70 ms seed-1 run seen before this point was registered, so it is weightless here too |
+| table clip: the worker below the synchronous run at 100 and at 130 ms — one measurement, the two latencies landing on the same frames | seeds 1–3 | 68.5% against 71.4% (−4.0, −4.5, −0.2) | holds, one seed by 0.2 points |
 | the fallback's withdrawal: every-frame synchronous above the synchronous mode as external detection at 83.2 ms by more than 5 points, wall clip | seeds 1–3 | 18.6 points (17.9, 18.9, 19.0) | holds |
 | every-frame worker falling as the latency grows, over the band (70, 100, 130 ms) | means over seeds | wall 52.0 → 48.0 → 46.5; table 76.4 → 75.3 → 74.0 | holds |
 | device schedule: the worker's per-frame TRACK share below the synchronous run's while `trackTimeShare` holds | every run | 24 of 24 runs | holds |
@@ -110,23 +145,61 @@ within it or just below.** The worker's mean was 42.4% against the
 synchronous runs' 37.4–41.4%, all three seeds positive (+2.5, +4.8, +0.8).
 The frame account held: the worker's first step landed on the synchronous
 frame, 160.5 ms after the detected one, in every seed. What differed is how
-often first steps confirmed: 95 of 412 for the worker (23%) against 74 of
-481 for the synchronous runs (15%) over the counted loops, at the same
+often first steps confirmed: 95 of 412 for the worker (23.1%) against 74 of
+481 for the synchronous runs (15.4%) over the counted loops, at the same
 160.5 ms. The first step is the same computation in both modes — a
 detection starts a lock with no velocity and `trackFrame` runs from its
 homography (`NftTracker.consume` for the worker, the frame after a DETECT
 for the synchronous mode) — and while every detection finds the target the
 two modes run the same chain of frames at 100 ms. They part after a
-detection that finds nothing. The synchronous mode then detects the next
+detection that finds nothing: the synchronous mode then detects the next
 processed frame, with no step before it, and its first step comes 120.4 ms
-later; those first steps confirmed 0 of 80 over all six loops of the three
-seeds. The worker posts the frame that consumed the empty result, and its
-next first step comes 160.5 ms after that. The two modes' rates are
-therefore taken over different samples of frames, and the frame account,
-which predicts when a first step comes, says nothing about which frames the
-chains visit. This stays open. Row five of the device table (first steps
-confirmed) reads it on the tablet; nothing registered for the device
-changes.
+later; the worker posts the frame that consumed the empty result, and its
+next first step comes 160.5 ms after that.
+
+*Examined on 2026-09-30, after this record was first committed, from the same exports* (`matched.mjs`, below;
+locks counted over loops 1–4, as `runSummary` counts them):
+
+| seed | synchronous: all | synchronous: after a failed step | synchronous: no step before | worker: all | worker: after a failed step | worker: no step before |
+|---|---|---|---|---|---|---|
+| 1 | 25/155 (16.1%) | 25/133 (18.8%) | 0/22 | 31/135 (23.0%) | 31/117 (26.5%) | 0/18 |
+| 2 | 22/169 (13.0%) | 22/153 (14.4%) | 0/16 | 32/136 (23.5%) | 32/117 (27.4%) | 0/19 |
+| 3 | 27/157 (17.2%) | 27/142 (19.0%) | 0/15 | 32/141 (22.7%) | 32/120 (26.7%) | 0/21 |
+| pooled | 74/481 (15.4%) | 74/428 (17.3%) | 0/53 | 95/412 (23.1%) | 95/354 (26.8%) | 0/58 |
+
+- **The first steps that never confirm are in both modes.** A first step
+  whose detection ran on a frame with no tracking step before it — after a
+  detection that found nothing, or at a run's start — confirmed 0 of 53 in
+  the synchronous runs (120.4 ms after its detection) and 0 of 58 in the
+  worker runs (160.5 ms). The first version's "0 of 80" counted all six
+  loops; over the counted loops it is 53. Removing these attempts from both
+  modes does not close the gap.
+- **On the matched path the gap survives.** Where the detection ran on a
+  frame whose tracking step had just failed — the chain that had found the
+  target, on which both modes' first steps come 160.5 ms after the detected
+  frame — the worker confirms 26.8% against 17.3%, in every seed (+7.7,
+  +13.0, +7.7 points).
+- **On matched frames it closes.** Where both modes detected the same frame
+  on that path — 95 such pairs over the three seeds, the first step on the
+  same frame in every one — the outcomes agree in 92, and the other three
+  split two confirmed by the synchronous mode only to one by the worker
+  only: 28 of 95 against 27 of 95.
+
+So at equal latency, on the same frames, the worker's first step confirms
+as often as the synchronous one. The gap in rate, and the 2.7 points of
+lock, come from which frames each chain attempts: past the first empty
+detection the chains visit different frames, the synchronous one making
+428 attempts on the matched path to the worker's 354, and on the frames the
+two do not share, the synchronous attempts confirm 46 of 333 (13.8%)
+against the worker's 68 of 259 (26.3%). **The anomaly is an artefact of
+which frames each chain visits, not a difference in how often a first step
+confirms; row five of the device table no longer carries it.**
+
+What it leaves for row five is recorded here, not acted on: row five
+compares raw rates, each over its own mode's chain, and on this clip the
+chains' sampling alone opened 7.7 raw points (9.5 on the matched path) with
+no difference in confirmation — in the worker's favour here, and the
+replay does not say which way it would fall on the tablet's schedule.
 
 **Over the point added today, the every-frame worker does not fall from 50
 to 70 ms.** The falsifier was registered for the band, 70, 100 and 130 ms,
@@ -142,13 +215,20 @@ faster retry after a detection that finds nothing — 80.2 ms instead of
 120.4 on the wall clip — sends the run down another chain. This is not a
 defect in the loop. A falsifier that says "falls" should say "does not
 rise, where the latency crosses a frame boundary", which is what it
-tested over the band.
+tested over the band. (Guidance for the next pass, dated 2026-09-30, after this record was first committed: the
+registered wording stands for this one, and the table above reads it as
+registered.)
 
 ## Reproducing it
 
 The runs: `node scripts/replay-clips.mjs --external <L> --seed <S> --out
-<dir>` for each (L, S), with `npm run build` first, sequentially. The two
-scripts that compared and read them follow.
+<dir>` for each (L, S), with `npm run build` first, sequentially. Three
+scripts compared and read them: `compare-runs.mjs`, the determinism check;
+`analyze.mjs`, the tables, the falsifiers and, since the correction, the
+accounting (the version that first ran differed only in collecting each
+arm's accounting without reading it); and `matched.mjs`, added with the
+correction for the 100 ms examination, run as `node matched.mjs <the
+directory holding the run directories> 100 pinball-bench`.
 
 <details>
 <summary><code>compare-runs.mjs</code>: the determinism check</summary>
@@ -203,7 +283,7 @@ process.exit(bad === 0 ? 0 : 1);
 </details>
 
 <details>
-<summary><code>analyze.mjs</code>: the tables and the falsifiers</summary>
+<summary><code>analyze.mjs</code>: the tables, the falsifiers and the accounting</summary>
 
 ```js
 // Reads the pre-flight's --out directories and evaluates the spec's registered
@@ -233,7 +313,7 @@ for (const L of LATS) for (const S of SEEDS) {
       step: e.stepMs ?? null,
       locks: s.detectionLocks ? `${s.detectionLocks.confirmed}/${s.detectionLocks.n}` : "—",
       fsl: s.firstStepLatency?.videoMs?.p50 ?? null,
-      acc: e.detection?.accounting ? `${e.detection.accounting.requests}=${e.detection.accounting.consumptions}+${e.detection.accounting.dropped}+${e.detection.accounting.discardedAtStop}` : "—",
+      acc: e.detection?.accounting ?? null,
     };
     ((((runs[L] ??= {})[S] ??= {})[CLIPS[e.bundledClip] ?? e.bundledClip] ??= {})[kind(e.schedule)] = row);
   }
@@ -282,6 +362,18 @@ for (const clip of ["wall", "table"]) {
   for (const L of LATS) for (const S of SEEDS) { const a = get(L, S, clip, "DEV-sync"), b = get(L, S, clip, "DEV-worker"); if (a && b) rows.push(b.perFrame < a.perFrame); }
   verdict(`device schedule: worker per-frame TRACK share below sync's (${clip})`, rows.length ? rows.every(Boolean) : null, `${rows.filter(Boolean).length} of ${rows.length} runs`);
 }
+{
+  // The accounting each external-detection arm carries, read (since the correction; before it, it was collected and never read).
+  let n = 0;
+  const bad = [];
+  for (const L of LATS) for (const S of SEEDS) for (const [clip, ks] of Object.entries(runs[L]?.[S] ?? {})) for (const [k, r] of Object.entries(ks)) {
+    const a = r.acc;
+    if (!a) continue;
+    n++;
+    if (!(Number.isInteger(a.requests) && a.requests === a.consumptions + a.dropped + a.discardedAtStop && a.ignored === 0)) bad.push(`${L} ms seed ${S} ${clip} ${k}`);
+  }
+  verdict("accounting: requests = consumptions + dropped + discarded at Stop, none ignored, on every external-detection arm", n ? bad.length === 0 : null, `${n - bad.length} of ${n} arms${bad.length ? "; not: " + bad.join(", ") : ""}`);
+}
 console.log("\n## Cross-run consistency of arms that do not depend on latency (same seed)\n");
 for (const clip of ["wall", "table", "static"]) for (const k of ["EF-sync", "EF-fallback", "DEV-sync"]) for (const S of SEEDS) {
   const vals = LATS.map((L) => get(L, S, clip, k)?.share).filter((v) => v != null);
@@ -289,6 +381,84 @@ for (const clip of ["wall", "table", "static"]) for (const k of ["EF-sync", "EF-
   const same = vals.every((v) => v === vals[0]);
   console.log(`- ${clip} ${k} seed ${S}: ${same ? "identical" : "DIFFERS"} across ${vals.length} runs (${[...new Set(vals.map(pct))].join(", ")}${k === "DEV-sync" ? `; steps ${[...new Set(steps.map((x) => x?.toFixed?.(2)))].join(", ")}` : ""})`);
 }
+```
+
+</details>
+
+<details>
+<summary><code>matched.mjs</code>: the 100 ms examination, on matched paths and matched frames</summary>
+
+```js
+// The wall clip at 100 ms: first steps compared on matched paths and matched
+// frames, from the pre-flight's device-schedule exports. Standalone: the lock
+// rules are bench-metrics.mjs's (detectionLockList, setsLock), restated here.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+const PF = process.argv[2];
+const L = Number(process.argv[3] ?? 100);
+const clip = process.argv[4] ?? "pinball-bench";
+const D = { "pinball-bench": 11.959866, "pinball-bench-table": 8.9 }[clip];
+const unwrap = (frames) => {
+  let loop = 0;
+  return frames.map((f, i) => {
+    if (i > 0 && f.mediaTimeSeconds < frames[i - 1].mediaTimeSeconds) loop++;
+    return loop * D + Math.min(f.mediaTimeSeconds, D);
+  });
+};
+const inCounted = (t) => t >= D - 1e-9 && t < 5 * D - 1e-9; // loops 1-4
+function locks(frames) {
+  const t = unwrap(frames);
+  const out = [];
+  for (let i = 0; i < frames.length; i++) {
+    const f = frames[i];
+    const use = f.detectionUse ?? (f.state === "TRACK" ? "none" : "internal");
+    let stepIdx = null, detIdx = null;
+    if (use === "internal" && f.state === "DETECT") { detIdx = i; if (frames[i + 1]?.tracking) stepIdx = i + 1; }
+    else if (use === "consumed" && (f.state === "TRACK" || f.reason === "unconfirmed")) {
+      stepIdx = i; detIdx = i - f.detectedAt.framesAgo;
+      if (Math.abs(frames[detIdx].mediaTimeSeconds - f.detectedAt.mediaTimeSeconds) > 1e-9) throw new Error(`detected frame mismatch at ${i}`);
+    }
+    // As runSummary counts them: over the counted frames, so a synchronous lock needs its DETECT frame
+    // in loops 1-4 too; a consumed one is counted by its own frame.
+    if (stepIdx === null || !inCounted(t[stepIdx]) || (use === "internal" && !inCounted(t[detIdx]))) continue;
+    out.push({
+      detKey: Math.round(t[detIdx] * 1e6),
+      stepKey: Math.round(t[stepIdx] * 1e6),
+      gapMs: Math.round((t[stepIdx] - t[detIdx]) * 10000) / 10,
+      afterStep: frames[detIdx].tracking != null,
+      confirmed: frames[stepIdx].state === "TRACK",
+    });
+  }
+  return out;
+}
+const rate = (a) => `${a.filter((x) => x.confirmed).length}/${a.length} (${a.length ? ((100 * a.filter((x) => x.confirmed).length) / a.length).toFixed(1) : "—"}%)`;
+const pooled = { sync: [], worker: [] };
+const pairsAll = { both: 0, neither: 0, syncOnly: 0, workerOnly: 0, sameStep: 0, n: 0 };
+console.log(`${clip}, ${L} ms, device schedule, locks whose first step is in loops 1-4\n`);
+console.log("| seed | sync: all | sync: after a step | sync: no step before | worker: all | worker: after a step | worker: no step before |\n|---|---|---|---|---|---|---|");
+for (const S of [1, 2, 3]) {
+  const dir = join(PF, `out-${L}-s${S}${L === 70 && S === 1 ? "-a" : ""}`);
+  const read = (k) => JSON.parse(readFileSync(join(dir, `replay-${clip}-tracking-device-scaled-step-${k}.json`), "utf8"));
+  const s = locks(read("sync").frames), w = locks(read(`worker-${L}-ms`).frames);
+  pooled.sync.push(...s); pooled.worker.push(...w);
+  console.log(`| ${S} | ${rate(s)} | ${rate(s.filter((x) => x.afterStep))} | ${rate(s.filter((x) => !x.afterStep))} | ${rate(w)} | ${rate(w.filter((x) => x.afterStep))} | ${rate(w.filter((x) => !x.afterStep))} |`);
+  const wByDet = new Map(w.filter((x) => x.afterStep).map((x) => [x.detKey, x]));
+  for (const a of s.filter((x) => x.afterStep)) {
+    const b = wByDet.get(a.detKey);
+    if (!b) continue;
+    pairsAll.n++;
+    if (a.stepKey === b.stepKey) pairsAll.sameStep++;
+    if (a.confirmed && b.confirmed) pairsAll.both++;
+    else if (!a.confirmed && !b.confirmed) pairsAll.neither++;
+    else if (a.confirmed) pairsAll.syncOnly++;
+    else pairsAll.workerOnly++;
+  }
+}
+const ps = pooled.sync, pw = pooled.worker;
+console.log(`| pooled | ${rate(ps)} | ${rate(ps.filter((x) => x.afterStep))} | ${rate(ps.filter((x) => !x.afterStep))} | ${rate(pw)} | ${rate(pw.filter((x) => x.afterStep))} | ${rate(pw.filter((x) => !x.afterStep))} |`);
+const gaps = (a) => { const h = {}; for (const x of a) h[x.gapMs] = (h[x.gapMs] ?? 0) + 1; return JSON.stringify(h); };
+console.log(`\nfirst-step gaps (video ms → count): sync after a step ${gaps(ps.filter((x) => x.afterStep))}; sync no step ${gaps(ps.filter((x) => !x.afterStep))}; worker after a step ${gaps(pw.filter((x) => x.afterStep))}; worker no step ${gaps(pw.filter((x) => !x.afterStep))}`);
+console.log(`\nframe-matched (same detected frame, both after a step, pooled over seeds): ${pairsAll.n} pairs, first step on the same frame in ${pairsAll.sameStep}; both confirmed ${pairsAll.both}, neither ${pairsAll.neither}, sync only ${pairsAll.syncOnly}, worker only ${pairsAll.workerOnly}`);
 ```
 
 </details>
