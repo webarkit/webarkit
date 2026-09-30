@@ -2924,13 +2924,27 @@ at the median, and the results then say so.
   table clip, the worker's mean over the three seeds is not above the
   synchronous run's at 50 ms, or not below it at 100 ms or at 130 ms. The
   model makes the table clip's worker trail inside a band of latency: above
-  83.3 ms less the scaled step — about 72 ms at seed 1's — its result lands
-  while a waiting frame's 50 ms acquisition overruns the next frame, and its
-  first step comes at least 33.3 ms after the synchronous one; below that
-  floor it comes 33.3 ms sooner. 100 and 130 ms lie above the floor at any
-  scaled step. 70 ms lies 2 ms under it at seed 1's step and above it for a
-  step over 13.3 ms, so the table clip's 70 ms point decides nothing, and
-  50 ms — 22 ms under the floor — is run for the band's lower side. (The
+  83.3 ms less the scaled step, its result lands while a waiting frame's
+  50 ms acquisition overruns the next frame, and its first step comes at
+  least 33.3 ms after the synchronous one; below that floor it comes 33.3 ms
+  sooner. The floor moves with the scaled step alone — the model's
+  acquisition is the constant 50.0 ms — and the step is measured on the
+  desktop in each run (its step p50 times 3.15): seed 1's is 11.3 ms, and a
+  fifth either side, 9 to 14 ms, puts the floor between about 69 and 74 ms.
+  Whatever the step, while the frame's work ends before the first waiting
+  frame (a step under 16.7 ms), the floor stays between 66.6 and 83.3 ms:
+  50 ms is at least 16 ms under that whole range, 100 ms at least 16 ms
+  over it, and 130 ms over it at any step. 70 ms lies 2 ms under the floor
+  at seed 1's step and above it for a step over 13.3 ms, so the table clip's
+  70 ms point decides nothing, and 50 ms is run for the band's lower side.
+  Every falsifier here holds over a range of the run's scaled step, which
+  the replay prints per clip in each run: on the wall clip, "above at 70 ms"
+  from 9.5 to 22.7 ms — under 9.5 the synchronous first step itself comes
+  at 120.4 ms, over 22.7 the worker's work plus 70 ms passes 120.4 ms — and
+  "below at 130 ms" over 2.8 ms (seed 1's step: 15.2 ms); on the table clip,
+  "above at 50 ms" under 16.7 ms, "below at 100 and 130 ms" at any step. A
+  run whose step falls outside a point's range reports that point without
+  reading it. (The
   verification's scratch model gave the
   worker +18.7, +6.1 and +2.6 points at 70, 100 and 130 ms; it counted the
   worker's latency from its frame rather than from the post, crediting it
@@ -2951,24 +2965,28 @@ at the median, and the results then say so.
   and is disclosed with it — first-step latency p50 120.4 ms for the worker
   against 160.5 for the synchronous run on the wall clip, 133.3 against
   166.7 on the table clip; `trackTimeShare` 45.2% against 40.4%, and 73.4%
-  against 71.4%. On the device, the correction moves the expectation
-  against the result that had been seen: 45.2% against 40.4% was observed,
-  and the expected improvement was then removed. (The working ruling that
-  first found the late synchronous step, read from the same exports before
-  the replay's loop existed, had expected a worker a frame sooner on the
-  tablet; read further, the exports put it on the synchronous frame at equal
-  speed. That ruling is a working note, not in this repository, so its
-  order cannot be checked from here.) A contaminated correction almost
-  always moves the other way, to make an observed result look predicted. On
-  the desktop, at 70 ms, it does move the other way — from within the
-  synchronous run's range to above it — and so the wall clip's 70 ms point
-  is not load-bearing: seeds 2 and 3 and the 100 and 130 ms points, all run
-  after the correction, carry the verdict. Running seed 1 at 70 ms again
-  does not cleanse it: a replay deterministic in latency and seed
-  reproduces it exactly, which proves nothing about the order of
-  operations. It is run again anyway, first, as a check of the harness: if
-  its outputs are not identical, that is a finding about the replay, needed
-  before it produces the other numbers.
+  against 71.4%. Measured against this spec's own earlier text — the only
+  record a later reader can check — the correction moves nothing on the
+  device: the lock held at equal speed before it and holds after it. (A
+  working ruling, read from the same exports before the replay's loop
+  existed, had expected a worker a frame sooner on the tablet; read
+  further, the exports put it on the synchronous frame. That ruling is not
+  in this repository, so neither it nor its order can be checked from
+  here.) On the desktop, at 70 ms, the correction moves toward the result
+  already seen — from within the synchronous run's range to above it — and
+  a contaminated correction almost always moves that way, to make an
+  observed result look predicted. So seed 1's result at 70 ms, seen before
+  the prediction was set, is reported and weightless: it can neither refuse
+  the prediction nor confirm it. Seeds 2 and 3 at 70 ms were never
+  observed, and the prediction remains predictive for them: the 70 ms point
+  is down from three seeds to two, not dead. They, the 100 and 130 ms
+  points and the table clip's 50 ms point, all run after the correction,
+  carry the verdict. Running seed 1 at 70 ms again does not cleanse it: a
+  replay deterministic in latency and seed reproduces it exactly, which
+  proves nothing about the order of operations. It is run again anyway,
+  first, as a check of the harness: if its outputs are not identical, that
+  is a finding about the replay, needed before it produces the other
+  numbers.
 - The fallback's withdrawal is re-checked by committed code: on the
   every-frame schedule, the synchronous mode run as external detection whose
   result is consumed at the first frame at or after its frame's work plus
@@ -3022,7 +3040,14 @@ at the median, and the results then say so.
   by more than 1.9 ms — that clip's block is run again, once. If the re-run
   trips the rule too, the slowing is recorded as a cost the worker mode
   causes, and the block is read as measured: a cost the worker causes is a
-  cost to the user, not a reason to run again.
+  cost to the user, not a reason to run again. Both p50s are read over the
+  run's counted loops, the frames every row reads — never over a window
+  that holds the warm-up loop, whose pull on the comparison has no settled
+  sign (a cold start in each run, a device cooler at the opening run's
+  start than at the closing run's): a rule that can be quietly weakened is
+  worse than one that can be falsely tripped. No run already measured is
+  read through the rule; the page's stage summary reads the counted loops
+  before the session's first run.
 - **The spreads, measured in the session.** Two rules use the session's own
   runs. If the synchronous runs' wall-clip loops spread by more than 5
   points (standard deviation over their eight loops), 5 points is under two
