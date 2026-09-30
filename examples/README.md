@@ -387,10 +387,12 @@ clock; `handlerMs`, the time of the handler that received the result;
 A job that never got a reply has `null` arrival, handler and worker times. The
 accounting is asserted, not described: `requests = consumptions + dropped +
 discardedAtStop`, and `ignored = 0` (`DEFINITIONS.detectionAccounting`).
-**Download refuses** — one line, nothing saved — a worker run that fails
-either, one that stopped on an error, and one still going, whose accounting
-closes when it ends. A synchronous run's export has `detection.path: "sync"`
-and no jobs.
+**Download refuses** — one line, `Not exported: <why>`, nothing saved — a
+worker run that fails either, one that stopped on an error, and one still
+going, whose accounting closes when it ends. A refusal is about the Download,
+not the run: it leaves the status row as it was (`done`, `stopped` or
+`failed`), so the row still says how the run ended. A synchronous run's export
+has `detection.path: "sync"` and no jobs.
 
 **The run protocol.** `?loops=N` (a clip, not the webcam) makes a run of
 whole loops of the clip: loop 0, from the run's first frame, warms up, loops 1

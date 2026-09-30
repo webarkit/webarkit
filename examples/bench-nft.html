@@ -669,9 +669,11 @@
       }
 
       /**
-       * One line about a Download, where errors are shown, that leaves the
-       * status row as it was: the run ended as it ended (done, stopped or
-       * failed), and a driver reading the status must still read that.
+       * One line about a Download — `Not exported: <why>` for one it refused,
+       * or what keeps an export from being a session run — where errors are
+       * shown, that leaves the status row as it was: the run ended as it ended
+       * (done, stopped or failed), and a driver reading the status must still
+       * read that. `showError` is for what failed, and sets the status.
        */
       function showNotice(message) {
         errorEl.textContent = message;
@@ -1787,9 +1789,11 @@
 
       function downloadHistory() {
         const run = lastRun;
+        // A refusal is about the Download, not the run: it never changes the
+        // status row, which says how the run ended (showNotice).
         const refusal = exportRefusal(run);
         if (refusal) {
-          showError(`Not exported: ${refusal}`);
+          showNotice(`Not exported: ${refusal}`);
           return;
         }
         // Both over the window, or with ?loops= over the counted loops' frames
@@ -1807,7 +1811,7 @@
             accounting: run?.policy ? run.policy.accounting() : null,
           });
         } catch (e) {
-          showError(`Not exported: ${e.message}`);
+          showNotice(`Not exported: ${e.message}`);
           return;
         }
 
