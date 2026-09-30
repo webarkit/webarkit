@@ -3007,13 +3007,17 @@ at the median, and the results then say so.
 **It ran on 2026-09-30** ([the record](./2026-09-30-desktop-m3-preflight.md)),
 after the predictions above and their correction were committed. The
 harness is deterministic in latency and seed; the scaled steps sat inside
-every falsifier's range; every falsifier above holds, and every first-step
-latency is the frame the account predicts. One prediction that carries no
-refusal missed upward: on the wall clip at 100 ms the worker came out above
-the synchronous run's range, its first steps confirming more often at the
-same 160.5 ms, for a reason the frame account does not reach and the record
-leaves open for row five on the tablet. Nothing registered for the device
-changes.
+every falsifier's range; every falsifier above holds — nine conditions on
+seven distinct measurements, the weakest the wall clip at 130 ms, which
+holds on the mean with one seed of three the other way — and every
+first-step latency is the frame the account predicts. One prediction that
+carries no refusal missed upward: on the wall clip at 100 ms the worker came
+out above the synchronous run's range, its first steps confirming more often
+at the same 160.5 ms. Examined later the same day: on matched frames the two
+modes' first steps confirm alike (the same outcome in 92 of 95 pairs); the
+gap comes from which frames each mode's chain attempts after a detection
+that finds nothing, and row five no longer carries it. Nothing registered
+for the device changes.
 
 ### A device session
 
@@ -3049,9 +3053,16 @@ changes.
   than its opening one by more than round 2's largest spread between two
   repeats of a clip — `trackStepMs` p50 by more than 6.6%, or `acquire` p50
   by more than 1.9 ms — that clip's block is run again, once. If the re-run
-  trips the rule too, the slowing is recorded as a cost the worker mode
-  causes, and the block is read as measured: a cost the worker causes is a
-  cost to the user, not a reason to run again. Both p50s are read over the
+  trips the rule too, the block is read as measured, and the slowing is
+  recorded as what the design observes: a slowing across a block that
+  contains two worker runs, with the session's ordinary drift not separated
+  from it — the tablet warms whatever runs, and no block here is
+  synchronous only. A slowing the worker causes would be a cost to the
+  user, not a reason to run again; naming the cause would take an extra
+  block of synchronous runs only, of the same length, worth spending only
+  if the rule trips. (Reworded on 2026-09-30, before the session: the first version recorded
+  the slowing as a cost the worker mode causes, which a sync, worker,
+  worker, sync block cannot establish.) Both p50s are read over the
   run's counted loops, the frames every row reads — never over a window
   that holds the warm-up loop, whose pull on the comparison has no settled
   sign (a cold start in each run, a device cooler at the opening run's
@@ -3092,7 +3103,14 @@ does not start on what is left of a day's budget.
 
 1. **Before the tablet.** The branch's code built (`npm run build`, which
    bundles the worker last), its gates green, and the desktop pre-flight's
-   record committed with no refusal left unexplained.
+   record committed with no refusal left unexplained. And the evidence
+   guards — a failed run never exported as valid, a dead worker refusing
+   Start, `--transfer` refusing an invalid export — checked independently
+   on the code the session runs
+   ([the record](./2026-09-30-m3-guard-check.md), at `c261b77`):
+   `git diff --stat c261b77 HEAD -- examples/bench-nft.html examples/js scripts packages`
+   shows nothing, or the check is run again on the new head, by an agent
+   that did not write the change, before any device run.
 2. **The tablet**, `Tab_9_WiFi` (ADR-0001's reference device) and no other:
    the repository root served over HTTP with range requests and module MIME
    types, on the port `adb reverse` maps; DevTools forwarded; and one bench
@@ -3151,8 +3169,11 @@ does not start on what is left of a day's budget.
    `acquire` p50 (`summaryMs`, read only from an export whose
    `summaryMsFrames` is `counted loops`) by more than 1.9 ms —
    the block is run again, once, at once; if the re-run trips the rule too,
-   it is read as measured, and the slowing is recorded as a cost the worker
-   mode causes.
+   it is read as measured, and the slowing is recorded as observed: a
+   slowing measured across a block that contains worker runs, with the
+   session's ordinary drift not separated from it. Naming its cause would
+   cost an extra block of synchronous runs only, worth spending only if the
+   rule trips.
 10. **After the wall block (runs 6–9)**, the spread rules: if the
     synchronous runs' eight loops spread by more than 5 points (standard
     deviation), or the two worker runs differ by more than 6.6 points, the
