@@ -3042,7 +3042,9 @@ for the device changes.
   and, as row eight reads it, the worker runs' mean `trackStepMs` p50 and
   `total` p50 within 10% of the synchronous runs' mean, either way, and
   their mean `jitterPx` not above the synchronous runs' mean by more than
-  the two synchronous runs differ.
+  0.007 px — the runbook's step 8 gives that bound's derivation, and why it
+  replaced, on 2026-10-01 before any run of a moving clip, the clause first
+  registered here ("by more than the two synchronous runs differ").
   If any of that fails, something other than detection moved — the worker's
   presence, heat, memory — and the session is inconclusive until it is
   explained, before either moving clip is read.
@@ -3190,8 +3192,32 @@ the two.
 8. **After the static block (runs 1–4)**, the null control: TRACK 100% in
    all four runs; the worker runs' mean `trackStepMs` p50 and `total` p50
    within 10% of the synchronous runs' mean; their mean `jitterPx` not above
-   the synchronous runs' mean by more than the two synchronous runs differ.
+   the synchronous runs' mean by more than **0.007 px**.
    If it fails, the session stops, inconclusive until explained.
+   The 0.007 px is the smaller of the two movements round 1's two static
+   baselines showed from drift alone, with no change of configuration: the
+   session's first and last runs, 19 minutes apart, moved `jitterPx` 0.148 →
+   0.155 over the window and 0.142 → 0.153 aligned against the stateless run
+   (the tuning pass's "A device session", above; today's `cornerJitter`
+   recomputes them from the committed exports as 0.1476 → 0.1552 and 0.1419
+   → 0.1526). No margin is added: the smaller observation is already the
+   conservative choice. *Replaced on 2026-10-01, during the session, after
+   the static block and before any run of a moving clip.* The clause first
+   registered here allowed "by more than the two synchronous runs differ":
+   the difference between two observations, which is no estimate of
+   dispersion — it can be arbitrarily small by luck, and when it is, the
+   clause fires almost surely. The argument is structural, and was available
+   before any device data; this file makes it for the tuning pass ("Two runs
+   cannot tell drift from noise, and a band spanned by two observations
+   understates the spread either way"). The clause came from the plan
+   review's run-design requirements of 2026-09-29 (`9600452`), and its bound
+   was never derived. It was withdrawn, not failed and overridden; the
+   numbers that occasioned the withdrawal are in
+   [the session's record](./2026-10-01-m3-device-session.md#the-null-controls-jitter-clause-withdrawn-and-replaced).
+   **No clause in this plan takes its tolerance from the difference between
+   two observations**: where a bound needs a spread, it comes from repeats or
+   from a prior session's measured movement, with its derivation written
+   beside it.
 9. **After every block**, the thermal rule: if the closing synchronous run
    is slower than the opening one — `trackStepMs` p50 by more than 6.6%, or
    `acquire` p50 (`summaryMs`, read only from an export whose
@@ -3235,7 +3261,7 @@ table, says which refusals decide.
 | **First steps confirm as often; stale refusals do not rise** | detection locks' first steps confirmed within 5 points of the synchronous runs' (13% wall, 23% table in round 2) — the refused rest reported per `trackLoss`, the stale refusals | the worker runs' mean more than 5 points below on the wall clip — the bound as registered; on the device a difference past it is recorded without a verdict (*Row five's refusal requires corroboration*, below the table) |
 | **Held locks and the step are untouched** — no detection runs while a lock holds; attribution | held-lock losses per held step within 2 points of the synchronous runs' rate; `trackStepMs` p50 within 10%; reported with the TRACK frames' whole cost distribution, the frames before a loss included | more than 2 points, or 10%, worse: the prediction is refused and explained, and adoption is not decided here |
 | **Latency** — attribution | `detectionPostToArrivalMs` p50 about the synchronous pipeline's time (68.6 ms wall, 79.5 table in round 2), within 25%; the worker's first-step latency — its consumption latency, the same number — p50 equal to the synchronous runs' on the wall clip (160.5 ms in round 2, the median of 106 detections that found the target, 50 of them at 160.5) while post to arrival stays within row four's slack, a frame sooner if faster, later if slower; on the table clip, the synchronous runs' 133.3 or 166.7 ms (round 2's 48 split evenly: 133–167 ms), and the worker's up to a waiting frame, 33.3 ms, later at equal speed | post to arrival p50 more than 25% above the session's synchronous pipeline, or a first-step latency p50 other than post to arrival implies: the prediction is refused and explained, through the latency transfer. Adoption is not decided here: a difference in first-step latency acts through the lock, which row four reads, and one wall-clip frame of it is worth up to 12.6 points in the model |
-| **The static clip is unchanged** — the null control | TRACK 100%; the worker runs' mean `trackStepMs` p50 and `total` p50 within 10% of the synchronous runs' mean, and mean `jitterPx` within the synchronous runs' | TRACK under 100% in any run; the worker mean of `trackStepMs` or `total` p50 more than 10% from the synchronous mean, either way; or the worker mean `jitterPx` above the synchronous mean by more than the two synchronous runs differ: the session is inconclusive until explained |
+| **The static clip is unchanged** — the null control | TRACK 100%; the worker runs' mean `trackStepMs` p50 and `total` p50 within 10% of the synchronous runs' mean, and mean `jitterPx` not above the synchronous runs' mean by more than 0.007 px | TRACK under 100% in any run; the worker mean of `trackStepMs` or `total` p50 more than 10% from the synchronous mean, either way; or the worker mean `jitterPx` above the synchronous mean by more than 0.007 px (the runbook's step 8: replaced on 2026-10-01, before any run of a moving clip, from "by more than the two synchronous runs differ"): the session is inconclusive until explained |
 | **The policy ran as written** | 0 TRACK frames with a detection in flight, 0 detections ignored, every job consumed once or discarded at Stop | any other count: the run is invalid, not a result |
 
 **Row five's refusal requires corroboration.** The desktop pre-flight
