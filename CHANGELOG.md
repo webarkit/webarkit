@@ -14,7 +14,10 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
-`.wnft` format: still **0.3**.
+## [0.4.0] - 2026-10-01
+
+M3 of [ADR-0001](docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md), detection off the
+frame. `.wnft` format: still **0.3**, in both codecs, so this tag freezes no new corpus.
 
 ### Added
 
@@ -30,16 +33,42 @@ release pull request's body and the GitHub Release's notes.
   backend call, and says `needsDetection: true`. Every result carries three new fields,
   `needsDetection`, `detectionUse` and `detectionLatencyMs`. With the option off and no detection
   handed in, the tracker behaves exactly as in 0.3.0; a parity test pins it. The package still
-  owns no worker; a worker demo is a follow-up.
+  owns no worker; `examples/bench-nft.html` brings its own (below).
+- **Detection in a worker, in `examples/bench-nft.html`**
+  ([#97](https://github.com/webarkit/webarkit/pull/97)): `?detection=worker` runs the detection
+  pipeline in a module worker the page owns and hands its results to `NftTracker` under
+  `externalDetection`, on demand: a frame that ends without a lock asks for a detection, and its
+  grey pixels go to the worker if no detection is in flight or held. `?detection=sync`, the
+  tracker's own detection on the frame loop, stays the default. `npm run build` now also bundles
+  the worker into `examples/dist/`, with esbuild, a new root devDependency. For device sessions
+  the page gained a run protocol — `?loops=` and `?run=`, `trackTimeShare` (the share of video
+  time with a confirmed lock), the worker's job accounting, and a `protocol` record of whether an
+  export is a session run — and `scripts/replay-clips.mjs` gained `--external`, which replays the
+  clips with detection handed in at a given latency, and `--transfer`, which replays them at the
+  latencies a session's exports measured. M3's measurement on the reference device is in
+  `docs/benchmarks/`: detection left the frame loop, and whether the lock holds as well was
+  inconclusive on the wall clip, so worker detection is neither adopted nor refused.
+- For the tuning pass, `examples/bench-nft.html` takes `?targetFile=`, a candidate target under
+  the git-ignored `examples/targets/tuning/`, and `?tracker=`, tracker option overrides, each
+  refusing Start when it cannot be read; `scripts/replay-clips.mjs` takes the same as `--target`
+  and `--options`, with `--seed` to repeat RANSAC's draws, and `scripts/tuning-probe.mjs` reports
+  the per-patch figures no export carries ([#86](https://github.com/webarkit/webarkit/pull/86)).
 - This changelog, and the release procedure in `CONTRIBUTING.md` ("Releasing"), which now also
   creates a GitHub Release per tag
-  ([#77](https://github.com/webarkit/webarkit/pull/77), [#72](https://github.com/webarkit/webarkit/issues/72)).
+  ([#77](https://github.com/webarkit/webarkit/pull/77), [#81](https://github.com/webarkit/webarkit/pull/81),
+  [#72](https://github.com/webarkit/webarkit/issues/72)).
+- **Release gates**, in the same section: six conditions a release pull request states before
+  the tag — `dev` green, the changelog closed, every package at the release version, the
+  milestone's open issues examined, a new `.wnft` format minor's corpus frozen, and notes that
+  say what the milestone did not deliver — and, in `CONTRIBUTING.md`, how an amendment to the
+  `@webarkit/cv-backend-spec` contract is decided between its two owners
+  ([#99](https://github.com/webarkit/webarkit/pull/99), [#72](https://github.com/webarkit/webarkit/issues/72)).
 
 ### Changed
 
-- **Every package and the crate now carry the release version**, `0.3.0` today, in lockstep with
-  the repository's tag ([ADR-0002](docs/adr/0002-lockstep-versioning.md),
-  [#77](https://github.com/webarkit/webarkit/pull/77),
+- **Every package and the crate now carry the release version**, in lockstep with the
+  repository's tag: `0.4.0` here, where 0.3.0's manifests read `0.1.0`
+  ([ADR-0002](docs/adr/0002-lockstep-versioning.md), [#77](https://github.com/webarkit/webarkit/pull/77),
   [#79](https://github.com/webarkit/webarkit/pull/79)): `@webarkit/cv-backend-spec`,
   `@webarkit/cv-backend-jsfeatnext`, `@webarkit/nft-tracker` and `wnft-format`, with the exact
   pins between the packages. `npm run check:contract` now fails when a version, a pin or a
@@ -62,7 +91,8 @@ release pull request's body and the GitHub Release's notes.
   now pinned by tests on the committed target (round 4 of the tuning pass). A target compiled
   with the old default keeps working: the patch count is data, not format. Measurements before
   and after this change ran on different targets and are not directly comparable
-  ([`docs/benchmarks/README.md`](docs/benchmarks/README.md), "M3: the tuning pass", rounds 2
+  ([#88](https://github.com/webarkit/webarkit/pull/88), [#90](https://github.com/webarkit/webarkit/pull/90);
+  [`docs/benchmarks/README.md`](docs/benchmarks/README.md), "M3: the tuning pass", rounds 2
   and 4).
 
 ## [0.3.0] - 2026-09-26
@@ -195,7 +225,8 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 - The original single-page jsartoolkitNFT demo the repository started as. It is kept at the tag
   `archive/original-nft-demo`.
 
-[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.3.0...dev
+[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.4.0...dev
+[0.4.0]: https://github.com/webarkit/webarkit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/webarkit/webarkit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/webarkit/webarkit/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/webarkit/webarkit/releases/tag/v0.1.0
