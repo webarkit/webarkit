@@ -3162,20 +3162,27 @@ the two.
    right for them); in a worker run
    `runSummary.trackFramesWithDetectionInFlight` 0; and the stall check,
    computed from the export by `stall-check.mjs`
-   ([the record](./2026-10-01-m3-session-additions.md#a-per-run-check-for-a-stalled-clip)):
-   no gap in media time between two consecutive frames above **500 ms**,
-   a gap across a loop wrap counting the clip's end after the first frame
-   plus the next frame's media time — so a backward step that is not the
-   clip restarting fails it too — every counted loop starting within
-   500 ms of the clip's start and ending within 500 ms of its end, and a
-   frame of loop 5. The bound comes from round 2's sixteen committed tablet
-   exports, whose largest gap is 240.8 ms — six wall-clip frames, a
-   synchronous detection's tick — doubled and rounded up: a session run is
-   about five times as long as those 300-frame windows, and a gap under
-   500 ms holds at most half a second of video under one state, about 1% of
-   the wall clip's counted video and a fifth of the adoption bound. (The
-   stall check was added on 2026-10-01, before the session: a partial
-   stall passes every other check.) An invalid
+   ([the record](./2026-10-01-m3-session-additions.md#a-per-run-check-for-a-stalled-clip)),
+   whose two bounds stand side by side: **500 ms** for any single gap in
+   media time between consecutive frames — a single stutter; a gap across a
+   loop wrap counts the clip's end after the first frame plus the next
+   frame's media time, so a backward step that is not the clip restarting,
+   which `isLoopWrap` would read as a loop, fails it too — and **3% of each
+   counted loop's duration** for the time by which that loop's gaps exceed
+   240.8 ms, summed — a run full of small stutters; with every counted loop
+   starting within 500 ms of the clip's start and ending within 500 ms of
+   its end, and a frame of loop 5. Both come from round 2's sixteen
+   committed tablet exports. Their largest gap, 240.8 ms (six wall-clip
+   frames, a synchronous detection's tick), doubled and rounded up, gives
+   the first: a session run is about five times as long as those 300-frame
+   windows, and one gap under 500 ms holds at most about 1% of the wall
+   clip's counted video. Their excess over 240.8 ms, zero in every loop,
+   plus one stutter at the first bound in a loop of the shortest clip
+   (259.2 ms of 8.9 s, 2.9%), rounded up, gives the second: a run that
+   passes both holds abnormally at most 3% of its counted video, under the
+   adoption rule's 5 points. (Added on 2026-10-01, before the session: a
+   partial stall passes every other check. Run over every committed
+   export, the check finds no fabricated loop.) An invalid
    run is run again in its place, once; invalid twice, the session stops
    until the cause is explained.
 8. **After the static block (runs 1–4)**, the null control: TRACK 100% in

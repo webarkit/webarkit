@@ -76,13 +76,21 @@ added, computed from the export, outside the guarded paths:
 consecutive processed frames; across a loop wrap it is the clip's end after
 the first frame plus the next frame's media time, so a backward step that is
 not the clip restarting reads as a gap of nearly the whole clip. The run
-fails if:
+fails on any of four arms:
 
-- any gap, across a wrap included, exceeds **500 ms** — which covers a
-  forward jump and a backward step that is not a loop restart;
-- any counted loop (1 to 4) starts more than 500 ms after the clip's start
-  or ends more than 500 ms before its end;
-- no frame of loop 5 closes loop 4.
+- **gaps** — any gap exceeds **500 ms**: a single stutter;
+- **monotonicity** — a backward step in media time whose gap across the
+  wrap exceeds 500 ms: not the clip restarting, so a loop `isLoopWrap`
+  would fabricate;
+- **coverage** — a counted loop (1 to 4) starts more than 500 ms after the
+  clip's start or ends more than 500 ms before its end, or no frame of
+  loop 5 closes loop 4;
+- **cumulative** — in a counted loop, the time by which its gaps exceed
+  240.8 ms, summed, is more than **3%** of the clip's duration: a run full
+  of small stutters, each under 500 ms.
+
+*Extended the same day, before the session: the cumulative arm, and the
+check run over every committed export (below).*
 
 **The bound, from the tablet.** The largest gap in each of round 2's sixteen
 committed tablet exports (`2026-09-29-tab9-tuning-r2-*.json`, real runs on
@@ -107,6 +115,35 @@ gap under 500 ms can hold at most half a second of video under one state —
 about 1% of the wall clip's 47.8 counted seconds, a fifth of the adoption
 bound.
 
+**The cumulative bound, beside it.** The per-gap bound guards a single
+stutter; it does not guard a run full of small ones — ten gaps of 450 ms
+each pass it and together hold about a tenth of the counted video under one
+state, more than the adoption rule's 5 points. So each counted loop also
+sums the time by which its gaps exceed 240.8 ms, the largest gap a valid
+tablet run showed: the excess, not the whole gap, because 240.8 ms of any
+gap is what a valid run already holds under one state. Round 2's sixteen
+exports show no gap above 240.8 ms at all — the excess is zero in every
+loop of every export — and the top of the tail thins fast: on the wall clip
+39 gaps of 200.7 ms and 2 of 240.8 in 1,480, on the table clip 162 of
+166.7 ms and 12 of 200.0 in 1,478, each frame up seven to twenty times
+rarer. A session run, about five times as many gaps, would show a gap above
+240.8 ms rarely — about one run in several — and exceed it by a frame, some
+40 ms, about 0.4% of a loop. The bound is the margin over that zero: one stutter at the per-gap
+bound in a loop of the shortest clip — 259.2 ms of excess in 8.9 s, 2.9% —
+rounded up, **3% of each counted loop's duration** (359 ms on the wall
+clip, 267 on the table clip, 365 on the static clip). So the two keep
+distinct jobs, side by side:
+
+| bound | guards | value | from |
+|---|---|---|---|
+| per gap | a single stutter | 500 ms | round 2's largest gap, 240.8 ms, doubled and rounded up |
+| cumulative, per counted loop | a run full of small stutters | the gaps' excess over 240.8 ms, summed: 3% of the loop's duration | round 2's excess, zero everywhere, plus one stutter at the per-gap bound in a loop of the shortest clip (2.9%), rounded up |
+
+A single stutter at the per-gap bound never trips the cumulative one, two
+near it in one loop do, and a run that passes both can hold abnormally at
+most 3% of its counted video — 3 points of `trackTimeShare` at the very
+worst, under the adoption rule's 5.
+
 **Tested before it is relied on.** It passes the three page exports of the
 guard check's real session runs at `c261b77` (the table clip's synchronous
 `run=1`, largest gap 100.0 ms, and worker `run=2`, 33.3 ms; the static
@@ -116,7 +153,47 @@ export, it fails a freeze of 0.6 s of media time in loop 2 (a 633.3 ms gap),
 a frame of loop 2 shown again half a second later (a backward step that
 reads, across the would-be wrap, as a gap of 8.4 s), and a loop 3 that ends
 0.6 s early; it passes the same freeze cut to leave a gap of exactly
-500 ms.
+500 ms. The cumulative arm fails three stutters of about 450 ms in one loop
+(678 ms of excess against 267, though each passes the per-gap bound) and
+passes one stutter at the bound (259 ms), two of about 350 ms in one loop
+(252 ms), and one of about 450 ms in each of the four counted loops (226 ms
+a loop).
+
+**Run over every committed export.** `isLoopWrap` feeds the measurement,
+not only the checking: `unwrapMediaTimes` counts a loop at each wrap it
+reports, and that timeline is what `trackTimeShare` bins and what selects
+a run's counted-loop frames; the same reading opens `jitterPx`'s windows and
+counts `loopWraps` and the reacquisitions and held-lock losses at a wrap. A
+false wrap in a committed run would therefore have corrupted figures
+already published from it. So the check ran, all four arms, over every
+committed export with frames (`check-committed.mjs`, below):
+
+- **Round 2's sixteen tablet exports pass every arm** — gaps, monotonicity,
+  coverage over every loop wholly inside each 300-frame window and at its
+  two partial ends, cumulative. No committed round 2 run holds a
+  fabricated wrap.
+- **The 45 other exports on the three bundled clips** — round 1's, the M2
+  runs of 2026-09-26, the sweeps of 2026-09-24, the first runs of
+  2026-09-19, Oppo and laptop included — **all pass monotonicity**, and 44
+  pass every arm. The one that does not is
+  `2026-09-24-tab9-ondevice-stateless-static-mk300-manual-1`, with an
+  866.7 ms forward gap: the stall its record already describes ("the server
+  used for the manual runs did not support HTTP range requests, so the
+  video stalled briefly at every loop"), from which only a `match` p50 — a
+  per-frame time, which reads no media time — was published. The check
+  found the one documented stall in the committed data.
+- **The nine others with frames** — six acquisition tests on clips of their
+  own, whose duration no export records, and three camera runs — were read
+  for monotonicity alone, which needs no duration: each of the six steps
+  back once, to the start of its clip from its end, and the camera runs
+  never step back.
+
+So `isLoopWrap`'s reading of any backward step as a wrap is a latent defect
+in the measurement that no committed export triggers, and no published
+figure rests on a fabricated loop. For the session, the stall check's
+monotonicity arm refuses such a run before it is read; hardening
+`isLoopWrap` itself is a change to a path the guard check covers, left for
+after the campaign.
 
 What firing means is the runbook's rule for every step-7 check: the run is
 invalid, not a result, and is run again once in its place; invalid twice,
@@ -132,7 +209,7 @@ missing between the pre-flight and the session: they are consecutive.
 
 ## The scripts
 
-Run from the repository root.
+Run from the repository root, the four files side by side (`check-committed.mjs` imports `stall-check.mjs`).
 
 <details>
 <summary><code>pairing.mjs</code>: how many frames, detections and first steps two tablet runs share</summary>
@@ -250,49 +327,150 @@ console.log("\nlargest gap per clip and mode, within a loop or across a wrap:", 
 
 ```js
 // The stall check of the M3 runbook's step 7, over one page export:
-//   node stall-check.mjs <export.json>   — exit 0 if every check passes, 1 if any fails.
+//   node stall-check.mjs <export.json>   — exit 0 if every arm passes, 1 if any fails.
 // It reads only the export: the frames' media times, `clipDurationS` and `loops`.
-// A gap is the media time between two consecutive processed frames; across a
+//
+// A gap is the media time between two consecutive processed frames. Across a
 // loop wrap (media time going back) it is the clip's end after the first frame
 // plus the next frame's media time, so a backward step that is not the clip
-// restarting reads as a gap of almost the whole clip.
+// restarting reads as a gap of nearly the whole clip. Four arms:
+//   gaps          — no gap above BOUND_MS: a single stutter;
+//   monotonicity  — every backward step is the clip restarting (its gap across
+//                   the wrap within BOUND_MS): no fabricated loop;
+//   coverage      — every loop read starts within BOUND_MS of the clip's start
+//                   and ends within BOUND_MS of its end;
+//   cumulative    — in every loop read, the time by which gaps exceed
+//                   DEVICE_MAX_MS, summed, is at most EXCESS_FRACTION of the
+//                   clip's duration: a run full of small stutters.
+// A session export (it has `loops`) is read over its counted loops, and needs a
+// frame of the loop after them. An older export, a window of its run, is read
+// over every loop wholly inside the window, and the inner ends of the two
+// partial ones.
 import { readFileSync } from "node:fs";
-const BOUND_MS = 500; // round 2's largest gap on the tablet, 240.8 ms, doubled and rounded up (see the runbook, step 7)
-const e = JSON.parse(readFileSync(process.argv[2], "utf8"));
-const D = e.clipDurationS;
-const { firstLoop = 1, loopCount = 4 } = e.loops ?? {};
-const f = e.frames ?? [];
-const fails = [];
-if (!(D > 0) || f.length < 2) fails.push(`no clip duration or no frames to read (clipDurationS ${D}, ${f.length} frames)`);
-else {
-  let loop = 0, maxGap = 0, maxAt = null;
-  const loops = new Map(); // loop -> [first media time, last media time]
-  const note = (k, m) => { const s = loops.get(k); if (!s) loops.set(k, [m, m]); else s[1] = m; };
-  note(0, f[0].mediaTimeSeconds);
-  for (let i = 1; i < f.length; i++) {
-    const prev = f[i - 1].mediaTimeSeconds, cur = f[i].mediaTimeSeconds;
-    if (!Number.isFinite(prev) || !Number.isFinite(cur)) { fails.push(`frame ${i}: no finite media time`); break; }
-    let gapMs;
-    if (cur < prev) {
-      gapMs = (D - prev + cur) * 1000; // a loop restart: the rest of the clip, then the new loop's start
-      if (gapMs > BOUND_MS) fails.push(`frame ${i}: media time steps back from ${prev.toFixed(3)} s to ${cur.toFixed(3)} s, which is not the clip restarting (${gapMs.toFixed(0)} ms across the wrap)`);
-      loop++;
-    } else gapMs = (cur - prev) * 1000;
-    if (gapMs > maxGap) { maxGap = gapMs; maxAt = i; }
-    note(loop, cur);
-  }
-  if (maxGap > BOUND_MS) fails.push(`frame ${maxAt}: a gap of ${maxGap.toFixed(1)} ms in media time, above the ${BOUND_MS} ms bound`);
-  for (let k = firstLoop; k < firstLoop + loopCount; k++) {
-    const s = loops.get(k);
-    if (!s) { fails.push(`loop ${k}: no frame`); continue; }
-    if (s[0] * 1000 > BOUND_MS || (D - s[1]) * 1000 > BOUND_MS) fails.push(`loop ${k}: covers ${s[0].toFixed(3)}–${s[1].toFixed(3)} s of a ${D.toFixed(3)} s clip, short by more than ${BOUND_MS} ms at an end`);
-  }
-  if (!loops.has(firstLoop + loopCount)) fails.push(`no frame of loop ${firstLoop + loopCount}, which closes loop ${firstLoop + loopCount - 1}`);
-  console.log(`largest gap ${maxGap.toFixed(1)} ms (frame ${maxAt}); loops seen 0–${loop}; bound ${BOUND_MS} ms`);
+const BOUND_MS = 500; // round 2's largest gap on the tablet, 240.8 ms, doubled and rounded up
+const DEVICE_MAX_MS = 240.8; // round 2's largest gap on the tablet: what a valid run already holds under one state
+const EXCESS_FRACTION = 0.03; // one stutter at BOUND_MS in a loop of the shortest clip (259.2 ms of 8.9 s, 2.9%), rounded up
+// For exports older than `clipDurationS`: the bundled clips' durations (ffprobe).
+const CLIP_S = { "pinball-bench.mp4": 11.959866, "pinball-bench-table.mp4": 8.9, "pinball-static.mp4": 12.166667 };
+
+export function stallCheck(e) {
+    const D = e.clipDurationS ?? CLIP_S[e.bundledClip];
+    const f = e.frames ?? [];
+    const fails = [];
+    if (!(D > 0) || f.length < 2) {
+        return { fails: [`no clip duration or no frames to read (${D}, ${f.length} frames)`], maxGap: null, loops: 0 };
+    }
+    let loop = 0;
+    let maxGap = 0;
+    let maxAt = null;
+    const span = new Map(); // loop -> [first media time, last media time]
+    const excess = new Map(); // loop -> ms by which its gaps exceed DEVICE_MAX_MS
+    span.set(0, [f[0].mediaTimeSeconds, f[0].mediaTimeSeconds]);
+    for (let i = 1; i < f.length; i++) {
+        const prev = f[i - 1].mediaTimeSeconds;
+        const cur = f[i].mediaTimeSeconds;
+        if (!Number.isFinite(prev) || !Number.isFinite(cur)) {
+            fails.push(`frame ${i}: no finite media time`);
+            return { fails, maxGap: null, loops: loop };
+        }
+        let gapMs;
+        if (cur < prev) {
+            gapMs = (D - prev + cur) * 1000;
+            if (gapMs > BOUND_MS) {
+                fails.push(
+                    `monotonicity: frame ${i}: media time steps back from ${prev.toFixed(3)} s to ${cur.toFixed(3)} s, which is not the clip restarting (${gapMs.toFixed(0)} ms across the wrap)`,
+                );
+            }
+            loop++;
+            span.set(loop, [cur, cur]);
+        } else {
+            gapMs = (cur - prev) * 1000;
+            span.get(loop)[1] = cur;
+        }
+        if (gapMs > maxGap) {
+            maxGap = gapMs;
+            maxAt = i;
+        }
+        if (gapMs > DEVICE_MAX_MS) excess.set(loop, (excess.get(loop) ?? 0) + gapMs - DEVICE_MAX_MS);
+    }
+    if (maxGap > BOUND_MS) fails.push(`gaps: frame ${maxAt}: a gap of ${maxGap.toFixed(1)} ms in media time, above ${BOUND_MS} ms`);
+    // The loops read: a session export's counted ones; an older window's whole ones.
+    let read;
+    if (e.loops) {
+        const { firstLoop = 1, loopCount = 4 } = e.loops;
+        read = Array.from({ length: loopCount }, (_, k) => firstLoop + k);
+        if (loop < firstLoop + loopCount) fails.push(`coverage: no frame of loop ${firstLoop + loopCount}, which closes loop ${firstLoop + loopCount - 1}`);
+    } else {
+        read = Array.from({ length: Math.max(0, loop - 1) }, (_, k) => k + 1);
+        // The window's partial ends: the first loop must reach the clip's end, the last must start at its start.
+        if (loop > 0 && (D - span.get(0)[1]) * 1000 > BOUND_MS) fails.push(`coverage: the window's first loop ends at ${span.get(0)[1].toFixed(3)} s, short of the clip's end`);
+        if (loop > 0 && span.get(loop)[0] * 1000 > BOUND_MS) fails.push(`coverage: the window's last loop starts at ${span.get(loop)[0].toFixed(3)} s, not the clip's start`);
+    }
+    for (const k of read) {
+        const s = span.get(k);
+        if (!s) {
+            fails.push(`coverage: loop ${k}: no frame`);
+            continue;
+        }
+        if (s[0] * 1000 > BOUND_MS || (D - s[1]) * 1000 > BOUND_MS) {
+            fails.push(`coverage: loop ${k} covers ${s[0].toFixed(3)}–${s[1].toFixed(3)} s of a ${D.toFixed(3)} s clip, short by more than ${BOUND_MS} ms at an end`);
+        }
+        const x = excess.get(k) ?? 0;
+        if (x > EXCESS_FRACTION * D * 1000) {
+            fails.push(`cumulative: loop ${k}: its gaps exceed ${DEVICE_MAX_MS} ms by ${x.toFixed(0)} ms in all, above ${(100 * EXCESS_FRACTION).toFixed(0)}% of the clip (${(EXCESS_FRACTION * D * 1000).toFixed(0)} ms)`);
+        }
+    }
+    const worstExcess = Math.max(0, ...read.map((k) => excess.get(k) ?? 0));
+    return { fails, maxGap, maxAt, loops: loop, read, worstExcess, D };
 }
-for (const line of fails) console.log(`FAIL ${line}`);
-console.log(fails.length ? "stall check: FAIL" : "stall check: PASS");
-process.exit(fails.length ? 1 : 0);
+
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop())) {
+    const r = stallCheck(JSON.parse(readFileSync(process.argv[2], "utf8")));
+    if (r.maxGap !== null) {
+        console.log(`largest gap ${r.maxGap.toFixed(1)} ms (frame ${r.maxAt}); loops seen 0–${r.loops}, read ${r.read.join(", ") || "none"}; most excess over ${DEVICE_MAX_MS} ms in a loop read ${r.worstExcess.toFixed(0)} ms; bounds ${BOUND_MS} ms a gap, ${(100 * EXCESS_FRACTION).toFixed(0)}% of a loop in excess`);
+    }
+    for (const line of r.fails) console.log(`FAIL ${line}`);
+    console.log(r.fails.length ? "stall check: FAIL" : "stall check: PASS");
+    process.exit(r.fails.length ? 1 : 0);
+}
+```
+
+</details>
+
+<details>
+<summary><code>check-committed.mjs</code>: the stall check over every committed export with frames</summary>
+
+```js
+// The stall check over every committed export that has frames on a bundled
+// clip: round 2's sixteen tablet exports, then the rest. Run from the
+// repository root, with stall-check.mjs beside this script.
+import { readFileSync, readdirSync } from "node:fs";
+import { stallCheck } from "./stall-check.mjs";
+const all = readdirSync("docs/benchmarks").filter((f) => f.endsWith(".json")).sort();
+const r2 = all.filter((f) => /^2026-09-29-tab9-tuning-r2-/.test(f));
+const rest = all.filter((f) => !r2.includes(f));
+const row = (name) => {
+  const e = JSON.parse(readFileSync(`docs/benchmarks/${name}`, "utf8"));
+  if (!Array.isArray(e.frames) || e.frames.length < 2) return { name, skip: "no frames" };
+  const r = stallCheck(e);
+  if (r.maxGap === null) return { name, skip: r.fails[0] };
+  const arm = (a) => (r.fails.some((l) => l.startsWith(a + ":")) ? "FAIL" : "pass");
+  return { name, clip: e.bundledClip, mode: e.mode, frames: e.frames.length, maxGap: r.maxGap, wraps: r.loops, read: r.read.length, worstExcess: r.worstExcess, gaps: arm("gaps"), mono: arm("monotonicity"), cov: arm("coverage"), cum: arm("cumulative"), fails: r.fails };
+};
+for (const [title, list] of [["Round 2's sixteen tablet exports", r2], ["Every other committed export with frames", rest]]) {
+  console.log(`\n### ${title}\n\n| export | clip, mode | frames | largest gap, ms | wraps | whole loops read | gaps | monotonicity | coverage | cumulative (most excess in a loop, ms) |\n|---|---|---|---|---|---|---|---|---|---|`);
+  let n = 0, pass = 0;
+  const skipped = [];
+  for (const name of list) {
+    const x = row(name);
+    if (x.skip) { skipped.push(`${name} (${x.skip})`); continue; }
+    n++;
+    if (!x.fails.length) pass++;
+    console.log(`| ${name.replace(/\.json$/, "")} | ${(x.clip ?? "—").replace(".mp4", "")}, ${x.mode} | ${x.frames} | ${x.maxGap.toFixed(1)} | ${x.wraps} | ${x.read} | ${x.gaps} | ${x.mono} | ${x.cov} | ${x.cum} (${x.worstExcess.toFixed(0)}) |`);
+    for (const l of x.fails) console.log(`|  | ${l} | | | | | | | | |`);
+  }
+  console.log(`\n${pass} of ${n} pass every arm.${skipped.length ? " Not read: " + skipped.join("; ") + "." : ""}`);
+}
 ```
 
 </details>
