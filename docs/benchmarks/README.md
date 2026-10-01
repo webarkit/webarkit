@@ -3209,9 +3209,12 @@ the two.
    clause refuses whenever the worker runs' mean lands above the synchronous
    runs' mean: under the null, where the worker is no different, about half
    the time, while a worker that happens to be steadier passes. (Corrected on
-   2026-10-01, after the session, from "fires almost surely", which
-   overstated it — [the write-up's audit](./2026-10-01-m3-write-up-audit.md),
-   F9; the bound is unchanged.) The argument is structural, and was available
+   2026-10-01, after the session, in two places: here, from "fires almost
+   surely", which overstated it; and below, where the sentence saying what
+   had been seen when the clause was withdrawn, and which way the
+   replacement moved its verdict, was added —
+   [the write-up's audit](./2026-10-01-m3-write-up-audit.md), F9 and the
+   second read's finding 13. The bound is unchanged.) The argument is structural, and was available
    before any device data; this file makes it for the tuning pass ("Two runs
    cannot tell drift from noise, and a band spanned by two observations
    understates the spread either way"). The clause came from the plan
@@ -3305,7 +3308,13 @@ Pooling readings across brackets is not a reading the registration allows
 unless the registration says so. Where a rule is registered per bracketed
 pair — as every row of the table above is — a pooled figure is an
 unregistered summary: it may be reported, labelled as such, and it never
-carries the verdict. Here only step 10's spread rules are registered pooled.
+carries the verdict. Here only step 10's spread rules, and the latency
+transfer's inputs (step 12's command reads every export of a mode), are
+registered pooled. **One case was never registered**: how the wall verdict
+reads when step 10's pooled re-read *passes* — whether row four is then read
+per block, on the second block alone, or pooled. It is moot in this session,
+where the re-read tripped, and it is recorded here as an unregistered case
+because the next campaign will meet it; its plan decides it before it runs.
 The rule's first case: this session's write-up first read the wall clip's
 rows on both of its blocks pooled, which turned a refusal of row six in the
 second block (held-lock losses +2.2 points) into "met". Pooling is attractive
@@ -3377,7 +3386,8 @@ its own (the precedent above). *Corrected after
 [an independent audit of the write-up](./2026-10-01-m3-write-up-audit.md),
 which found that its first version read the wall clip pooled across blocks,
 gave row five verdict words, and overstated the jitter clause's
-replacement.*
+replacement; the later reads of the corrected passages are in the same
+record.*
 
 - **Valid throughout.** Every run passed every check of step 7 at its first
   attempt, the policy ran as written in every worker run, and the thermal
@@ -3412,22 +3422,26 @@ replacement.*
   against 12.4% in the two wall blocks, 21.3% against 23.0% on the table clip.
 - **Row six, attribution, is refused in the wall clip's second block**:
   held-lock losses 8.8% against 6.6%, +2.2 points against a bound of 2. In
-  the first block they went the other way (−2.3 points), and on the table
-  clip they are level (+0.1); `trackStepMs` p50 is within 1.1% on every
-  reading. The cause is open: no detection runs while a lock holds, and the
-  record names no path by which the worker reaches a held lock's step.
+  the first block they went the other way, 2.3 points better — not refused,
+  but outside the predicted ±2, so the prediction missed there too, in the
+  worker's favour — and on the table clip they are level (+0.1). Row six's
+  `trackStepMs` clause held on every reading (within 1.1%, against 10%). The
+  cause is open: no detection runs while a lock holds, so the worker has no
+  direct path to a held lock's step; indirect ones are untested.
 - **Row seven, attribution, is refused in the wall clip's second block and
   on the table clip** — post to arrival 31.7% and 40.7% above the synchronous
   pipeline, against 25% — and not in the first block (+20.7%). Every consumed
   detection was consumed by the first frame processed after its arrival, so
   the first steps are what that latency implies. The worker's own pipeline is
-  as fast as the main thread's; on the table clip the excess is the result
-  waiting for the main thread to finish the frame it is acquiring, and on the
-  wall clip the record does not decompose it. The latency transfer, which
+  as fast as the main thread's; on the table clip the excess is about what
+  the frame's transfer, the two messages and the wait for the main thread to
+  finish the frame it is acquiring add, and on the wall clip the record does
+  not decompose it. The latency transfer, which
   explains and does not decide, turns the worker's latency into about −2
   points of lock on each moving clip (seeds 1–3: −3.0, −2.1, −1.6 on the wall
   clip; −1.9, −2.2, −1.7 on the table clip).
-- **The per-frame TRACK share missed its band on the wall clip**, 41.0% and
-  37.5% in the two blocks against 20–36%, for reasons its inputs give: more
+- **The per-frame TRACK share missed its band on the wall clip** — a
+  prediction registered as not decisive, so the miss carries no verdict —
+  41.0% and 37.5% in the two blocks against 20–36%, for reasons its inputs give: more
   video time locked than the prediction's input assumed (45% against round
   2's 39.1%), and waiting frames 56.5 ms of video apart rather than 40–45.

@@ -71,7 +71,12 @@ was 0.00011 px.
 version said no data the verdict rests on existed when the clause was
 replaced, that the clause fired almost surely and would have refused
 whatever the worker did, and that withdrawing it cost nothing in detection
-power. None of the three was right, and this section now says what was.*
+power. None of the three was right, and this section now says what was.
+The second read of the write-up (its findings 2 and 3, in the same record)
+then corrected two statements of that correction: a false-refusal rate of
+one half, which holds only once the allowance has come out near zero, and a
+claim that the replacement would still refuse a regression the size of
+round 1's drift.*
 
 **The clause was withdrawn, not failed and overridden — and it was replaced
 after its own data had been seen.** The four static runs existed, and the
@@ -80,15 +85,19 @@ row eight went from refused, as first registered, to not refused. What did
 not yet exist was any run of a moving clip: nothing the adoption decision
 rests on — the wall clip's lock, and rows one to three on both moving clips
 — had been measured. The reason for the replacement does not depend on the
-static runs. Its allowance was the difference between two observations, and
-the difference between two draws is no estimate of dispersion: it can be
-arbitrarily small by luck. When it is, the clause refuses whenever the
-worker runs' mean lands above the synchronous runs' mean — so under the
-null, where the worker is no different, it refuses about half the time, and
-a worker that happens to be steadier passes. At 0.00011 px the allowance was
-effectively zero, and the clause was a rule with a false-refusal rate of
-about one half. That argument is structural, and was available before any
-device data: the
+static runs, and it does not depend on a rate. **The clause's defect is
+structural**: its allowance is the difference between two observations,
+which carries no information about dispersion, so the clause cannot
+distinguish a worker that is worse from one that landed higher by chance. A
+rate only illustrates the consequence. Under the null — no effect, two runs
+an arm, equal spread — the clause refuses about one time in five: with D the
+difference of the arms' means and U the difference of the two synchronous
+runs, D and U are independent, because the allowance is orthogonal to the
+mean it bounds, and P(D > |U|) = arctan(1/√2)/π ≈ 0.196. One refusal in five
+when nothing is wrong is already useless in a null control. Conditional on
+the allowance coming out as small as the 0.00011 px it did here, it is about
+one in two, and a worker that happens to be steadier passes. The structural
+argument was available before any device data: the
 benchmarks file makes it for the tuning pass — "Two runs cannot tell drift
 from noise, and a band spanned by two observations understates the spread
 either way" — and the clause reproduced exactly the error that sentence
@@ -119,11 +128,16 @@ not free. The static clip is a saturated control in TRACK share — 100% in
 every run, as the
 [pre-flight's record](./2026-09-30-desktop-m3-preflight.md#static-clip)
 found on the desktop — but `jitterPx` is not saturated, and widening its
-allowance from 0.00011 to 0.007 px costs some power to detect a jitter
-regression. What bounds that cost is the replacement itself: 0.007 px would
-still refuse a regression the size of round 1's drift-only movement. With
-the replacement, step 8 holds, and the session goes on to run 5, then the
-wall block, then the table block.
+allowance from 0.00011 to 0.007 px costs power to detect a jitter
+regression. The replacement keeps less power than "would still refuse" would
+claim: it refuses a difference greater than 0.007 px, so a true regression
+of exactly 0.007 px sits on the bound and is refused about half the time;
+round 1's larger movement, 0.011 px, is refused more often than not, by how
+much depending on the spread of the difference. This session's four static
+runs — two synchronous, two worker — are the data to estimate that spread,
+and M4's calibration starts from them (below). With the replacement, step 8
+holds, and the session goes on to run 5, then the wall block, then the
+table block.
 
 **What was looked at before the decision**, from these four exports alone,
 reported because it was seen, not because the replacement rests on it: at the
@@ -184,8 +198,10 @@ the pooled sixteen decide. The worker rule bounds the difference of a
 block's two worker runs and has no pooled form: per block it holds, 2.3 and
 4.1 points, both under 6.6; across the four worker runs, 46.0, 48.2, 40.8
 and 44.9%, the span is 7.4 points. The synchronous rule decides the verdict
-either way. (Corrected after the session: the first version called the
-per-block reading of the worker rule "as registered" —
+either way. (Corrected after the session, here and in the next paragraph:
+the first version called the per-block reading of the worker rule "as
+registered", and said the clip's spread "is wider than the plan's 5-point
+bound can resolve" where the rule only says it trips —
 [the write-up's audit](./2026-10-01-m3-write-up-audit.md), F7.)
 
 **So the wall verdict is inconclusive, and this session neither adopts nor
@@ -217,7 +233,8 @@ turned a refusal of row six in the second block into "met"; gave row five,
 descriptive on the device, verdict words; read the inconclusive wall verdict
 as "not refused"; and set the latency transfer against the adoption bound.
 Each is corrected where it stood; the audit record lists all twelve
-findings and what became of each.*
+findings and what became of each, and the later reads of the corrected
+passages, whose findings were corrected the same way.*
 
 Read after the session, in the order step 12 sets: the validity checks and
 the static clip first — which carry two frame times as validity, the
@@ -276,17 +293,15 @@ What `trackTimeShare` did, as measured:
 
 | wall clip | synchronous runs | worker runs | worker − sync |
 |---|---|---|---|
-| first block (runs 6–9) | 42.7, 40.3% (mean 41.5) | 46.0, 48.2% (mean 47.1) | +5.6 points, above the synchronous range |
-| second block (runs 6–9 again) | 43.1, 45.6% (mean 44.4) | 40.8, 44.9% (mean 42.9) | −1.5 points, 0.3 below the synchronous range |
-| both blocks pooled — an unregistered summary | mean 42.9%, range 40.3–45.6 | mean 45.0% | +2.1 points |
+| first block (runs 6–9) | 42.7, 40.3% (mean 41.5) | 46.0, 48.2% (mean 47.1) | +5.6 points |
+| second block (runs 6–9 again) | 43.1, 45.6% (mean 44.4) | 40.8, 44.9% (mean 42.9) | −1.5 points |
+| both blocks pooled — an unregistered summary | mean 42.9% | mean 45.0% | +2.1 points |
 
-With step 10 tripped, these readings are not put against row four's bound
-or its prediction: the wall verdict is inconclusive, so row four's condition
-on the wall clip is neither met nor failed. As numbers only: no reading put
-the worker more than 5 points below the synchronous runs, and the two
-blocks put the difference on opposite sides of zero, 7.1 points apart —
-the spread the rule exists to catch. The rule, read as registered on the
-pooled sixteen loops, still trips (5.88 > 5). The 3.1-point loop spread the
+**With step 10 tripped, the wall readings are not put against row four at
+all, in either direction**: the wall verdict is inconclusive, and row four's
+condition on the wall clip is neither met nor failed. The two blocks put the
+difference on opposite sides of zero, 7.1 points apart, and the rule, read
+as registered on the pooled sixteen loops, trips (5.88 > 5). The 3.1-point loop spread the
 bound was set from came from the tuning pass's 64-patch baseline; the plan
 named this session's own synchronous runs as the measure of the adopted
 target's spread, and they measured 5.88. The table clip cannot carry the
@@ -302,9 +317,9 @@ in the next table, as a summary.
 | **1. Detection leaves the frame loop** | 0.50% of the loop (0.50, 0.49), from 40.9%; `detectionPostMs` 0.17%, the handler 0.33% | 0.52% (0.55, 0.50), from 38.7%; post 0.17%, handler 0.35% | 0.20% (0.20, 0.21), from 21.4%; post 0.07%, handler 0.13% | predicted under 1%: **met** on every block; refused at 4.1% (wall) / 2.2% (table): **not refused** |
 | **2. Unlocked frames cost their acquisition** | residual p50 0.1 ms in both runs, from 65.9 ms | 0.1 ms, from 63.8 ms | 0.1 ms, from 90.6 ms | predicted under 1 ms: **met**; refused at 3 ms: **not refused** |
 | **3. The loop loses detection's tail** | all frames' `total` p95 46.3 ms, TRACK frames' 47.2: −0.9 ms; synchronous all frames 129.1 | 47.0 against 47.9: −0.8 ms; synchronous 129.7 | 66.1 against 67.0: −0.9 ms; synchronous 145.3 | predicted within 10 ms: **met**; refused above 25 ms, or all frames above 90 ms: **not refused** |
-| **4. The lock holds, by video time** | +5.6 points (above) | −1.5 points (above) | 61.6% (65.2, 57.9) against 64.2% (63.2, 65.2): −2.6 points, below the synchronous range | wall: **inconclusive** (step 10) — the condition is neither met nor failed. Table: predicted at or below the synchronous range, **met**; within 5 points, so it would support an adoption — but it cannot carry the verdict, and with the wall verdict inconclusive there is no adoption for it to support |
+| **4. The lock holds, by video time** | +5.6 points (the verdict, above) | −1.5 points (the verdict, above) | 61.6% (65.2, 57.9) against 64.2% (63.2, 65.2): −2.6 points, below the synchronous range | wall: **inconclusive** (step 10) — the condition is neither met nor failed. Table: predicted at or below the synchronous range, **met**; within 5 points, so it would support an adoption — but it cannot carry the verdict, and with the wall verdict inconclusive there is no adoption for it to support |
 | **5. First steps confirm as often** — descriptive on the device | 43 of 333 against 52 of 347; the runs' mean rates 12.9% against 15.0%: −2.1 points | 52 of 358 against 41 of 330; 14.5% against 12.4%: +2.1 points | 30 of 142 against 31 of 135; 21.3% against 23.0%: −1.7 points | **descriptive: recorded without a verdict**, as registered (the refusals per `trackLoss` are below) |
-| **6. Held locks and the step are untouched** — attribution | held-lock losses 39 of 629 against 47 of 550; the runs' mean rates 6.2% against 8.5%: −2.3 points; `trackStepMs` p50 14.35 against 14.20 ms (+1.1%) | 50 of 569 against 39 of 591; **8.8% against 6.6%: +2.2 points**; 14.30 against 14.45 ms (−1.0%) | 22 of 652 against 23 of 684; 3.4% against 3.4%: +0.1 points; 13.00 against 13.05 ms (−0.4%) | first block and table: **met**. Second block: **refused** on held-lock losses, more than 2 points worse — the prediction is refused and asks for an explanation (below); adoption is not decided here |
+| **6. Held locks and the step are untouched** — attribution | held-lock losses 39 of 629 against 47 of 550; the runs' mean rates 6.2% against 8.5%: −2.3 points; `trackStepMs` p50 14.35 against 14.20 ms (+1.1%) | 50 of 569 against 39 of 591; **8.8% against 6.6%: +2.2 points**; 14.30 against 14.45 ms (−1.0%) | 22 of 652 against 23 of 684; 3.4% against 3.4%: +0.1 points; 13.00 against 13.05 ms (−0.4%) | table: **met**. First block: **not refused**, but the prediction **missed** — held-lock losses 2.3 points *better*, outside the predicted ±2, in the worker's favour: a miss in the worker's favour is still a miss. Second block: **refused** on held-lock losses, more than 2 points worse — the prediction is refused and asks for an explanation (below); adoption is not decided here |
 | **7. Latency** — attribution | `detectionPostToArrivalMs` p50 69.7 ms (72.6, 66.8) against the synchronous pipeline's 57.7: +20.7%; first step at 120.4 ms of video in both worker runs, the synchronous runs' 120.4 and 160.5 | 73.3 ms (74.5, 72.1) against 55.7: **+31.7%**; first step 120.4 ms in all four runs | 111.8 ms (112.6, 110.9) against 79.4: **+40.7%**; first step 166.7 ms against the synchronous 133.3, a waiting frame later | first block: **not refused**. Second block and table: **refused** on post to arrival, more than 25% above the synchronous pipeline — explained below; adoption is not decided here. The row's second clause, a first-step latency other than post to arrival implies, is **not refused** anywhere: every consumed detection in every worker run was consumed by the first frame processed after its arrival (218 of 218, 211 of 211; 234 of 234, 217 of 217; 75 of 75, 91 of 91) |
 | **8. The static clip is unchanged** | — | — | — | **not refused**, with the jitter clause as replaced (above) |
 | **9. The policy ran as written** | — | — | — | **as planned** in every worker run (above) |
@@ -351,11 +366,16 @@ second, as row four's lock reading and row five's confirm rate do; the step
 costs the same in both blocks (+1.1%, −1.0%); the frames before a loss cost
 no more in the worker runs than in the synchronous ones; and no detection
 runs while a lock holds (row nine: no TRACK frame with a detection in flight
-in any worker run), so this session can name no path by which the worker
-reaches a held lock's step. **This record does not establish a cause**: it
-records the refusal, the reversal, and that the cause is open.
+in any worker run), so the worker has no direct path to a held lock's step.
+Indirect ones are not ruled out, and this session does not test them: which
+locks the worker sets, from detections handed in a post-to-arrival latency
+after their frame, and which frames the loop processes, which differ
+between the modes — in the second block the video that followed a worker
+run's TRACK frame just before a loss was 76.3 ms, against 72.0 in the
+synchronous runs. **This record does not establish a cause**: it records the
+refusal, the reversal, and that the cause is open.
 
-**Row seven, explained.** The worker's own pipeline is as fast as the main
+**Row seven's refusals, and how far they are explained.** The worker's own pipeline is as fast as the main
 thread's: on its own clock, 53.0 and 55.1 ms at p50 in the two wall blocks
 against the synchronous 57.7 and 55.7, and 80.6 on the table clip against
 79.4. Post to arrival adds the frame's transfer, the two messages, and the
@@ -366,9 +386,10 @@ and its waiting frames each spend about 44 ms acquiring: a result that
 arrives mid-acquisition waits for the frame to end. On the wall clip the
 medians do not add — over its four worker runs' jobs, the rest is 4.7 ms at
 p50, 17.6 at p75 and 31.0 at p95, against 17.1 ms between the two medians
-over the same jobs (71.5 and 54.4) — and this record does not decompose the wall clip's excess further. The
-latency missed its prediction by more than the registration's 25% in the
-second wall block and on the table clip. One more fact the row reads: the
+over the same jobs (71.5 and 54.4) — and this record does not decompose the
+wall clip's excess further. Post to arrival was more than 25% above the
+synchronous pipeline in the second wall block and on the table clip, and
+not in the first wall block. One more fact the row reads: the
 session's synchronous pipeline on the wall clip, 57.7 and 55.7 ms at p50, is
 faster than round 2's 68.6, so its first steps came at 120.4 ms of video
 rather than round 2's 160.5 in three of its four runs (the first block's
@@ -378,7 +399,7 @@ closing run, 160.5); the worker's came at 120.4 in all four.
 predicted about 28% (20–36%) on the wall clip and 64% (56–72%) on the table
 clip, at unchanged lock time. Measured on the wall clip, 41.0% and 37.5% in
 the two blocks (39.2% over the four worker runs) against the synchronous
-runs' 56.1% and 58.8% — **missed**, above the band in both blocks — and on the table
+runs' 56.1% and 58.8% — **missed**, above the band in both blocks, with no verdict, as registered — and on the table
 clip 56.9% against 79.7%, within the band, at its floor. The wall clip's
 miss is explained by the prediction's two inputs, read over the four worker
 runs' counted frames together: the share of their video that followed a
@@ -448,7 +469,11 @@ reference device — unlocked frames cost their acquisition and 0.1 ms more
 at p50 — and the tracking step costs the same in both modes. Held-lock
 losses, an attribution row, were refused in the wall clip's second block
 (+2.2 points) and went the other way in its first (−2.3), and their cause
-is open. First-step confirmation, descriptive on the device, is recorded
+is open. Detection latency, an attribution row too, was refused in the wall
+clip's second block and on the table clip (post to arrival +31.7% and
++40.7%, against 25%) and not in the first block (+20.7%); the transfer puts
+its cost at about 2 points of lock on each moving clip, and explains rather
+than decides. First-step confirmation, descriptive on the device, is recorded
 without a verdict. Whether the worker changes the lock by video time on the
 wall clip, this session could not tell: on the adopted target the clip's own
 loop-to-loop spread trips the plan's spread rule. The bench page keeps both
