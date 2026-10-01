@@ -3099,7 +3099,11 @@ session meets them. It needs a whole session: the thirteen runs take about
 40 minutes with their idles (a run is five loops of its clip: 61 s static,
 60 s wall, 45 s table), re-runs up to 20 more, and a block interrupted
 halfway is run again from its opening synchronous run, never resumed. It
-does not start on what is left of a day's budget.
+does not start on what is left of a day's budget. The session runs on
+2026-10-01, the day after the pre-flight (2026-09-30), and its exports carry
+that date: the pre-flight's corrections, the guard checks and the
+additions of 2026-10-01 all came before it, and no day is missing between
+the two.
 
 1. **Before the tablet.** The branch's code built (`npm run build`, which
    bundles the worker last), its gates green, and the desktop pre-flight's
@@ -3155,8 +3159,23 @@ does not start on what is left of a day's budget.
    worker run's accounting; in a tracking run
    `runSummary.detectionUseFallbackFrames` 0 (a stateless run's frames carry
    no `detectionUse`, and the fallback's reading — every frame detected — is
-   right for them); and in a worker run
-   `runSummary.trackFramesWithDetectionInFlight` 0. An invalid
+   right for them); in a worker run
+   `runSummary.trackFramesWithDetectionInFlight` 0; and the stall check,
+   computed from the export by `stall-check.mjs`
+   ([the record](./2026-10-01-m3-session-additions.md#a-per-run-check-for-a-stalled-clip)):
+   no gap in media time between two consecutive frames above **500 ms**,
+   a gap across a loop wrap counting the clip's end after the first frame
+   plus the next frame's media time — so a backward step that is not the
+   clip restarting fails it too — every counted loop starting within
+   500 ms of the clip's start and ending within 500 ms of its end, and a
+   frame of loop 5. The bound comes from round 2's sixteen committed tablet
+   exports, whose largest gap is 240.8 ms — six wall-clip frames, a
+   synchronous detection's tick — doubled and rounded up: a session run is
+   about five times as long as those 300-frame windows, and a gap under
+   500 ms holds at most half a second of video under one state, about 1% of
+   the wall clip's counted video and a fifth of the adoption bound. (The
+   stall check was added on 2026-10-01, before the session: a partial
+   stall passes every other check.) An invalid
    run is run again in its place, once; invalid twice, the session stops
    until the cause is explained.
 8. **After the static block (runs 1–4)**, the null control: TRACK 100% in
@@ -3204,19 +3223,47 @@ table, says which refusals decide.
 | **Unlocked frames cost their acquisition, and nothing unaccounted** | on unlocked frames, the residual `total` − (`acquire` + `gray` + `detectionPostMs`), taken frame by frame (a frame that did not post subtracts no post), under 1 ms at p50 — what remains is a `process` call that finds no lock and no detection — from 107.4 ms of `total` (wall) and 140.4 (table) | the residual's p50 is 3 ms or more on either moving clip |
 | **The loop loses detection's tail** | all frames' `total` p95 within 10 ms of the TRACK frames' p95, from 136.7 ms (wall) and 149.4 (table) | on either moving clip, all frames' p95 − TRACK frames' p95 above 25 ms, or all frames' p95 above 90 ms: either refuses |
 | **The lock holds, by video time** | the worker runs' `trackTimeShare` within the synchronous runs' range on the wall clip while `detectionPostToArrivalMs` p50 stays within about 9 ms below and 31 ms above the session's synchronous pipeline p50. The post comes where the synchronous detection starts, after the frame's acquisition and step, so a result that arrives when the synchronous detection would have ended is consumed on the frame the synchronous first step runs on; round 2's detecting ticks ended 8.8 ms past a frame at the median, 31.3 ms before the next. Faster than that, above the range, a frame sooner; slower, below it by the lock one frame costs (the pre-flight's first prediction). On the table clip, whose waiting frames are processed every 66.7 ms, a result that arrives while one is being acquired waits a frame: at equal speed the worker's first step can lag the synchronous one by 33.3 ms, and its runs are predicted at or below the synchronous runs' range | on the wall clip, the worker runs' mean more than 5 points below the synchronous runs': the adoption rule, below. The table clip cannot refuse |
-| **First steps confirm as often; stale refusals do not rise** | detection locks' first steps confirmed within 5 points of the synchronous runs' (13% wall, 23% table in round 2) — the refused rest reported per `trackLoss`, the stale refusals | the worker runs' mean more than 5 points below on the wall clip |
+| **First steps confirm as often; stale refusals do not rise** | detection locks' first steps confirmed within 5 points of the synchronous runs' (13% wall, 23% table in round 2) — the refused rest reported per `trackLoss`, the stale refusals | the worker runs' mean more than 5 points below on the wall clip — the bound as registered; on the device a difference past it is recorded without a verdict (*Row five's refusal requires corroboration*, below the table) |
 | **Held locks and the step are untouched** — no detection runs while a lock holds; attribution | held-lock losses per held step within 2 points of the synchronous runs' rate; `trackStepMs` p50 within 10%; reported with the TRACK frames' whole cost distribution, the frames before a loss included | more than 2 points, or 10%, worse: the prediction is refused and explained, and adoption is not decided here |
 | **Latency** — attribution | `detectionPostToArrivalMs` p50 about the synchronous pipeline's time (68.6 ms wall, 79.5 table in round 2), within 25%; the worker's first-step latency — its consumption latency, the same number — p50 equal to the synchronous runs' on the wall clip (160.5 ms in round 2, the median of 106 detections that found the target, 50 of them at 160.5) while post to arrival stays within row four's slack, a frame sooner if faster, later if slower; on the table clip, the synchronous runs' 133.3 or 166.7 ms (round 2's 48 split evenly: 133–167 ms), and the worker's up to a waiting frame, 33.3 ms, later at equal speed | post to arrival p50 more than 25% above the session's synchronous pipeline, or a first-step latency p50 other than post to arrival implies: the prediction is refused and explained, through the latency transfer. Adoption is not decided here: a difference in first-step latency acts through the lock, which row four reads, and one wall-clip frame of it is worth up to 12.6 points in the model |
 | **The static clip is unchanged** — the null control | TRACK 100%; the worker runs' mean `trackStepMs` p50 and `total` p50 within 10% of the synchronous runs' mean, and mean `jitterPx` within the synchronous runs' | TRACK under 100% in any run; the worker mean of `trackStepMs` or `total` p50 more than 10% from the synchronous mean, either way; or the worker mean `jitterPx` above the synchronous mean by more than the two synchronous runs differ: the session is inconclusive until explained |
 | **The policy ran as written** | 0 TRACK frames with a detection in flight, 0 detections ignored, every job consumed once or discarded at Stop | any other count: the run is invalid, not a result |
 
+**Row five's refusal requires corroboration.** The desktop pre-flight
+showed that which frames each mode's chain visits can open 7.7 points in
+the raw confirm rate with identical confirmation behaviour: on the 95 pairs
+where both modes detected the same frame and ran the first step on the same
+frame, the outcome agreed in 92, the other three splitting 2 to 1. Row
+five's 5-point bound therefore sits inside the spread sampling alone can
+produce, and a refusal read from it would not be a verdict about quality.
+The bound stays as registered and the row stays reported, but a refusal
+counts only when corroborated. Pair matching is not available between
+device runs in numbers that can be read: two runs of the same mode on the
+same clip — round 2's three repeated synchronous runs on the wall clip, the
+most favourable case there is — share only 30–43% of their detected frames
+and 15–31% of their detection locks, 19 to 37 matched locks a pair over
+about two and a half loops and at most 30 to 60 over a session run's four,
+of which about one in nine confirms, so a 5-point difference would rest on
+two or three discordant pairs: too few to read; and two runs in different
+modes can only share fewer
+([the measurement](./2026-10-01-m3-session-additions.md#row-fives-refusal-requires-corroboration)).
+Row five is therefore descriptive on the device, and the lock verdict rests
+on row four alone, which was already the adoption gate. Row five is still
+reported, and a difference on it is recorded without a verdict. Recorded
+2026-10-01, before the device session, from desktop evidence about the
+metric and round 2's synchronous tablet runs, with no data from this
+session's device runs. This change removes a path to refusal, which is the
+direction needing the stronger record, and is why the criterion is neither
+withdrawn nor loosened: only its power to refuse on its own is.
+
 **The adoption rule.** Worker detection is adopted — recorded as M3's
 measured recommendation to applications, with the bench page keeping both
 paths — only if, with the policy as planned and the session valid, none
-of rows one to three is refused on either moving clip, neither row four nor
-row five on the wall clip, and the static clip's row (eight) is not refused.
-Rows six and seven are attribution: a refusal there refutes a prediction
-and asks for an explanation, not a verdict. An inconclusive wall verdict
+of rows one to three is refused on either moving clip, row four is not
+refused on the wall clip, and the static clip's row (eight) is not refused.
+Row five is descriptive on the device (above). Rows six and seven are
+attribution: a refusal there refutes a prediction and asks for an
+explanation, not a verdict. An inconclusive wall verdict
 (the session's spread rules) adopts nothing. **It is not adoptable, whatever the frame
 times, if on the wall clip the two worker runs' `trackTimeShare` falls more
 than 5 points below the two synchronous runs', each read over its four

@@ -200,6 +200,10 @@ compares raw rates, each over its own mode's chain, and on this clip the
 chains' sampling alone opened 7.7 raw points (9.5 on the matched path) with
 no difference in confirmation — in the worker's favour here, and the
 replay does not say which way it would fall on the tablet's schedule.
+(Acted on 2026-10-01, before the device session: a refusal on row five
+now needs corroboration, and since pairs between two device runs are too
+few to read, row five is descriptive on the device —
+[the additions](./2026-10-01-m3-session-additions.md).)
 
 **Over the point added today, the every-frame worker does not fall from 50
 to 70 ms.** The falsifier was registered for the band, 70, 100 and 130 ms,
