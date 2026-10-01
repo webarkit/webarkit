@@ -188,12 +188,21 @@ committed export with frames (`check-committed.mjs`, below):
   back once, to the start of its clip from its end, and the camera runs
   never step back.
 
+**One known failure in the corpus:**
+`2026-09-24-tab9-ondevice-stateless-static-mk300-manual-1` fails the gap
+arm — its 866.7 ms gap is the stall its record documents, the 2026-09-24
+manual runs having been served without HTTP range requests — and it is the
+only committed export that fails any arm; `check-committed.mjs` labels it
+so. A run of the check over the corpus that finds this failure and no other
+has found nothing new.
+
 So `isLoopWrap`'s reading of any backward step as a wrap is a latent defect
 in the measurement that no committed export triggers, and no published
 figure rests on a fabricated loop. For the session, the stall check's
 monotonicity arm refuses such a run before it is read; hardening
 `isLoopWrap` itself is a change to a path the guard check covers, left for
-after the campaign.
+after the campaign and tracked in
+[#96](https://github.com/webarkit/webarkit/issues/96).
 
 What firing means is the runbook's rule for every step-7 check: the run is
 invalid, not a result, and is run again once in its place; invalid twice,
@@ -446,6 +455,11 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "
 // repository root, with stall-check.mjs beside this script.
 import { readFileSync, readdirSync } from "node:fs";
 import { stallCheck } from "./stall-check.mjs";
+// Failures already explained, so that a run over the corpus does not rediscover them.
+const KNOWN = {
+  "2026-09-24-tab9-ondevice-stateless-static-mk300-manual-1.json":
+    "known: the 866.7 ms gap is the stall its record documents (the 2026-09-24 manual runs were served without HTTP range requests); the one committed export that fails any arm",
+};
 const all = readdirSync("docs/benchmarks").filter((f) => f.endsWith(".json")).sort();
 const r2 = all.filter((f) => /^2026-09-29-tab9-tuning-r2-/.test(f));
 const rest = all.filter((f) => !r2.includes(f));
@@ -468,6 +482,7 @@ for (const [title, list] of [["Round 2's sixteen tablet exports", r2], ["Every o
     if (!x.fails.length) pass++;
     console.log(`| ${name.replace(/\.json$/, "")} | ${(x.clip ?? "—").replace(".mp4", "")}, ${x.mode} | ${x.frames} | ${x.maxGap.toFixed(1)} | ${x.wraps} | ${x.read} | ${x.gaps} | ${x.mono} | ${x.cov} | ${x.cum} (${x.worstExcess.toFixed(0)}) |`);
     for (const l of x.fails) console.log(`|  | ${l} | | | | | | | | |`);
+    if (x.fails.length && KNOWN[name]) console.log(`|  | ${KNOWN[name]} | | | | | | | | |`);
   }
   console.log(`\n${pass} of ${n} pass every arm.${skipped.length ? " Not read: " + skipped.join("; ") + "." : ""}`);
 }

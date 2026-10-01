@@ -3167,7 +3167,9 @@ the two.
    media time between consecutive frames — a single stutter; a gap across a
    loop wrap counts the clip's end after the first frame plus the next
    frame's media time, so a backward step that is not the clip restarting,
-   which `isLoopWrap` would read as a loop, fails it too — and **3% of each
+   which `isLoopWrap` would read as a loop (a latent defect in the metric's
+   path, contained here and tracked in
+   [#96](https://github.com/webarkit/webarkit/issues/96)), fails it too — and **3% of each
    counted loop's duration** for the time by which that loop's gaps exceed
    240.8 ms, summed — a run full of small stutters; with every counted loop
    starting within 500 ms of the clip's start and ending within 500 ms of
