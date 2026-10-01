@@ -3344,3 +3344,45 @@ luck, and no agreement between its brackets can make it decisive.
   [#84](https://github.com/webarkit/webarkit/issues/84).
 - Other devices and browsers, the webcam demo, and power and heat over
   sessions longer than a run.
+
+### Results (2026-10-01)
+
+The session ran on `Tab_9_WiFi` as the runbook has it, at `0304390`; its
+record, step by step, with every figure below, is
+[`2026-10-01-m3-device-session.md`](./2026-10-01-m3-device-session.md), and
+its seventeen exports are `2026-10-01-tab9-m3-*.json`.
+
+- **Valid throughout.** Every run passed every check of step 7 at its first
+  attempt, the policy ran as written in every worker run, and the thermal
+  rule held on every block. The static clip's null control holds, with its
+  jitter clause replaced before any moving-clip run (step 8, above).
+- **The wall clip's lock: inconclusive. Worker detection is neither adopted
+  nor refused.** Step 10's spread rule tripped on the wall block (the
+  synchronous loops' standard deviation 7.27 points), and again on both
+  blocks pooled after the block was run once more (5.88 points over sixteen
+  loops). `trackTimeShare`, worker minus synchronous: +5.6 points in the
+  first block, −1.5 in the second, +2.1 pooled (45.0% against 42.9%). Row
+  four's refusal was met by none of them; the plan's bound cannot resolve
+  the adopted target's loop-to-loop spread on this clip with two runs a
+  mode, or four.
+- **The table clip supports**: −2.6 points (61.6% against 64.2%), within 5,
+  and at or below the synchronous range, as predicted.
+- **Rows one to three hold on both moving clips: detection left the frame
+  loop.** Its share of the loop fell from 39.8% to 0.51% on the wall clip
+  and from 21.4% to 0.20% on the table clip; unlocked frames cost their
+  acquisition and 0.1 ms more at p50, their `total` p50 falling from 90.4 to
+  26.8 ms and from 139.6 to 46.3 ms; all frames' `total` p95 fell from 129.4
+  to 46.6 ms and from 145.3 to 66.1, within a millisecond of the TRACK
+  frames'.
+- **Rows five and six hold**: first steps confirmed alike (13.7% in both
+  modes on the wall clip), held-lock losses within 0.1 point, and
+  `trackStepMs` unchanged.
+- **Row seven is refused on both moving clips**: post to arrival 26% and 41%
+  above the synchronous pipeline, against 25%. The worker's own pipeline is
+  as fast as the main thread's; the excess is the result waiting for the
+  main thread to finish the frame it is acquiring. The latency transfer
+  turns it into about −2 points of lock on each moving clip (seeds 1–3:
+  −3.0, −2.1, −1.6 on the wall clip; −1.9, −2.2, −1.7 on the table clip).
+- **The per-frame TRACK share missed its band on the wall clip**, 39.2%
+  against 20–36%, for reasons its inputs give: more lock by video time, and
+  waiting frames 56.5 ms apart rather than 40–45.
