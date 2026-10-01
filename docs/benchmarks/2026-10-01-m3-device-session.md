@@ -142,6 +142,9 @@ wall block is run once more, at once, and the rules are read again on both
 blocks' loops pooled, sixteen a mode; no row of the predictions table is
 read before then. The re-run's runs keep the runbook's *n*, 6–9, in their
 URLs and exports; their files continue the repeat index, `-3` and `-4`.
+(Added after the session: `run.order` therefore repeats across the two wall
+blocks, and exports are paired by their suffix, never by `run.order` —
+[the exports, and how to pair them](#the-exports-and-how-to-pair-them).)
 
 ## The wall block, run again: the wall verdict is inconclusive
 
@@ -352,6 +355,20 @@ plan's bound. The bench page keeps both paths, as it would have either way.
 Deciding the lock needs a session whose resolution matches that spread —
 more loops a run, or more runs a mode, registered before it runs; that is
 not designed here.
+
+### The exports, and how to pair them
+
+Named `2026-10-01-tab9-m3-<sync|worker|stateless>-<clip>[-<n>].json`, as the
+runbook registered, `<n>` being the repeat index within a path and a clip in
+the session's order: on the wall clip, `-1` and `-2` are the first block's
+runs and `-3` and `-4` the second's; the stateless run has none. **Each
+export's `run.order` is the runbook's *n*, which is unique within a block,
+not within the session: the wall clip's 6, 7, 8 and 9 each appear twice, once
+per block, so pairing exports by `run.order` pairs runs from different
+blocks — the comparison the bracketing exists to prevent. Pair by the file's
+suffix**: `sync-wall-1` and `-2` bracket `worker-wall-1` and `-2`, and
+`sync-wall-3` and `-4` bracket `worker-wall-3` and `-4`; each run's
+`run.startedAtIso` gives the same order.
 
 ### Sizes
 
