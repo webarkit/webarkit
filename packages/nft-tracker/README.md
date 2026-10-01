@@ -4,7 +4,8 @@ Natural-feature tracking for planar image targets, written **above** the
 [`CvBackend` contract](../cv-backend-spec) — the backend is injected by the
 caller, so this package runs on any implementation of it.
 
-> **Not published to npm, and pre-0.1.** Develop against it from the monorepo:
+> **Not published to npm. Its version is the repository's release version, like every package's
+> ([ADR-0002](../../docs/adr/0002-lockstep-versioning.md)).** Develop against it from the monorepo:
 > `npm install` at the root symlinks the workspace packages together.
 
 What exists today is the **target layer** — the in-memory shape of a trained
