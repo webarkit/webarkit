@@ -8,8 +8,10 @@ checked twice — its figures against the reading script's output, which
 caught two slips, and its author's own reread — and the fixes of five of the
 twelve changed a verdict word: F1, F2, F3, F6 and F8. A second read, of the
 corrected passages only, found fourteen more, most of them introduced or
-left by the first fix pass, one of them in a verdict word; a third read
-followed, under a stopping rule set beforehand (below). That is the evidence
+left by the first fix pass, one of them in a verdict word; a third read,
+under a stopping rule set beforehand, found ten more and none in a verdict
+word, so the correction stopped and those ten are listed below as known
+imperfections. That is the evidence
 that the independent read belongs in a campaign's plan, not in what someone
 remembers at the end.
 
@@ -93,8 +95,64 @@ registration read, and what the data say written against it — rather than
 repaired. The reads converge so far: five verdict-word problems in the
 first, one in the second.
 
-*Its outcome, and which of the two happened, follows below in a later
-commit.*
+**The outcome: no verdict-word problem, so the correction stopped.** A
+third fresh agent, read-only, read only what the second fix pass changed
+(`365bdf2..ddbfe1c`, and the PR passages it rewrote), recomputed row six
+from the exports because its verdict words depend on the numbers, and found
+every verdict word in those passages consistent with the registration and
+the data. It found ten other problems. As the rule says, they are not
+patched: they are listed here as **known imperfections of this write-up**,
+each with what the text should say, and the text stands as committed at
+`ddbfe1c`. A reader should take the statement given here over the one in
+the text.
+
+1. **Row six's indirect-path example is selective** (the record, "Row six,
+   the second block's refusal"). It cites only the second block's longer
+   video after a worker TRACK frame before a loss (76.3 against 72.0 ms).
+   That gap is longer in the worker runs in every block — 78.2 against
+   76.9, 76.3 against 72.0, 75.8 against 71.0 — while the losses went the
+   worker's way in the first block and were level on the table clip, so it
+   does not by itself account for the refusal.
+2. **The per-frame TRACK share's miss is said to carry "no verdict"** (the
+   record, the summary, the PR). The registration's words are "not
+   decisive … a miss asks for an explanation, and does not refuse the
+   adoption"; "no verdict" is row five's vocabulary, not this prediction's.
+3. **The record's Results introduction says the registration pools only
+   step 10's spread rules.** It also pools the latency transfer's inputs,
+   as the precedent and the record's own transfer section say.
+4. **What the session decides omits row six's first-block miss.** In the
+   first block held-lock losses went 2.3 points the worker's way, outside
+   the predicted ±2: a miss in the worker's favour, not a refusal. Every
+   other place says so; that sentence leaves it out.
+5. **The PR's F1 item names only the hidden refusal.** Pooling also made
+   row seven's first block a refusal (+26.1% pooled, against +20.7% for the
+   block); the precedent's sentence on F1 has the same gap.
+6. **The PR quotes "would still refuse"**, a phrase from an earlier version
+   of the PR that the current body no longer contains: it means the earlier
+   claim that 0.007 px would still refuse a regression the size of round
+   1's drift.
+7. **"Had the excess been anywhere near 0.007 px, none of this reasoning
+   would have rescued it"** (the record) overstates the bound: an excess
+   just under 0.007 px passes. It should read "had the excess exceeded
+   0.007 px".
+8. **This record's F9 row says the clause "refuses whenever the worker's
+   mean lands above"** without its condition: that holds only with an
+   allowance as small as this session's, as the second read's finding 2
+   established.
+9. **"+5.6 points (the verdict, above)"** in the record's row-four cells
+   can be read as "+5.6 points is the verdict". It means: see the section
+   on the verdict, above, where the wall reading is inconclusive.
+10. **The PR's ADR-0001 line says patch alignment is still the step to move
+   "so"** — because — the p95 is over 8 ms. The ADR's reason is that no
+   step has moved into the backend and alignment is the step M2
+   identified.
+
+**What the three reads cost**, written down because it is the evidence for
+the step: twelve findings in the first read (five changed verdict words),
+fourteen in the second (one), ten in the third (none). Each fix pass made
+most of the next read's findings; the verdict-word problems fell from five
+to one to none, and the wording problems did not, which is why the rule
+stops on the first and lists the second.
 
 ## The process claims, checked
 
