@@ -1,6 +1,6 @@
 {
   "name": "@webarkit/nft-tracker",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Natural-feature tracking for planar image targets, written above the @webarkit/cv-backend-spec CvBackend contract.",
   "license": "LGPL-3.0-or-later",
@@ -30,11 +30,11 @@
     "directory": "packages/nft-tracker"
   },
   "dependencies": {
-    "@webarkit/cv-backend-spec": "0.3.0"
+    "@webarkit/cv-backend-spec": "0.4.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",
-    "@webarkit/cv-backend-jsfeatnext": "0.3.0",
+    "@webarkit/cv-backend-jsfeatnext": "0.4.0",
     "fast-check": "^4.10.0",
     "jpeg-js": "^0.4.4",
     "typescript": "^5.9.3",
