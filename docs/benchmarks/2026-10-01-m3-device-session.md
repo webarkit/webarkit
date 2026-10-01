@@ -142,3 +142,32 @@ wall block is run once more, at once, and the rules are read again on both
 blocks' loops pooled, sixteen a mode; no row of the predictions table is
 read before then. The re-run's runs keep the runbook's *n*, 6–9, in their
 URLs and exports; their files continue the repeat index, `-3` and `-4`.
+
+## The wall block, run again: the wall verdict is inconclusive
+
+Runs 6–9 again, 08:11–08:21, each valid on every check of step 7. The
+thermal rule holds on this block too: `trackStepMs` p50 14.5 → 14.4 ms
+(−0.7%), `acquire` p50 23.6 → 24.2 ms (+0.6 ms).
+
+**Step 10, read again on both blocks' loops pooled: the synchronous rule
+still trips.** The sixteen synchronous loops — the eight above and 44.2,
+35.9, 45.6, 46.9% (run 6, again) and 41.9, 46.2, 49.6, 44.6% (run 9, again)
+— spread by 5.88 points (sample standard deviation), over 5. The second
+block's eight alone spread by 4.09; the rule reads the pooled sixteen, and
+the pooled sixteen decide. The worker rule holds, read as registered on a
+block's two worker runs: 2.3 and 4.1 points, both under 6.6 (the four worker
+runs, 46.0, 48.2, 40.8 and 44.9%, span 7.4 points: a range of four, which a
+bound set for the difference of two does not measure; the synchronous rule
+decides the verdict either way).
+
+**So the wall verdict is inconclusive, and this session neither adopts nor
+refuses worker detection**, as step 10 and the adoption rule say: "an
+inconclusive wall verdict (the session's spread rules) adopts nothing". The
+lock is decided on the wall clip, and on this target the wall clip's own
+loop-to-loop spread, 5.88 points over sixteen loops, is wider than the
+plan's 5-point bound can resolve; the 3.1 points the bound was calibrated
+from were measured on the tuning pass's 64-patch baseline target, and the
+plan named this session's own synchronous runs as the measure of the
+48-patch target's spread. The table block runs next, as registered: rows
+one to three are read on both moving clips, and the latency transfer is
+fed by every clip. No row of the predictions table has been read yet.
