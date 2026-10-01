@@ -61,11 +61,12 @@ What the project does **not** do today:
 Before the annotated tag, all of these hold and the release PR says so:
 
 1. `dev` green on build, typecheck, `check:contract`, `format:check` and the full test suite.
+   (`npm run lint` is not a gate: no workspace defines a `lint` script, so it runs nothing.)
 2. The CHANGELOG's `[Unreleased]` section closed into the version being released.
 3. Every package and crate at the release version. `check:contract`
    ([#79](https://github.com/webarkit/webarkit/pull/79)) enforces that they all carry one version;
-   nothing checks that it is the version being released (step 6), so that half is this gate's —
-   named here so the gate is visible and not only mechanical.
+   nothing checks that it is the version being released (the **Versions** step of the procedure
+   above), so that half is this gate's — named here so the gate is visible and not only mechanical.
 4. The milestone's open issues examined, not necessarily zero: each is closed, or moved to another
    milestone with its reason recorded in the issue. A milestone may ship with work deferred; it may
    not ship with work unexamined.
@@ -89,6 +90,13 @@ a PR that names the change and a decision date.
 
 Either way the outcome is written in the issue, so a later reader sees that the other owner had the
 chance to object.
+
+The decision date is **fourteen days** from the amendment being opened unless it states another,
+and a shorter one is said out loud with its reason.
+
+An objection that arrives after an additive change was adopted on silence is handled as a new
+amendment, not as a reversal — unless nothing has been built on it yet, in which case it is simply
+withdrawn.
 
 ## Testing
 
