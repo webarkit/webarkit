@@ -56,6 +56,48 @@ What the project does **not** do today:
 * It publishes nothing to npm or crates.io.
 * It generates nothing: the changelog, the release notes and the GitHub Release are written by hand, from the same text.
 
+### Release gates
+
+Before the annotated tag, all of these hold and the release PR says so:
+
+1. `dev` green on build, typecheck, `check:contract`, `format:check` and the full test suite.
+   (`npm run lint` is not a gate: no workspace defines a `lint` script, so it runs nothing.)
+2. The CHANGELOG's `[Unreleased]` section closed into the version being released.
+3. Every package and crate at the release version. `check:contract`
+   ([#79](https://github.com/webarkit/webarkit/pull/79)) enforces that they all carry one version;
+   whether it is the version being released is this gate's to check (see the **Versions** step
+   above) — named here so the gate is visible and not only mechanical.
+4. The milestone's open issues examined, not necessarily zero: each is closed, or moved to another
+   milestone with its reason recorded in the issue. A milestone may ship with work deferred; it may
+   not ship with work unexamined.
+5. If the release ships a new `.wnft` format minor, its fixture corpus is frozen under
+   `fixtures/nft-target/<version>/` in the release PR
+   ([format spec §8.3](docs/specs/nft-target-format.md#83-evolution-tests),
+   [ADR-0002](docs/adr/0002-lockstep-versioning.md)). If the format version is unchanged, the
+   release PR states that instead.
+6. Releasing closes the milestone, and the release notes say what the milestone did **not** deliver.
+
+## Amending the cv-backend-spec contract
+
+`@webarkit/cv-backend-spec` has a second owner (@ThorstenBux). An amendment is opened as an issue or
+a PR that names the change and a decision date.
+
+The decision date is **fourteen days** from the amendment being opened unless it states another,
+and a shorter one is said out loud with its reason.
+
+- **Additive** changes — a new optional method, a new capability flag, a new declared field — are
+  adopted if no objection is raised by that date, with the decision and the wait recorded in the
+  issue.
+- **Breaking** changes — a changed signature or changed semantics of an existing method — need
+  explicit consent, whatever the date.
+
+An objection that arrives after an additive change was adopted on silence is handled as a new
+amendment, not as a reversal — unless nothing has been built on it yet, in which case it is simply
+withdrawn.
+
+Either way the outcome is written in the issue, so a later reader sees that the other owner had the
+chance to object.
+
 ## Testing
 
 Before submitting a commit or a Pull Request, it is essential to verify that the code works correctly and adheres to the project's quality standards.
