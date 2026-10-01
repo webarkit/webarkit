@@ -121,3 +121,24 @@ now states beside step 8: no clause takes its tolerance from the difference
 between two observations; where a bound needs a spread, it comes from repeats
 or from a prior session's measured movement, with its derivation written
 beside it.
+
+## Run 5, and the wall block's spread rules
+
+**Run 5**, the stateless run of the static clip, 07:54:59–07:56:01: valid on
+every check of step 7; `jitterPx` 0.488 px, against the tracking runs'
+0.142.
+
+**The wall block**, runs 6–9, `pinball-bench.mp4`, sync, worker, worker,
+sync, 07:58–08:08: each valid on every check of step 7.
+
+**The thermal rule (step 9) holds**: `trackStepMs` p50 14.2 → 14.2 ms
+(0.0%), `acquire` p50 23.3 → 23.6 ms (+0.3 ms).
+
+**The spread rules (step 10) trip.** The synchronous runs' eight counted
+loops — 39.9, 35.5, 50.6, 44.9% (run 6) and 33.4, 51.6, 42.9, 33.2% (run 9)
+— spread by 7.27 points (sample standard deviation), over 5. The two worker
+runs, 46.0 and 48.2%, differ by 2.3 points, under 6.6. As step 10 says, the
+wall block is run once more, at once, and the rules are read again on both
+blocks' loops pooled, sixteen a mode; no row of the predictions table is
+read before then. The re-run's runs keep the runbook's *n*, 6–9, in their
+URLs and exports; their files continue the repeat index, `-3` and `-4`.
