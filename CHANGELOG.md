@@ -46,8 +46,7 @@ frame. `.wnft` format: still **0.3**, in both codecs, so this tag freezes no new
   export is a session run — and `scripts/replay-clips.mjs` gained `--external`, which replays the
   clips with detection handed in at a given latency, and `--transfer`, which replays them at the
   latencies a session's exports measured. M3's measurement on the reference device is in
-  `docs/benchmarks/`: detection left the frame loop, and whether the lock holds as well was
-  inconclusive on the wall clip, so worker detection is neither adopted nor refused.
+  `docs/benchmarks/`.
 - For the tuning pass, `examples/bench-nft.html` takes `?targetFile=`, a candidate target under
   the git-ignored `examples/targets/tuning/`, and `?tracker=`, tracker option overrides, each
   refusing Start when it cannot be read; `scripts/replay-clips.mjs` takes the same as `--target`
@@ -94,6 +93,17 @@ frame. `.wnft` format: still **0.3**, in both codecs, so this tag freezes no new
   ([#88](https://github.com/webarkit/webarkit/pull/88), [#90](https://github.com/webarkit/webarkit/pull/90);
   [`docs/benchmarks/README.md`](docs/benchmarks/README.md), "M3: the tuning pass", rounds 2
   and 4).
+
+### What M3 did not deliver
+
+- The wall clip's lock verdict was inconclusive: step 10's spread rule tripped, the clip's
+  per-loop spread exceeding what the bound can resolve, so asynchronous worker detection was
+  neither adopted nor refused. What it did buy is frame time — detection's share of the loop fell
+  from 39.8% to 0.51% on the wall clip (its two blocks pooled) and 21.4% to 0.20% on the table
+  clip, and unlocked frames from 90.4 to 26.8 ms and 139.6 to 46.3 ms at the median.
+- Patch alignment below the contract, which M3's own milestone description names, is deferred:
+  [#84](https://github.com/webarkit/webarkit/issues/84) is on M5 and waits on a backend that runs
+  alignment outside JavaScript.
 
 ## [0.3.0] - 2026-09-26
 
