@@ -25,12 +25,23 @@
  *
  */
 
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+    accountingError,
     clockResolution,
     cornerJitter,
+    countedLoopFrames,
     countLoopWraps,
     DEFINITIONS,
+    DETECTION_PATHS,
+    detectionLocks,
+    detectionOutcomes,
+    detectionTime,
+    exportDetectionPath,
+    firstStepLatency,
+    frameMs,
     frameRecord,
     framesAt,
     framesForStage,
@@ -47,7 +58,9 @@ import {
     reprojectCorners,
     sequenceRefusal,
     sequenceSettings,
+    sessionRunGaps,
     sha256Hex,
+    stageSummary,
     startRefusal,
     stats,
     summarizeRun,
@@ -56,7 +69,12 @@ import {
     texturedFrame,
     timeRepeated,
     trackabilityError,
+    trackFramesWithDetectionInFlight,
+    trackTimeShare,
+    transferPlan,
     TUNABLE_TRACKER_OPTIONS,
+    unlockedResidualMs,
+    unwrapMediaTimes,
 } from "../js/bench-metrics.mjs";
 
 describe("percentile", () => {
@@ -178,6 +196,11 @@ describe("frameRecord", () => {
             trackLoss: null,
             tracking,
             trackerTimings,
+            needsDetection: false,
+            detectionUse: null,
+            detectionLatencyMs: null,
+            detectionInFlight: false,
+            detectedAt: null,
             corners: [
                 [5, 7],
                 [7, 7],
@@ -279,6 +302,129 @@ describe("frameRecord", () => {
             corners: null,
         });
     });
+
+    it("records what became of detection on every frame", () => {
+        const tracked = {
+            ok: true,
+            state: "TRACK",
+            quality: 0.9,
+            numMatches: 50,
+            numInliers: 48,
+            H,
+            pose: {},
+            sceneKeypoints: [],
+            trackLoss: null,
+            tracking,
+            timings: trackerTimings,
+        };
+        const detectedAt = { timestampMs: 100, mediaTimeSeconds: 0.2, framesAgo: 3 };
+
+        // A detection computed on a frame three processed frames back, handed in and used.
+        const consumed = frameRecord({
+            mode: "tracking",
+            result: {
+                ...tracked,
+                needsDetection: false,
+                detectionUse: "consumed",
+                detectionLatencyMs: 92.5,
+            },
+            detection: { inFlight: false, detectedAt },
+            ...base,
+        });
+        expect(consumed).toMatchObject({
+            needsDetection: false,
+            detectionUse: "consumed",
+            detectionLatencyMs: 92.5,
+            detectionInFlight: false,
+            detectedAt,
+        });
+        expect(consumed.detectedAt).not.toBe(detectedAt);
+
+        // The tracker's own detection is of the frame it ran on: this one.
+        const internal = frameRecord({
+            mode: "tracking",
+            result: {
+                ...tracked,
+                state: "DETECT",
+                needsDetection: false,
+                detectionUse: "internal",
+                detectionLatencyMs: null,
+            },
+            ...base,
+        });
+        expect(internal).toMatchObject({
+            needsDetection: false,
+            detectionUse: "internal",
+            detectionLatencyMs: null,
+            detectionInFlight: false,
+            detectedAt: { timestampMs: 1000, mediaTimeSeconds: 1.5, framesAgo: 0 },
+        });
+
+        // A frame that asked for a detection while one was in flight used none.
+        const waiting = frameRecord({
+            mode: "tracking",
+            result: {
+                ok: false,
+                state: "LOST",
+                quality: 0,
+                reason: "no-detection",
+                numMatches: 0,
+                numInliers: 0,
+                H: null,
+                pose: null,
+                sceneKeypoints: [],
+                trackLoss: null,
+                tracking: null,
+                timings: trackerTimings,
+                needsDetection: true,
+                detectionUse: "none",
+                detectionLatencyMs: null,
+            },
+            detection: { inFlight: true },
+            ...base,
+        });
+        expect(waiting).toMatchObject({
+            needsDetection: true,
+            detectionUse: "none",
+            detectionInFlight: true,
+            detectedAt: null,
+        });
+
+        // A detection that was ignored was not used: it is of no frame the record names.
+        const ignored = frameRecord({
+            mode: "tracking",
+            result: {
+                ...tracked,
+                needsDetection: false,
+                detectionUse: "ignored",
+                detectionLatencyMs: null,
+            },
+            detection: { inFlight: false, detectedAt },
+            ...base,
+        });
+        expect(ignored).toMatchObject({ detectionUse: "ignored", detectedAt: null });
+
+        // The stateless pipeline has no tracker: every frame detects, and none says so.
+        const stateless = frameRecord({
+            mode: "stateless",
+            result: {
+                ok: true,
+                numMatches: 90,
+                numInliers: 60,
+                H,
+                pose: {},
+                sceneKeypoints: [],
+            },
+            ...base,
+        });
+        expect(stateless).toMatchObject({
+            needsDetection: false,
+            detectionUse: null,
+            detectionLatencyMs: null,
+            detectionInFlight: false,
+            detectedAt: null,
+        });
+    });
 });
 
 describe("framesForStage", () => {
@@ -313,6 +459,125 @@ describe("framesForStage", () => {
     it("takes acquire, gray and total over every frame", () => {
         for (const s of ["acquire", "gray", "total"])
             expect(framesForStage(frames, s)).toEqual(frames);
+    });
+
+    it("takes the detection stages over the frames that ran the tracker's own detection, and reads older exports as M2's", () => {
+        const record = [
+            f("LOST", { detectionUse: "none" }), // a worker run's waiting frame: not unlocked-and-detecting
+            f("DETECT", { detectionUse: "consumed" }), // a detection computed elsewhere
+            f("TRACK", { detectionUse: "none" }),
+            f("TRACK", { detectionUse: "ignored" }),
+            f("DETECT", { detectionUse: "internal" }), // the tracker's own
+            f("LOST", { detectionUse: "internal", reason: "too-few-matches" }),
+            f("LOST", { detectionUse: "internal" }),
+        ];
+        for (const s of ["detect", "describe", "match", "filterMatches"]) {
+            expect(framesForStage(record, s)).toEqual([record[4], record[5], record[6]]);
+        }
+        expect(framesForStage(record, "estimateHomography")).toEqual([record[4], record[6]]);
+        // The other stages do not read it.
+        expect(framesForStage(record, "pose")).toEqual(record.filter((r) => r.ok));
+        expect(framesForStage(record, "total")).toEqual(record);
+
+        // Older exports have no detectionUse; the stateless mode's is null. Both detect on
+        // every frame that is not TRACK, which is what M2's tracker did.
+        const older = [
+            f("LOST"),
+            f("TRACK"),
+            f("DETECT", { detectionUse: null }),
+            f("TRACK", { detectionUse: null }),
+            f("LOST", { detectionUse: null, reason: "too-few-matches" }),
+        ];
+        expect(framesForStage(older, "detect")).toEqual([older[0], older[2], older[4]]);
+        expect(framesForStage(older, "estimateHomography")).toEqual([older[0], older[2]]);
+    });
+});
+
+describe("stageSummary: the export's per-stage p50, p95 and max", () => {
+    const dir = fileURLToPath(new URL("../../docs/benchmarks/", import.meta.url));
+    const frame = (mediaTimeSeconds, acquire, o = {}) => ({
+        state: "LOST",
+        ok: false,
+        reason: "no-detection",
+        mediaTimeSeconds,
+        timings: { acquire, gray: 1, total: acquire + 2 },
+        detectionUse: "none",
+        ...o,
+    });
+
+    it("gives the summaryMs the page exported, from the same frames", () => {
+        for (const clip of ["wall", "table"]) {
+            const e = JSON.parse(
+                readFileSync(`${dir}2026-09-29-tab9-tuning-r2-p48-s16-${clip}.json`, "utf8"),
+            );
+            expect(stageSummary(e.frames, { stages: Object.keys(e.summaryMs) }), clip).toEqual(
+                e.summaryMs,
+            );
+        }
+    });
+
+    it("takes a stage over the frames that ran it, and the post over the frames that posted", () => {
+        const frames = [
+            frame(0, 20, { timings: { acquire: 20, detect: 9, detectionPost: 0.3, total: 40 } }),
+            frame(0.1, 22, { state: "TRACK", detectionUse: "none", timings: { acquire: 22, detect: 0, total: 30 } }),
+            frame(0.2, 24, { detectionUse: "internal", timings: { acquire: 24, detect: 7, total: 50 } }),
+        ];
+        const s = stageSummary(frames, { stages: ["acquire", "detect", "detectionPost", "total"] });
+        expect(Object.keys(s)).toEqual(["acquire", "detect", "detectionPost", "total"]);
+        expect(s.acquire).toEqual({ p50: 22, p95: 24, max: 24 });
+        // Only the frame that ran the tracker's own detection detected.
+        expect(s.detect).toEqual({ p50: 7, p95: 7, max: 7 });
+        expect(s.detectionPost).toEqual({ p50: 0.3, p95: 0.3, max: 0.3 });
+        expect(stageSummary([], { stages: ["acquire"] })).toEqual({
+            acquire: { p50: null, p95: null, max: null },
+        });
+    });
+
+    // The thermal rule reads `acquire` p50 from summaryMs, and the spec reads every row over the
+    // counted loops: the warm-up's cold first acquisition was in the window's max.
+    it("reads a loops run's counted loops: the warm-up's cold acquisition is not in its max", () => {
+        const D = 1;
+        // Loop 0 (the warm-up, its first acquisition cold), loop 1 counted, loop 2's first frame.
+        const run = [frame(0, 400), frame(0.5, 30), frame(0.2, 31), frame(0.7, 29), frame(0.1, 45)];
+        const stages = ["acquire", "total"];
+        expect(stageSummary(run, { stages }).acquire.max).toBe(400);
+        const loops = { firstLoop: 1, loopCount: 1 };
+        const counted = stageSummary(run, { stages, clipDurationS: D, loops });
+        expect(counted.acquire).toEqual({ p50: 31, p95: 31, max: 31 });
+        expect(counted.total.max).toBe(33);
+        // A clip duration shorter than the clip is refused, as the run summary refuses it.
+        expect(() => stageSummary(run, { stages, clipDurationS: 0.6, loops })).toThrow(RangeError);
+    });
+
+    // Review M5: a caller of stageSummary alone, on a worker export, took the detection stages by
+    // M2's fallback — every frame that is not TRACK detected — which a waiting frame does not.
+    it("refuses a worker run's frame that lacks detectionUse, in one line, as the run summary does", () => {
+        const lacking = [
+            frame(0, 20),
+            frame(0.1, 22, { detectionUse: undefined, timings: { acquire: 22, detect: 9, total: 30 } }),
+        ];
+        const stages = ["acquire", "detect", "total"];
+        const read = () => stageSummary(lacking, { stages, path: "worker" });
+        expect(read).toThrow(RangeError);
+        expect(read).toThrow(
+            /^stageSummary: frame 1 of a worker run \(media time 0\.1 s\) has no detectionUse/,
+        );
+        let message = "";
+        try {
+            read();
+        } catch (e) {
+            message = e.message;
+        }
+        expect(message).not.toMatch(/\n/);
+        // Over the counted loops, the frames it reads are the counted ones.
+        const loops = { firstLoop: 0, loopCount: 1 };
+        expect(() => stageSummary(lacking, { stages, clipDurationS: 1, loops, path: "worker" })).toThrow(
+            /^stageSummary: frame 1 of a worker run/,
+        );
+        // A synchronous run's frames are read by M2's rule: the frame detected.
+        expect(stageSummary(lacking, { stages, path: "sync" }).detect).toEqual({ p50: 9, p95: 9, max: 9 });
+        expect(stageSummary(lacking, { stages }).detect).toEqual({ p50: 9, p95: 9, max: 9 });
+        expect(() => stageSummary(lacking, { stages, path: "gpu" })).toThrow(/path/);
     });
 });
 
@@ -396,6 +661,675 @@ describe("loop wraps, re-acquisitions and lock steps", () => {
             firstSteps: { n: 0, confirmed: 0 },
             heldLockSteps: { n: 0, lost: 0, lostAtLoopWrap: 0 },
         });
+    });
+});
+
+describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
+    // A 1-second clip, D = 1: loop k's frame at media time m is at k + m on the unwrapped
+    // timeline, and 10 ms bins make 100 to a loop. Times are chosen to be exact in binary.
+    const D = 1;
+    const frame = (state, mediaTimeSeconds, o = {}) => ({ state, mediaTimeSeconds, ...o });
+    const closeTo = (actual, expected) => {
+        expect(actual).toHaveLength(expected.length);
+        actual.forEach((t, i) => expect(t).toBeCloseTo(expected[i], 9));
+    };
+    // Unwrapped time in the comment. Loop 0 is the warm-up; its last frame holds a lock.
+    const run = [
+        frame("LOST", 0), // 0
+        frame("TRACK", 0.5), // 0.5
+        frame("TRACK", 0.9), // 0.9: the warm-up's last frame
+        frame("TRACK", 0.5), // 1.5: loop 1
+        frame("LOST", 0.25), // 2.25: loop 2
+        frame("TRACK", 0.75), // 2.75
+        frame("TRACK", 0.5), // 3.5: loop 3
+        frame("LOST", 0.25), // 4.25: loop 4
+        frame("LOST", 0.1), // 5.1: loop 5, which closes loop 4
+    ];
+
+    it("puts every frame on one timeline, loop k adding k times the clip's duration", () => {
+        closeTo(unwrapMediaTimes(run, D), [0, 0.5, 0.9, 1.5, 2.25, 2.75, 3.5, 4.25, 5.1]);
+        // A run that starts mid-clip: its first pass is loop 0 all the same.
+        closeTo(
+            unwrapMediaTimes([frame("LOST", 10.8), frame("LOST", 11.9), frame("LOST", 0.1)], 11.96),
+            [10.8, 11.9, 12.06],
+        );
+        expect(unwrapMediaTimes([], D)).toEqual([]);
+    });
+
+    it("takes the frames whose unwrapped time is in [first · D, (first + count) · D)", () => {
+        expect(countedLoopFrames(run, { clipDurationS: D, firstLoop: 1, loopCount: 2 })).toEqual([
+            run[3],
+            run[4],
+            run[5],
+        ]);
+        // Loops 1 to 4 by default.
+        expect(countedLoopFrames(run, { clipDurationS: D })).toEqual(run.slice(3, 8));
+        // The first frame of a loop, at its media time 0, is inside it; the next loop's is not.
+        const edges = [
+            frame("LOST", 0.5),
+            frame("LOST", 0.9),
+            frame("TRACK", 0), // 1
+            frame("TRACK", 0.5), // 1.5
+            frame("LOST", 0), // 2
+        ];
+        expect(countedLoopFrames(edges, { clipDurationS: D, firstLoop: 1, loopCount: 1 })).toEqual(
+            [edges[2], edges[3]],
+        );
+    });
+
+    it("reads the lock over loops 1 to 4 on a fixed grid, holding the state across a wrap", () => {
+        const r = trackTimeShare(run, { clipDurationS: D });
+        // Loop 1: TRACK from 1.5, and the warm-up's last frame's TRACK before it, so all of it.
+        // Loop 2: TRACK to 2.25, LOST to 2.75, TRACK after: half. Loop 3: TRACK throughout.
+        // Loop 4: TRACK to 4.25, LOST after: a quarter.
+        expect(r.perLoop).toEqual([1, 0.5, 1, 0.25]);
+        expect(r.perLoop[0]).toBe(1);
+        expect(r.share).toBe(275 / 400);
+        expect(r.loops).toEqual([1, 4]);
+        expect(r.complete).toBe(true);
+        // The same options, spelled out.
+        expect(trackTimeShare(run, { clipDurationS: D, firstLoop: 1, loopCount: 4 })).toEqual(r);
+        // Fewer loops: the first two of them.
+        expect(trackTimeShare(run, { clipDurationS: D, loopCount: 2 })).toMatchObject({
+            perLoop: [1, 0.5],
+            share: 0.75,
+            loops: [1, 2],
+            complete: true,
+        });
+    });
+
+    it("reports a run incomplete when loop 5 was not reached or loop 1 has no frame before it", () => {
+        // Loop 5 was not reached: the last frame is in loop 4.
+        const short = run.slice(0, -1);
+        expect(trackTimeShare(short, { clipDurationS: D })).toEqual({
+            share: null,
+            perLoop: null,
+            binMs: 10,
+            loops: [1, 4],
+            complete: false,
+        });
+        // Nothing precedes loop 0's first bin when the run starts mid-clip: loop 0 is never
+        // complete there, and loop 1, which the warm-up's frames precede, is.
+        const midClip = [frame("TRACK", 0.3), ...run.slice(2)];
+        expect(trackTimeShare(midClip, { clipDurationS: D, firstLoop: 0, loopCount: 1 })).toEqual({
+            share: null,
+            perLoop: null,
+            binMs: 10,
+            loops: [0, 0],
+            complete: false,
+        });
+        expect(trackTimeShare(midClip, { clipDurationS: D, loopCount: 1 }).complete).toBe(true);
+        // No frames at all.
+        expect(trackTimeShare([], { clipDurationS: D })).toMatchObject({
+            share: null,
+            perLoop: null,
+            complete: false,
+        });
+    });
+
+    it("uses the bin size it reports", () => {
+        // TRACK for two 10 ms bins of loop 1, from 1.05 to 1.07, and no longer.
+        const brief = [
+            frame("LOST", 0),
+            frame("LOST", 0.95),
+            frame("TRACK", 0.05), // 1.05
+            frame("LOST", 0.07), // 1.07
+            frame("LOST", 0.02), // 2.02: loop 2
+        ];
+        const fine = trackTimeShare(brief, { clipDurationS: D, loopCount: 1 });
+        expect(fine).toMatchObject({ binMs: 10, share: 0.02, complete: true });
+        // 100 ms bins, at 1.0, 1.1, …, never see it.
+        const coarse = trackTimeShare(brief, { clipDurationS: D, loopCount: 1, binMs: 100 });
+        expect(coarse).toMatchObject({ binMs: 100, share: 0, perLoop: [0], complete: true });
+    });
+
+    it("refuses a clip duration, bin size or loop count that cannot be read", () => {
+        expect(() => unwrapMediaTimes(run, 0)).toThrow(/clipDurationS/);
+        expect(() => trackTimeShare(run, { clipDurationS: NaN })).toThrow(/clipDurationS/);
+        expect(() => trackTimeShare(run, { clipDurationS: D, binMs: 0 })).toThrow(/binMs/);
+        expect(() => trackTimeShare(run, { clipDurationS: D, loopCount: 0 })).toThrow(/loopCount/);
+        expect(() => countedLoopFrames(run, { clipDurationS: D, firstLoop: -1 })).toThrow(
+            /firstLoop/,
+        );
+    });
+
+    // A duration shorter than the clip unwraps each loop onto the next: the run's time overlaps
+    // itself, and a share read on it is not the lock's, yet it read `complete: true`.
+    it("refuses a clip duration shorter than the clip, naming the frame, its media time and D", () => {
+        const short = 0.8; // the run's clip is 1 s long: frame 2, at 0.9 s, is past 0.8 s
+        const past = /^frame 2: media time 0\.9 s is past clipDurationS 0\.8 s/;
+        for (const read of [
+            () => unwrapMediaTimes(run, short),
+            () => countedLoopFrames(run, { clipDurationS: short }),
+            () => trackTimeShare(run, { clipDurationS: short }),
+            () => summarizeRun(run, { clipDurationS: short, loops: { firstLoop: 1, loopCount: 4 } }),
+        ]) {
+            expect(read).toThrow(RangeError);
+            expect(read).toThrow(past);
+            let message = "";
+            try {
+                read();
+            } catch (e) {
+                message = e.message;
+            }
+            expect(message).not.toMatch(/\n/);
+        }
+        // The same run read with its own duration is complete, as before.
+        expect(trackTimeShare(run, { clipDurationS: D }).complete).toBe(true);
+    });
+
+    // Review I1: a frame the tolerance accepted used to be refused at the wrap after it, since the
+    // next loop's first frame unwrapped before it; whether a run was refused then depended on
+    // which frames its schedule processed. It now stands at D.
+    it("reads a frame up to 1 ms past D as at D, across the wrap after it, and refuses a D short by more", () => {
+        // 0.5 ms past D, then the wrap to the next loop's first frame, at media time 0: accepted.
+        const rounding = [frame("LOST", 0.5), frame("TRACK", 1.0005), frame("TRACK", 0), frame("LOST", 0.5)];
+        closeTo(unwrapMediaTimes(rounding, D), [0.5, 1, 1, 1.5]);
+        // The review's probe, at the table clip's duration.
+        closeTo(unwrapMediaTimes([frame("LOST", 8.8), frame("LOST", 8.9005), frame("LOST", 0)], 8.9), [
+            8.8, 8.9, 8.9,
+        ]);
+        // Its loop still reads whole: loop 1's first bins take the frame standing at D.
+        const whole = [...rounding, frame("LOST", 0.2)]; // 2.2: loop 2 closes loop 1
+        expect(trackTimeShare(whole, { clipDurationS: D, loopCount: 1 })).toMatchObject({
+            share: 0.5,
+            complete: true,
+        });
+        // A D short by more than 1 ms is refused before a wrap, on loop 0's last frame…
+        const before = [frame("LOST", 0.5), frame("LOST", 1.0015), frame("LOST", 0)];
+        expect(() => unwrapMediaTimes(before, D)).toThrow(RangeError);
+        expect(() => unwrapMediaTimes(before, D)).toThrow(
+            /^frame 1: media time 1\.0015 s is past clipDurationS 1 s by more than 1 ms/,
+        );
+        // …and after one, on a later loop's frame, the first loop having skipped its end.
+        const after = [frame("LOST", 0.5), frame("LOST", 0.9), frame("LOST", 0.2), frame("LOST", 1.002)];
+        expect(() => unwrapMediaTimes(after, D)).toThrow(
+            /^frame 3: media time 1\.002 s is past clipDurationS 1 s by more than 1 ms/,
+        );
+        expect(() => trackTimeShare(after, { clipDurationS: D, loopCount: 1 })).toThrow(/^frame 3:/);
+        // Unwrapped time that goes back is still refused, strictly: a media time below 0 after a
+        // wrap is the only way left to it.
+        expect(() => unwrapMediaTimes([frame("LOST", 0.9), frame("LOST", -0.2)], D)).toThrow(
+            /^frame 1: media time -0\.2 s unwraps to 0\.8 s, before frame 0's 0\.9 s \(clipDurationS 1 s\)/,
+        );
+    });
+
+    // Review M7: a frame without a finite media time unwrapped to NaN, and the grid walk stopped
+    // advancing at it, so every later bin took the state before it.
+    it("refuses a media time that is not a finite number, naming the frame", () => {
+        for (const m of [undefined, null, NaN, Infinity]) {
+            expect(() => unwrapMediaTimes([frame("LOST", 0.5), frame("LOST", m)], D), String(m)).toThrow(
+                new RegExp(`^frame 1: media time ${String(m)} is not a finite number of seconds`),
+            );
+        }
+        // The review's probe: TRACK on loop 0's first frame, a frame with no media time, and LOST
+        // throughout loops 1 to 4. The walk stuck at the NaN read every bin as TRACK: share 1.
+        const probe = [
+            frame("TRACK", 0),
+            frame("LOST", undefined),
+            frame("LOST", 0.5),
+            ...[1, 2, 3, 4].flatMap(() => [frame("LOST", 0.2), frame("LOST", 0.7)]),
+            frame("LOST", 0.1), // loop 5
+        ];
+        const read = () => trackTimeShare(probe, { clipDurationS: D });
+        expect(read).toThrow(RangeError);
+        expect(read).toThrow(/^frame 1: media time undefined is not a finite number of seconds/);
+        let message = "";
+        try {
+            read();
+        } catch (e) {
+            message = e.message;
+        }
+        expect(message).not.toMatch(/\n/);
+    });
+});
+
+describe("trackTimeShare on the tablet's committed exports", () => {
+    // Round 2's tablet runs, 300 frames each, all on a moving clip. Their first frame is
+    // mid-clip, so loop 0 is never a whole loop: loops 1 on are counted, up to the last
+    // frame's loop, which closes the loop before it.
+    const CLIP_DURATION_S = { "pinball-bench.mp4": 11.96, "pinball-bench-table.mp4": 8.9 };
+    const dir = fileURLToPath(new URL("../../docs/benchmarks/", import.meta.url));
+    const names = readdirSync(dir)
+        .filter((n) => /^2026-09-29-tab9-tuning-r2-.+-(wall|table)[^/]*\.json$/.test(n))
+        .sort();
+
+    /** Every second frame whose state equals both its neighbours': removed frames are never adjacent. */
+    const thinInsideRuns = (frames) => {
+        let seen = 0;
+        return frames.filter((f, i) => {
+            const inside =
+                i > 0 &&
+                i + 1 < frames.length &&
+                frames[i - 1].state === f.state &&
+                frames[i + 1].state === f.state;
+            return !(inside && seen++ % 2 === 1);
+        });
+    };
+
+    it("is exactly unchanged when frames inside a run of equal states are removed", () => {
+        expect(names.length, "the round 2 wall and table exports").toBeGreaterThanOrEqual(10);
+        for (const name of names) {
+            const e = JSON.parse(readFileSync(dir + name, "utf8"));
+            const D = CLIP_DURATION_S[e.bundledClip];
+            expect(D, `${name}: ${e.bundledClip} has no known duration`).toBeGreaterThan(0);
+            // The last frame is in loop `wraps`, which closes loops 1 to wraps − 1.
+            const loopCount = countLoopWraps(e.frames) - 1;
+            expect(loopCount, `${name}: no whole loop after its first wrap`).toBeGreaterThanOrEqual(
+                1,
+            );
+            const options = { clipDurationS: D, firstLoop: 1, loopCount };
+
+            const full = trackTimeShare(e.frames, options);
+            expect(full.complete, name).toBe(true);
+            expect(full.share, name).toBeGreaterThan(0);
+            expect(full.share, name).toBeLessThan(1);
+            expect(full.perLoop, name).toHaveLength(loopCount);
+
+            const thinned = thinInsideRuns(e.frames);
+            expect(thinned.length, `${name}: nothing was removed`).toBeLessThan(e.frames.length);
+            const result = trackTimeShare(thinned, options);
+            expect(result.share, name).toBe(full.share);
+            expect(result.perLoop, name).toEqual(full.perLoop);
+        }
+    });
+});
+
+describe("detection locks, first steps and outcomes", () => {
+    const dir = fileURLToPath(new URL("../../docs/benchmarks/", import.meta.url));
+    const exportOf = (name) => JSON.parse(readFileSync(dir + name, "utf8"));
+    const step = { observed: 30 };
+    // A frame record with the fields these metrics read. Media time follows the timestamp.
+    const frame = (state, timestampMs, o = {}) => ({
+        state,
+        ok: state !== "LOST",
+        reason: null,
+        timestampMs,
+        mediaTimeSeconds: timestampMs / 1000,
+        detectionUse: "none",
+        detectionInFlight: false,
+        detectedAt: null,
+        tracking: null,
+        trackLoss: null,
+        ...o,
+    });
+    const own = (state, timestampMs, o = {}) =>
+        frame(state, timestampMs, { detectionUse: "internal", ...o });
+    const consumed = (state, timestampMs, detectedAt, o = {}) =>
+        frame(state, timestampMs, { detectionUse: "consumed", tracking: step, detectedAt, ...o });
+    const detectedAt = (timestampMs, framesAgo, mediaTimeSeconds = timestampMs / 1000) => ({
+        timestampMs,
+        mediaTimeSeconds,
+        framesAgo,
+    });
+    const refusedTotal = (locks) => Object.values(locks.refused).reduce((a, b) => a + b, 0);
+
+    it("reproduces M2's firstSteps and reacquisitions on the exports they were published from", () => {
+        // 14 of 106 first steps and 104 re-acquisitions on the wall clip, 11 of 48 and 46 on the
+        // table clip: docs/benchmarks/README.md, "What the synchronous mode spends on detection".
+        const pinned = { wall: [106, 14, 104], table: [48, 11, 46] };
+        for (const clip of ["wall", "table"]) {
+            const e = exportOf(`2026-09-29-tab9-tuning-r2-p48-s16-${clip}.json`);
+            const { firstSteps, reacquisitions: reacquired } = e.runSummary;
+            expect([firstSteps.n, firstSteps.confirmed, reacquired], clip).toEqual(pinned[clip]);
+            // These exports predate detectionUse: every DETECT frame is a lock the tracker set.
+            expect(e.frames[0].detectionUse, clip).toBeUndefined();
+            const locks = detectionLocks(e.frames);
+            expect([locks.n, locks.confirmed, locks.reacquisitions], clip).toEqual(pinned[clip]);
+            expect(locks.reacquisitionsAtLoopWrap, clip).toBe(
+                e.runSummary.reacquisitionsAtLoopWrap,
+            );
+            // Every lock whose first step is in the window was confirmed or refused, per trackLoss.
+            expect(locks.confirmed + refusedTotal(locks), clip).toBe(locks.n);
+        }
+    });
+
+    it("counts a consumed detection's lock on its own frame, confirmed or refused per trackLoss", () => {
+        const frames = [
+            frame("LOST", 0, { reason: "no-detection" }), // asked for a detection
+            consumed("TRACK", 100, detectedAt(0, 2)), // lock 1: its first step is this frame
+            frame("TRACK", 200, { tracking: step }),
+            frame("LOST", 300, { reason: "no-detection", tracking: step, trackLoss: "poor-fit" }),
+            consumed("LOST", 400, detectedAt(300, 3), {
+                reason: "unconfirmed",
+                trackLoss: "too-few-patches", // lock 2, refused
+            }),
+            consumed("LOST", 500, detectedAt(400, 1), {
+                reason: "too-few-matches", // the detection itself failed: no lock
+                tracking: null,
+            }),
+            consumed("TRACK", 600, detectedAt(500, 1)), // lock 3
+            frame("TRACK", 700, { detectionUse: "ignored", tracking: step }),
+        ];
+        expect(detectionLocks(frames)).toEqual({
+            n: 3,
+            confirmed: 2,
+            refused: { "too-few-patches": 1 },
+            reacquisitions: 2, // locks 2 and 3 followed an earlier pose; lock 1 is the first
+            reacquisitionsAtLoopWrap: 0,
+        });
+        expect(detectionOutcomes(frames)).toEqual({
+            used: 4,
+            failed: { "too-few-matches": 1 },
+            locked: 3,
+            ignored: 1,
+        });
+        // Only the refused one:
+        expect(detectionLocks(frames.slice(3, 5))).toMatchObject({
+            n: 1,
+            confirmed: 0,
+            refused: { "too-few-patches": 1 },
+            reacquisitions: 0, // no earlier frame in this slice had a pose
+        });
+    });
+
+    it("counts a lock set on the first frame after a loop wrap apart, in both modes", () => {
+        const wrap = [
+            own("DETECT", 0, { mediaTimeSeconds: 11.9 }),
+            frame("TRACK", 100, { mediaTimeSeconds: 11.95, tracking: step }),
+            own("DETECT", 200, { mediaTimeSeconds: 0.05 }), // the clip jumped, not the tracker
+            frame("TRACK", 300, { mediaTimeSeconds: 0.1, tracking: step }),
+            frame("LOST", 400, { mediaTimeSeconds: 0.15, reason: "no-detection" }),
+            consumed("TRACK", 500, detectedAt(400, 1, 0.15), { mediaTimeSeconds: 0.2 }),
+        ];
+        expect(detectionLocks(wrap)).toMatchObject({
+            n: 3,
+            confirmed: 3,
+            reacquisitions: 1, // the consumed lock, after a pose
+            reacquisitionsAtLoopWrap: 1, // the DETECT frame at media time 0.05
+        });
+        const worker = [
+            frame("TRACK", 0, { mediaTimeSeconds: 11.9, tracking: step }),
+            consumed("TRACK", 100, detectedAt(0, 1, 11.9), { mediaTimeSeconds: 0.05 }),
+        ];
+        expect(detectionLocks(worker)).toMatchObject({
+            reacquisitions: 0,
+            reacquisitionsAtLoopWrap: 1,
+        });
+    });
+
+    it("counts a synchronous run's own detections by the same rule, and an older export's", () => {
+        const sync = [
+            own("DETECT", 0),
+            frame("TRACK", 100, { tracking: step }),
+            own("LOST", 200, { reason: "too-few-matches" }),
+            own("LOST", 300, { reason: "no-consensus" }),
+            own("DETECT", 400),
+        ];
+        expect(detectionOutcomes(sync)).toEqual({
+            used: 4,
+            failed: { "too-few-matches": 1, "no-consensus": 1 },
+            locked: 2,
+            ignored: 0,
+        });
+        expect(detectionLocks(sync)).toMatchObject({ n: 1, confirmed: 1, reacquisitions: 1 });
+        // No detectionUse: the tracker of M2 detected on every frame that is not TRACK.
+        const older = sync.map(({ detectionUse, ...rest }) => rest);
+        expect(detectionOutcomes(older)).toEqual(detectionOutcomes(sync));
+        expect(detectionLocks(older)).toEqual(detectionLocks(sync));
+        // A frame with no detection at all: not a use.
+        expect(detectionOutcomes([frame("TRACK", 0), frame("LOST", 1)])).toEqual({
+            used: 0,
+            failed: {},
+            locked: 0,
+            ignored: 0,
+        });
+    });
+
+    it("gives a detection no first step where nothing tracks, as M2's firstSteps gives it none", () => {
+        // A detection-only run: the DETECT frames set no lock a step could confirm.
+        const detectionOnly = [own("DETECT", 0), own("DETECT", 100), own("LOST", 200)];
+        expect(detectionLocks(detectionOnly)).toEqual({
+            n: 0,
+            confirmed: 0,
+            refused: {},
+            reacquisitions: 1,
+            reacquisitionsAtLoopWrap: 0,
+        });
+        expect(firstStepLatency(detectionOnly).ms.n).toBe(0);
+    });
+
+    it("measures first-step latency by one rule in both modes", () => {
+        // Synchronous: the tracker's own detection at t = 0, its first step on the next frame.
+        const sync = firstStepLatency([own("DETECT", 0), frame("TRACK", 120, { tracking: step })]);
+        expect(sync.ms).toMatchObject({ n: 1, p50: 120 });
+        expect(sync.frames).toMatchObject({ n: 1, p50: 1 });
+        expect(sync.videoMs.p50).toBeCloseTo(120, 9);
+        // Worker: detected three processed frames back, consumed and stepped on this frame.
+        const worker = firstStepLatency([consumed("TRACK", 120, detectedAt(0, 3))]);
+        expect(worker.ms).toMatchObject({ n: 1, p50: 120 });
+        expect(worker.frames).toMatchObject({ n: 1, p50: 3 });
+        expect(worker.videoMs.p50).toBeCloseTo(120, 9);
+        // A refused first step is measured all the same: it is a step.
+        const refused = firstStepLatency([
+            consumed("LOST", 200, detectedAt(50, 2), { reason: "unconfirmed", trackLoss: "poor-fit" }),
+        ]);
+        expect(refused.ms).toMatchObject({ n: 1, p50: 150 });
+        // An export older than detectionUse and detectedAt: the DETECT frame is the detected one.
+        const older = firstStepLatency([
+            frame("DETECT", 0, { detectionUse: undefined }),
+            frame("TRACK", 133, { detectionUse: undefined, tracking: step }),
+        ]);
+        expect(older.ms).toMatchObject({ n: 1, p50: 133 });
+        expect(older.frames.p50).toBe(1);
+    });
+
+    it("measures first-step latency across a loop wrap on the unwrapped time, not a negative one", () => {
+        const D = 12;
+        const wrapped = [
+            own("DETECT", 0, { mediaTimeSeconds: 11.9 }),
+            frame("TRACK", 120, { mediaTimeSeconds: 0.1, tracking: step }), // 0.2 s of video later
+        ];
+        const worker = [consumed("TRACK", 120, detectedAt(0, 2, 11.9), { mediaTimeSeconds: 0.1 })];
+        for (const frames of [wrapped, worker]) {
+            const r = firstStepLatency(frames, { clipDurationS: D });
+            expect(r.ms.p50).toBe(120);
+            expect(r.videoMs.n).toBe(1);
+            expect(r.videoMs.p50).toBeCloseTo(200, 9);
+            // Without the clip's duration the wrap cannot be unwrapped: that lock has no video
+            // ms, and only that statistic loses it. Nothing throws.
+            const bare = firstStepLatency(frames);
+            expect(bare.videoMs.n).toBe(0);
+            expect(bare.ms).toEqual(r.ms);
+            expect(bare.frames).toEqual(r.frames);
+        }
+        expect(() => firstStepLatency(wrapped, { clipDurationS: 0 })).toThrow(/clipDurationS/);
+    });
+
+    it("leaves a consumed lock without a recorded detected frame out of the latency statistics", () => {
+        const r = firstStepLatency([consumed("TRACK", 120, null)]);
+        expect(r.ms.n).toBe(0);
+        expect(r.videoMs.n).toBe(0);
+        expect(r.frames.n).toBe(0);
+        // It is still a lock.
+        expect(detectionLocks([consumed("TRACK", 120, null)]).n).toBe(1);
+    });
+
+    it("counts the TRACK frames whose process ran with a detection in flight", () => {
+        expect(
+            trackFramesWithDetectionInFlight([
+                frame("TRACK", 0, { detectionInFlight: true }),
+                frame("LOST", 1, { detectionInFlight: true }), // waiting: not a TRACK frame
+                frame("TRACK", 2),
+                frame("TRACK", 3, { detectionInFlight: true }),
+            ]),
+        ).toBe(2);
+        // An export older than the field, and no frames.
+        expect(trackFramesWithDetectionInFlight([{ state: "TRACK" }])).toBe(0);
+        expect(trackFramesWithDetectionInFlight([])).toBe(0);
+    });
+});
+
+describe("frame time and where detection's time goes", () => {
+    const rec = (state, timings, o = {}) => ({
+        state,
+        ok: state !== "LOST",
+        detectionUse: state === "TRACK" ? "none" : "internal",
+        timings,
+        ...o,
+    });
+
+    it("reads the frame's time over all frames, TRACK frames and unlocked frames", () => {
+        const frames = [
+            rec("TRACK", { total: 40 }),
+            rec("LOST", { total: 100 }),
+            rec("DETECT", { total: 120 }),
+            rec("TRACK", { total: 60 }),
+            rec("LOST", { total: 140 }),
+        ];
+        expect(frameMs(frames)).toEqual({
+            all: stats([40, 100, 120, 60, 140]),
+            track: stats([40, 60]),
+            unlocked: stats([100, 120, 140]),
+        });
+        expect(frameMs(frames).unlocked.p50).toBe(120);
+        expect(frameMs([]).all).toEqual(stats([]));
+        // Records without timings are not frames of any time.
+        expect(frameMs([{ state: "TRACK" }]).all.n).toBe(0);
+    });
+
+    it("attributes detection's time on the loop to its parts", () => {
+        // A synchronous record: detection's stages on the frame that ran them.
+        const sync = [
+            rec("DETECT", { detect: 7, describe: 10, match: 50, estimateHomography: 2, total: 100 }),
+        ];
+        const s = detectionTime(sync);
+        expect(s.onLoop.share).toBe(0.69);
+        expect(s.onLoop.postMs.n).toBe(0);
+        expect(s.onLoop.handlerMs.n).toBe(0);
+        expect(s.offLoop.workerMs.n).toBe(0);
+        expect(s.postToArrivalMs.n).toBe(0);
+
+        // A worker run: the post on the frame that made it, the handler between frames.
+        const worker = [
+            rec("LOST", { acquire: 30, gray: 2, detectionPost: 0.4, total: 32.5 }, { detectionUse: "none" }),
+            rec("LOST", { acquire: 30, gray: 2, total: 32 }, { detectionUse: "none" }),
+        ];
+        const job = {
+            jobId: 1,
+            postedAtMs: 10,
+            arrivedAtMs: 85,
+            handlerMs: 0.2,
+            workerMs: { total: 70 },
+        };
+        const w = detectionTime(worker, [job]);
+        expect(w.onLoop.postMs).toEqual(stats([0.4]));
+        expect(w.onLoop.postMs.p50).toBe(0.4);
+        expect(w.onLoop.handlerMs.p50).toBe(0.2);
+        // (0.4 + 0.2) ÷ (32.5 + 32 + 0.2): the handler runs between frames, outside their totals.
+        expect(w.onLoop.share).toBeCloseTo(0.6 / 64.7, 12);
+        expect(w.offLoop.workerMs).toEqual(stats([70]));
+        expect(w.postToArrivalMs).toEqual(stats([75]));
+    });
+
+    it("leaves a job that never came back out of the latency, handler and worker statistics", () => {
+        const jobs = [
+            { postedAtMs: 10, arrivedAtMs: 85, handlerMs: 0.2, workerMs: { total: 70 } },
+            // Posted, and in flight or held at Stop: no arrival, no handler, no worker time.
+            { postedAtMs: 100, arrivedAtMs: null, handlerMs: null, workerMs: null },
+        ];
+        const t = detectionTime([], jobs);
+        expect(t.postToArrivalMs).toEqual(stats([75]));
+        expect(t.onLoop.handlerMs).toEqual(stats([0.2]));
+        expect(t.offLoop.workerMs).toEqual(stats([70]));
+    });
+
+    it("takes the detection stages over the frames that ran the tracker's own detection only", () => {
+        const stages = { detect: 5, describe: 5, match: 5, filterMatches: 5, estimateHomography: 5 };
+        const frames = [
+            rec("DETECT", { ...stages, total: 100 }), // internal
+            rec("TRACK", { detect: 50, total: 100 }), // no detection ran here: not read
+            rec("LOST", { ...stages, total: 100 }, { detectionUse: "consumed" }), // not the tracker's own
+            rec("LOST", { ...stages, pose: 9, total: 100 }, { detectionUse: "internal" }),
+        ];
+        // Two frames' five stages of 5 ms, and not the pose, which is not detection's: 50 ÷ 400.
+        expect(detectionTime(frames).onLoop.share).toBe(0.125);
+        // An older export has no detectionUse: it detected on every frame that is not TRACK.
+        const older = frames.slice(0, 2).map(({ detectionUse, ...rest }) => rest);
+        expect(detectionTime(older).onLoop.share).toBe(25 / 200);
+    });
+
+    it("gives detection's time per second of video, over the video the frames cover", () => {
+        const at = (mediaTimeSeconds) =>
+            rec("DETECT", { detect: 30, total: 100 }, { mediaTimeSeconds });
+        // 0.5 s, 0.5 s, a wrap that counts for nothing, 0.5 s: 1.5 s of video, 150 ms of detect.
+        const frames = [at(0), at(0.5), at(1), at(0.25), at(0.75)];
+        const job = { postedAtMs: 0, arrivedAtMs: 60, handlerMs: 0, workerMs: { total: 30 } };
+        const bare = detectionTime(frames, [job]);
+        expect(bare.onLoop.msPerVideoSecond).toBe(150 / 1.5);
+        expect(bare.offLoop.msPerVideoSecond).toBe(30 / 1.5);
+        // The counted loops' whole duration, when they are given and complete: 4 loops of 2 s.
+        const loops = { firstLoop: 1, loopCount: 4 };
+        const counted = detectionTime(frames, [job], { clipDurationS: 2, loops, complete: true });
+        expect(counted.onLoop.msPerVideoSecond).toBe(150 / 8);
+        expect(counted.offLoop.msPerVideoSecond).toBe(30 / 8);
+        // No frames, no video, no rate.
+        expect(detectionTime([]).onLoop.msPerVideoSecond).toBeNull();
+        expect(detectionTime([]).onLoop.share).toBeNull();
+        expect(() => detectionTime(frames, [], { loops })).toThrow(/clipDurationS/);
+    });
+
+    // The counted loops' duration is the video a window covers only when it covers them all:
+    // an empty window read 0 ms per second, and a partial one a rate biased low, and either
+    // entered an average as a measurement.
+    it("gives no rate per second of video over counted loops that are not complete", () => {
+        const loops = { firstLoop: 1, loopCount: 4 };
+        const at = (mediaTimeSeconds) =>
+            rec("DETECT", { detect: 30, total: 100 }, { mediaTimeSeconds });
+        const job = { postedAtMs: 0, arrivedAtMs: 60, handlerMs: 0, workerMs: { total: 30 } };
+        // No counted frame at all: no rate, where it read 0.
+        const empty = detectionTime([], [], { clipDurationS: 2, loops });
+        expect(empty.onLoop.msPerVideoSecond).toBeNull();
+        expect(empty.offLoop.msPerVideoSecond).toBeNull();
+        // Counted frames, but loops not known to be complete: no rate either.
+        const unknown = detectionTime([at(0), at(0.5)], [job], { clipDurationS: 2, loops });
+        expect(unknown.onLoop.msPerVideoSecond).toBeNull();
+        expect(unknown.offLoop.msPerVideoSecond).toBeNull();
+        const partial = { clipDurationS: 2, loops, complete: false };
+        expect(detectionTime([at(0), at(0.5)], [job], partial).onLoop.msPerVideoSecond).toBeNull();
+        // The share of the loop's time does not depend on the video: it stays.
+        expect(unknown.onLoop.share).toBe(0.3);
+        // Without loops, the video the frames cover decides, as before.
+        expect(detectionTime([at(0), at(0.5)], [job]).onLoop.msPerVideoSecond).toBe(60 / 0.5);
+    });
+
+    it("reproduces the synchronous baseline the plan quotes, from the exports it was read from", () => {
+        // docs/benchmarks/README.md, "What the synchronous mode spends on detection": detection's
+        // share of the loop, and `total` p50 / p95 over all frames, TRACK frames and unlocked
+        // frames, from round 2's runs of the adopted target.
+        const dir = fileURLToPath(new URL("../../docs/benchmarks/", import.meta.url));
+        const tenth = (x) => Math.round(x * 10) / 10;
+        const published = {
+            wall: { share: 40.5, all: [48.2, 136.7], track: [42.1, 51.3], unlocked: [107.4, 150.5] },
+            table: { share: 22.1, all: [63.1, 149.4], track: [61.5, 71.1], unlocked: [140.4, 157.8] },
+        };
+        for (const [clip, expected] of Object.entries(published)) {
+            const e = JSON.parse(
+                readFileSync(`${dir}2026-09-29-tab9-tuning-r2-p48-s16-${clip}.json`, "utf8"),
+            );
+            expect(tenth(100 * detectionTime(e.frames).onLoop.share), clip).toBe(expected.share);
+            const f = frameMs(e.frames);
+            for (const which of ["all", "track", "unlocked"]) {
+                expect([tenth(f[which].p50), tenth(f[which].p95)], `${clip} ${which}`).toEqual(
+                    expected[which],
+                );
+            }
+        }
+    });
+
+    it("bounds the unlocked frames' residual frame by frame, a frame that did not post subtracting no post", () => {
+        const frames = [
+            // Posted: 30.75 − 28 − 1.5 − 0.25 = 1.
+            rec("LOST", { total: 30.75, acquire: 28, gray: 1.5, detectionPost: 0.25 }),
+            // Did not post: 30 − 28 − 1.5 = 0.5, and not 0.25 as a run-wide post would leave.
+            rec("LOST", { total: 30, acquire: 28, gray: 1.5 }),
+            // A TRACK frame is not an unlocked one.
+            rec("TRACK", { total: 60, acquire: 28, gray: 1.5 }),
+        ];
+        expect(unlockedResidualMs(frames)).toEqual({ n: 2, min: 0.5, p50: 1, p95: 1, max: 1 });
+        expect(unlockedResidualMs([rec("TRACK", { total: 60, acquire: 1, gray: 1 })])).toEqual(
+            stats([]),
+        );
     });
 });
 
@@ -569,6 +1503,21 @@ describe("summarizeRun", () => {
         }),
     ];
 
+    // The keys the detection-locks work added; everything else is the M2 summary.
+    const NEW_KEYS = [
+        "trackTimeShare",
+        "detectionLocks",
+        "firstStepLatency",
+        "detectionOutcomes",
+        "trackFramesWithDetectionInFlight",
+        "frameMs",
+        "unlockedResidualMs",
+        "detectionTime",
+        "detectionAccounting",
+        "detectionUseFallbackFrames",
+    ];
+    const withoutNew = (s) => Object.fromEntries(Object.entries(s).filter(([k]) => !NEW_KEYS.includes(k)));
+
     it("reads the tracking step's timings on TRACK frames only", () => {
         const s = summarizeRun(window);
         expect(s.trackStepMs).toEqual({ n: 3, min: 10, p50: 12, p95: 14, max: 14 });
@@ -628,9 +1577,321 @@ describe("summarizeRun", () => {
     it("defines every metric it reports, once, in DEFINITIONS", () => {
         for (const key of Object.keys(summarizeRun(window)))
             expect(DEFINITIONS, key).toHaveProperty(key);
-        for (const key of ["corners", "alignment"]) expect(DEFINITIONS).toHaveProperty(key);
+        for (const key of ["corners", "alignment", "detectionPath", "detectionUse"])
+            expect(DEFINITIONS).toHaveProperty(key);
+        // The same keys whatever the options, and each new one is defined.
+        const full = summarizeRun(window, {
+            clipDurationS: 1,
+            loops: { firstLoop: 0, loopCount: 1 },
+            accounting: { requests: 0, posted: 0, consumptions: 0, ignored: 0, dropped: 0, discardedAtStop: 0 },
+        });
+        expect(Object.keys(full)).toEqual(Object.keys(summarizeRun(window)));
+        for (const key of NEW_KEYS) expect(DEFINITIONS, key).toHaveProperty(key);
         expect(Object.isFrozen(DEFINITIONS)).toBe(true);
         expect(METRICS_VERSION).toBe(1);
+    });
+
+    it("leaves every existing summary key unchanged when no options are given", () => {
+        expect(withoutNew(summarizeRun(window))).toEqual({
+            frames: 5,
+            states: { LOST: 0, DETECT: 2, TRACK: 3 },
+            trackShare: 0.6,
+            reacquisitions: 1,
+            reacquisitionsAtLoopWrap: 0,
+            loopWraps: 0,
+            lockLosses: { "too-few-patches": 1 },
+            firstSteps: { n: 2, confirmed: 2 },
+            heldLockSteps: { n: 2, lost: 1, lostAtLoopWrap: 0 },
+            trackStepMs: { n: 3, min: 10, p50: 12, p95: 14, max: 14 },
+            pyramidMs: { n: 3, min: 0, p50: 0, p95: 0, max: 0 },
+            alignMs: { n: 3, min: 9.7, p50: 11.7, p95: 13.7, max: 13.7 },
+            fitMs: { n: 3, min: 0.1, p50: 0.1, p95: 0.1, max: 0.1 },
+            frameLevels: { 1: 2, 2: 1 },
+            fits: {
+                n: 3,
+                capped: 1,
+                iterations: { n: 3, min: 3, p50: 3, p95: 20, max: 20 },
+            },
+            quality: { n: 3, min: 0.15, p50: 0.88, p95: 0.88, max: 0.88 },
+            trackedPatches: { n: 3, min: 57, p50: 57, p95: 57, max: 57 },
+            lowQualityTrackFrames: 1,
+            posedFrames: 5,
+            jitterWindows: 1,
+            jitterPx: 0,
+            spreadPx: 0,
+        });
+        // What the new keys are with nothing to read them from: absent, or empty.
+        const s = summarizeRun(window);
+        expect(s.trackTimeShare).toBeNull();
+        expect(s.detectionAccounting).toBeNull();
+        expect(s.detectionTime.offLoop.workerMs).toEqual(stats([]));
+        expect(s.detectionTime.postToArrivalMs).toEqual(stats([]));
+    });
+
+    it("leaves every existing summary key as the committed exports recorded it, when no options are given", () => {
+        const dir = fileURLToPath(new URL("../../docs/benchmarks/", import.meta.url));
+        for (const clip of ["wall", "table"]) {
+            const e = JSON.parse(
+                readFileSync(`${dir}2026-09-29-tab9-tuning-r2-p48-s16-${clip}.json`, "utf8"),
+            );
+            const summary = JSON.parse(JSON.stringify(summarizeRun(e.frames)));
+            expect(withoutNew(summary), clip).toEqual(e.runSummary);
+        }
+    });
+
+    it("reads every summary metric over the counted loops, and the lock over whole loops, when loops are given", () => {
+        const D = 1;
+        const loops = { firstLoop: 1, loopCount: 4 };
+        const stepped = { frameLevels: 1, inliers: 20, fitIterations: 3, fitConverged: true };
+        const rec = (state, mediaTimeSeconds, timestampMs, o = {}) => ({
+            state,
+            ok: state !== "LOST",
+            reason: null,
+            mediaTimeSeconds,
+            timestampMs,
+            timings: { total: state === "TRACK" ? 50 : 100, detect: state === "TRACK" ? 0 : 30 },
+            quality: state === "TRACK" ? 0.5 : null,
+            trackLoss: null,
+            tracking: state === "TRACK" ? stepped : null,
+            trackerTimings: null,
+            corners: null,
+            detectionUse: state === "TRACK" ? "none" : "internal",
+            detectionInFlight: false,
+            ...o,
+        });
+        // A 1 s clip: the run's unwrapped time is `loop + media time`. Loop 0 is the warm-up,
+        // loops 1 to 4 are counted, and the last frame, in loop 5, closes loop 4.
+        const run = [
+            rec("DETECT", 0.25, 0), //                    0: warm-up, a lock nobody counts
+            rec("TRACK", 0.5, 100), //                    1
+            rec("TRACK", 0.75, 200), //                   2
+            rec("TRACK", 0.25, 300), //                   3: loop 1
+            rec("TRACK", 0.5, 400), //                    4
+            rec("DETECT", 0.75, 500, { tracking: stepped, trackLoss: "too-few-patches" }), // 5: lock A
+            rec("TRACK", 0.25, 600), //                   6: loop 2, A's first step
+            rec("TRACK", 0.5, 700), //                    7
+            rec("TRACK", 0.75, 800), //                   8
+            rec("LOST", 0.25, 900, {
+                reason: "too-few-matches", //             9: loop 3
+                tracking: stepped,
+                trackLoss: "poor-fit",
+            }),
+            rec("DETECT", 0.5, 1000), //                  10: lock B
+            rec("TRACK", 0.75, 1100), //                  11: B's first step
+            rec("TRACK", 0.25, 1200), //                  12: loop 4
+            rec("TRACK", 0.375, 1250), //                 13: a frame inside a stretch of TRACK
+            rec("TRACK", 0.5, 1300), //                   14
+            rec("TRACK", 0.75, 1400), //                  15
+            rec("TRACK", 0.25, 1500), //                  16: loop 5
+        ];
+        const job = (frameTimestampMs, workerTotal, handlerMs) => ({
+            frameTimestampMs,
+            postedAtMs: frameTimestampMs + 5,
+            arrivedAtMs: frameTimestampMs + 5 + workerTotal + 10, // 10 ms of transfer on top
+            handlerMs,
+            workerMs: { total: workerTotal },
+        });
+        // One posted in the warm-up, two in the counted loops.
+        const jobs = [job(0, 70, 0.5), job(500, 60, 0.25), job(1000, 80, 0.25)];
+        const accounting = { requests: 5, posted: 3, consumptions: 3, ignored: 0, dropped: 2, discardedAtStop: 0 };
+        const s = summarizeRun(run, { clipDurationS: D, loops, jobs, accounting });
+
+        // Frames 3 to 15: the counted loops' 13, not the run's 17.
+        expect(s.frames).toBe(13);
+        expect(s.states).toEqual({ LOST: 1, DETECT: 2, TRACK: 10 });
+        expect(s.trackShare).toBe(10 / 13);
+        expect(s.loopWraps).toBe(3);
+        expect(s.lockLosses).toEqual({ "too-few-patches": 1, "poor-fit": 1 });
+        expect(s.detectionLocks).toEqual({
+            n: 2,
+            confirmed: 2,
+            refused: {},
+            reacquisitions: 2,
+            reacquisitionsAtLoopWrap: 0,
+        });
+        expect(s.detectionOutcomes).toEqual({
+            used: 3,
+            failed: { "too-few-matches": 1 },
+            locked: 2,
+            ignored: 0,
+        });
+        expect(s.trackFramesWithDetectionInFlight).toBe(0);
+        // Lock A: 100 ms on the clock, over a wrap of the clip (0.75 to 0.25): 500 ms of video;
+        // lock B: 100 ms, 250 ms of video.
+        expect(s.firstStepLatency.ms).toMatchObject({ n: 2, min: 100, max: 100 });
+        expect(s.firstStepLatency.videoMs).toMatchObject({ n: 2, min: 250, max: 500 });
+        expect(s.firstStepLatency.frames).toMatchObject({ n: 2, min: 1, max: 1 });
+        expect(s.frameMs.all.n).toBe(13);
+        expect(s.frameMs.track).toMatchObject({ n: 10, p50: 50 });
+        expect(s.frameMs.unlocked).toMatchObject({ n: 3, p50: 100 });
+        // The jobs posted from the counted frames, per video second of the four loops.
+        expect(s.detectionTime.offLoop.workerMs).toMatchObject({ n: 2, min: 60, max: 80 });
+        expect(s.detectionTime.offLoop.msPerVideoSecond).toBe(140 / 4);
+        expect(s.detectionTime.postToArrivalMs).toMatchObject({ n: 2, min: 70, max: 90 });
+        expect(s.detectionTime.onLoop.handlerMs).toMatchObject({ n: 2, min: 0.25, max: 0.25 });
+        // The stages of the three frames that ran the tracker's own detection, and the two handlers.
+        expect(s.detectionTime.onLoop.msPerVideoSecond).toBe(90.5 / 4);
+        expect(s.detectionTime.onLoop.share).toBeCloseTo(90.5 / 800.5, 12);
+        // The accounting covers the whole run, not the window.
+        expect(s.detectionAccounting).toEqual({ ...accounting, error: null });
+
+        // The lock is read from every frame, over loops 1 to 4 whole: TRACK for three quarters
+        // of loop 1, three quarters of loop 2, half of loop 3 and all of loop 4. The frame the
+        // lock's warm-up ends on and the frame in loop 5 are read, so the window is complete;
+        // the frame added inside loop 4's TRACK stretch moves per-frame trackShare, not this.
+        expect(s.trackTimeShare).toEqual({
+            share: 0.75,
+            perLoop: [0.75, 0.75, 0.5, 1],
+            binMs: 10,
+            loops: [1, 4],
+            complete: true,
+        });
+        expect(s.trackTimeShare).toEqual(trackTimeShare(run, { clipDurationS: D, ...loops }));
+
+        // Without the loops: every frame and every job, and no lock over whole loops.
+        const all = summarizeRun(run, { clipDurationS: D, jobs });
+        expect(all.frames).toBe(17);
+        expect(all.loopWraps).toBe(5);
+        expect(all.detectionLocks.n).toBe(3);
+        expect(all.detectionTime.offLoop.workerMs.n).toBe(3);
+        expect(all.trackTimeShare).toBeNull();
+
+        // The counted loops need the clip's duration.
+        expect(() => summarizeRun(run, { loops })).toThrow(/clipDurationS/);
+
+        // A run that stops in loop 2 covers one counted loop and part of the next: a rate over
+        // the four loops' duration would be biased low, so it has none. The complete run above
+        // keeps the rates it always had.
+        const stopped = summarizeRun(run.slice(0, 8), { clipDurationS: D, loops, jobs, accounting });
+        expect(stopped.trackTimeShare.complete).toBe(false);
+        expect(stopped.frames).toBe(5);
+        expect(stopped.detectionTime.onLoop.msPerVideoSecond).toBeNull();
+        expect(stopped.detectionTime.offLoop.msPerVideoSecond).toBeNull();
+        // One that never left the warm-up has no counted frame: no rate, where it read 0.
+        const warmUp = summarizeRun(run.slice(0, 3), { clipDurationS: D, loops, jobs, accounting });
+        expect(warmUp.frames).toBe(0);
+        expect(warmUp.detectionTime.onLoop.msPerVideoSecond).toBeNull();
+        expect(warmUp.detectionTime.offLoop.msPerVideoSecond).toBeNull();
+    });
+
+    // detectionUseOf reads a frame without detectionUse as M2's tracker did: every frame that is not
+    // TRACK detected. In a worker run that is false — a waiting frame does not detect — so the
+    // fallback must never fire there, and every summary says how often it fired.
+    describe("the fallback for frames without detectionUse", () => {
+        const dir = fileURLToPath(new URL("../../docs/benchmarks/", import.meta.url));
+        const rec = (state, detectionUse, mediaTimeSeconds) => ({
+            state,
+            ok: state !== "LOST",
+            reason: state === "LOST" ? "no-detection" : null,
+            mediaTimeSeconds,
+            timestampMs: mediaTimeSeconds * 1000,
+            timings: { total: 30, acquire: 28, gray: 1 },
+            quality: null,
+            trackLoss: null,
+            tracking: null,
+            trackerTimings: null,
+            corners: null,
+            detectionInFlight: false,
+            detectedAt: null,
+            ...(detectionUse === undefined ? {} : { detectionUse }),
+        });
+        const current = [rec("LOST", "none", 0), rec("LOST", "none", 0.04), rec("DETECT", "consumed", 0.08)];
+
+        it("refuses a worker run's frame that lacks detectionUse, in one line", () => {
+            const lacking = [current[0], rec("LOST", undefined, 0.04), current[2]];
+            const read = () => summarizeRun(lacking, { path: "worker" });
+            expect(read).toThrow(/^summarizeRun: frame 1 of a worker run \(media time 0\.04 s\) has no detectionUse/);
+            let message = "";
+            try {
+                read();
+            } catch (e) {
+                message = e.message;
+            }
+            expect(message).not.toMatch(/\n/);
+            // null reads as absent, as the fallback reads it.
+            const nulled = [current[0], rec("LOST", null, 0.04), current[2]];
+            expect(() => summarizeRun(nulled, { path: "worker" })).toThrow(/frame 1 of a worker run/);
+            // The same frames summarized as a synchronous run's, or with no path given, are read.
+            expect(summarizeRun(lacking, { path: "sync" }).detectionUseFallbackFrames).toBe(1);
+            expect(summarizeRun(lacking).detectionUseFallbackFrames).toBe(1);
+        });
+
+        it("counts the frames an older export's synchronous summary reads by the fallback", () => {
+            const e = JSON.parse(
+                readFileSync(`${dir}2026-09-29-tab9-tuning-r2-p48-s16-wall.json`, "utf8"),
+            );
+            expect(e.frames[0].detectionUse).toBeUndefined();
+            expect(summarizeRun(e.frames, { path: "sync" }).detectionUseFallbackFrames).toBe(
+                e.frames.length,
+            );
+        });
+
+        it("counts none in a current export, of either path", () => {
+            expect(summarizeRun(current, { path: "worker" }).detectionUseFallbackFrames).toBe(0);
+            expect(summarizeRun(current, { path: "sync" }).detectionUseFallbackFrames).toBe(0);
+            expect(summarizeRun(current).detectionUseFallbackFrames).toBe(0);
+        });
+
+        it("refuses a path that is neither sync nor worker", () => {
+            expect(() => summarizeRun(current, { path: "gpu" })).toThrow(/path/);
+        });
+    });
+
+    // A summary of a window smaller than the run read every job of the run against the window's
+    // frames: a detection posted from a frame the window no longer holds was in its latency.
+    it("reads only the jobs posted from the frames it summarizes, with or without loops", () => {
+        const rec = (timestampMs) => ({
+            state: "LOST",
+            ok: false,
+            reason: "no-detection",
+            timestampMs,
+            mediaTimeSeconds: timestampMs / 1000,
+            timings: { total: 30, acquire: 28, gray: 1.5 },
+            quality: null,
+            trackLoss: null,
+            tracking: null,
+            trackerTimings: null,
+            corners: null,
+            detectionUse: "none",
+            detectionInFlight: false,
+            detectedAt: null,
+        });
+        // The window: the run's last three frames. One job was posted from a frame before it.
+        const windowFrames = [rec(1000), rec(1100), rec(1200)];
+        const job = (frameTimestampMs, workerTotal, handlerMs) => ({
+            frameTimestampMs,
+            postedAtMs: frameTimestampMs + 5,
+            arrivedAtMs: frameTimestampMs + 5 + workerTotal + 10,
+            handlerMs,
+            workerMs: { total: workerTotal },
+        });
+        const jobs = [job(500, 70, 0.5), job(1100, 80, 0.25)];
+        const t = summarizeRun(windowFrames, { jobs }).detectionTime;
+        expect(t.offLoop.workerMs).toEqual(stats([80]));
+        expect(t.onLoop.handlerMs).toEqual(stats([0.25]));
+        expect(t.postToArrivalMs).toEqual(stats([90]));
+    });
+
+    it("carries the accounting and its error in the summary", () => {
+        const balanced = {
+            requests: 5,
+            posted: 4,
+            consumptions: 3,
+            ignored: 0,
+            dropped: 1,
+            discardedAtStop: 1,
+        };
+        expect(summarizeRun(window, { accounting: balanced }).detectionAccounting).toEqual({
+            ...balanced,
+            error: null,
+        });
+        const unbalanced = { ...balanced, dropped: 0 };
+        const reported = summarizeRun(window, { accounting: unbalanced }).detectionAccounting;
+        expect(reported).toMatchObject(unbalanced);
+        expect(reported.error).toBe(accountingError(unbalanced));
+        expect(reported.error).toMatch(/does not balance/);
+        // A run that gave none has none.
+        expect(summarizeRun(window).detectionAccounting).toBeNull();
     });
 });
 
@@ -656,8 +1917,46 @@ describe("parsePositiveInt and parseRunParams", () => {
             clip: null,
             targetFile: null,
             trackerOverrides: {},
+            detection: "sync",
+            loops: null,
+            run: null,
             paramErrors: [],
         });
+    });
+
+    it("reads the detection path, the loops a run lasts and its place in the session", () => {
+        expect(DETECTION_PATHS).toEqual(["sync", "worker"]);
+        expect(Object.isFrozen(DETECTION_PATHS)).toBe(true);
+        const p = parseRunParams("?mode=tracking&detection=worker&loops=4&run=3", {
+            bundledClips: clips,
+        });
+        expect(p).toMatchObject({ detection: "worker", loops: 4, run: 3, paramErrors: [] });
+        const sync = parseRunParams("?detection=sync", { bundledClips: clips });
+        expect(sync).toMatchObject({ detection: "sync", paramErrors: [] });
+    });
+
+    it("refuses, rather than drops, a detection path or a loops or run it cannot read", () => {
+        // The same reason as the tuning parameters: a run that fell back to sync
+        // under a URL that asked for the worker would be exported as what it was not.
+        const gpu = parseRunParams("?detection=gpu", { bundledClips: clips });
+        expect(gpu.detection).toBe("sync");
+        expect(gpu.paramErrors).toHaveLength(1);
+        expect(gpu.paramErrors[0]).toMatch(/\?detection=gpu: expected sync or worker/);
+        expect(parseRunParams("?detection=", { bundledClips: clips }).paramErrors).toHaveLength(1);
+
+        for (const [query, key] of [
+            ["?loops=0", "loops"],
+            ["?loops=abc", "loops"],
+            ["?loops=", "loops"],
+            ["?run=-2", "run"],
+            ["?run=x", "run"],
+        ]) {
+            const p = parseRunParams(query, { bundledClips: clips });
+            expect(p[key], query).toBeNull();
+            expect(p.paramErrors, query).toHaveLength(1);
+            expect(p.paramErrors[0], query).toMatch(new RegExp(`\\?${key}=`));
+            expect(p.paramErrors[0], query).not.toMatch(/\n/);
+        }
     });
 
     it("reads a candidate target under targets/tuning/ and tracker overrides", () => {
@@ -836,6 +2135,124 @@ describe("startRefusal names the target file it was given", () => {
         expect(startRefusal({ mode: "tracking", target: null, minTrackedPatches: 8 })).toMatch(
             /targets\/pinball\.wnft is not loaded/,
         );
+    });
+});
+
+describe("startRefusal and the detection worker", () => {
+    const wnft = { db: { patches: { count: 64, patchSize: 16 } }, record: { source: "wnft" } };
+    const image = { db: { patches: { count: 64, patchSize: 16 } }, record: { source: "image" } };
+    const worker = { detection: "worker", source: "bundled", loops: 4 };
+
+    it("starts the worker in tracking mode on the .wnft target and a bundled clip", () => {
+        expect(startRefusal({ mode: "tracking", target: wnft, minTrackedPatches: 8, ...worker }))
+            .toBeNull();
+    });
+
+    it.each([
+        [
+            "a mode other than tracking",
+            { mode: "detection-only", target: wnft },
+            /^\?detection=worker runs in tracking mode only\.$/,
+        ],
+        [
+            "the stateless mode",
+            { mode: "stateless", target: wnft },
+            /^\?detection=worker runs in tracking mode only\.$/,
+        ],
+        [
+            "a target that is not the .wnft",
+            { mode: "tracking", target: image },
+            /^\?detection=worker needs the \.wnft target: the worker decodes its bytes\.$/,
+        ],
+        [
+            "loops on the webcam",
+            { mode: "tracking", target: wnft, detection: "sync", source: "webcam", loops: 4 },
+            /^\?loops= needs a looping clip, not the webcam\.$/,
+        ],
+    ])("refuses %s, in one line", (_, args, expected) => {
+        const message = startRefusal({ minTrackedPatches: 8, ...worker, ...args });
+        expect(message).toMatch(expected);
+        expect(message).not.toMatch(/\n/);
+    });
+
+    it("leaves the other paths alone: no new argument, no new refusal", () => {
+        expect(startRefusal({ mode: "tracking", target: wnft, minTrackedPatches: 8 })).toBeNull();
+        expect(
+            startRefusal({ mode: "detection-only", target: image, minTrackedPatches: 8 }),
+        ).toBeNull();
+        // The webcam is fine without loops.
+        expect(
+            startRefusal({ mode: "tracking", target: wnft, minTrackedPatches: 8, source: "webcam" }),
+        ).toBeNull();
+    });
+});
+
+describe("accountingError", () => {
+    const balanced = {
+        requests: 41,
+        posted: 31,
+        consumptions: 30,
+        ignored: 0,
+        dropped: 10,
+        discardedAtStop: 1,
+    };
+
+    it("accepts a run whose every request ended in one consumption, a drop or Stop", () => {
+        expect(accountingError(balanced)).toBeNull();
+        expect(
+            accountingError({
+                requests: 0,
+                posted: 0,
+                consumptions: 0,
+                ignored: 0,
+                dropped: 0,
+                discardedAtStop: 0,
+            }),
+        ).toBeNull();
+    });
+
+    it("names the counts of a run that does not balance", () => {
+        for (const broken of [
+            { ...balanced, requests: 42 },
+            { ...balanced, consumptions: 29 },
+            { ...balanced, dropped: 11 },
+            { ...balanced, discardedAtStop: 0 },
+        ]) {
+            const message = accountingError(broken);
+            expect(message).toMatch(/does not balance/);
+            expect(message).toBe(
+                `detection accounting does not balance: requests ${broken.requests} ≠ consumptions ${broken.consumptions} + dropped ${broken.dropped} + discardedAtStop ${broken.discardedAtStop}`,
+            );
+        }
+    });
+
+    it("refuses a detection handed in while a lock held, however the rest balances", () => {
+        expect(accountingError({ ...balanced, ignored: 1 })).toMatch(/ignored/);
+        expect(accountingError({ ...balanced, ignored: 2 })).toBe(
+            "2 detections were handed in while a lock held (ignored), where the policy allows none",
+        );
+        expect(accountingError({ ...balanced, ignored: 1 })).toMatch(/^1 detection was handed in/);
+    });
+
+    it.each([
+        ["a negative count", { ...balanced, dropped: -1 }],
+        ["a fractional count", { ...balanced, consumptions: 1.5 }],
+        ["an infinite count", { ...balanced, requests: Infinity }],
+        ["a text count", { ...balanced, posted: "31" }],
+        ["a missing count", { requests: 1 }],
+        ["no accounting at all", undefined],
+    ])("refuses %s as not a whole number", (_, acc) => {
+        expect(accountingError(acc)).toMatch(/whole number/);
+    });
+
+    it("says it in one line, whatever is wrong", () => {
+        for (const acc of [
+            { ...balanced, requests: 42 },
+            { ...balanced, ignored: 3 },
+            { ...balanced, dropped: -1 },
+            null,
+        ])
+            expect(accountingError(acc)).not.toMatch(/\n/);
     });
 });
 
@@ -1045,6 +2462,16 @@ describe("the review's fixes", () => {
             expect(sequenceRefusal(e(), expected)).toBeNull();
         });
 
+        // A worker run's frames wait for detections the sequence replay never
+        // hands in: it would answer them `no-detection`, on a lock the device
+        // took.
+        it("refuses to replay a worker run's frames as a sequence", () => {
+            const r = sequenceRefusal(e({ detection: { path: "worker" } }), expected);
+            expect(r).toMatch(/worker/);
+            expect(r).not.toMatch(/\n/);
+            expect(sequenceRefusal(e({ detection: { path: "sync" } }), expected)).toBeNull();
+        });
+
         it("replays with the export's own processing box and tracker options, not the defaults", () => {
             const settings = sequenceSettings(e());
             expect(settings).toEqual({
@@ -1081,6 +2508,558 @@ describe("the review's fixes", () => {
             ["a p50 is 0", { n: 200, p50: 14 }, { n: 200, p50: 0 }],
         ])("is null, not 0 or Infinity, when %s", (_, device, here) => {
             expect(proxyRatio(device, here)).toBeNull();
+        });
+    });
+});
+
+describe("sessionRunGaps: what keeps an export from being a session run", () => {
+    // The page's defaults, as the page passes them: test values here, each tunable option given
+    // one, so an override of any of them shows.
+    const DEFAULTS = Object.freeze({
+        targetFile: "targets/pinball.wnft",
+        processingBox: { width: 480, height: 360 },
+        maxKeypoints: 300,
+        trackerOptions: Object.fromEntries(TUNABLE_TRACKER_OPTIONS.map((k, i) => [k, i + 1])),
+    });
+    const BALANCED = { requests: 4, posted: 3, consumptions: 2, ignored: 0, dropped: 1, discardedAtStop: 1 };
+    // A worker run of the session: every field the protocol reads, at what it asks.
+    const sessionExport = (o = {}) => ({
+        mode: "tracking",
+        source: "bundled",
+        bundledClip: "pinball-bench.mp4",
+        loops: { firstLoop: 1, loopCount: 4 },
+        run: {
+            order: 2,
+            startedAtIso: "2026-10-01T10:00:00.000Z",
+            endedAtIso: "2026-10-01T10:01:00.000Z",
+            endedBy: "done",
+        },
+        ticks: 1512,
+        windowSize: 1512,
+        runSummary: { trackTimeShare: { share: 0.4, perLoop: [0.4, 0.4, 0.4, 0.4], complete: true } },
+        detection: { path: "worker", accounting: { ...BALANCED } },
+        target: { source: "wnft", file: "targets/pinball.wnft", sha256: "9e8eb486" },
+        tracker: {
+            detectionOnly: false,
+            options: { detectionOnly: false, externalDetection: true, ...DEFAULTS.trackerOptions },
+        },
+        maxKeypoints: 300,
+        processingBox: { width: 480, height: 360 },
+        ...o,
+    });
+    const syncExport = (o = {}) =>
+        sessionExport({ detection: { path: "sync", accounting: null }, ...o });
+    const statelessExport = (o = {}) =>
+        sessionExport({
+            mode: "stateless",
+            tracker: null,
+            detection: { path: "sync", accounting: null },
+            runSummary: { trackTimeShare: { share: 0, complete: true } },
+            ...o,
+        });
+
+    it("finds none in a session's worker, synchronous and stateless runs", () => {
+        expect(sessionRunGaps(sessionExport(), DEFAULTS)).toEqual([]);
+        expect(sessionRunGaps(syncExport(), DEFAULTS)).toEqual([]);
+        expect(sessionRunGaps(statelessExport(), DEFAULTS)).toEqual([]);
+        // A stateless run has no lock to read over whole loops.
+        const unlocked = { trackTimeShare: { share: null, complete: false } };
+        expect(sessionRunGaps(statelessExport({ runSummary: unlocked }), DEFAULTS)).toEqual([]);
+    });
+
+    const run = (o) => ({ ...sessionExport().run, ...o });
+    const options = (o) => ({ ...sessionExport().tracker, options: { ...sessionExport().tracker.options, ...o } });
+    it.each([
+        ["a detection-only run", { mode: "detection-only" }, /^mode detection-only: /],
+        ["a webcam run", { source: "webcam", bundledClip: null }, /^source webcam: /],
+        ["a bundled run that names no clip", { bundledClip: null }, /^source bundled.*no clip/],
+        ["a run with no counted loops", { loops: null }, /^loops none: .*\?loops=4/],
+        ["a run of one counted loop", { loops: { firstLoop: 1, loopCount: 1 } }, /^loops 1–1: /],
+        ["a run with no place in the order", { run: run({ order: null }) }, /^run\.order none: .*\?run=/],
+        ["a run whose order is not a positive integer", { run: run({ order: 0 }) }, /^run\.order 0: /],
+        ["a run stopped by hand", { run: run({ endedBy: "stopped" }) }, /^run\.endedBy stopped: /],
+        ["a run that failed", { run: run({ endedBy: "failed" }) }, /^run\.endedBy failed: /],
+        ["an export that says nothing of its end", { run: run({ endedBy: undefined }) }, /^run\.endedBy none: /],
+        ["a window that lost frames", { windowSize: 1200 }, /^the window kept 1200 of 1512 frames: /],
+        // Review I2: both fields absent compared equal, and passed.
+        [
+            "an export that records neither ticks nor windowSize",
+            { ticks: undefined, windowSize: undefined },
+            /^the window kept none of none frames: /,
+        ],
+        [
+            "an export whose ticks are not a whole number",
+            { ticks: 1512.5, windowSize: 1512.5 },
+            /^the window kept 1512\.5 of 1512\.5 frames: /,
+        ],
+        // Review M2: an export with no detection record was read as a synchronous one's, so a
+        // worker export missing it skipped the accounting.
+        ["an export that records no detection path", { detection: undefined }, /^detection\.path none: /],
+        [
+            "an export whose detection path is neither sync nor worker",
+            { detection: { path: "gpu", accounting: null } },
+            /^detection\.path gpu: /,
+        ],
+        [
+            "a tracking run whose lock was not read over whole loops",
+            { runSummary: { trackTimeShare: { share: null, complete: false } } },
+            /^trackTimeShare is not complete: /,
+        ],
+        [
+            "a worker run whose accounting does not balance",
+            { detection: { path: "worker", accounting: { ...BALANCED, requests: 5 } } },
+            /does not balance: requests 5/,
+        ],
+        [
+            "a worker run with no accounting",
+            { detection: { path: "worker", accounting: null } },
+            /^detection accounting none: /,
+        ],
+        [
+            "a candidate target (?targetFile=)",
+            { target: { source: "wnft", file: "targets/tuning/p32-s16.wnft" } },
+            /^target targets\/tuning\/p32-s16\.wnft: .*targets\/pinball\.wnft/,
+        ],
+        [
+            "the image target built in the page",
+            { target: { source: "image", file: "images/pinball.jpg" } },
+            /^target images\/pinball\.jpg: /,
+        ],
+        [
+            "a tracker option override (?tracker=)",
+            { tracker: options({ minTrackedPatches: 42 }) },
+            /^tracker option minTrackedPatches 42, not its default 8: /,
+        ],
+        ["a tracking run with no tracker options", { tracker: null }, /^tracker options none: /],
+        ["another scene keypoint budget", { maxKeypoints: 150 }, /^maxKeypoints 150, not the page's default 300/],
+        [
+            "another processing box",
+            { processingBox: { width: 360, height: 360 } },
+            /^processingBox 360×360, not the page's default 480×360/,
+        ],
+        // An export that records none of these is a gap, never a pass.
+        ["an export that records no target", { target: undefined }, /^target none: /],
+        ["an export that records no scene keypoint budget", { maxKeypoints: undefined }, /^maxKeypoints none, /],
+        ["an export that records no processing box", { processingBox: undefined }, /^processingBox none, /],
+    ])("names %s, and only that, in one line", (_, o, why) => {
+        const gaps = sessionRunGaps(sessionExport(o), DEFAULTS);
+        expect(gaps).toHaveLength(1);
+        expect(gaps[0]).toMatch(why);
+        expect(gaps[0]).not.toMatch(/\n/);
+    });
+
+    it("names every gap of an export that has several", () => {
+        const gaps = sessionRunGaps(
+            syncExport({ run: run({ endedBy: "stopped", order: null }), maxKeypoints: 150 }),
+            DEFAULTS,
+        );
+        expect(gaps).toHaveLength(3);
+    });
+
+    // Review M2: a caller that omitted maxKeypoints passed an export that lacked it too, the two
+    // absent values comparing equal. A default the caller does not give is refused, never a pass.
+    it.each([
+        ["targetFile", { targetFile: undefined }],
+        ["processingBox", { processingBox: undefined }],
+        ["maxKeypoints", { maxKeypoints: undefined }],
+        ["trackerOptions", { trackerOptions: undefined }],
+        [
+            "trackerOptions.minPatchZncc",
+            { trackerOptions: { ...DEFAULTS.trackerOptions, minPatchZncc: undefined } },
+        ],
+    ])("refuses a caller that does not give the default %s", (name, o) => {
+        const lacking = sessionExport({ maxKeypoints: undefined, target: undefined });
+        const defaults = { ...DEFAULTS, ...o };
+        expect(() => sessionRunGaps(lacking, defaults)).toThrow(TypeError);
+        expect(() => sessionRunGaps(lacking, defaults)).toThrow(
+            new RegExp(`needs the page's defaults: ${name.replace(".", "\\.")} missing`),
+        );
+        expect(() => sessionRunGaps(sessionExport(), undefined)).toThrow(TypeError);
+    });
+});
+
+describe("transferPlan: what --transfer reads from a session's page exports", () => {
+    const CLIPS = ["pinball-static.mp4", "pinball-bench.mp4", "pinball-bench-table.mp4"];
+    const SHA = "ab";
+    const frame = (state, timings, o = {}) => ({ state, ok: state !== "LOST", timings, ...o });
+    // What the page records of a run that followed the session's protocol (sessionRunGaps).
+    const SESSION_RUN = Object.freeze({ sessionRun: true, gaps: [] });
+    const pageExport = (path, frames, o = {}) => ({
+        mode: "tracking",
+        source: "bundled",
+        bundledClip: "pinball-bench.mp4",
+        target: { sha256: SHA },
+        protocol: SESSION_RUN,
+        ...(path === null ? {} : { detection: { path, jobs: [] } }),
+        frames,
+        ...o,
+    });
+    const track = (trackMs) =>
+        frame("TRACK", { acquire: 18, gray: 2 }, { detectionUse: "none", trackerTimings: { trackMs } });
+
+    // Two detections on the frame loop, 69 and 80 ms of pipeline; two unlocked frames, 22 and 26
+    // ms of acquisition; two steps, 5 and 7 ms.
+    const syncFrames = () => [
+        frame(
+            "DETECT",
+            { acquire: 20, gray: 2, detect: 7, describe: 10, match: 50, estimateHomography: 2, pose: 9 },
+            { detectionUse: "internal" },
+        ),
+        track(5),
+        frame(
+            "LOST",
+            { acquire: 24, gray: 2, detect: 6, describe: 10, match: 60, filterMatches: 1, estimateHomography: 3 },
+            { detectionUse: "internal" },
+        ),
+        track(7),
+        // No tracker timings: not a sample of the step.
+        frame("TRACK", { acquire: 18, gray: 2 }, { detectionUse: "none" }),
+    ];
+
+    // A worker run's accounting that balances: 4 requests = 2 consumed + 1 dropped + 1 discarded.
+    const BALANCED = Object.freeze({
+        requests: 4,
+        posted: 3,
+        consumptions: 2,
+        ignored: 0,
+        dropped: 1,
+        discardedAtStop: 1,
+    });
+
+    // Two jobs that came back, 75 and 110 ms after their posts, and one that never did; two
+    // unlocked frames, one of which consumed a detection, 32 and 36 ms of acquisition; three steps.
+    const workerExport = (o = {}) =>
+        pageExport(
+            "worker",
+            [
+                frame("LOST", { acquire: 30, gray: 2 }, { detectionUse: "none" }),
+                frame("LOST", { acquire: 34, gray: 2 }, { detectionUse: "consumed" }),
+                track(4),
+                track(6),
+                track(8),
+            ],
+            {
+                detection: {
+                    path: "worker",
+                    jobs: [
+                        { postedAtMs: 100, arrivedAtMs: 175 },
+                        { postedAtMs: 500, arrivedAtMs: null },
+                        { postedAtMs: 900, arrivedAtMs: 1010 },
+                    ],
+                    accounting: { ...BALANCED },
+                },
+                ...o,
+            },
+        );
+    // The fixture's worker export with its detection record's `accounting` replaced.
+    const withAccounting = (accounting) =>
+        workerExport({ detection: { ...workerExport().detection, accounting } });
+
+    const plan = (exports, sha256 = SHA) =>
+        transferPlan(
+            exports.map((e, i) => ({ name: `export-${i}.json`, e })),
+            { clips: CLIPS, sha256 },
+        );
+
+    it("reads each mode's latency samples, acquisition and step from its exports", () => {
+        const p = plan([workerExport(), pageExport("sync", syncFrames())]);
+        expect(p.refusal).toBeNull();
+        expect(p.skipped).toEqual([]);
+        expect(p.clips.map((c) => c.clip)).toEqual(["pinball-bench.mp4"]);
+        const { sync, worker } = p.clips[0];
+
+        // The worker's: arrival minus post, over the jobs that came back.
+        expect(worker.latencyMs).toEqual([75, 110]);
+        expect(worker.latency).toEqual(stats([75, 110]));
+        // The synchronous mode's: the stages' sum on the frames that ran the tracker's own
+        // detection, filterMatches when there is one, and not the pose.
+        expect(sync.latencyMs).toEqual([69, 80]);
+        // acquire + gray on the unlocked frames, a frame that consumed a detection among them.
+        expect(worker.acquireMs).toBe(36);
+        expect(sync.acquireMs).toBe(26);
+        // trackerTimings.trackMs on the TRACK frames that have it, p50 as trackStepMs is.
+        expect(worker.stepMs).toBe(6);
+        expect(sync.stepMs).toBe(7);
+        expect(worker.path).toBe("worker");
+        expect(sync.path).toBe("sync");
+    });
+
+    it("pools a mode's exports of a clip, and names the files it read", () => {
+        const second = pageExport("sync", [
+            frame(
+                "DETECT",
+                { acquire: 40, gray: 2, detect: 8, describe: 11, match: 70, estimateHomography: 1 },
+                { detectionUse: "internal" },
+            ),
+            track(9),
+        ]);
+        const p = plan([workerExport(), pageExport("sync", syncFrames()), second]);
+        const sync = p.clips[0].sync;
+        expect(sync.latencyMs).toEqual([69, 80, 90]);
+        expect(sync.acquireMs).toBe(26); // 22, 26, 42
+        expect(sync.stepMs).toBe(7); // 5, 7, 9
+        expect(sync.files).toEqual(["export-1.json", "export-2.json"]);
+        expect(p.clips[0].worker.files).toEqual(["export-0.json"]);
+    });
+
+    it("reads an export with no detection record as a synchronous run's, on M2's rule", () => {
+        // Older than the worker path: no `detection`, and no `detectionUse` on its frames, so it
+        // detected on every frame that is not TRACK.
+        const older = pageExport(
+            null,
+            syncFrames().map(({ detectionUse, ...rest }) => rest),
+            { protocol: undefined },
+        );
+        expect(exportDetectionPath(older)).toBe("sync");
+        expect(exportDetectionPath(workerExport())).toBe("worker");
+        // Older than the protocol record too, so no session's: it is refused (below). Given one,
+        // its frames are read on M2's rule.
+        const p = plan([workerExport(), { ...older, protocol: SESSION_RUN }]);
+        expect(p.refusal).toBeNull();
+        expect(p.clips[0].sync.latencyMs).toEqual([69, 80]);
+    });
+
+    it("groups by clip, and leaves out a clip with no exports", () => {
+        const table = (path, frames, o = {}) =>
+            pageExport(path, frames, { bundledClip: "pinball-bench-table.mp4", ...o });
+        const p = plan([
+            table("sync", syncFrames()),
+            workerExport(),
+            table("worker", workerExport().frames, { detection: workerExport().detection }),
+            pageExport("sync", syncFrames()),
+        ]);
+        expect(p.refusal).toBeNull();
+        // In the order of the clips given, not of the files.
+        expect(p.clips.map((c) => c.clip)).toEqual(["pinball-bench.mp4", "pinball-bench-table.mp4"]);
+    });
+
+    it.each([
+        ["a stateless run", { mode: "stateless" }, /stateless run, not a tracking run/],
+        ["a detection-only run", { mode: "detection-only" }, /detection-only run/],
+        ["a webcam run", { source: "webcam", bundledClip: null }, /bundled clip/],
+        ["another clip", { bundledClip: "other.mp4" }, /bundled clip/],
+        ["a replay's export", { kind: "replay" }, /replay's export/],
+        ["an export with no frames", { frames: undefined }, /not a page export/],
+        ["an unknown detection path", { detection: { path: "gpu" } }, /neither sync nor worker/],
+    ])("skips %s, saying why, and reads no more from it", (_, o, why) => {
+        const p = plan([
+            workerExport(),
+            pageExport("sync", syncFrames()),
+            pageExport("sync", syncFrames(), o),
+        ]);
+        expect(p.refusal).toBeNull();
+        expect(p.skipped).toHaveLength(1);
+        expect(p.skipped[0].name).toBe("export-2.json");
+        expect(p.skipped[0].why).toMatch(why);
+        expect(p.skipped[0].why).not.toMatch(/\n/);
+        // Nothing of it in the profile: the two sync exports' worth is one export's.
+        expect(p.clips[0].sync.files).toEqual(["export-1.json"]);
+    });
+
+    it("skips a worker export it reads nothing from, whatever its accounting", () => {
+        // The skip rules come first: an export nothing is read from is not checked, so a replay's
+        // or a stateless run's is still a note, not a refusal.
+        const p = plan([
+            workerExport(),
+            pageExport("sync", syncFrames()),
+            { ...withAccounting(null), bundledClip: "other.mp4" },
+            { ...withAccounting({ ...BALANCED, requests: 5 }), mode: "stateless" },
+            { ...withAccounting(undefined), kind: "replay" },
+        ]);
+        expect(p.refusal).toBeNull();
+        expect(p.skipped.map((s) => s.name)).toEqual([
+            "export-2.json",
+            "export-3.json",
+            "export-4.json",
+        ]);
+    });
+
+    it("accepts a sync export with no accounting", () => {
+        // Only a worker run keeps an accounting: the page exports `accounting: null` for a
+        // synchronous one.
+        const sync = pageExport("sync", syncFrames());
+        sync.detection.accounting = null;
+        const p = plan([workerExport(), sync, pageExport("sync", syncFrames())]);
+        expect(p.refusal).toBeNull();
+        expect(p.clips[0].sync.files).toEqual(["export-1.json", "export-2.json"]);
+    });
+
+    describe("refuses, in one line, and names what it found", () => {
+        const refusal = (exports, sha256) => {
+            const r = plan(exports, sha256).refusal;
+            expect(r).not.toBeNull();
+            expect(r).not.toMatch(/\n/);
+            return r;
+        };
+
+        it("refuses a clip with exports of one path only", () => {
+            const r = refusal([pageExport("sync", syncFrames()), pageExport("sync", syncFrames())]);
+            expect(r).toMatch(/no worker and sync exports/);
+            expect(r).toMatch(/pinball-bench\.mp4/);
+            expect(r).toMatch(/worker 0, sync 2/);
+            expect(refusal([workerExport()])).toMatch(/worker 1, sync 0/);
+        });
+
+        it("refuses a directory with no export of any clip, though it read files", () => {
+            expect(refusal([])).toMatch(/no worker and sync exports/);
+            expect(refusal([pageExport("sync", [], { mode: "stateless" })])).toMatch(
+                /no worker and sync exports/,
+            );
+        });
+
+        it("refuses a clip whose export names another target, by file and by sha256", () => {
+            const r = refusal([
+                workerExport(),
+                pageExport("sync", syncFrames(), { target: { sha256: "cd" } }),
+            ]);
+            expect(r).toMatch(/pinball-bench\.mp4/);
+            expect(r).toMatch(/export-1\.json/);
+            expect(r).toMatch(/sha256 cd/);
+            expect(r).toMatch(/not ab/);
+            // An older export records no target at all.
+            expect(
+                refusal([workerExport(), pageExport("sync", syncFrames(), { target: undefined })]),
+            ).toMatch(/sha256 \(none\)/);
+        });
+
+        it("reads a clip's paths before its targets", () => {
+            // Both faults: the missing path is the one named.
+            const r = refusal([pageExport("sync", syncFrames(), { target: { sha256: "cd" } })]);
+            expect(r).toMatch(/no worker and sync exports/);
+        });
+
+        // Spec: "bench-metrics.mjs checks them again on reading an export". A session holding an
+        // invalid run is an invalid session, not a directory with a file to skip.
+        it.each([
+            [
+                "does not balance",
+                { ...BALANCED, requests: 5 },
+                /does not balance: requests 5 ≠ consumptions 2 \+ dropped 1 \+ discardedAtStop 1/,
+            ],
+            ["has an ignored detection", { ...BALANCED, ignored: 1 }, /handed in while a lock held/],
+            [
+                "has a count that is not a whole number",
+                { ...BALANCED, dropped: -1 },
+                /dropped is -1, not a whole number/,
+            ],
+        ])(
+            "refuses a worker export whose accounting %s, naming the file and accountingError's line",
+            (_, accounting, why) => {
+                const r = refusal([withAccounting(accounting), pageExport("sync", syncFrames())]);
+                expect(r).toMatch(/pinball-bench\.mp4/);
+                expect(r).toMatch(/export-0\.json/);
+                expect(r).toContain(accountingError(accounting));
+                expect(r).toMatch(why);
+            },
+        );
+
+        it("refuses a worker export with no accounting", () => {
+            for (const none of [undefined, null]) {
+                const r = refusal([withAccounting(none), pageExport("sync", syncFrames())]);
+                expect(r, String(none)).toMatch(/pinball-bench\.mp4/);
+                expect(r, String(none)).toMatch(/export-0\.json/);
+                expect(r, String(none)).toMatch(/no detection accounting/);
+            }
+        });
+
+        it("reads a clip's targets before a worker export's accounting", () => {
+            // Both faults: the other target is the one named.
+            const r = refusal([
+                withAccounting({ ...BALANCED, requests: 5 }),
+                pageExport("sync", syncFrames(), { target: { sha256: "cd" } }),
+            ]);
+            expect(r).toMatch(/sha256 cd/);
+        });
+
+        // A session's runs are read, and only those: an export the page did not record as a
+        // session run, of either path, is refused with the gaps the page recorded.
+        it.each(["worker", "sync"])(
+            "refuses a %s export that is not a session run, naming the file and its gaps",
+            (path) => {
+                const notSession = {
+                    sessionRun: false,
+                    gaps: ["run.endedBy stopped: by hand", "maxKeypoints 150, not the default"],
+                };
+                const worker = workerExport(path === "worker" ? { protocol: notSession } : {});
+                const sync = pageExport(
+                    "sync",
+                    syncFrames(),
+                    path === "sync" ? { protocol: notSession } : {},
+                );
+                const r = refusal([worker, sync]);
+                expect(r).toMatch(/pinball-bench\.mp4/);
+                expect(r).toMatch(path === "worker" ? /export-0\.json/ : /export-1\.json/);
+                expect(r).toMatch(
+                    /is not a session run: run\.endedBy stopped: by hand; maxKeypoints 150, not the default$/,
+                );
+            },
+        );
+
+        it("refuses an export with no protocol record, an older one among them", () => {
+            for (const sync of [
+                pageExport("sync", syncFrames(), { protocol: undefined }),
+                pageExport(null, syncFrames().map(({ detectionUse, ...rest }) => rest), {
+                    protocol: undefined,
+                }),
+            ]) {
+                expect(refusal([workerExport(), sync])).toMatch(
+                    /export-1\.json is not a session run \(no protocol record\)$/,
+                );
+            }
+            expect(refusal([workerExport({ protocol: null }), pageExport("sync", syncFrames())])).toMatch(
+                /export-0\.json is not a session run \(no protocol record\)$/,
+            );
+        });
+
+        it("reads a worker export's accounting before its protocol record", () => {
+            // Both faults: the accounting, which the spec asks to be checked again, is named.
+            const worker = workerExport({
+                protocol: undefined,
+                detection: { ...workerExport().detection, accounting: { ...BALANCED, requests: 5 } },
+            });
+            expect(refusal([worker, pageExport("sync", syncFrames())])).toMatch(/does not balance/);
+        });
+
+        it("reads a worker export's accounting before what its modes give", () => {
+            // Both faults: no latency sample, and an accounting that does not balance.
+            const worker = workerExport({
+                detection: { path: "worker", jobs: [], accounting: { ...BALANCED, requests: 5 } },
+            });
+            expect(refusal([worker, pageExport("sync", syncFrames())])).toMatch(/does not balance/);
+        });
+
+        it.each([
+            [
+                "detection latency",
+                () =>
+                    workerExport({
+                        detection: { path: "worker", jobs: [], accounting: { ...BALANCED } },
+                    }),
+                /worker exports.*latency/,
+            ],
+            [
+                "acquisition",
+                () => workerExport({ frames: [track(4)] }),
+                /worker exports.*acquisition/,
+            ],
+            [
+                "step",
+                () => workerExport({ frames: [frame("LOST", { acquire: 30, gray: 2 })] }),
+                /worker exports.*step/,
+            ],
+        ])("refuses a mode that gives no %s", (_, worker, why) => {
+            expect(refusal([worker(), pageExport("sync", syncFrames())])).toMatch(why);
+        });
+
+        it("counts a job that never arrived as no latency at all", () => {
+            const worker = workerExport({
+                detection: {
+                    path: "worker",
+                    jobs: [{ postedAtMs: 1, arrivedAtMs: null }],
+                    accounting: { ...BALANCED },
+                },
+            });
+            expect(refusal([worker, pageExport("sync", syncFrames())])).toMatch(/latency/);
         });
     });
 });

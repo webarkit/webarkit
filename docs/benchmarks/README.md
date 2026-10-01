@@ -2509,3 +2509,939 @@ residual limit on a single-step change of scale
 of correctness rather than cost. A fourth, recorded without an issue, is
 round 1's: why right alignments converge slowly on moving footage ("What
 this plan does not test").
+
+## 2026-09-29 — M3: detection off the frame, measured
+
+A measurement plan, written down **before** any of its runs, as the M2 plan
+and the tuning pass were. M3 is "detection off the frame", and
+[#78](https://github.com/webarkit/webarkit/pull/78) landed its mechanism: the
+detection pipeline as two pure functions (`prepareDetection`,
+`detectTarget`) and a tracker that consumes a detection computed elsewhere
+(`externalDetection`). What M3 has never measured is how much time that
+takes off the frame loop. The package owns no worker (ADR-0001 point 7), so
+the application grows one — in `examples/`, never in `packages/nft-tracker`,
+which nothing in this plan changes. The comparison is the synchronous
+tracking mode in the same session, on the adopted 48-patch target, bracketed
+as the tuning rounds were.
+
+**M3 buys frame time, not re-acquisition latency** — which its predictions,
+as corrected before the pre-flight ran (below), make plain: unlocked frames
+drop from 107.4 ms (wall) and 140.4 ms (table) of `total` to about their
+acquisition, and lock quality holds. M3 is not measured as a re-acquisition
+improvement, and is not to be read as one.
+
+### What the synchronous mode spends on detection
+
+Round 2's tablet runs of the adopted target (`Tab_9_WiFi`, synchronous
+tracking mode, 300 frames each; the committed
+`2026-09-29-tab9-tuning-r2-p48-s16-<clip>.json`):
+
+| clip | detection's share of the loop | detection per unlocked frame, p50 / p95 | `total` p50 / p95: all frames; TRACK; unlocked | lock: processed frames / video time | first steps confirmed | held locks lost |
+|---|---|---|---|---|---|---|
+| static | 0% after the first lock | — | 52.4 / 58.7 ms; the same; — | 100% / 100% | — | 0 of 299 |
+| wall | 40.5% | 68.6 / 97.6 ms | 48.2 / 136.7; 42.1 / 51.3; 107.4 / 150.5 ms | 54.3% / 39.1% | 14 of 106 | 13 of 170 |
+| table | 22.1% | 79.5 / 84.8 ms | 63.1 / 149.4; 61.5 / 71.1; 140.4 / 157.8 ms | 79.6% / 64.3% | 11 of 48 | 8 of 234 |
+
+Detection is the pipeline's stages — `detect`, `describe`, `match`,
+`filterMatches`, `estimateHomography` — on the frames that ran it, and its
+share is their sum over the sum of the loop's `total`. "Unlocked" is every
+frame that is not TRACK. The lock is read over each run's whole loops (two
+on either moving clip): per processed frame, and by video time, which is
+`trackTimeShare`, defined below. While it detects, the synchronous loop skips the frames that
+go by: after a frame that detected, the next processed frame comes 120 ms of
+video later on the wall clip and 133 ms on the table clip, at the median.
+After one whose detection found the target — the frame the first tracking
+step follows — it comes 160.5 ms later on the wall clip, and 133.3 or 166.7
+ms on the table clip, whose 48 such frames split evenly between the two, so
+a detection's first tracking step already meets that much motion.
+
+### The policy
+
+Approved by @kalwalt before any code (2026-09-29). The mechanism is #78's;
+what the application decides is this:
+
+1. **A detection starts only when the tracker says `needsDetection`.** In
+   external mode the tracker says it on every frame that ends without a
+   lock: one given no detection, and one that refused the detection it was
+   given.
+2. **At most one detection is in flight.** A request that arrives while one
+   runs is dropped, not queued: a queued frame would be older than the one
+   available when the worker frees up. A result is held and handed to the
+   next `process` call; if that call refuses it, the same call asks again
+   and the page posts that very frame, so during an unlocked stretch the
+   worker idles only from a result's arrival until the next processed frame
+   has been acquired and has refused it — about 50 ms at round 2's medians,
+   against the 70–80 ms a detection takes. With
+   one in flight the accounting is exact: every request ends in exactly one
+   consumption, or at Stop.
+3. **The page sends the frame that asked**: its grey pixels, in the buffer
+   the acquisition allocated for that frame alone, are transferred, not
+   copied, stamped with that frame's start on the main thread's clock, so
+   `detectionLatencyMs` is measured on one clock.
+4. **Stale results are handed in, never filtered.** The tracker's
+   confirming step is the check (#78: no staleness limit). The page counts
+   what became of each detection: its first step confirmed; refused as
+   stale (`"unconfirmed"`, per `trackLoss`); failed (the detection's own
+   reason); ignored (handed in while a lock held — 0 is expected under this
+   policy, and anything else is a defect); discarded (arrived after Stop).
+
+**Why the page never detects speculatively.** Recorded here so that it is
+not reopened without new evidence. Speculation gains no freshness. Take the
+frame at which a held lock is lost, and let T be a detection's duration.
+Under speculation, the detection in flight at the loss started, say, half a
+detection earlier, at −0.5T, and finishes at +0.5T: its frame is 0.5T old at
+the loss and 1.0T old when it is consumed. Under on-demand, the detection
+starts at the loss and finishes at +1.0T: its frame is 0 old at the loss and
+1.0T old when consumed. In both cases the pose handed to the confirming step
+is one detection time old at the moment of consumption. Speculation only
+shifts when the attempt happens, and every attempt faces the same first-step
+odds round 2 measured on the tablet: 14 of 106 first steps confirmed on the
+wall clip (13%), 11 of 48 on the table clip (23%). What it does change is
+that the worker is never idle, so it competes for cores with exactly the
+tracking frames this milestone exists to protect. The argument is
+structural, not empirical, so no measurement is spent on it: speculation is
+neither modelled on the desktop nor run on the device.
+
+### The instrument
+
+- **A module worker under `examples/`**, bundled at build time. A module
+  worker does not read the page's import map — checked in headless Chrome
+  153 on the desktop: a module worker's import of a bare specifier the page
+  maps fails, a relative import loads — and `cv-backend-jsfeatnext`'s build
+  imports `@webarkit/jsfeat-next` and `@webarkit/cv-backend-spec` by name.
+  esbuild bundles the worker's source from `examples/js/` into
+  `examples/dist/` (git-ignored, as the packages' `dist/` are), so every
+  module is resolved at build time and nothing is resolved at run time
+  inside the measured thread. esbuild is pinned to an exact version, with no
+  caret, as prettier is; `npm run build` runs the bundling step explicitly
+  after the three packages, whose `dist/` it reads.
+- **The page** runs it with `?detection=worker`, in tracking mode only;
+  `sync`, the default, stays: it is the baseline. The page hands the worker
+  the same target bytes it decoded and the detection options it runs; the
+  worker decodes them, builds its own backend and `prepareDetection`, and
+  reports `ready` with the target's SHA-256. Start waits for `ready`; a
+  worker that fails refuses Start with its error — never a silent fall back
+  to `sync` under a URL that asked for the worker.
+- **The worker** runs `detectTarget` on each frame posted, times it on its
+  own clock with the stage names the page instruments, and posts back the
+  detection and its timings. Worker timestamps are never subtracted from
+  the main thread's: only durations cross.
+- **On the main thread**, posting — transferring the frame's grey buffer to
+  the worker with the job's message — is a new stage, `detectionPost`,
+  inside the frame's `total`; its times are `detectionPostMs`. The handler that receives a result runs
+  between frames; it is timed apart and counted with detection's time on the
+  main thread.
+- **The export** records the path (`sync` or `worker`), the policy, the
+  worker bundle's SHA-256, and one record per detection job: when it was
+  posted and for which frame, its time in the worker by stage, when it
+  arrived, the handler's time, and the frame that consumed it. It also
+  records the run's place in the session's order and its wall-clock start
+  and end, for the thermal rule, and the run's detection accounting, which
+  the page checks before it exports (below).
+
+### What is measured, and how it is read
+
+Each metric below is defined once in `examples/js/bench-metrics.mjs`, with
+its own `DEFINITIONS` entry and tests; `trackMs`, `alignMs` and `pyramidMs`
+are not redefined, and no existing definition changes meaning.
+
+- **Detection's time, on and off the frame loop** — the number this
+  milestone is about. *On the loop*: the main thread's detection-related
+  time — in a synchronous run the pipeline's stages on the frames that ran
+  it; in a worker run `detectionPostMs` and the result handler, each
+  reported apart, so that whatever share of the loop detection still takes
+  is attributed, not only bounded — as a share of the loop's time and in ms
+  per second of video. *Off the loop*: the worker's pipeline time per job,
+  p50 / p95, and in ms per second of video.
+- **Frame time**: `total` p50 / p95 over all frames, TRACK frames and
+  unlocked frames; `acquire` and `gray` as now; `detectionPostMs` p50 / p95
+  over the frames that posted; and `trackStepMs`, unchanged.
+- **Detection latency**: **`detectionPostToArrivalMs`**, per job, the
+  result's arrival minus its post, both on the main thread's clock — the
+  latency the replay models and the scope rule reads; the tracker's
+  `detectionLatencyMs` on each consuming frame and the processed frames it
+  spanned; and, by one rule for both
+  modes, each detection lock's **first-step latency** — main-thread ms, video
+  ms and processed frames from the detected frame to the frame of its first
+  tracking step (in a synchronous run, the next frame).
+- **Detections by outcome**: every detection the tracker used — its own
+  (`detectionUse: "internal"`) or one handed in (`"consumed"`) — failed, per
+  reason, or locked, with its first step confirmed or refused per
+  `trackLoss`: the stale refusals. Worker runs add ignored and discarded.
+- **`trackFramesWithDetectionInFlight`**: TRACK frames whose `process` ran
+  while a worker detection was in flight — 0 by construction under this
+  policy, so it checks that the policy that ran is the one planned.
+- **The accounting, asserted, not described.** Over the whole run, not the
+  window: `requests` (frames whose result said `needsDetection`) =
+  `consumptions` (jobs handed to `process`) + `dropped` (requests made while
+  a job was in flight) + `discardedAtStop` (jobs in flight or held at Stop),
+  and `ignored` = 0. The page checks both before it exports and refuses to
+  export a run that fails either, with the counts in the error;
+  `bench-metrics.mjs` checks them again on reading an export, the desktop
+  replay asserts them on every worker run, and tests cover a balanced run
+  and each way of failing.
+- **Lock quality as every round reports it**, and two definitions that make
+  the modes comparable:
+  - **`trackTimeShare`** — the share of video time with a confirmed lock,
+    read over whole loops of the clip on a fixed grid of media time, so that
+    every schedule is read over the same video and at the same resolution,
+    rather than over its own and at its own. A run starts at the clip's
+    first frame, and media time is unwrapped onto one timeline: loop *k*
+    covers [*k*·D, (*k* + 1)·D), D being the clip's duration, so loop 0 is
+    the run's first pass, a warm-up that is not counted, and loops 1 to 4
+    are counted. The grid is fixed to media time — bin *j* of loop *k* starts
+    at *k*·D + *j*·10 ms — and each bin takes the state of the most recent
+    processed frame at or before its start, holding across a wrap, so a
+    loop's edges are closed (loop 1's first bins take the warm-up's last
+    frame). A run records at least one frame of loop 5, which closes loop 4.
+    TRACK bins ÷ all bins. A lock is a confirmed TRACK: a DETECT frame's pose is an
+    unconfirmed detection and counts as no lock, which charges the
+    synchronous mode's detection the video time it takes, as the worker's is
+    charged. Reported with its bin size and the loops counted, and per loop,
+    beside `trackShare`, never instead of it: the gap between the two —
+    54.3% of processed frames against 39.1% of video time over the same two
+    whole loops of round 2's wall run — is the evidence that the per-frame
+    number depends on the schedule.
+  - **`detectionLocks`** — the locks the tracker set from a detection: its
+    own, on a DETECT frame, or a consumed one that succeeded, on the frame
+    that consumed it; with each lock's first tracking step, the next
+    frame's after the tracker's own detection and the same frame's after a
+    consumed one. `n`, `confirmed` and `refused` per `trackLoss` count
+    locks whose first step is in the window; `reacquisitions` counts locks
+    set after an earlier frame of the window had a pose, other than on the
+    first frame after a loop wrap. One rule for both modes: on a synchronous
+    run it reproduces M2's `firstSteps` and `reacquisitions`, which stay in
+    the export under their own definitions, and this session's synchronous
+    runs publish both. The test that pins it reads the files those numbers
+    were published from — the committed
+    `2026-09-29-tab9-tuning-r2-p48-s16-{wall,table}.json`, whose
+    `runSummary` gives `firstSteps` 14 of 106 and `reacquisitions` 104 on
+    the wall clip — not a fixture. Exports older than `detectionUse` are
+    read as the M2 tracker's: its own detection on every frame that is not
+    TRACK.
+  - **The static clip's `jitterPx`**, against a stateless run, as always.
+- The detection stages' percentiles are taken over the frames that ran the
+  tracker's own detection (`detectionUse: "internal"`), which in a
+  synchronous run are the frames that are not TRACK, as now.
+- **Every row below reads the frames of the counted loops**, loops 1 to 4:
+  the warm-up's first acquisition, cold, is in none of them. The one
+  exception is the accounting, which covers the whole run, since a job can
+  start in one loop and end in the next.
+
+**Per processed frame, and by video time.** The worker makes unlocked frames
+cheap, so the loop processes more of them, and TRACK share per processed
+frame falls with no change in the lock: round 1's trap, in the other
+direction. Predicted at unchanged lock time: about 28% of processed frames
+on the wall clip (20–36%), against 54.3%, and about 64% on the table clip
+(56–72%), against 79.6% (round 2's synchronous run, over its whole loops). The inputs, from round 2's synchronous run of the
+adopted target: its video time with a lock over whole loops (39.1% and
+64.3%); the mean video time after a TRACK frame (70.7 and 68.4 ms), unchanged
+in worker mode, where no detection runs while a lock holds; and a waiting
+frame's cost, `acquire` plus `gray` (26.1 + 1.6 ms on the wall clip, 49.1 +
+0.9 on the table clip), rounded up to the next video frame — the wall clip
+runs at 25 frames a second, so every 40.1 ms, or 45 allowing for jitter
+(27–29%), and the table clip at 30, so every 66.7 to 70 ms (64–65%). The
+bands are ±8 points. **This prediction is not decisive.** Its
+job is to stop the per-frame number being read as a loss of quality: a miss
+asks for an explanation, and does not refuse the adoption.
+
+**Every frame, and the device schedule.** The replay's every-frame schedule
+gives the synchronous tracker a detection that takes no video time: it
+detects frame *i* and steps on frame *i* + 1. No device has that. On that
+schedule the worker's columns measure what latency itself costs the lock,
+at the modelled latency. The comparison that predicts the device is the
+device schedule, on which the synchronous mode pays for detection in skipped
+frames and the worker in frames spent waiting.
+
+### The lock metric, tested before any device time
+
+Row four of the table below decides adoption, so its metric was tested on
+data already committed, before any worker code existed (2026-09-29; the
+committed scripts and their figures, and the verification's findings, are in
+[`2026-09-29-m3-lock-metric.md`](./2026-09-29-m3-lock-metric.md)).
+
+**The decimation test, as registered, fails.** On the 24 committed tablet
+exports of rounds 1 and 2, all synchronous, the share — then read over the
+last 300 processed frames — was recomputed from every second and from every
+fourth processed record. The registered rule: a move of more than a fraction
+of a point makes it schedule-dependent.
+
+| thinning | largest move on the moving clips, points |
+|---|---|
+| every 2nd record, from the first | 3.67 |
+| every 4th record, from the first | 5.76 |
+| every 4th, mean over the four starting records | +1.30 to +5.51, upward on every run |
+| only frames inside a run of equal states | 0.00 on every run |
+
+**What moves it**, established by three independent checks, each trying to
+refute the reading that follows:
+
+- Deleting a frame whose state equals the previous kept frame's cannot move
+  the share — a proof, and 0.00 on every run. Uniform thinning moves it by
+  dropping the frames at which the state changes, and the first and last
+  frames of the window's stretches; its upward bias comes from the video
+  time that follows each state (72 ms after a TRACK frame, 140 ms after an
+  unlocked one), so a loss observed late is credited over long gaps and an
+  acquisition observed late over short ones.
+- The worker's schedule change is not of that kind. Its extra frames are
+  waiting frames, on which the tracker cannot change state (`tracker.ts`: an
+  unlocked frame given no detection returns before the lock is touched), and
+  no detection runs while a lock holds, so TRACK frames cost what they cost
+  in the synchronous mode. On the replay's modelled device schedule,
+  external detection run at the synchronous mode's own latency processed
+  every frame the synchronous run did, in the same state, and the share came
+  out identical in both arms (wall clip, three seeds), while the per-frame
+  share fell from 59.3% to 32.7%. Under this policy the worker changes the
+  lock only through the latency of its detections and the cost of its TRACK
+  frames.
+- **The window, however, was schedule-dependent.** Over the last 300
+  processed frames a worker run would cover 13–21 s of the wall clip (1.1–1.8
+  loops) against 29–32 s (2.4–2.7 loops) for the synchronous mode, and a
+  different part of the loop — and
+  the clips' lock is far from uniform along the loop: the wall clip is 0%
+  TRACK in its first four seconds in every synchronous run. With the lock
+  held fixed, that coverage alone moved the share by −9 to +8 points; over
+  whole loops, by nothing. Hence the definition above.
+
+**The registered fallback is withdrawn, for a measured reason.** It would
+have decided lock on the replay's every-frame schedule, where the
+synchronous tracker detects frame *i* and steps on frame *i* + 1: external
+detection at a latency of one frame, which no device reaches (checked on the
+clips, three seeds: external detection handed in one frame later reproduces
+the synchronous run exactly). Given its own device latency on that schedule,
+the synchronous mode scores 49.1% of the wall clip's video time against
+67.8%: the fallback would refuse the synchronous mode against itself by
+18.7 points.
+
+**The gate, decided by @kalwalt before any worker run exists:**
+`trackTimeShare` on the device, as defined above — the same four whole loops
+in both modes, edges closed, confirmed TRACK only — with the runs bracketed
+and the wall clip deciding (the adoption rule, below). Over whole loops the
+synchronous repeats of rounds 1 and 2 — the tuning pass's baseline target,
+64 patches — give 35.9, 37.0, 38.5 and 36.9% on the wall clip (a
+loop-to-loop standard deviation of 3.1 points, over 7 loops) and 61.5,
+52.2, 60.6 and 54.4% on the table clip (4.7 points, over 10 loops). The
+adopted 48-patch target has one committed wall run, whose two loops read
+37.5 and 40.6%; the session's own synchronous runs, eight loops a clip,
+measure its spread. The 0.4-point spread the 300-frame window gave the three wall
+repeats came from their similar starting positions in the clip, not from
+the tracker. Two quantities are reported against the brackets as
+attribution, not as conditions that void a run, because a cost the worker
+causes is a cost to the user, not a flaw in the metric: the cost of TRACK
+frames — its whole distribution, the frames just before a loss included,
+since those set how late a loss is observed (77 ms after them, against 72
+between TRACK frames) — and held-lock losses per held step. And after the
+session the replay's device schedule is run again with each mode's measured
+latencies, in the replay's own terms (below): the worker's from post to
+arrival, and the synchronous mode's pipeline time, both counted from the
+end of the detected frame's main-thread work before them, with the replay's
+acquisition replaced by the session's measured `acquire` + `gray` — so that
+a difference in latency is translated into points of lock. That transfer explains a device result and
+weighs in when the table clip is inconclusive; it never overrides the
+device.
+
+### The desktop pre-flight
+
+`scripts/replay-clips.mjs --external <latencyMs>` drives external
+detection on the clips, with the page's own policy
+(`createDetectionPolicy`) — the fixed-latency loop of `runExternal` in
+`packages/nft-tracker/test/tracker_external_detection.test.ts` runs only on
+synthetic camera paths: on a frame whose result says `needsDetection`, with
+nothing in flight, it detects that frame (under the run's seed) and hands
+the result to the first frame processed at or after the post plus the
+latency. The post comes at the end
+of the frame's main-thread work before it — its acquisition, and a tracking
+step if one ran and failed on that frame — and the latency counts, as it is
+measured on the device, from the post to the result's arrival; requests
+while one is in flight are dropped. On the device schedules a frame that
+waits costs only its acquisition; the synchronous runs keep the model's
+83.2 ms detection. For these runs both modes take the acquisition from
+round 2's run of the adopted target (`acquire` + `gray` p50 on unlocked
+frames: 27.7 ms on the wall clip, 50.0 on the table clip, and 42.2 over all
+of the static clip's frames) rather than the model's older constants (20.4, 41.0 and 36.9), so that
+a frame boundary falls where the device's does. Both modes run on every
+schedule, at three seeds, into loop 5, and the replay reads
+`trackTimeShare` over loops 1 to 4, as the device does.
+
+**Latency is modelled in media time at 70, 100 and 130 ms**, and at 50 ms
+for the table clip's falsifier (below), which the band's floor sits too
+close to. The band
+brackets the device's latency; it does not reproduce it. Its floor is the
+pipeline as the tablet ran it on the main thread in round 2 — 68.6 ms p50 on
+the wall clip, 79.5 on the table clip. What a worker adds, the desktop
+cannot see: the frame's transfer and the two messages, the core the worker lands
+on, and the main thread's acquisition sharing the chip with it. The top,
+130 ms, allows the worker to run the table clip's pipeline 1.6 times slower
+than the main thread did. The wait for the next processed frame after a
+result arrives is not in the band: the schedule models it. The band excludes
+only from above. A worker may come in under 70 ms — the main thread's 69–80
+ms were measured competing with the page's rendering and compositing, which
+an isolated worker does not — and a latency under the band does not put a
+clip outside the model; it only makes the desktop's re-acquisition
+predictions conservative. A clip is outside the model's scope only if the
+device's measured latency (a job's arrival minus its post) is above 130 ms
+at the median, and the results then say so.
+
+**The desktop's predictions, before it runs:**
+
+- On the device schedule (scaled step), the post comes where the
+  synchronous detection starts: at the end of the frame's acquisition and
+  of the tracking step it ran. The two modes' first steps after a detection
+  therefore differ only by where the latency, against the modelled 83.2 ms,
+  falls among the frame boundaries. The frames that detect are almost all
+  frames whose tracking step — a held lock's, or a detection's first — has
+  just failed: 93 of the 106 detections that found the target on the wall
+  clip in round 2, 39 of 48 on the table clip. With round 2's acquisition
+  and the scaled step (15.2 ms on the wall clip, 11.3 on the table clip, in
+  the replay's check at seed 1), such a frame's work ends 42.9 ms after it
+  on the wall clip and 61.3 on the table clip. The synchronous first step
+  then comes 160.5 ms after the detected frame on the wall clip (work and
+  detection end at 126.1 ms, past the third frame) and 166.7 ms on the
+  table clip (144.5 ms). The worker's comes on the first frame processed at
+  or after the post plus the latency. On the wall clip a waiting frame
+  costs its acquisition and ends before the next frame, so that frame is
+  120.4 ms after the detected one for a latency up to about 77 ms, 160.5 up
+  to about 117, and 200.6 above. On the table clip a waiting frame's 50 ms
+  acquisition spans the next frame, so frames are processed every 66.7 ms:
+  133.3 ms up to about 72 ms, and 200.0 up to about 139. After a detection
+  that found nothing, the worker's next attempt starts from the frame that
+  consumed it, with no step before its post: as often as the synchronous
+  mode's attempts at 70 ms, a frame less often at 100 and 130 ms.
+  Predicted, on the wall clip: at 70 ms the worker's `trackTimeShare` above
+  the synchronous run's — a frame sooner on every attempt, and every first
+  step at least as fresh; at 100 ms within the synchronous run's range or
+  just below it — on the same frame after a failed step, a frame later only
+  after a detection that found nothing; at 130 ms below it, a frame later
+  throughout. On the table clip: at 50 ms above the synchronous run's —
+  33.3 ms sooner after a failed step, as often after a detection that found
+  nothing; at 100 and 130 ms below it — 33.3 ms later after a failed step,
+  a waiting frame less often after a detection that found nothing; and at
+  70 ms nothing, for the reason its falsifier gives. *Refused if*, on the
+  wall clip, the worker's mean is not above the synchronous run's mean at
+  70 ms (over seeds 2 and 3; the correction below says why), or not below
+  it at 130 ms (over the three seeds): the frame-boundary account is then
+  wrong, and the plan says so before the session. *Refused if*, on the
+  table clip, the worker's mean over the three seeds is not above the
+  synchronous run's at 50 ms, or not below it at 100 ms or at 130 ms. The
+  model makes the table clip's worker trail inside a band of latency: above
+  83.3 ms less the scaled step, its result lands while a waiting frame's
+  50 ms acquisition overruns the next frame, and its first step comes at
+  least 33.3 ms after the synchronous one; below that floor it comes 33.3 ms
+  sooner. The floor moves with the scaled step alone — the model's
+  acquisition is the constant 50.0 ms — and the step is measured on the
+  desktop in each run (its step p50 times 3.15): seed 1's is 11.3 ms, and a
+  fifth either side, 9 to 14 ms, puts the floor between about 69 and 74 ms.
+  Whatever the step, while the frame's work ends before the first waiting
+  frame (a step under 16.7 ms), the floor stays between 66.6 and 83.3 ms:
+  50 ms is at least 16 ms under that whole range, 100 ms at least 16 ms
+  over it, and 130 ms over it at any step. 70 ms lies 2 ms under the floor
+  at seed 1's step and above it for a step over 13.3 ms, so the table clip's
+  70 ms point decides nothing, and 50 ms is run for the band's lower side.
+  Every falsifier here holds over a range of the run's scaled step, which
+  the replay prints per clip in each run: on the wall clip, "above at 70 ms"
+  from 9.5 to 22.7 ms — under 9.5 the synchronous first step itself comes
+  at 120.4 ms, over 22.7 the worker's work plus 70 ms passes 120.4 ms — and
+  "below at 130 ms" over 2.8 ms (seed 1's step: 15.2 ms); on the table clip,
+  "above at 50 ms" under 16.7 ms, "below at 100 and 130 ms" at any step. A
+  run whose step falls outside a point's range reports that point without
+  reading it. (The
+  verification's scratch model gave the
+  worker +18.7, +6.1 and +2.6 points at 70, 100 and 130 ms; it counted the
+  worker's latency from its frame rather than from the post, crediting it
+  with the frame's acquisition, and those figures are withdrawn.) *Refused
+  if* at 70 ms the worker loses more than 5 points of video time on the
+  wall clip (over seeds 2 and 3): the device prediction is then "worse"
+  before the session, and the plan records it so before running it.
+
+  *Corrected on 2026-09-30, before the pre-flight ran.* The first version
+  of this prediction took the synchronous first step at 120.4 and 133.3 ms
+  — the gap after a detecting frame that ran no step — where almost every
+  detection follows a failed step, whose synchronous first step comes a
+  frame later; its refusal at 100 ms would have fired against a worker that
+  lands on the synchronous frame. The correction rests on round 2's
+  committed tablet exports, not on the replay output, so its evidence is
+  independent of the run already done: one run of the replay, at 70 ms and
+  seed 1 only, which had checked the committed loop before the correction
+  and is disclosed with it — first-step latency p50 120.4 ms for the worker
+  against 160.5 for the synchronous run on the wall clip, 133.3 against
+  166.7 on the table clip; `trackTimeShare` 45.2% against 40.4%, and 73.4%
+  against 71.4%. Measured against this spec's own earlier text — the only
+  record a later reader can check — the correction moves nothing on the
+  device: the lock held at equal speed before it and holds after it. (A
+  working ruling, read from the same exports before the replay's loop
+  existed, had expected a worker a frame sooner on the tablet; read
+  further, the exports put it on the synchronous frame. That ruling is not
+  in this repository, so neither it nor its order can be checked from
+  here.) On the desktop, at 70 ms, the correction moves toward the result
+  already seen — from within the synchronous run's range to above it — and
+  a contaminated correction almost always moves that way, to make an
+  observed result look predicted. So seed 1's result at 70 ms, seen before
+  the prediction was set, is reported and weightless: it can neither refuse
+  the prediction nor confirm it. Seeds 2 and 3 at 70 ms were never
+  observed, and the prediction remains predictive for them: the 70 ms point
+  is down from three seeds to two, not dead. They, the 100 and 130 ms
+  points and the table clip's 50 ms point, all run after the correction,
+  carry the verdict. Running seed 1 at 70 ms again does not cleanse it: a
+  replay deterministic in latency and seed reproduces it exactly, which
+  proves nothing about the order of operations. It is run again anyway,
+  first, as a check of the harness: if its outputs are not identical, that
+  is a finding about the replay, needed before it produces the other
+  numbers.
+- The fallback's withdrawal is re-checked by committed code: on the
+  every-frame schedule, the synchronous mode run as external detection whose
+  result is consumed at the first frame at or after its frame's work plus
+  83.2 ms — its modelled device latency, counted as the device schedule
+  counts it — scores below the every-frame synchronous run on the wall clip
+  by more than 5 points (the scratch check, with latencies counted from the
+  frame: 18.7).
+  *Refused if* it does not: the reason the fallback was withdrawn is then
+  not reproduced, and the plan says so before the session.
+- On the every-frame schedule the worker's `trackTimeShare`, averaged over
+  the seeds, falls as the latency grows. *Refused if* it does not: a defect
+  in the loop, found before any worker column is trusted.
+- On the device schedule the per-frame TRACK share of the worker runs falls
+  against the synchronous runs' while `trackTimeShare` holds. *Refused if*
+  it does not fall: the modelled loop is not processing the waiting frames
+  it should.
+
+**It ran on 2026-09-30** ([the record](./2026-09-30-desktop-m3-preflight.md)),
+after the predictions above and their correction were committed. The
+harness is deterministic in latency and seed; the scaled steps sat inside
+every falsifier's range; every falsifier above holds — nine conditions on
+seven distinct measurements, the weakest the wall clip at 130 ms, which
+holds on the mean with one seed of three the other way — and every
+first-step latency is the frame the account predicts. One prediction that
+carries no refusal missed upward: on the wall clip at 100 ms the worker came
+out above the synchronous run's range, its first steps confirming more often
+at the same 160.5 ms. Examined later the same day: on matched frames the two
+modes' first steps confirm alike (the same outcome in 92 of 95 pairs); the
+gap comes from which frames each mode's chain attempts after a detection
+that finds nothing, and row five no longer carries it. Nothing registered
+for the device changes.
+
+### A device session
+
+- **First, a check that the worker loads on the tablet.** The page with
+  `?detection=worker` on `Tab_9_WiFi`: the worker reports `ready`, one
+  detection completes and is consumed, and the console shows no error. A
+  few minutes, nothing exported. The import-map probe ran in desktop Chrome
+  153, and the tablet's Android Chrome 153 is not the same browser.
+- **Runs**: per clip `sync`, `worker`, `worker`, `sync` — two worker runs,
+  so that the worker's own run-to-run spread is measured rather than assumed
+  equal to the synchronous one, between an opening and a closing
+  synchronous bracket — and one stateless run of the static clip for the
+  jitter ratio. Thirteen runs, each of one warm-up loop and four counted
+  loops of its clip: the page stops itself on the first frame of loop 5,
+  and its window is at its cap, 2,000 frames, which holds every video frame
+  of five loops of any clip (at most 1,825, the static clip's), whatever a
+  run's lock. 120 s idle between runs, exported by the page and driven over
+  the DevTools protocol as round 2's were; each export records its place in
+  the order and its wall-clock start and end.
+- **The static clip is a null control.** It spends no time detecting after
+  its first lock, so nothing may move on it: TRACK 100% in all four runs,
+  and, as row eight reads it, the worker runs' mean `trackStepMs` p50 and
+  `total` p50 within 10% of the synchronous runs' mean, either way, and
+  their mean `jitterPx` not above the synchronous runs' mean by more than
+  0.007 px — the runbook's step 8 gives that bound's derivation, and why it
+  replaced, on 2026-10-01 before any run of a moving clip, the clause first
+  registered here ("by more than the two synchronous runs differ").
+  If any of that fails, something other than detection moved — the worker's
+  presence, heat, memory — and the session is inconclusive until it is
+  explained, before either moving clip is read.
+- **The thermal rule, registered before the session.** Worker mode keeps
+  more cores busy at once, so it may throttle the chip harder than the
+  synchronous mode in steady state: a difference the treatment causes, which
+  bracketing does not cancel. If a clip's closing synchronous run is slower
+  than its opening one by more than round 2's largest spread between two
+  repeats of a clip — `trackStepMs` p50 by more than 6.6%, or `acquire` p50
+  by more than 1.9 ms — that clip's block is run again, once. If the re-run
+  trips the rule too, the block is read as measured, and the slowing is
+  recorded as what the design observes: a slowing across a block that
+  contains two worker runs, with the session's ordinary drift not separated
+  from it — the tablet warms whatever runs, and no block here is
+  synchronous only. A slowing the worker causes would be a cost to the
+  user, not a reason to run again; naming the cause would take an extra
+  block of synchronous runs only, of the same length, worth spending only
+  if the rule trips. (Reworded on 2026-09-30, before the session: the first version recorded
+  the slowing as a cost the worker mode causes, which a sync, worker,
+  worker, sync block cannot establish.) Both p50s are read over the
+  run's counted loops, the frames every row reads — never over a window
+  that holds the warm-up loop, whose pull on the comparison has no settled
+  sign (a cold start in each run, a device cooler at the opening run's
+  start than at the closing run's): a rule that can be quietly weakened is
+  worse than one that can be falsely tripped. No run already measured is
+  read through the rule; the page's stage summary reads the counted loops
+  before the session's first run.
+- **The spreads, measured in the session.** Two rules use the session's own
+  runs. If the synchronous runs' wall-clip loops spread by more than 5
+  points (standard deviation over their eight loops), 5 points is under two
+  standard deviations of the difference between the modes, and the wall
+  verdict is inconclusive. If the two worker runs of the wall clip differ
+  by more than 6.6 points — three standard deviations of the difference
+  between two four-loop runs at the synchronous loop spread — the worker's
+  spread is not the synchronous one, and the wall verdict is inconclusive.
+  Either way the wall block is run once more, and the rules are read again
+  on both blocks' loops pooled, sixteen a mode. If a rule still trips, the
+  wall verdict is inconclusive and this session neither adopts nor refuses
+  the worker.
+- **Validity**: every export is Android and `Tab_9_WiFi`, four whole loops
+  after the warm-up, the committed 48-patch target by SHA-256
+  (`9e8eb486…`), and the path it
+  claims. In every worker run the accounting balances and the policy's
+  counters are as planned (the last row below), or that run is invalid.
+- **Exports** are committed, since the result will cite them, named
+  `<date>-tab9-m3-<sync|worker|stateless>-<clip>[-<n>].json`; the PR reports
+  the directory's size on disk and stored.
+
+### The session's runbook
+
+Written on 2026-09-30, before the session, so that a session started fresh
+can run it as it stands; its rules are those above, in the order the
+session meets them. It needs a whole session: the thirteen runs take about
+40 minutes with their idles (a run is five loops of its clip: 61 s static,
+60 s wall, 45 s table), re-runs up to 20 more, and a block interrupted
+halfway is run again from its opening synchronous run, never resumed. It
+does not start on what is left of a day's budget. The session runs on
+2026-10-01, the day after the pre-flight (2026-09-30), and its exports carry
+that date: the pre-flight's corrections, the guard checks and the
+additions of 2026-10-01 all came before it, and no day is missing between
+the two.
+
+1. **Before the tablet.** The branch's code built (`npm run build`, which
+   bundles the worker last), its gates green, and the desktop pre-flight's
+   record committed with no refusal left unexplained. And the evidence
+   guards — a failed run never exported as valid, a dead worker refusing
+   Start, `--transfer` refusing an invalid export — checked independently
+   on the code the session runs
+   ([the record](./2026-09-30-m3-guard-check.md), at `c261b77`):
+   `git diff --stat c261b77 HEAD -- examples/bench-nft.html examples/js scripts packages`
+   shows nothing, or the check is run again on the new head, by an agent
+   that did not write the change, before any device run.
+2. **The tablet**, `Tab_9_WiFi` (ADR-0001's reference device) and no other:
+   the repository root served over HTTP with range requests and module MIME
+   types, on the port `adb reverse` maps; DevTools forwarded; and one bench
+   tab driven — the tablet's other tabs are never touched. A watchdog stops
+   the driver if the lock screen shows; the device's owner unlocks it, never
+   the driver, and the block under way is run again from its opening
+   synchronous run.
+3. **The ready check**, before any run:
+   `examples/bench-nft.html?mode=tracking&target=wnft&detection=worker&clip=pinball-bench.mp4`.
+   Start is enabled once the worker has answered `ready`; one Start, until
+   the stats list shows a job posted and consumed; Stop; no error in the
+   console; nothing downloaded. If it fails, the session does not run.
+4. **Every run's URL, and nothing else on it** — no `targetFile`, `tracker`,
+   `maxKeypoints`, `procWidth`, `procHeight` or `camera`:
+   `examples/bench-nft.html?mode=tracking&target=wnft&detection=<sync|worker>&clip=<clip>&loops=4&window=2000&run=<n>`;
+   the stateless run's is
+   `?mode=stateless&target=wnft&clip=pinball-static.mp4&loops=4&window=2000&run=5`.
+   The driver sets the device label to `Tab_9_WiFi` before Start.
+5. **The order**, *n* being `?run=`:
+
+   | *n* | clip | path |
+   |---|---|---|
+   | 1–4 | `pinball-static.mp4` | sync, worker, worker, sync |
+   | 5 | `pinball-static.mp4` | stateless |
+   | 6–9 | `pinball-bench.mp4` (wall) | sync, worker, worker, sync |
+   | 10–13 | `pinball-bench-table.mp4` (table) | sync, worker, worker, sync |
+
+   The null control goes first, so that a session whose static clip moves
+   stops before the moving clips spend device time; the wall clip, which
+   carries the verdict, goes before the table clip.
+6. **Each run** (the driver, which lives outside this repository): load its
+   URL in the bench tab; wait for Start to be enabled; Start; wait for the
+   status `done` — `failed`, `stopped`, or no `done` within three minutes
+   makes the run invalid; Download, keeping the page's export unchanged;
+   then 120 s on an idle page that holds the wake lock.
+7. **Each export is checked before the next run**, and a run that fails a
+   check is invalid, not a result: `Android` in `userAgent`; `deviceLabel`
+   `Tab_9_WiFi`; `target.sha256` `9e8eb486…`; `detection.path` the one the
+   URL asked (`sync` for the stateless run); `run.order` its *n*;
+   `protocol.sessionRun` true — which covers the loops, the window, how the
+   run ended, the tracker's defaults, the counted loops' completeness and a
+   worker run's accounting; in a tracking run
+   `runSummary.detectionUseFallbackFrames` 0 (a stateless run's frames carry
+   no `detectionUse`, and the fallback's reading — every frame detected — is
+   right for them); in a worker run
+   `runSummary.trackFramesWithDetectionInFlight` 0; and the stall check,
+   computed from the export by `stall-check.mjs`
+   ([the record](./2026-10-01-m3-session-additions.md#a-per-run-check-for-a-stalled-clip)),
+   whose two bounds stand side by side: **500 ms** for any single gap in
+   media time between consecutive frames — a single stutter; a gap across a
+   loop wrap counts the clip's end after the first frame plus the next
+   frame's media time, so a backward step that is not the clip restarting,
+   which `isLoopWrap` would read as a loop (a latent defect in the metric's
+   path, contained here and tracked in
+   [#96](https://github.com/webarkit/webarkit/issues/96)), fails it too — and **3% of each
+   counted loop's duration** for the time by which that loop's gaps exceed
+   240.8 ms, summed — a run full of small stutters; with every counted loop
+   starting within 500 ms of the clip's start and ending within 500 ms of
+   its end, and a frame of loop 5. Both come from round 2's sixteen
+   committed tablet exports. Their largest gap, 240.8 ms (six wall-clip
+   frames, a synchronous detection's tick), doubled and rounded up, gives
+   the first: a session run is about five times as long as those 300-frame
+   windows, and one gap under 500 ms holds at most about 1% of the wall
+   clip's counted video. Their excess over 240.8 ms, zero in every loop,
+   plus one stutter at the first bound in a loop of the shortest clip
+   (259.2 ms of 8.9 s, 2.9%), rounded up, gives the second: a run that
+   passes both holds abnormally at most 3% of its counted video, under the
+   adoption rule's 5 points. (Added on 2026-10-01, before the session: a
+   partial stall passes every other check. Run over every committed
+   export, the check finds no fabricated loop.) An invalid
+   run is run again in its place, once; invalid twice, the session stops
+   until the cause is explained.
+8. **After the static block (runs 1–4)**, the null control: TRACK 100% in
+   all four runs; the worker runs' mean `trackStepMs` p50 and `total` p50
+   within 10% of the synchronous runs' mean; their mean `jitterPx` not above
+   the synchronous runs' mean by more than **0.007 px**.
+   If it fails, the session stops, inconclusive until explained.
+   The 0.007 px is the smaller of the two movements round 1's two static
+   baselines showed from drift alone, with no change of configuration: the
+   session's first and last runs, 19 minutes apart, moved `jitterPx` 0.148 →
+   0.155 over the window and 0.142 → 0.153 aligned against the stateless run
+   (the tuning pass's "A device session", above; today's `cornerJitter`
+   recomputes them from the committed exports as 0.1476 → 0.1552 and 0.1419
+   → 0.1526). No margin is added: the smaller observation is already the
+   conservative choice. *Replaced on 2026-10-01, during the session, after
+   the static block and before any run of a moving clip.* The clause first
+   registered here allowed "by more than the two synchronous runs differ":
+   the difference between two observations, which is no estimate of
+   dispersion — it can be arbitrarily small by luck, and when it is, the
+   clause refuses whenever the worker runs' mean lands above the synchronous
+   runs' mean: under the null, where the worker is no different, about half
+   the time, while a worker that happens to be steadier passes. (Corrected on
+   2026-10-01, after the session, in two places: here, from "fires almost
+   surely", which overstated it; and below, where the sentence saying what
+   had been seen when the clause was withdrawn, and which way the
+   replacement moved its verdict, was added —
+   [the write-up's audit](./2026-10-01-m3-write-up-audit.md), F9 and the
+   second read's finding 13. The bound is unchanged.) The argument is structural, and was available
+   before any device data; this file makes it for the tuning pass ("Two runs
+   cannot tell drift from noise, and a band spanned by two observations
+   understates the spread either way"). The clause came from the plan
+   review's run-design requirements of 2026-09-29 (`9600452`), and its bound
+   was never derived. It was withdrawn, not failed and overridden — after the
+   static block's runs had been seen, which it refused: the replacement
+   turned row eight from refused to not refused, and no run of a moving clip
+   existed when it was made. The numbers that occasioned the withdrawal are in
+   [the session's record](./2026-10-01-m3-device-session.md#the-null-controls-jitter-clause-withdrawn-and-replaced).
+   **No clause in this plan takes its tolerance from the difference between
+   two observations**: where a bound needs a spread, it comes from repeats or
+   from a prior session's measured movement, with its derivation written
+   beside it.
+9. **After every block**, the thermal rule: if the closing synchronous run
+   is slower than the opening one — `trackStepMs` p50 by more than 6.6%, or
+   `acquire` p50 (`summaryMs`, read only from an export whose
+   `summaryMsFrames` is `counted loops`) by more than 1.9 ms —
+   the block is run again, once, at once; if the re-run trips the rule too,
+   it is read as measured, and the slowing is recorded as observed: a
+   slowing measured across a block that contains worker runs, with the
+   session's ordinary drift not separated from it. Naming its cause would
+   cost an extra block of synchronous runs only, worth spending only if the
+   rule trips.
+10. **After the wall block (runs 6–9)**, the spread rules: if the
+    synchronous runs' eight loops spread by more than 5 points (standard
+    deviation), or the two worker runs differ by more than 6.6 points, the
+    wall block is run once more and the rules are read again on both
+    blocks' loops pooled; if one still trips, the wall verdict is
+    inconclusive.
+11. **After the table block (runs 10–13)**: if its two synchronous runs'
+    `trackTimeShare` differ by more than 5 points, the table clip's reading
+    is inconclusive — it could not refuse in any case, and the latency
+    transfer then speaks for it. (Added on 2026-09-30, before the session.)
+12. **After the session**: the exports named as above in `docs/benchmarks/`
+    and committed, with both sizes reported; `node scripts/replay-clips.mjs
+    --transfer <their directory>` at seeds 1, 2 and 3; then the table below,
+    row by row and clip by clip, after the validity checks and the static
+    clip.
+
+### Predictions, and what would refuse each
+
+On the device, per clip, the two worker runs against the two synchronous
+runs that bracket them, each read over its four counted loops. A row
+compares the worker runs' mean with the synchronous runs' mean; "refused"
+is the last column's condition on those means. The adoption rule, below the
+table, says which refusals decide.
+
+| expectation | predicted | refused if |
+|---|---|---|
+| **Detection leaves the frame loop** | detection's time on the main thread under 1% of the loop's time on both moving clips, from 40.5% (wall) and 22.1% (table), attributed to its two parts: `detectionPostMs` and the result handler | a tenth of the synchronous share or more stays on the loop: 4.1% on the wall clip, 2.2% on the table clip |
+| **Unlocked frames cost their acquisition, and nothing unaccounted** | on unlocked frames, the residual `total` − (`acquire` + `gray` + `detectionPostMs`), taken frame by frame (a frame that did not post subtracts no post), under 1 ms at p50 — what remains is a `process` call that finds no lock and no detection — from 107.4 ms of `total` (wall) and 140.4 (table) | the residual's p50 is 3 ms or more on either moving clip |
+| **The loop loses detection's tail** | all frames' `total` p95 within 10 ms of the TRACK frames' p95, from 136.7 ms (wall) and 149.4 (table) | on either moving clip, all frames' p95 − TRACK frames' p95 above 25 ms, or all frames' p95 above 90 ms: either refuses |
+| **The lock holds, by video time** | the worker runs' `trackTimeShare` within the synchronous runs' range on the wall clip while `detectionPostToArrivalMs` p50 stays within about 9 ms below and 31 ms above the session's synchronous pipeline p50. The post comes where the synchronous detection starts, after the frame's acquisition and step, so a result that arrives when the synchronous detection would have ended is consumed on the frame the synchronous first step runs on; round 2's detecting ticks ended 8.8 ms past a frame at the median, 31.3 ms before the next. Faster than that, above the range, a frame sooner; slower, below it by the lock one frame costs (the pre-flight's first prediction). On the table clip, whose waiting frames are processed every 66.7 ms, a result that arrives while one is being acquired waits a frame: at equal speed the worker's first step can lag the synchronous one by 33.3 ms, and its runs are predicted at or below the synchronous runs' range | on the wall clip, the worker runs' mean more than 5 points below the synchronous runs': the adoption rule, below. The table clip cannot refuse |
+| **First steps confirm as often; stale refusals do not rise** | detection locks' first steps confirmed within 5 points of the synchronous runs' (13% wall, 23% table in round 2) — the refused rest reported per `trackLoss`, the stale refusals | the worker runs' mean more than 5 points below on the wall clip — the bound as registered; on the device a difference past it is recorded without a verdict (*Row five's refusal requires corroboration*, below the table) |
+| **Held locks and the step are untouched** — no detection runs while a lock holds; attribution | held-lock losses per held step within 2 points of the synchronous runs' rate; `trackStepMs` p50 within 10%; reported with the TRACK frames' whole cost distribution, the frames before a loss included | more than 2 points, or 10%, worse: the prediction is refused and explained, and adoption is not decided here |
+| **Latency** — attribution | `detectionPostToArrivalMs` p50 about the synchronous pipeline's time (68.6 ms wall, 79.5 table in round 2), within 25%; the worker's first-step latency — its consumption latency, the same number — p50 equal to the synchronous runs' on the wall clip (160.5 ms in round 2, the median of 106 detections that found the target, 50 of them at 160.5) while post to arrival stays within row four's slack, a frame sooner if faster, later if slower; on the table clip, the synchronous runs' 133.3 or 166.7 ms (round 2's 48 split evenly: 133–167 ms), and the worker's up to a waiting frame, 33.3 ms, later at equal speed | post to arrival p50 more than 25% above the session's synchronous pipeline, or a first-step latency p50 other than post to arrival implies: the prediction is refused and explained, through the latency transfer. Adoption is not decided here: a difference in first-step latency acts through the lock, which row four reads, and one wall-clip frame of it is worth up to 12.6 points in the model |
+| **The static clip is unchanged** — the null control | TRACK 100%; the worker runs' mean `trackStepMs` p50 and `total` p50 within 10% of the synchronous runs' mean, and mean `jitterPx` not above the synchronous runs' mean by more than 0.007 px | TRACK under 100% in any run; the worker mean of `trackStepMs` or `total` p50 more than 10% from the synchronous mean, either way; or the worker mean `jitterPx` above the synchronous mean by more than 0.007 px (the runbook's step 8: replaced on 2026-10-01, before any run of a moving clip, from "by more than the two synchronous runs differ"): the session is inconclusive until explained |
+| **The policy ran as written** | 0 TRACK frames with a detection in flight, 0 detections ignored, every job consumed once or discarded at Stop | any other count: the run is invalid, not a result |
+
+**Row five's refusal requires corroboration.** The desktop pre-flight
+showed that which frames each mode's chain visits can open 7.7 points in
+the raw confirm rate with identical confirmation behaviour: on the 95 pairs
+where both modes detected the same frame and ran the first step on the same
+frame, the outcome agreed in 92, the other three splitting 2 to 1. Row
+five's 5-point bound therefore sits inside the spread sampling alone can
+produce, and a refusal read from it would not be a verdict about quality.
+The bound stays as registered and the row stays reported, but a refusal
+counts only when corroborated. Pair matching is not available between
+device runs in numbers that can be read: two runs of the same mode on the
+same clip — round 2's three repeated synchronous runs on the wall clip, the
+most favourable case there is — share only 30–43% of their detected frames
+and 15–31% of their detection locks, 19 to 37 matched locks a pair over
+about two and a half loops and at most 30 to 60 over a session run's four,
+of which about one in nine confirms, so a 5-point difference would rest on
+two or three discordant pairs: too few to read; and two runs in different
+modes can only share fewer
+([the measurement](./2026-10-01-m3-session-additions.md#row-fives-refusal-requires-corroboration)).
+Row five is therefore descriptive on the device, and the lock verdict rests
+on row four alone, which was already the adoption gate. Row five is still
+reported, and a difference on it is recorded without a verdict. Recorded
+2026-10-01, before the device session, from desktop evidence about the
+metric and round 2's synchronous tablet runs, with no data from this
+session's device runs. This change removes a path to refusal, which is the
+direction needing the stronger record, and is why the criterion is neither
+withdrawn nor loosened: only its power to refuse on its own is.
+
+**Pooling across brackets is not a registered reading.** Recorded on
+2026-10-01, after the session, as precedent, from
+[the write-up's audit](./2026-10-01-m3-write-up-audit.md) (finding F1).
+Pooling readings across brackets is not a reading the registration allows
+unless the registration says so. Where a rule is registered per bracketed
+pair — as every row of the table above is — a pooled figure is an
+unregistered summary: it may be reported, labelled as such, and it never
+carries the verdict. Here only step 10's spread rules, and the latency
+transfer's inputs (step 12's command reads every export of a mode), are
+registered pooled. **One case was never registered**: how the wall verdict
+reads when step 10's pooled re-read *passes* — whether row four is then read
+per block, on the second block alone, or pooled. It is moot in this session,
+where the re-read tripped, and it is recorded here as an unregistered case
+because the next campaign will meet it; its plan decides it before it runs.
+The rule's first case: this session's write-up first read the wall clip's
+rows on both of its blocks pooled, which turned a refusal of row six in the
+second block (held-lock losses +2.2 points) into "met". Pooling is attractive
+precisely when the per-block results disagree, which is when it hides the
+most.
+
+**The adoption rule.** Worker detection is adopted — recorded as M3's
+measured recommendation to applications, with the bench page keeping both
+paths — only if, with the policy as planned and the session valid, none
+of rows one to three is refused on either moving clip, row four is not
+refused on the wall clip, and the static clip's row (eight) is not refused.
+Row five is descriptive on the device (above). Rows six and seven are
+attribution: a refusal there refutes a prediction and asks for an
+explanation, not a verdict. An inconclusive wall verdict
+(the session's spread rules) adopts nothing. **It is not adoptable, whatever the frame
+times, if on the wall clip the two worker runs' `trackTimeShare` falls more
+than 5 points below the two synchronous runs', each read over its four
+whole loops.** The wall clip carries the lock verdict. The table clip cannot
+refuse one: it *supports* the adoption if its worker runs' `trackTimeShare`
+is within 5 points of its synchronous runs', or above, and is otherwise
+*inconclusive* — and then the latency transfer, fed with the table clip's
+measured latencies, says whether its latency alone predicts a loss of more
+than 5 points. If it does, the adoption is recorded with that caveat; the
+table clip still does not refuse it. Why 5 points, on the wall clip:
+
+- it is the bound every round has put on TRACK share ("What every round is
+  judged on"), now read on video time;
+- with four whole loops a run and two runs a mode, it is about 3.2 standard
+  deviations of the difference between the two modes' means, from the wall
+  clip's loop-to-loop spread in the synchronous repeats of rounds 1 and 2
+  (3.1 points, over 7 loops);
+- it is about an eighth of the video time the adopted target holds a lock
+  on the wall clip (39.1% over whole loops): a loss of pose a user sees,
+  which a smoother frame loop does not buy back.
+
+None of this transfers to the table clip. Its loops spread 4.7 points and
+its repeats 52.2–61.5%, so two runs agreeing within 5 points there can be
+luck, and no agreement between its brackets can make it decisive.
+
+### What this plan does not test
+
+- **Speculative detection**: the reason is recorded under the policy.
+- **More than one detection in flight.** A second concurrent detection makes
+  no result fresher — each still takes a full detection — and only raises
+  the rate of attempts, at the cost of the cores. A case for it would have
+  to come from this session: first steps limited by how often they are
+  attempted, not by how stale they are.
+- **A staleness limit** on a consumed detection: the confirming step is the
+  check (#78).
+- **Pose availability.** A DETECT frame that found the target shows an
+  unconfirmed pose, and only the synchronous mode produces them (13–42% of
+  its video time over whole loops, in rounds 1 and 2's moving-clip runs);
+  the lock this plan measures is confirmed TRACK, by definition.
+- **ADR-0001 point 5's number.** Detection is not part of the tracking step,
+  so `trackStepMs` is not expected to move; the table's sixth row reports
+  it. Moving patch alignment below the contract (point 3) is
+  [#84](https://github.com/webarkit/webarkit/issues/84).
+- Other devices and browsers, the webcam demo, and power and heat over
+  sessions longer than a run.
+
+### Results (2026-10-01)
+
+The session ran on `Tab_9_WiFi` as the runbook has it, at `0304390`; its
+record, step by step, with every figure below, is
+[`2026-10-01-m3-device-session.md`](./2026-10-01-m3-device-session.md), and
+its seventeen exports are `2026-10-01-tab9-m3-*.json`. Each row is read as
+registered, on a bracketed pair: on the wall clip, each of its two blocks on
+its own (the precedent above). *Corrected after
+[an independent audit of the write-up](./2026-10-01-m3-write-up-audit.md),
+which found that its first version read the wall clip pooled across blocks,
+gave row five verdict words, and overstated the jitter clause's
+replacement; the later reads of the corrected passages are in the same
+record.*
+
+- **Valid throughout.** Every run passed every check of step 7 at its first
+  attempt, the policy ran as written in every worker run, and the thermal
+  rule held on every block. The static clip's null control holds, with its
+  jitter clause replaced after the static block and before any moving-clip
+  run (step 8, above). **As first registered, that clause refused** (an
+  excess of 0.00045 px against an allowance of 0.00011); the replacement,
+  0.007 px, turned row eight from refused to not refused. That change removed
+  a path to refusal, so the record gives it in full.
+- **The wall clip's lock: inconclusive. Worker detection is neither adopted
+  nor refused.** Step 10's spread rule tripped on the wall block (the
+  synchronous loops' standard deviation 7.27 points), and again on both
+  blocks' loops pooled, as step 10 reads them, after the block was run once
+  more (5.88 points over sixteen loops, over 5). `trackTimeShare`, worker
+  minus synchronous: +5.6 points in the first block, −1.5 in the second
+  (+2.1 with both pooled, an unregistered summary). With the rule tripped,
+  these are not read against row four's bound or its prediction.
+- **The table clip would support an adoption** — −2.6 points (61.6% against
+  64.2%), within 5, at or below the synchronous range, as predicted — but it
+  cannot carry the verdict, and with the wall verdict inconclusive there is
+  no adoption for it to support.
+- **Rows one to three are not refused on either moving clip, in either wall
+  block: detection left the frame loop.** Its share of the loop fell from
+  40.9% and 38.7% to 0.50% and 0.52% in the wall blocks, and from 21.4% to
+  0.20% on the table clip; unlocked frames cost their acquisition and 0.1 ms
+  more at p50, their `total` p50 falling from 91.5 and 89.3 to 26.6 and 26.9
+  ms, and from 139.6 to 46.3 ms; all frames' `total` p95 fell from about 129
+  to 46–47 ms and from 145.3 to 66.1, within a millisecond of the TRACK
+  frames'.
+- **Row five is descriptive on the device**, and recorded without a verdict:
+  first-step confirm rates, the runs' mean, 12.9% against 15.0% and 14.5%
+  against 12.4% in the two wall blocks, 21.3% against 23.0% on the table clip.
+- **Row six, attribution, is refused in the wall clip's second block**:
+  held-lock losses 8.8% against 6.6%, +2.2 points against a bound of 2. In
+  the first block they went the other way, 2.3 points better — not refused,
+  but outside the predicted ±2, so the prediction missed there too, in the
+  worker's favour — and on the table clip they are level (+0.1). Row six's
+  `trackStepMs` clause held on every reading (within 1.1%, against 10%). The
+  cause is open: no detection runs while a lock holds, so the worker has no
+  direct path to a held lock's step; indirect ones are untested.
+- **Row seven, attribution, is refused in the wall clip's second block and
+  on the table clip** — post to arrival 31.7% and 40.7% above the synchronous
+  pipeline, against 25% — and not in the first block (+20.7%). Every consumed
+  detection was consumed by the first frame processed after its arrival, so
+  the first steps are what that latency implies. The worker's own pipeline is
+  as fast as the main thread's; on the table clip the excess is about what
+  the frame's transfer, the two messages and the wait for the main thread to
+  finish the frame it is acquiring add, and on the wall clip the record does
+  not decompose it. The latency transfer, which
+  explains and does not decide, turns the worker's latency into about −2
+  points of lock on each moving clip (seeds 1–3: −3.0, −2.1, −1.6 on the wall
+  clip; −1.9, −2.2, −1.7 on the table clip).
+- **The per-frame TRACK share missed its band on the wall clip** — a
+  prediction registered as not decisive, so the miss carries no verdict —
+  41.0% and 37.5% in the two blocks against 20–36%, for reasons its inputs give: more
+  video time locked than the prediction's input assumed (45% against round
+  2's 39.1%), and waiting frames 56.5 ms of video apart rather than 40–45.

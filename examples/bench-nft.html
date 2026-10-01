@@ -261,8 +261,10 @@
       <a href="../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md">ADR-0001</a>, which reports the same
       numbers as the stateless pipeline; <strong>NftTracker, tracking</strong> runs M2's
       <code>LOST → DETECT → TRACK</code> state machine, which needs a target with patches:
-      <code>targets/pinball.wnft</code>, loaded from the file, never built here. Every run metric is defined once, in
-      <code>js/bench-metrics.mjs</code>, and each export carries those definitions.
+      <code>targets/pinball.wnft</code>, loaded from the file, never built here. In the tracking mode,
+      <code>?detection=worker</code> runs detection off the frame loop, in a module worker
+      (<code>dist/detection-worker.mjs</code>, which <code>npm run build</code> makes). Every run metric is defined once,
+      in <code>js/bench-metrics.mjs</code>, and each export carries those definitions.
     </p>
 
     <div class="wrap">
@@ -422,22 +424,30 @@
         DEFAULT_TUKEY_C,
       } from "@webarkit/nft-tracker";
       import { toGrayTimed } from "./js/pinball-shared.mjs";
+      import { instrumentBackend } from "./js/instrument-backend.mjs";
+      import { createDetectionPolicy } from "./js/detection-policy.mjs";
+      import { countLateReply, routeReply } from "./js/detection-replies.mjs";
       import {
+        accountingError,
         clockResolution,
+        DEFAULT_TARGET_FILE,
         DEFINITIONS,
         frameRecord,
-        framesForStage,
         METRICS_VERSION,
         parsePositiveInt,
         parseRunParams,
         percentile,
+        sessionRunGaps,
         sha256Hex,
+        stageSamples,
+        stageSummary,
         startRefusal,
         summarizeRun,
         targetCorners,
         targetRecord,
         texturedFrame,
         timeRepeated,
+        trackTimeShare,
       } from "./js/bench-metrics.mjs";
 
       const TARGET_IMAGE = "./images/pinball.jpg";
@@ -449,8 +459,23 @@
        * back to the defaults, so no export carries a label it did not run with.
        */
       const TUNING = parseRunParams(location.search, { bundledClips: [] });
-      const TARGET_PATH = `targets/${TUNING.targetFile ?? "pinball.wnft"}`;
+      const TARGET_PATH = TUNING.targetFile === null ? DEFAULT_TARGET_FILE : `targets/${TUNING.targetFile}`;
       const TARGET_FILE = `./${TARGET_PATH}`;
+      /**
+       * Where a run's detection runs (`?detection=`, DEFINITIONS.detectionPath):
+       * `sync`, the tracker's own on the frame loop, the baseline; or `worker`,
+       * a module worker's, under the on-demand policy (docs/benchmarks/README.md,
+       * 2026-09-29), in the tracking mode only.
+       */
+      const DETECTION_PATH = TUNING.detection;
+      /**
+       * The worker, as `npm run build` bundles it: a module worker does not read
+       * this page's import map, so every import is resolved at build time.
+       */
+      const WORKER_BUNDLE = "dist/detection-worker.mjs";
+      const DETECTION_POLICY = "on-demand, one in flight, dropped not queued";
+      /** A job the worker has not answered in this long stops the run. */
+      const WORKER_REPLY_TIMEOUT_MS = 5000;
       const TARGET_LEVELS = 8;
       /** The long side the in-page target is built at, as the webcam demo builds its own. */
       const TARGET_MAX_SIDE = 640;
@@ -502,6 +527,13 @@
         estimateHomography: "estimateHomography",
         pose: "poseFromHomography",
         total: "total",
+        detectionPost: "post to the detection worker",
+      };
+      /** The status row for a frame that ended without a pose, by its reason; any other reason reads "no consensus". */
+      const UNLOCKED_STATUS = {
+        "too-few-matches": "too few matches",
+        "no-detection": "waiting for a detection",
+        unconfirmed: "detection not confirmed",
       };
 
       const $ = (id) => document.getElementById(id);
@@ -605,10 +637,47 @@
       const targets = { image: null, wnft: null };
       /** `clockResolution(clock)`, measured once at page load. */
       let clockResolutionMs = null;
+      /**
+       * Runs, as `newRun` makes them. `lastRun` is the one whose frames are in
+       * `history`, committed at Start with the other `last*` fields and exported
+       * with them. `liveRun` is the run whose frames are being processed, the
+       * only one a reply is handed to; `null` between runs. `runs` holds every
+       * run the page has made, by id: a worker's reply names its run, and a late
+       * one is counted on that run (`routeReply`, `staleReplies`).
+       */
+      let lastRun = null;
+      let liveRun = null;
+      let runSeq = 0;
+      const runs = new Map();
+      /**
+       * The detection worker, in worker mode: the `Worker`, its bundle's SHA-256,
+       * the options of the last `init` sent, that `init`'s promise and, while it
+       * is unanswered, its settlers; and, once it has failed, why — after which
+       * Start stays disabled until the page is reloaded.
+       */
+      const detectionWorker = {
+        worker: null,
+        bundleSha256: null,
+        sent: null,
+        ready: null,
+        pendingInit: null,
+        failure: null,
+      };
 
       function showError(message) {
         errorEl.textContent = message;
         setStatusText("failed");
+      }
+
+      /**
+       * One line about a Download — `Not exported: <why>` for one it refused,
+       * or what keeps an export from being a session run — where errors are
+       * shown, that leaves the status row as it was: the run ended as it ended
+       * (done, stopped or failed), and a driver reading the status must still
+       * read that. `showError` is for what failed, and sets the status.
+       */
+      function showNotice(message) {
+        errorEl.textContent = message;
       }
 
       function clearError() {
@@ -644,35 +713,6 @@
           target.addEventListener(resolveEvent, onResolve, { once: true });
           target.addEventListener(errorEvent, onError, { once: true });
         });
-      }
-
-      /**
-       * Wraps a `CvBackend` so every call to the five stages the contract
-       * documents is timed into `timings`, in place. This is what lets both
-       * pipelines below be timed stage-by-stage without instrumenting either
-       * one directly: `NftTracker` only ever reaches the backend through the
-       * instance handed to its constructor, and the stateless pipeline calls
-       * the same instance directly, so one wrapper covers both.
-       */
-      function instrumentBackend(cv, timings) {
-        const time = (name, fn) => {
-          const t0 = performance.now();
-          const result = fn();
-          timings[name] += performance.now() - t0;
-          return result;
-        };
-        const wrapped = {
-          capabilities: cv.capabilities,
-          detect: (...args) => time("detect", () => cv.detect(...args)),
-          describe: (...args) => time("describe", () => cv.describe(...args)),
-          match: (...args) => time("match", () => cv.match(...args)),
-          estimateHomography: (...args) => time("estimateHomography", () => cv.estimateHomography(...args)),
-          poseFromHomography: (...args) => time("pose", () => cv.poseFromHomography(...args)),
-        };
-        if (cv.filterMatches) {
-          wrapped.filterMatches = (...args) => time("filterMatches", () => cv.filterMatches(...args));
-        }
-        return wrapped;
       }
 
       function resetTimings(timings) {
@@ -764,9 +804,20 @@
         };
       }
 
+      /**
+       * The stages the stage table and the export's summaryMs show, in table
+       * order: `activeStages()`, and in a worker run the post to the worker
+       * before `total` (`stageSamples` takes it over the frames that posted).
+       */
+      function tableStages() {
+        const stages = activeStages();
+        if (lastRun?.path !== "worker") return stages;
+        return [...stages.slice(0, -1), "detectionPost", stages[stages.length - 1]];
+      }
+
       function renderPercentiles() {
         percentilesBody.replaceChildren();
-        const rows = activeStages().map((s) => [STAGE_LABELS[s], framesForStage(history, s).map((f) => f.timings[s])]);
+        const rows = stageSamples(history, tableStages()).map(([s, values]) => [STAGE_LABELS[s], values]);
         if (lastMode !== "stateless") {
           const track = history.filter((f) => f.state === "TRACK" && f.trackerTimings);
           for (const k of TRACKER_STAGES) rows.push([TRACKER_STAGE_LABELS[k], track.map((f) => f.trackerTimings[k])]);
@@ -879,6 +930,112 @@
           URL.revokeObjectURL(video.src);
           video.src = "";
         }
+      }
+
+      /**
+       * A run's record, exported with its frames: an id (a worker's reply names
+       * the run it answers), the detection path, and in a worker run its own
+       * policy (`createDetectionPolicy`), its jobs (one per detection posted:
+       * `postDetection`), which job is at the worker, held or handed to
+       * `process`, and the replies to its own jobs that arrived after it ended,
+       * discarded (`staleReplies`), counted whenever they arrive. It is kept in
+       * `runs` by its id. `?loops=` and `?run=` are the run protocol's;
+       * `clipDurationS`, `startedAtIso` and `endedAtIso` are set as it starts
+       * and ends, and `endedBy` says how it ended: `done` (a `?loops=` run on
+       * its first frame after the counted loops), `stopped` (Stop) or `failed`;
+       * `failure` says why a run that could not go on stopped.
+       */
+      function newRun() {
+        const worker = DETECTION_PATH === "worker";
+        const run = {
+          id: ++runSeq,
+          path: DETECTION_PATH,
+          policy: worker ? createDetectionPolicy() : null,
+          jobs: [],
+          jobInFlight: null,
+          heldJob: null,
+          handedJob: null,
+          replyTimer: null,
+          staleReplies: 0,
+          loops: TUNING.loops === null ? null : { firstLoop: 1, loopCount: TUNING.loops },
+          order: TUNING.run,
+          clipDurationS: null,
+          startedAtIso: null,
+          endedAtIso: null,
+          endedBy: null,
+          failure: null,
+        };
+        runs.set(run.id, run);
+        return run;
+      }
+
+      /**
+       * The end of the live run, whatever ended it: in a worker run the policy
+       * discards the job in flight or held (`discardedAtStop`), whose reply, if
+       * one comes, is discarded too (`onWorkerMessage`). A worker run's export
+       * waits for this, since its accounting closes here.
+       */
+      function endRun(run) {
+        if (run !== liveRun) return;
+        liveRun = null;
+        run.endedAtIso = new Date().toISOString();
+        if (run.policy) {
+          clearTimeout(run.replyTimer);
+          run.replyTimer = null;
+          for (const job of [run.jobInFlight, run.heldJob, run.handedJob]) if (job) job.outcome = "discardedAtStop";
+          run.jobInFlight = run.heldJob = run.handedJob = null;
+          run.policy.stop();
+        }
+        downloadButton.disabled = history.length === 0;
+      }
+
+      /** Whether Start may be pressed: always in a synchronous run; in worker mode, while the worker has not failed. */
+      function startAllowed() {
+        return DETECTION_PATH !== "worker" || (detectionWorker.worker !== null && detectionWorker.failure === null);
+      }
+
+      /**
+       * Stops the live run: the Stop button's `stopped`, `done` when a `?loops=`
+       * run ends itself, and `failRun`'s `failed` — the status, and the run's
+       * `endedBy`.
+       */
+      function stopRun(status) {
+        if (liveRun) {
+          liveRun.endedBy = status;
+          endRun(liveRun);
+        }
+        stopLoop();
+        stopSource();
+        stopButton.disabled = true;
+        startButton.disabled = !startAllowed();
+        probeButton.disabled = false;
+        setStatusText(status);
+      }
+
+      /**
+       * A run that cannot go on — the worker failed or went silent, the policy
+       * or a post threw, or anything in a frame's callback threw — stops at
+       * once, rather than run on with its policy stuck in flight or its loop
+       * dead: status `failed`, `endedBy` `failed`, and why, the cause on its own
+       * line. A worker run is never exported, and its worker is not trusted
+       * again: Start stays disabled until the page is reloaded. A synchronous
+       * run's export stays possible, carries the cause (`run.failure`), and its
+       * `protocol` says it is not a session run. `endedBy` is set here, not only
+       * through `stopRun`: a run whose own end threw — `stopRun("done")` after
+       * `endRun` — is no longer live when it fails, and would keep `done`.
+       */
+      function failRun(run, message) {
+        if (run.failure !== null) return;
+        run.failure = message;
+        run.endedBy = "failed";
+        const worker = run.path === "worker";
+        if (worker) detectionWorker.failure ??= message;
+        stopRun("failed");
+        showError(
+          worker
+            ? `${message}\n\nThe run stopped, and it will not be exported. Reload the page to run again.`
+            : `${message}\n\nThe run stopped. Its export stays possible, and is not a session run.`,
+        );
       }
 
       /**
@@ -1097,33 +1254,343 @@
       }
 
       /**
+       * The detection worker, in worker mode: created once, from the bundle, and
+       * sent the `.wnft` bytes and the detection options the tracker runs. Its
+       * bundle is fetched as well, for the export's SHA-256. Resolves when the
+       * worker has answered `init` with `ready` and the SHA-256 of the target
+       * the page decoded; rejects, naming the worker, otherwise — and the page
+       * then never enables Start: a URL that asked for the worker never falls
+       * back to `sync`.
+       */
+      async function startDetectionWorker(maxSceneKeypoints) {
+        const where = `The detection worker (examples/${WORKER_BUNDLE})`;
+        if (!targets.wnft) throw new Error(`${where} needs ${TARGET_PATH}, which did not load (see above).`);
+        const url = new URL(`./${WORKER_BUNDLE}`, location.href);
+        let response;
+        try {
+          response = await fetch(url);
+        } catch (e) {
+          throw new Error(`${where} could not be fetched: ${e.message}.`);
+        }
+        if (!response.ok) throw new Error(`${where} could not be loaded: HTTP ${response.status}. \`npm run build\` makes it.`);
+        detectionWorker.bundleSha256 = await sha256Hex(await response.arrayBuffer());
+        const worker = new Worker(url, { type: "module" });
+        worker.onmessage = onWorkerMessage;
+        worker.onerror = (e) => workerFailed(`${where} failed: ${e.message || "it did not load"}.`);
+        worker.onmessageerror = () => workerFailed(`${where} sent a message the page could not read.`);
+        detectionWorker.worker = worker;
+        await initWorker(maxSceneKeypoints);
+      }
+
+      /**
+       * Sends `init` for a scene keypoint budget, with a copy of the target's
+       * bytes, and returns the promise its answer settles (`settleInit`). Never
+       * called while an `init` is unanswered (`workerReady` waits first): two
+       * overlapping ones would be answered in the order they finished.
+       */
+      function initWorker(maxSceneKeypoints) {
+        const options = {
+          sceneLevels: DEFAULT_SCENE_LEVELS,
+          maxSceneKeypoints,
+          ratio: DEFAULT_RATIO,
+          ransacThreshold: DEFAULT_RANSAC_THRESHOLD,
+        };
+        const targetBytes = targets.wnft.bytes.slice(0);
+        detectionWorker.sent = options;
+        detectionWorker.ready = new Promise((resolve, reject) => {
+          detectionWorker.pendingInit = { resolve, reject };
+        });
+        detectionWorker.worker.postMessage({ type: "init", targetBytes, options }, [targetBytes]);
+        return detectionWorker.ready;
+      }
+
+      /**
+       * The worker, ready for a run at this budget: the answer to an `init`
+       * still in progress is awaited first, and `init` is sent again when the
+       * last one was for another budget (the field is read at Start). Throws
+       * once the worker has failed.
+       */
+      async function workerReady(maxSceneKeypoints) {
+        while (detectionWorker.pendingInit) await detectionWorker.ready;
+        if (detectionWorker.failure) throw new Error(detectionWorker.failure);
+        if (detectionWorker.sent.maxSceneKeypoints !== maxSceneKeypoints) await initWorker(maxSceneKeypoints);
+      }
+
+      /** The answer to the `init` in progress: `ready` for the target the page decoded, or else a failure. */
+      function settleInit(data) {
+        const pending = detectionWorker.pendingInit;
+        if (!pending) {
+          workerFailed(`The detection worker sent "${data.type}" with no init in progress${data.message ? `: ${data.message}` : ""}.`);
+          return;
+        }
+        detectionWorker.pendingInit = null;
+        const expected = targets.wnft.record.sha256;
+        const failure =
+          data.type === "error"
+            ? `The detection worker could not prepare ${TARGET_PATH}: ${data.message}`
+            : data.targetSha256 !== expected
+              ? `The detection worker holds a target with SHA-256 ${data.targetSha256}, not ${TARGET_PATH}'s ${expected}.`
+              : null;
+        if (failure === null) {
+          pending.resolve();
+        } else {
+          detectionWorker.failure ??= failure;
+          pending.reject(new Error(failure));
+        }
+      }
+
+      /**
+       * The worker cannot be used (`onerror`, a message it cannot have meant): an
+       * `init` in progress is rejected with why, a live run fails, and otherwise
+       * the error is shown. Start stays disabled either way.
+       */
+      function workerFailed(message) {
+        detectionWorker.failure ??= message;
+        const pending = detectionWorker.pendingInit;
+        detectionWorker.pendingInit = null;
+        if (pending) {
+          pending.reject(new Error(message));
+        } else if (liveRun) {
+          failRun(liveRun, message);
+        } else {
+          showError(message);
+          startButton.disabled = true;
+        }
+      }
+
+      /**
+       * The worker's replies, routed by `routeReply` (js/detection-replies.mjs):
+       * `ready`, and an `error` that names no job, answer the `init` in
+       * progress; a `result` for the live run's job in flight is held for the
+       * next frame; a reply to a job a run discarded at its end is that run's
+       * stale reply, counted on it whenever it arrives — between runs or during
+       * a later run — and never handed in; anything else fails the worker (and
+       * the live run). The handler runs between frames, on the main thread, so
+       * it is detection's time too: timed into the job's `handlerMs` from its
+       * first line, before `data` is read, which is where a reply is
+       * deserialised.
+       */
+      function onWorkerMessage(event) {
+        const arrivedAtMs = performance.now();
+        const data = event.data;
+        const route = routeReply(data, { liveRunId: liveRun?.id ?? null, runsById: runs });
+        if (route.kind === "init") {
+          settleInit(data);
+          return;
+        }
+        if (route.kind === "late") {
+          countLateReply(route, arrivedAtMs);
+          return;
+        }
+        if (route.kind === "fail") {
+          workerFailed(route.message);
+          return;
+        }
+        const { run, job } = route;
+        clearTimeout(run.replyTimer);
+        run.replyTimer = null;
+        job.arrivedAtMs = arrivedAtMs;
+        job.workerMs = data.workerMs;
+        try {
+          run.policy.arrive(data.detection);
+        } catch (e) {
+          failRun(run, `The detection policy refused a result: ${e.message}`);
+          return;
+        }
+        run.jobInFlight = null;
+        run.heldJob = job;
+        job.handlerMs = performance.now() - arrivedAtMs;
+      }
+
+      /** The detection the policy holds for this frame, or `null`; its job is marked handed until `settleFrame`. */
+      function takeDetection(run) {
+        const handed = run.policy.take();
+        if (handed !== null) {
+          run.handedJob = run.heldJob;
+          run.heldJob = null;
+        }
+        return handed;
+      }
+
+      /**
+       * The worker path's half of a frame, after `process`: the policy settles
+       * the detection handed in, if any, and posts this frame when the tracker
+       * asks for one and none is in flight or held. Returns the post's duration
+       * (`null` on a frame that did not post) and, for a consumed detection, the
+       * frame it was computed on (`detectedAt`), `framesAgo` processed frames
+       * back. What the policy or the post throws, it throws: the tick stops the
+       * run on it.
+       */
+      function settleFrame(run, result, frameInfo) {
+        let postMs = null;
+        run.policy.afterProcess(result, () => {
+          postMs = postDetection(run, frameInfo);
+        });
+        const job = run.handedJob;
+        run.handedJob = null;
+        let detectedAt = null;
+        if (job) {
+          // The policy threw above on anything but these two.
+          job.outcome = result.detectionUse;
+          if (result.detectionUse === "consumed") {
+            job.consumedAtTick = frameInfo.tick;
+            detectedAt = {
+              timestampMs: job.frameTimestampMs,
+              mediaTimeSeconds: job.frameMediaTimeSeconds,
+              framesAgo: frameInfo.tick - job.tick,
+            };
+          }
+        }
+        return { postMs, detectedAt };
+      }
+
+      /**
+       * Posts the frame that asked, as a job of `run`, and returns how long that
+       * took: the job's record, the message, and `postMessage`, which transfers
+       * the frame's pixels rather than copying them (the tick allocates a fresh
+       * buffer every frame, and nothing reads this one after `process`). The job
+       * names its frame by `t0` — equal to that frame record's `timestampMs`,
+       * which is how `summarizeRun` tells the frames that posted it — and media
+       * time. A job the worker has not answered in 5 s stops the run.
+       */
+      function postDetection(run, { frame, t0, mediaTimeSeconds, tick }) {
+        const postedAtMs = performance.now();
+        const job = {
+          jobId: run.jobs.length + 1,
+          runId: run.id,
+          tick,
+          postedAtMs,
+          arrivedAtMs: null,
+          handlerMs: null,
+          workerMs: null,
+          consumedAtTick: null,
+          outcome: null,
+          // When a reply to this job came after its run ended (countLateReply), or null.
+          lateReplyAtMs: null,
+          frameTimestampMs: t0,
+          frameMediaTimeSeconds: mediaTimeSeconds,
+        };
+        detectionWorker.worker.postMessage(
+          {
+            type: "detect",
+            jobId: job.jobId,
+            runId: run.id,
+            frame: { width: frame.width, height: frame.height, data: frame.data },
+            timestampMs: t0,
+          },
+          [frame.data.buffer],
+        );
+        run.jobs.push(job);
+        run.jobInFlight = job;
+        run.replyTimer = setTimeout(() => {
+          if (run.jobInFlight === job) {
+            failRun(run, `The detection worker did not answer job ${job.jobId} within ${WORKER_REPLY_TIMEOUT_MS / 1000} s.`);
+          }
+        }, WORKER_REPLY_TIMEOUT_MS);
+        return performance.now() - postedAtMs;
+      }
+
+      /** Advances `loop` to the frame at `mediaTimeSeconds` and returns its loop of the clip: 0 from the run's first frame, one more at each wrap (media time going back). */
+      function advanceLoop(loop, mediaTimeSeconds) {
+        if (loop.lastMediaTime !== null && mediaTimeSeconds < loop.lastMediaTime) loop.index++;
+        loop.lastMediaTime = mediaTimeSeconds;
+        return loop.index;
+      }
+
+      /** A worker run's stats rows: its jobs, the requests it dropped, and the job in flight. */
+      function workerRows(run) {
+        if (!run.policy) return [];
+        const acc = run.policy.accounting();
+        return [
+          ["detection jobs", `${acc.posted} posted, ${acc.consumptions} consumed`],
+          ["dropped requests", String(acc.dropped)],
+          ["in flight", run.jobInFlight ? `job ${run.jobInFlight.jobId}` : "none"],
+        ];
+      }
+
+      /**
+       * A `?loops=` run's row: the loop it is in, and on its last frame, the
+       * first of the loop after the counted ones, `trackTimeShare` over them.
+       */
+      function loopRows(run, loopIndex, endsRun) {
+        if (!run.loops) return [];
+        const { loopCount } = run.loops;
+        if (!endsRun) return [["trackTimeShare", `in loop ${loopIndex}: loop 0 warms up, loops 1–${loopCount} count`]];
+        let s;
+        try {
+          s = trackTimeShare(history, { clipDurationS: run.clipDurationS, ...run.loops });
+        } catch (e) {
+          // A clip duration shorter than the clip (unwrapMediaTimes): its line, never a share
+          // read on loops laid over each other.
+          return [["trackTimeShare", e.message]];
+        }
+        const pct = (v) => `${(100 * v).toFixed(1)}%`;
+        return [
+          [
+            "trackTimeShare",
+            s.complete
+              ? `${pct(s.share)} over loops 1–${loopCount} (${s.perLoop.map(pct).join(", ")})`
+              : "incomplete: the window did not keep the warm-up's last frame",
+          ],
+        ];
+      }
+
+      /** The tracking state's options at the tracker's defaults: every one `?tracker=` may override (TUNABLE_TRACKER_OPTIONS). */
+      const TRACKER_DEFAULTS = Object.freeze({
+        maxFrameLevels: DEFAULT_MAX_FRAME_LEVELS,
+        alignMaxIterations: DEFAULT_ALIGN_MAX_ITERATIONS,
+        alignEpsilon: DEFAULT_ALIGN_EPSILON,
+        photometric: DEFAULT_PHOTOMETRIC,
+        tukeyC: DEFAULT_TUKEY_C,
+        fitMaxIterations: DEFAULT_FIT_MAX_ITERATIONS,
+        fitEpsilon: DEFAULT_FIT_EPSILON,
+        minTrackedPatches: DEFAULT_MIN_TRACKED_PATCHES,
+        maxOutlierShare: DEFAULT_MAX_OUTLIER_SHARE,
+        maxFitRms: DEFAULT_MAX_FIT_RMS,
+        minPatchZncc: DEFAULT_MIN_PATCH_ZNCC,
+      });
+
+      /**
+       * What a run with none of `?targetFile=`, `?tracker=`, `?maxKeypoints=`,
+       * `?procWidth=` and `?procHeight=` runs at, as `sessionRunGaps` reads it:
+       * a session's runs run at the page's defaults.
+       */
+      const PAGE_DEFAULTS = Object.freeze({
+        targetFile: DEFAULT_TARGET_FILE,
+        processingBox: Object.freeze({ width: PROC_WIDTH, height: PROC_HEIGHT }),
+        maxKeypoints: DEFAULT_MAX_SCENE_KEYPOINTS,
+        trackerOptions: TRACKER_DEFAULTS,
+      });
+
+      /**
        * The tracker's options as this page runs it: its own defaults, which the
        * page does not override, except the scene keypoint budget. Recorded in
        * the export so a run stays readable after a default changes.
        */
-      function trackerOptions(maxKeypoints, mode) {
+      function trackerOptions(maxKeypoints, mode, detectionPath) {
         return {
           detectionOnly: mode === "detection-only",
+          externalDetection: detectionPath === "worker",
           sceneLevels: DEFAULT_SCENE_LEVELS,
           maxSceneKeypoints: maxKeypoints,
           ratio: DEFAULT_RATIO,
           ransacThreshold: DEFAULT_RANSAC_THRESHOLD,
-          maxFrameLevels: DEFAULT_MAX_FRAME_LEVELS,
-          alignMaxIterations: DEFAULT_ALIGN_MAX_ITERATIONS,
-          alignEpsilon: DEFAULT_ALIGN_EPSILON,
-          photometric: DEFAULT_PHOTOMETRIC,
-          tukeyC: DEFAULT_TUKEY_C,
-          fitMaxIterations: DEFAULT_FIT_MAX_ITERATIONS,
-          fitEpsilon: DEFAULT_FIT_EPSILON,
-          minTrackedPatches: DEFAULT_MIN_TRACKED_PATCHES,
-          maxOutlierShare: DEFAULT_MAX_OUTLIER_SHARE,
-          maxFitRms: DEFAULT_MAX_FIT_RMS,
-          minPatchZncc: DEFAULT_MIN_PATCH_ZNCC,
+          ...TRACKER_DEFAULTS,
           ...TUNING.trackerOverrides,
         };
       }
 
-      function runBenchmark(cv, targetDb, mode, windowSize, maxKeypoints, box) {
+      /**
+       * One run's tick loop. In worker mode (`run.policy`) the tracker never
+       * detects itself (`externalDetection`): each frame takes the detection the
+       * policy holds, if any, and after `process` the policy settles it and posts
+       * the frame when the tracker asks (`settleFrame`), inside the frame's
+       * `total`; a throw from any of the three fails the run (`failRun`), as a
+       * throw from anywhere else in a frame's callback does, in either path
+       * (`tick`). A `?loops=` run stops itself on its first frame of the loop
+       * after the counted ones, with the status `done`.
+       */
+      function runBenchmark(cv, targetDb, mode, windowSize, maxKeypoints, box, run) {
         lastRafFrameTime = -1;
         lastPercentileRenderAt = 0;
         filterMatchesSupported = !!cv.filterMatches;
@@ -1159,6 +1626,7 @@
                 ...TUNING.trackerOverrides,
                 maxSceneKeypoints: maxKeypoints,
                 detectionOnly: mode === "detection-only",
+                externalDetection: run.path === "worker",
                 clock,
               });
         // Start already refused an untrackable target (trackabilityError, the
@@ -1166,7 +1634,9 @@
         if (mode === "tracking" && tracker.detectionOnly) {
           throw new Error("The tracker would run detection-only on this target: use targets/pinball.wnft.");
         }
-        lastTracker = tracker ? { detectionOnly: tracker.detectionOnly, options: trackerOptions(maxKeypoints, mode) } : null;
+        lastTracker = tracker
+          ? { detectionOnly: tracker.detectionOnly, options: trackerOptions(maxKeypoints, mode, run.path) }
+          : null;
         ticks = 0;
         const targetPoints = targetCorners(targetDb.meta.widthPx, targetDb.meta.heightPx);
 
@@ -1175,16 +1645,43 @@
 
         let lastTickAt = performance.now();
         let fps = 0;
+        const loop = run.loops ? { index: 0, lastMediaTime: null } : null;
 
-        const tick = (_now, metadata) => {
+        // One frame, as it always ran; `tick` below wraps it.
+        const frameStep = (_now, metadata) => {
           if (!running) return;
           resetTimings(timings);
           const t0 = performance.now();
+          // `mediaTimeSeconds`: the frame's position in the clip; see
+          // frameRecord's doc and examples/README.md ("A shared startAt is not
+          // a shared frame sequence"). Compare two exports by it, never by index.
+          const mediaTimeSeconds = metadata?.mediaTime ?? video.currentTime;
+          const loopIndex = loop ? advanceLoop(loop, mediaTimeSeconds) : null;
+          const endsRun = loop !== null && loopIndex > run.loops.loopCount;
 
           const frame = toGrayTimed(video, video.videoWidth, video.videoHeight, box.width, box.height, timings);
-          const result = tracker
-            ? tracker.process(frame, t0)
-            : runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, t0, maxKeypoints);
+          // Read before `process`: whether a detection was in flight while it ran.
+          const inFlight = run.policy?.inFlight ?? false;
+          let result;
+          let settled = null;
+          if (run.policy) {
+            // A worker run's frame, whole: what any of it throws — the policy,
+            // the tracker's `process`, the post — stops the run (`failRun`),
+            // which is then never exported. Escaping the frame callback instead
+            // would leave the loop dead with the run still live, no error shown,
+            // and a balanced accounting at Stop.
+            try {
+              result = tracker.process(frame, t0, takeDetection(run));
+              settled = settleFrame(run, result, { frame, t0, mediaTimeSeconds, tick: ticks });
+            } catch (e) {
+              failRun(run, `The worker path failed on frame ${ticks}: ${e.message}`);
+              return;
+            }
+          } else {
+            result = tracker
+              ? tracker.process(frame, t0, null)
+              : runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, t0, maxKeypoints);
+          }
 
           timings.total = performance.now() - t0;
 
@@ -1193,16 +1690,15 @@
           fps = fps === 0 ? instantFps : fps * 0.8 + instantFps * 0.2;
           lastTickAt = now;
 
-          // `mediaTimeSeconds`: the frame's position in the clip; see
-          // frameRecord's doc and examples/README.md ("A shared startAt is not
-          // a shared frame sequence"). Compare two exports by it, never by index.
           const record = frameRecord({
             mode,
             result,
-            stageTimings: timings,
+            // `detectionPost` only on a frame that posted: absent, not 0, on every other.
+            stageTimings: settled?.postMs == null ? timings : { ...timings, detectionPost: settled.postMs },
             timestampMs: t0,
-            mediaTimeSeconds: metadata?.mediaTime ?? video.currentTime,
+            mediaTimeSeconds,
             targetPoints,
+            detection: settled ? { inFlight, detectedAt: settled.detectedAt } : null,
           });
           ticks++;
           history.push(record);
@@ -1218,12 +1714,10 @@
             ? "tracking"
             : record.ok
               ? "locked on (detected)"
-              : record.reason === "too-few-matches"
-                ? "too few matches"
-                : "no consensus";
+              : (UNLOCKED_STATUS[record.reason] ?? "no consensus");
           renderStats([
             ["status", statusText],
-            ["mode", mode],
+            ["mode", run.policy ? `${mode}, detection in a worker` : mode],
             ["state", record.state],
             ["target", lastTarget.file],
             ["fps", fps.toFixed(1)],
@@ -1239,19 +1733,42 @@
             ],
             ["pose", result.ok ? (result.pose.good ? "recovered" : "degenerate") : "—"],
             ["frame time", `${timings.total.toFixed(1)} ms`],
+            ...workerRows(run),
+            ...loopRows(run, loopIndex, endsRun),
             // Last, as before: the CDP driver reads the window count from the last row.
             ["window", `${history.length} / ${windowSize}`],
           ]);
-          if (now - lastPercentileRenderAt >= PERCENTILE_RENDER_INTERVAL_MS || history.length === 1) {
+          if (now - lastPercentileRenderAt >= PERCENTILE_RENDER_INTERVAL_MS || history.length === 1 || endsRun) {
             lastPercentileRenderAt = now;
             renderPercentiles();
             renderSummary();
           }
-          downloadButton.disabled = history.length === 0;
+          // A worker run's accounting closes at its end, and its export waits for it (endRun).
+          downloadButton.disabled = history.length === 0 || run.policy !== null;
 
+          if (endsRun) {
+            stopRun("done");
+            return;
+          }
           scheduleNextTick(tick);
         };
 
+        // The frame callback: `frameStep`, wrapped, never reordered — its timed
+        // region and its work are the frame's as before. Whatever it throws —
+        // the overlay, the stats, the record, anything past the worker path's
+        // own guard — ends the run through `failRun`, naming the frame, rather
+        // than escape the callback and leave the loop dead with the run live,
+        // no error shown, and an export at Stop that looks whole.
+        const tick = (now, metadata) => {
+          const frameIndex = ticks;
+          try {
+            frameStep(now, metadata);
+          } catch (e) {
+            failRun(run, `The run failed on frame ${frameIndex}: ${e.message}`);
+          }
+        };
+
+        liveRun = run;
         scheduleNextTick(tick);
       }
 
@@ -1271,17 +1788,66 @@
         return ($("deviceLabel").value || "device").replace(/[^a-z0-9-]+/gi, "-");
       }
 
+      /**
+       * Why the last run may not be exported, in one line, or `null`: a worker
+       * run is exported only once it has ended, if it did not fail, and with
+       * its accounting balanced and nothing ignored (`accountingError`,
+       * DEFINITIONS.detectionAccounting).
+       */
+      function exportRefusal(run) {
+        if (run?.path !== "worker") return null;
+        if (run === liveRun) return "Stop the run first: a worker run's detection accounting closes when it ends.";
+        return run.failure ?? accountingError(run.policy.accounting());
+      }
+
+      /** The export's record of how a run detected: `DEFINITIONS.detectionPath`, and in a worker run its policy, bundle, jobs and accounting. */
+      function detectionRecord(run) {
+        const worker = run.path === "worker";
+        return {
+          path: run.path,
+          policy: worker ? DETECTION_POLICY : null,
+          workerBundleSha256: worker ? detectionWorker.bundleSha256 : null,
+          jobs: run.jobs,
+          accounting: worker ? run.policy.accounting() : null,
+          // Replies to this run's own jobs that arrived after it ended, discarded
+          // and never handed in (DEFINITIONS.staleReplies): the count as it
+          // stands now, when the export is taken.
+          staleReplies: worker ? run.staleReplies : null,
+        };
+      }
+
       function downloadHistory() {
-        const summary = {};
-        for (const s of activeStages()) {
-          const values = framesForStage(history, s)
-            .map((f) => f.timings[s])
-            .sort((a, b) => a - b);
-          summary[s] = {
-            p50: values.length ? percentile(values, 50) : null,
-            p95: values.length ? percentile(values, 95) : null,
-            max: values.length ? values[values.length - 1] : null,
-          };
+        const run = lastRun;
+        // A refusal is about the Download, not the run: it never changes the
+        // status row, which says how the run ended (showNotice).
+        const refusal = exportRefusal(run);
+        if (refusal) {
+          showNotice(`Not exported: ${refusal}`);
+          return;
+        }
+        // Both over the window, or with ?loops= over the counted loops' frames
+        // (summaryMsFrames says which; see definitions). What they cannot read —
+        // a clip duration shorter than the clip, which unwrapMediaTimes refuses —
+        // refuses the export in one line, rather than throw out of the click.
+        // Both are given the run's path: a worker run's frames all say what
+        // became of detection, and none is read by M2's rule.
+        const counted = {
+          clipDurationS: run?.clipDurationS ?? null,
+          loops: run?.loops ?? null,
+          path: run?.path ?? null,
+        };
+        let summary;
+        let runSummary;
+        try {
+          summary = stageSummary(history, { stages: tableStages(), ...counted });
+          runSummary = summarizeRun(history, {
+            ...counted,
+            jobs: run?.jobs ?? [],
+            accounting: run?.policy ? run.policy.accounting() : null,
+          });
+        } catch (e) {
+          showNotice(`Not exported: ${e.message}`);
+          return;
         }
 
         const payload = {
@@ -1300,6 +1866,30 @@
           // The tracker's options as it ran (null for the stateless pipeline):
           // its defaults, except maxSceneKeypoints.
           tracker: lastTracker,
+          // How the run detected (detectionRecord); absent in exports older
+          // than the worker path, which all detected on the frame loop.
+          detection: run ? detectionRecord(run) : null,
+          // The run's place in the session's order (?run=), its wall-clock
+          // start and end, for the thermal rule, how it ended (done, stopped or
+          // failed), and why it failed, if it did (the cause failRun showed).
+          run: run
+            ? {
+                order: run.order,
+                startedAtIso: run.startedAtIso,
+                endedAtIso: run.endedAtIso,
+                endedBy: run.endedBy,
+                failure: run.failure,
+              }
+            : null,
+          // Whether the run followed the session's protocol, and what keeps it
+          // from it (sessionRunGaps, DEFINITIONS.protocol): set below, from
+          // this record.
+          protocol: null,
+          // ?loops=: the counted loops runSummary reads, loop 0 being the
+          // warm-up; null for a run that set none. clipDurationS: the clip's
+          // duration, null for a webcam.
+          loops: run?.loops ?? null,
+          clipDurationS: run?.clipDurationS ?? null,
           // The step performance.now() takes here; a timing under it reads 0.
           clockResolutionMs,
           crossOriginIsolated: globalThis.crossOriginIsolated === true,
@@ -1332,13 +1922,21 @@
           processingBox: lastProcessingBox,
           processingResolution: lastProcessingResolution,
           windowSize: history.length,
+          // Each stage's p50, p95 and max (stageSummary), over the frames
+          // summaryMsFrames names: the counted loops' in a ?loops= run, as
+          // runSummary's, else the window's.
           summaryMs: summary,
-          // Over the same frames as summaryMs; see definitions.
-          runSummary: summarizeRun(history),
+          summaryMsFrames: run?.loops ? "counted loops" : "window",
+          runSummary,
           definitions: DEFINITIONS,
           frames: history,
         };
+        const gaps = sessionRunGaps(payload, PAGE_DEFAULTS);
+        payload.protocol = { sessionRun: gaps.length === 0, gaps };
         saveJson(payload, `bench-nft-${payload.mode}-${deviceSlug()}-${Date.now()}.json`);
+        // An exploratory run is exported all the same, and says what keeps it
+        // from being a session's, without touching the status row.
+        if (gaps.length > 0) showNotice(`Exported; not a session run: ${gaps.join("; ")}`);
       }
 
       /**
@@ -1392,11 +1990,13 @@
           showError(e.message);
         } finally {
           probeButton.disabled = false;
-          startButton.disabled = false;
+          startButton.disabled = !startAllowed();
         }
       }
 
       async function main() {
+        // In worker mode Start waits for the worker's `ready` (below).
+        if (DETECTION_PATH === "worker") startButton.disabled = true;
         const cv = await createJsfeatNextBackend();
 
         clockResolutionMs = clockResolution(clock);
@@ -1447,6 +2047,8 @@
               sha256: await sha256Hex(bytes),
               db: decoded.target,
             }),
+            // The file's bytes, which the detection worker decodes itself.
+            bytes,
           };
           const p = decoded.target.patches;
           targetSelect.querySelector('option[value="wnft"]').textContent =
@@ -1460,10 +2062,6 @@
         if (TUNING.paramErrors.length > 0) {
           errorEl.textContent = TUNING.paramErrors.join(" ");
         }
-
-        setStatusText("ready");
-        startButton.disabled = false;
-        probeButton.disabled = false;
 
         for (const radio of document.querySelectorAll('input[name="source"]')) {
           radio.addEventListener("change", updateSourceInputs);
@@ -1485,6 +2083,7 @@
           // the source.
           const mode = modeSelect.value;
           const target = targets[targetSelect.value];
+          const source = currentSource();
           const refusal =
             TUNING.paramErrors.length > 0
               ? TUNING.paramErrors.join(" ")
@@ -1493,12 +2092,27 @@
                   target,
                   minTrackedPatches: TUNING.trackerOverrides.minTrackedPatches ?? DEFAULT_MIN_TRACKED_PATCHES,
                   file: TARGET_PATH,
+                  detection: DETECTION_PATH,
+                  source,
+                  loops: TUNING.loops,
                 });
           if (refusal) {
             showError(refusal);
             return;
           }
           startButton.disabled = true;
+          const run = newRun();
+          // Read once, before the source starts: the worker's `init` must be
+          // for the budget the tracker runs.
+          const maxKeypoints = readMaxKeypoints();
+          if (run.path === "worker") {
+            try {
+              await workerReady(maxKeypoints);
+            } catch (e) {
+              showError(e.message);
+              return;
+            }
+          }
           try {
             // Local until every step that can throw is behind us. Committing
             // to `lastSource`/`lastMode`/`lastStartAtSeconds` any earlier
@@ -1507,7 +2121,6 @@
             // switch with no file chosen throwing before anything started,
             // yet the old history exporting as having come from the new
             // source.
-            const source = currentSource();
             // Read before the source starts: a webcam asks for its ideal
             // resolution from this box.
             const box = readProcessingBox();
@@ -1531,14 +2144,25 @@
             stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
 
             const windowSize = Math.max(1, Math.floor(Number($("windowSize").value) || 120));
-            const maxKeypoints = readMaxKeypoints();
             // Shows the value actually used when a malformed entry fell back
             // to the default, instead of leaving the field disagreeing with
             // the run.
             maxKeypointsInput.value = String(maxKeypoints);
             procWidthInput.value = String(box.width);
             procHeightInput.value = String(box.height);
+            // A webcam's is Infinity: it has no clip, and no loops.
+            run.clipDurationS = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : null;
+            if (run.loops && run.clipDurationS === null) {
+              throw new Error("?loops= needs a clip whose duration the browser reports, and this one reports none.");
+            }
+            // The worker may have failed since `workerReady`, while the source
+            // started, with no run live for `workerFailed` to fail: refused with
+            // its own cause, rather than a run started on a dead worker that
+            // fails 5 s later on a timeout whose message hides it. Nothing
+            // awaits from here to `runBenchmark`, which makes the run live.
+            if (run.path === "worker" && detectionWorker.failure !== null) throw new Error(detectionWorker.failure);
 
+            lastRun = run;
             lastSource = source;
             lastMode = mode;
             lastTarget = target.record;
@@ -1551,15 +2175,20 @@
             running = true;
             stopButton.disabled = false;
             probeButton.disabled = true;
-            runBenchmark(cv, target.db, mode, windowSize, maxKeypoints, box);
+            run.startedAtIso = new Date().toISOString();
+            runBenchmark(cv, target.db, mode, windowSize, maxKeypoints, box, run);
           } catch (e) {
+            if (liveRun) endRun(liveRun);
             const src = currentSource();
+            // A failed worker keeps Start disabled (`startAllowed`): the source's hints would mislead.
             const hint =
-              src === "webcam"
-                ? "A webcam source needs camera permission and a secure context (https://, or http://localhost)."
-                : src === "bundled"
-                  ? `The bundled clip needs the tab in the foreground to autoplay, and examples/videos/${bundledClipSelect.value} served alongside this page.`
-                  : "A video file source needs a file chosen and, for autoplay, the tab in the foreground.";
+              run.path === "worker" && detectionWorker.failure !== null
+                ? "The run did not start, and nothing was exported. Reload the page to run again."
+                : src === "webcam"
+                  ? "A webcam source needs camera permission and a secure context (https://, or http://localhost)."
+                  : src === "bundled"
+                    ? `The bundled clip needs the tab in the foreground to autoplay, and examples/videos/${bundledClipSelect.value} served alongside this page.`
+                    : "A video file source needs a file chosen and, for autoplay, the tab in the foreground.";
             showError(`${e.message}\n\n${hint}`);
             // A camera stream can be live (getUserMedia succeeded, then
             // loadedmetadata or play() failed) or an object URL allocated
@@ -1578,21 +2207,32 @@
             // first tick ever ran.
             running = false;
             stopButton.disabled = true;
-            startButton.disabled = false;
+            startButton.disabled = !startAllowed();
             probeButton.disabled = false;
           }
         });
 
-        stopButton.addEventListener("click", () => {
-          stopLoop();
-          stopSource();
-          stopButton.disabled = true;
-          startButton.disabled = false;
-          probeButton.disabled = false;
-          setStatusText("stopped");
-        });
+        stopButton.addEventListener("click", () => stopRun("stopped"));
 
         downloadButton.addEventListener("click", downloadHistory);
+
+        // Start waits for the worker: never a silent fall back to `sync` under a
+        // URL that asked for it.
+        if (DETECTION_PATH === "worker") {
+          setStatusText("starting the detection worker…");
+          try {
+            await startDetectionWorker(readMaxKeypoints());
+          } catch (e) {
+            detectionWorker.failure ??= e.message;
+            showError(e.message);
+            probeButton.disabled = false;
+            return;
+          }
+        }
+
+        setStatusText("ready");
+        startButton.disabled = false;
+        probeButton.disabled = false;
       }
 
       main().catch((e) => {

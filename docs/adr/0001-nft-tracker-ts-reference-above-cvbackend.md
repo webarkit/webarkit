@@ -153,6 +153,24 @@ The expected cost of Option A on a WASM backend is small but unmeasured: trackin
   The frame pyramid, its first, was one level on every tracking-state frame
   (`pyramidMs` p95 0.1 ms); the pyramid probe put four levels of 270×360 at
   6.4 ms, a cost the tracker pays only when it builds them.
+- What M3 — detection off the frame loop — did to point 5, measured **on the
+  reference device** on 2026-10-01
+  ([the session's record](../benchmarks/2026-10-01-m3-device-session.md)).
+  M3's plan did not test point 5's number: it moved detection, which is not
+  tracking-state compute, into a worker the application owns, as point 7
+  requires, and its table's row six registered `trackStepMs` at p50 — within
+  1.1% of the synchronous runs' in every bracketed block, against that row's
+  10%. The p95 that point 5 reads was not a registered row's result; it is
+  recorded here as a measurement read from the session's exports, on the
+  adopted 48-patch target: 14.0–15.3 / 18.3–18.9 / 17.9–18.5 ms on the static
+  / wall / table clips, in both modes, against 8 ms — below M2's 20.4 / 25.0
+  / 24.2 (2026-09-26, before tuning round 2 cut the patches from 64 to 48),
+  and still over the threshold. This session does not change the
+  tracker-side condition as M2 found it. Point 5's other half is unchanged
+  too: no step has moved into the backend, and the one to move is still
+  patch alignment ([#84](https://github.com/webarkit/webarkit/issues/84)),
+  whose own p95, read from the exports the same way, was 13.2–18.4 ms of
+  those.
 
 ## Action items
 
