@@ -103,6 +103,17 @@ export type Stub<F extends (...args: never[]) => unknown> = (
 export type TrackingState = "LOST" | "DETECT" | "TRACK";
 
 /**
+ * What became of a detection on a frame — `TrackResult.detectionUse` (M3).
+ *
+ * `"none"`: no detection ran and none was handed in. `"internal"`: the
+ * tracker ran `detectTarget` itself, on this frame. `"consumed"`: a
+ * detection handed to `process` — of an earlier frame, computed elsewhere —
+ * entered the state machine on this frame. `"ignored"`: one was handed in,
+ * but the lock held through this frame's tracking step, so it was not used.
+ */
+export type DetectionUse = "none" | "internal" | "consumed" | "ignored";
+
+/**
  * A grey image pyramid.
  *
  * Level 0 is the full-resolution image; level `l` has size

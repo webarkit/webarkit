@@ -72,7 +72,9 @@ These exist so a future Rust port stays cheap. They apply to `src/`, not to
 
 - **Pure core.** No DOM, timers, `requestAnimationFrame`, workers or camera
   access. Input is a `GrayImage` and a timestamp; output is a result. The
-  application owns the loop.
+  application owns the loop. The worker that runs `detectTarget` is the
+  application's too: `src/` never posts to one, and `Detection` is the
+  struct that crosses that boundary, handed back to `process`.
 - **Explicit result types** (`{ ok, ... }`). Exceptions are for contract
   violations, never for control flow.
 - **Fixed-shape data.** Typed arrays and plain structs, no dynamic property

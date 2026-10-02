@@ -44,12 +44,15 @@
 // count below is pinned exactly; errors are pinned below about 1.2–1.3 ×
 // their measured value, which each test states.
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect, beforeAll } from "vitest";
 import type { CvBackend, GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
 import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
 import { NftTracker } from "../src/tracker.js";
 import type { NftTrackerOptions, TrackResult } from "../src/tracker.js";
 import { buildTargetFromImage } from "../src/target/build_from_image.js";
+import { decode } from "../src/target/format/index.js";
 import type { TargetDb } from "../src/target/types.js";
 import { trackTarget } from "../src/tracking/track_frame.js";
 import { PINBALL_STEP, pinballPatches, pinballTrackingTarget } from "./fixtures/tracking_target.js";
@@ -376,5 +379,110 @@ describe("NftTracker on camera-path sequences", () => {
         }
         const last = withSeededRandom(SEED, () => longer.process(padded(f1), 66)).value;
         expect(last.state).toBe("TRACK");
+    }, 60_000);
+});
+
+/**
+ * The shipped configuration, pinned on ground truth: the committed
+ * `examples/targets/pinball.wnft`, decoded, on the same sequences. Every other
+ * test here runs the 64-patch fixture, which stays independent of
+ * compile-target's defaults on purpose (fixtures/tracking_target.ts); this
+ * block is the one that follows them, so a change to the default that moves
+ * the tracker's accuracy moves a pinned number, and has to be looked at.
+ *
+ * Errors are measured as the fixture tests measure them, at the fixture's 64
+ * patch centres, and also over those the truth puts inside the frame: a
+ * target leaving the frame is tracked on the patches still in view, and the
+ * pose extrapolates to the rest. With the 48 patches of M3's tuning pass
+ * (round 2) that extrapolation is 3.4 px RMS over the whole target at worst,
+ * 8.2 px at its far point, where the 64 of M2 were 1.2 and 2.5; the part in
+ * view stays within 0.36 px (docs/benchmarks/README.md, round 4). Pinned below
+ * about 1.25 times the measured value, as elsewhere in this file.
+ */
+describe("the shipped target, examples/targets/pinball.wnft, on ground truth", () => {
+    const SHIPPED = fileURLToPath(
+        new URL("../../../examples/targets/pinball.wnft", import.meta.url),
+    );
+    let shipped: TargetDb;
+
+    beforeAll(() => {
+        const decoded = decode(new Uint8Array(readFileSync(SHIPPED)));
+        if (!decoded.ok) throw new Error(`pinball.wnft: ${decoded.error}`);
+        shipped = decoded.target;
+    });
+
+    /** The pose error over the measuring points the truth puts inside the frame, RMS and worst. */
+    function inView(A: Mat3, truth: Mat3): { rms: number; max: number } {
+        let s = 0;
+        let n = 0;
+        let max = 0;
+        for (let i = 0; i < patchCentres.length; i += 2) {
+            const [tx, ty] = project(truth, patchCentres[i], patchCentres[i + 1]);
+            if (!(tx >= 0 && tx <= CAMERA.width - 1 && ty >= 0 && ty <= CAMERA.height - 1))
+                continue;
+            const [ax, ay] = project(A, patchCentres[i], patchCentres[i + 1]);
+            const d = Math.hypot(ax - tx, ay - ty);
+            s += d * d;
+            n++;
+            max = Math.max(max, d);
+        }
+        return { rms: n === 0 ? 0 : Math.sqrt(s / n), max };
+    }
+
+    it("is the default's target: 48 patches of 16 × 16, 47 of level 0 and one of level 1", () => {
+        const p = shipped.patches!;
+        expect([p.count, p.patchSize]).toEqual([48, 16]);
+        expect([0, 1, 2].map((l) => p.level.filter((x) => x === l).length)).toEqual([47, 1, 0]);
+    });
+
+    it("leaves and returns as the fixture does, extrapolating up to 3.4 px RMS (8.2 at the far point) while the part in view stays within 0.36 px", () => {
+        // Measured: the same states as the fixture's run; on frames 36–38,
+        // with 9–11 inliers left, 3.01 / 3.37 / 3.25 px RMS over the whole
+        // target (worst point 7.37 / 8.24 / 7.65), 0.34–0.36 in view (worst
+        // 0.72). Every other TRACK frame is within 0.55 px RMS.
+        const { results, truths, states } = run(shipped, leaveAndReturn, 106);
+        expect(states).toBe(
+            "D" + "T".repeat(38) + "D" + "L".repeat(27) + "D".repeat(26) + "T".repeat(13),
+        );
+        const tracked = results.flatMap((r, i) => (r.state === "TRACK" ? [i] : []));
+        const whole = tracked.map((i) => centreRms(results[i].H!, truths[i]));
+        const worst = tracked.map((i) => centreMax(results[i].H!, truths[i]));
+        const seen = tracked.map((i) => inView(results[i].H!, truths[i]));
+        expect(Math.max(...whole)).toBeLessThan(4.2);
+        expect(Math.max(...worst)).toBeLessThan(10.3);
+        expect(Math.max(...seen.map((e) => e.rms))).toBeLessThan(0.45);
+        expect(Math.max(...seen.map((e) => e.max))).toBeLessThan(0.9);
+        // The extrapolation is confined to the frames that fit few patches.
+        const far = tracked.filter((_, k) => whole[k] > 1.5);
+        expect(far).toEqual([36, 37, 38]);
+    }, 60_000);
+
+    it("tracks a slow wander as the fixture does, within 0.11 px RMS (worst point 0.35)", () => {
+        const { results, truths, states } = run(shipped, wander, 40);
+        expect(states).toBe("D" + "T".repeat(39));
+        const tracked = results.flatMap((r, i) => (r.state === "TRACK" ? [i] : []));
+        expect(Math.max(...tracked.map((i) => centreRms(results[i].H!, truths[i])))).toBeLessThan(
+            0.14,
+        );
+        expect(Math.max(...tracked.map((i) => centreMax(results[i].H!, truths[i])))).toBeLessThan(
+            0.44,
+        );
+    }, 60_000);
+
+    it("survives a velocity change of 4 px/frame; from 5 px/frame every moving frame re-detects (the fixture tracks 5)", () => {
+        const expected: [number, string][] = [
+            [2, "D" + "T".repeat(14)],
+            [3, "D" + "T".repeat(14)],
+            [4, "D" + "T".repeat(14)],
+            [5, "DTTTT" + "D".repeat(10)],
+            [6, "DTTTT" + "D".repeat(10)],
+        ];
+        for (const [v, pinned] of expected) {
+            const { results, truths, states } = run(shipped, velocityStep(v), 15);
+            expect(states).toBe(pinned);
+            results.forEach((r, i) => {
+                if (r.state === "TRACK") expect(centreRms(r.H!, truths[i])).toBeLessThan(0.13);
+            });
+        }
     }, 60_000);
 });

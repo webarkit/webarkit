@@ -59,11 +59,27 @@
  * is detected from scratch and nothing is carried between frames: exactly
  * M1, which the parity test checks unchanged. `detectionOnly` says which.
  *
- * **Known limitation: re-acquisition is synchronous.** A frame that detects
- * blocks for about the stateless cost — ~109 ms p50 on the reference
- * device's camera path (docs/benchmarks/README.md, "Webcam: `acquire`
- * without a video decoder") against a 33 ms frame budget. Asynchronous
- * detection is M3 (#48's numbering).
+ * **External detection (M3).** The detection pipeline costs about 79 ms p50
+ * on the reference device (docs/benchmarks/README.md, "Results
+ * (2026-09-26)") against a 33 ms frame budget, and in the default mode a
+ * frame without a lock pays it on the thread that called `process`. The
+ * pipeline is exported as `prepareDetection` and `detectTarget`
+ * (detection.ts) so that the application can run it where it likes — in a
+ * worker it owns, with a setup built from the same target — and hand the
+ * `Detection` back to `process` as its third argument. With
+ * `externalDetection: true` the tracker never detects itself: a frame
+ * without a lock and without a handed-in detection is `"LOST"` with
+ * `reason: "no-detection"`, makes no backend call, and says
+ * `needsDetection`. A handed-in detection is of an earlier frame, so its
+ * homography is not this frame's pose: the tracker locks on it and runs a
+ * tracking step **on the same frame**, which carries the pose to this frame
+ * and checks it — `"TRACK"` if it holds, `"LOST"` with
+ * `reason: "unconfirmed"` and the step's `trackLoss` if not. A detection
+ * handed in while a lock holds is ignored (`detectionUse`). The tracker
+ * keeps no request state and no frame: how many detections are in flight,
+ * and of which frames, is the application's policy, and the worker is the
+ * application's (ADR-0001 point 7). The default mode is M2's, unchanged:
+ * the parity tests hold it there.
  *
  * **What tracking survives**, measured on synthetic camera-path frames
  * (270 × 360, pinball at 0.45; track_frame.test.ts,
@@ -89,11 +105,13 @@
  * in view and extrapolate to the rest: up to 1.2 px RMS off over the patch
  * centres, 2.5 px at the far end.
  *
- * **Patch levels are the first thing the tuning pass should revisit.** Every
- * patch of `examples/targets/pinball.wnft` comes from level 0, and on the
- * camera path the target is seen at about half that scale: each patch is
- * sharper than the frame it is aligned in. That is why the basin is the
- * narrow one — on this suite's frames (one blur pass, noise σ = 2), 84% of
+ * **Patch levels are the first thing the tuning pass should revisit.** All
+ * but one patch of `examples/targets/pinball.wnft` come from level 0 (47 of
+ * 48; the other is from level 1), and on the camera path the target is seen
+ * at about half level 0's scale: each patch is sharper than the frame it is
+ * aligned in. That is why the basin is the narrow one — on this suite's
+ * frames (one blur pass, noise σ = 2, and M2's 64 level-0 patches, which the
+ * tests' fixture keeps), 84% of
  * alignments converge from 2 px off and 68% from 3, 78% and 61% within
  * 0.5 px of the truth; unblurred, 92% and 72% (measured in review, not
  * pinned) — why a right alignment's gain sits near 0.5, and why its residual
@@ -124,37 +142,26 @@
  */
 
 import type { CvBackend, GrayImage, Keypoint, Mat3, Pose } from "@webarkit/cv-backend-spec";
-import { buildLevelIndex, chooseDescriptorSet, matchPerLevel } from "./detection.js";
-import type { TargetLevelView } from "./detection.js";
+import {
+    DEFAULT_MAX_SCENE_KEYPOINTS,
+    DEFAULT_RANSAC_THRESHOLD,
+    DEFAULT_RATIO,
+    DEFAULT_SCENE_LEVELS,
+    detectTarget,
+    prepareDetection,
+} from "./detection.js";
+import type { Detection, DetectionSetup } from "./detection.js";
 import type { TargetDb } from "./target/types.js";
 import { trackFrame, trackTarget } from "./tracking/track_frame.js";
 import type {
     TrackFrameOptions,
+    TrackFrameResult,
     TrackLoss,
     TrackStats,
     TrackStepTimings,
     TrackTarget,
 } from "./tracking/track_frame.js";
-import type { TrackingState } from "./tracking/types.js";
-
-/**
- * Pyramid levels searched in the LIVE frame.
- *
- * One, deliberately: the target is prepared once, offline, over many levels,
- * and the per-frame work stays cheap. This is the demos' known limitation —
- * a camera moving far from the target has no scale search of its own — kept
- * here so M1 changes nothing. See `examples/README.md`.
- */
-export const DEFAULT_SCENE_LEVELS = 1;
-
-/** Keypoint budget for the live frame — the webcam demo's measured setting. */
-export const DEFAULT_MAX_SCENE_KEYPOINTS = 300;
-
-/** Lowe ratio for each per-level match call. */
-export const DEFAULT_RATIO = 0.8;
-
-/** RANSAC reprojection threshold, in pixels of the live frame. */
-export const DEFAULT_RANSAC_THRESHOLD = 4;
+import type { DetectionUse, TrackingState } from "./tracking/types.js";
 
 /*
  * The tracking state's defaults. Every one is provisional until the M2
@@ -277,7 +284,20 @@ export type TrackFailure =
     /** Fewer than the 4 correspondences a homography needs. */
     | "too-few-matches"
     /** Enough matches, but RANSAC found no model they agree on. */
-    | "no-consensus";
+    | "no-consensus"
+    /**
+     * No lock, and no detection: with `externalDetection`, the tracker runs
+     * none itself, and none was handed to `process` this frame. The result
+     * says `needsDetection`.
+     */
+    | "no-detection"
+    /**
+     * A detection was handed in and consumed, but the tracking step that
+     * carries its homography to this frame refused it — `trackLoss` says
+     * why. The detection is of an earlier frame, and the target moved past
+     * what one step recovers, or the detection was wrong to begin with.
+     */
+    | "unconfirmed";
 
 export interface NftTrackerOptions {
     /** See {@link DEFAULT_SCENE_LEVELS}. */
@@ -290,6 +310,16 @@ export interface NftTrackerOptions {
     readonly ransacThreshold?: number;
     /** Never track: every frame runs detection, and nothing is carried between frames (M1). Default `false`. */
     readonly detectionOnly?: boolean;
+    /**
+     * Never detect: the application runs `detectTarget` where it likes — in
+     * a worker it owns, typically — and hands the result to {@link
+     * NftTracker.process}. A frame without a lock and without one is
+     * `"LOST"` with `reason: "no-detection"`, costs no backend call, and
+     * says `needsDetection`. Default `false`: the tracker detects itself on
+     * a frame without a lock, as in M2. Either way, a detection handed in is
+     * consumed. May be combined with `detectionOnly`.
+     */
+    readonly externalDetection?: boolean;
     /** See {@link DEFAULT_MAX_FRAME_LEVELS}. Integer in `[1, 256]`. */
     readonly maxFrameLevels?: number;
     /** See {@link DEFAULT_ALIGN_MAX_ITERATIONS}. Integer `≥ 1`. */
@@ -330,7 +360,9 @@ export interface TrackTimings {
      * The tracking step when it ran — prediction, cull, pyramid, alignment,
      * fit, judgement; the pose (a backend call) is not in it. On `"TRACK"`
      * frames, ADR-0001 point 5's "tracker-side TypeScript compute in the
-     * tracking state". Else 0.
+     * tracking state". Else 0. A frame that drops its lock and then confirms
+     * a consumed detection runs two steps, and this is their sum (as are
+     * the three parts below).
      */
     readonly trackMs: number;
     /** Part of `trackMs` building the frame pyramid: ADR-0001 point 3's first candidate for the backend. */
@@ -348,15 +380,35 @@ export interface TrackTimings {
 /** Fields every result carries in M2, on both branches. */
 interface TrackingFields {
     /**
-     * Why the lock this frame started with was dropped; `null` if it held, or
-     * there was none. A frame that drops its lock is detected again at once,
-     * so this can accompany a `"DETECT"` result as well as a `"LOST"` one.
+     * Why the last tracking step run this frame dropped its lock; `null` if
+     * it held, or no step ran. A frame that drops its lock is detected again
+     * at once, so this can accompany a `"DETECT"` result as well as a `"LOST"`
+     * one. Two steps run only on a frame that drops its lock and then
+     * confirms a consumed detection (see `consume`): both fields then
+     * describe the confirming step, and its `"TRACK"` result has `null` here.
      */
     readonly trackLoss: TrackLoss | null;
-    /** The tracking step's patch counts, when one ran this frame; else `null`. */
+    /** The last tracking step's patch counts, when one ran this frame; else `null`. */
     readonly tracking: TrackStats | null;
     /** `null` without the `clock` option. */
     readonly timings: TrackTimings | null;
+    /**
+     * Whether the application should produce a detection and hand it to a
+     * later `process` call: `true` iff the frame ended without a lock and the
+     * tracker has `externalDetection`. Always `false` without it. The tracker
+     * keeps no request state — how many detections are in flight, and of
+     * which frames, is the application's policy.
+     */
+    readonly needsDetection: boolean;
+    /** What became of a detection this frame. */
+    readonly detectionUse: DetectionUse;
+    /**
+     * `timestampMs` minus the consumed detection's own, in the caller's
+     * units, when one was consumed this frame; else `null`. 0 for a
+     * detection of this very frame, and negative if the caller stamped the
+     * detection later than the frame: trusted, not checked.
+     */
+    readonly detectionLatencyMs: number | null;
 }
 
 /**
@@ -384,7 +436,12 @@ export type TrackResult =
           readonly numMatches: number;
           /** `"DETECT"`: RANSAC inliers. `"TRACK"`: correspondences the fit weighed above 0. */
           readonly numInliers: number;
-          /** Row-major 3x3 mapping target level-0 pixels into the frame. */
+          /**
+           * Row-major 3x3 mapping target level-0 pixels into the frame — this
+           * frame, with one exception: a detection-only tracker cannot carry
+           * a consumed detection forward, so its `"DETECT"` result for one is
+           * the DETECTED frame's `H` (and `pose`), `detectionLatencyMs` old.
+           */
           readonly H: Mat3;
           /**
            * Decomposition of {@link H}. Present whenever `ok`, but check
@@ -392,7 +449,12 @@ export type TrackResult =
            * geometrically degenerate.
            */
           readonly pose: Pose;
-          /** The frame's keypoints, as detected. For overlays. Empty on `"TRACK"`: nothing is detected. */
+          /**
+           * The frame's keypoints, as detected. For overlays. Empty on a
+           * `"TRACK"` frame, where nothing is detected — except one that
+           * consumed a detection, which carries the DETECTED frame's
+           * keypoints, `detectionLatencyMs` old.
+           */
           readonly sceneKeypoints: readonly Keypoint[];
       })
     | (TrackingFields & {
@@ -418,17 +480,8 @@ type Detected =
 const NO_KEYPOINTS: readonly Keypoint[] = Object.freeze([]);
 
 export class NftTracker {
-    private readonly levels: TargetLevelView[];
-    private readonly sceneLevels: number;
-    private readonly maxSceneKeypoints: number;
-    private readonly ratio: number;
-    private readonly ransacThreshold: number;
-    /**
-     * The target's keypoints as the contract's array-of-objects, built once —
-     * and only when the backend has a `filterMatches` to feed them to, since
-     * materialising N objects a frame-filter will never read is pure waste.
-     */
-    private readonly targetKeypoints: Keypoint[] | null;
+    /** The detection pipeline's per-target half, built once (`prepareDetection`). */
+    private readonly setup: DetectionSetup;
     /**
      * Whether every frame runs detection and none tracks: asked for with the
      * `detectionOnly` option, or forced by a target that cannot be tracked —
@@ -436,6 +489,8 @@ export class NftTracker {
      * 3 × 3, which `alignPatch` cannot align.
      */
     readonly detectionOnly: boolean;
+    /** Whether the tracker never detects itself: the `externalDetection` option. */
+    readonly externalDetection: boolean;
     /** The target's patches with their geometry, when this tracker tracks. */
     private readonly track: TrackTarget | null;
     private readonly trackOptions: TrackFrameOptions;
@@ -457,20 +512,15 @@ export class NftTracker {
      */
     constructor(
         private readonly cv: CvBackend,
-        private readonly target: TargetDb,
+        target: TargetDb,
         private readonly K: Mat3,
         options?: NftTrackerOptions,
     ) {
         const tracking = resolveTrackingOptions(options);
-        // Both throw on a target this backend cannot read, in the constructor
+        // Throws on a target this backend cannot read, in the constructor
         // rather than on the first frame: it is a mismatch between target and
         // backend, not a frame that failed to track.
-        this.levels = buildLevelIndex(chooseDescriptorSet(cv, target));
-        this.sceneLevels = options?.sceneLevels ?? DEFAULT_SCENE_LEVELS;
-        this.maxSceneKeypoints = options?.maxSceneKeypoints ?? DEFAULT_MAX_SCENE_KEYPOINTS;
-        this.ratio = options?.ratio ?? DEFAULT_RATIO;
-        this.ransacThreshold = options?.ransacThreshold ?? DEFAULT_RANSAC_THRESHOLD;
-        this.targetKeypoints = cv.filterMatches ? toKeypointArray(target) : null;
+        this.setup = prepareDetection(cv, target, options);
         this.trackOptions = tracking.track;
         this.clock = tracking.clock;
         const p = target.patches;
@@ -482,47 +532,64 @@ export class NftTracker {
                 ? trackTarget(p, target.pyramid.scaleStep)
                 : null;
         this.detectionOnly = this.track === null;
+        this.externalDetection = tracking.externalDetection;
     }
 
-    process(frame: GrayImage, timestampMs: number): TrackResult {
+    /**
+     * One frame.
+     *
+     * @param frame       The frame, a `GrayImage`.
+     * @param timestampMs The frame's timestamp, in the caller's units; echoed
+     *                    back, and the reference for `detectionLatencyMs`.
+     * @param detection   A detection computed elsewhere — by `detectTarget`,
+     *                    in a worker the application owns — of an earlier
+     *                    frame. Consumed when this frame ends without a lock
+     *                    (see the class comment); ignored when the lock holds.
+     *                    Trusted as `detectTarget` produced it.
+     */
+    process(frame: GrayImage, timestampMs: number, detection?: Detection | null): TrackResult {
         const clock = this.clock;
         const start = clock === null ? 0 : clock();
         let trackLoss: TrackLoss | null = null;
         let tracking: TrackStats | null = null;
         let step: TrackStepTimings | null = null;
         if (this.lock !== null && this.track !== null) {
-            const r = trackFrame(
-                frame,
-                this.track,
-                this.lock.previous,
-                this.lock.current,
-                this.trackOptions,
-                clock,
-            );
+            const r = this.step(frame);
             tracking = r.stats;
             step = r.timings;
             if (r.ok) {
-                this.lock = { previous: this.lock.current, current: r.H };
-                const pose = this.cv.poseFromHomography(r.H, this.K);
-                return {
-                    ok: true,
-                    state: "TRACK",
-                    quality: r.quality,
-                    timestampMs,
-                    numMatches: r.stats.observed,
-                    numInliers: r.stats.inliers,
-                    H: r.H,
-                    pose,
-                    sceneKeypoints: NO_KEYPOINTS,
-                    trackLoss: null,
-                    tracking,
-                    timings: this.timings(start, 0, step),
-                };
+                return this.tracked(r, timestampMs, NO_KEYPOINTS, start, [step], {
+                    detectionUse: detection ? "ignored" : "none",
+                    detectionLatencyMs: null,
+                });
             }
-            // The lock goes, and this same frame is detected again below: a
-            // target moved out of the step's reach is often still in view.
+            // The lock goes, and this same frame gets whatever detection
+            // there is below: a target moved out of the step's reach is
+            // often still in view.
             trackLoss = r.loss;
-            this.lock = null;
+        }
+        if (detection) {
+            return this.consume(detection, frame, timestampMs, start, trackLoss, tracking, step);
+        }
+        if (this.externalDetection) {
+            return {
+                ok: false,
+                state: "LOST",
+                quality: 0,
+                reason: "no-detection",
+                timestampMs,
+                numMatches: 0,
+                numInliers: 0,
+                H: null,
+                pose: null,
+                sceneKeypoints: NO_KEYPOINTS,
+                trackLoss,
+                tracking,
+                timings: this.timings(start, 0, [step]),
+                needsDetection: true,
+                detectionUse: "none",
+                detectionLatencyMs: null,
+            };
         }
         const detectStart = clock === null ? 0 : clock();
         const detected = this.detect(frame, timestampMs);
@@ -532,8 +599,124 @@ export class NftTracker {
         if (detected.ok && this.track !== null) {
             this.lock = { previous: null, current: detected.H };
         }
-        const fields = { trackLoss, tracking, timings: this.timings(start, detectMs, step) };
+        const fields: TrackingFields = {
+            trackLoss,
+            tracking,
+            timings: this.timings(start, detectMs, [step]),
+            needsDetection: false,
+            detectionUse: "internal",
+            detectionLatencyMs: null,
+        };
         return detected.ok ? { ...detected, ...fields } : { ...detected, ...fields };
+    }
+
+    /**
+     * A detection of an earlier frame enters the state machine here, on a
+     * frame that has no lock.
+     *
+     * When the tracker tracks, the detection's homography starts a lock with
+     * no velocity and a tracking step runs on this frame at once — that step
+     * is what carries a pose from the detected frame to this one, and what
+     * checks it. A detection-only tracker returns it as `"DETECT"`, as M2
+     * does its own; a failed detection is `"LOST"` with its reason. `first*`
+     * describe a tracking step this frame already ran and lost, so that a
+     * result reports the last step run.
+     */
+    private consume(
+        d: Detection,
+        frame: GrayImage,
+        timestampMs: number,
+        start: number,
+        firstLoss: TrackLoss | null,
+        firstStats: TrackStats | null,
+        firstStep: TrackStepTimings | null,
+    ): TrackResult {
+        const use = {
+            detectionUse: "consumed",
+            detectionLatencyMs: timestampMs - d.timestampMs,
+        } as const;
+        if (d.ok && this.track !== null) {
+            this.lock = { previous: null, current: d.H };
+            const r = this.step(frame);
+            const steps = [firstStep, r.timings];
+            if (r.ok) return this.tracked(r, timestampMs, d.sceneKeypoints, start, steps, use);
+            return {
+                ok: false,
+                state: "LOST",
+                quality: 0,
+                reason: "unconfirmed",
+                timestampMs,
+                numMatches: d.numMatches,
+                numInliers: d.numInliers,
+                H: null,
+                pose: null,
+                sceneKeypoints: d.sceneKeypoints,
+                trackLoss: r.loss,
+                tracking: r.stats,
+                timings: this.timings(start, 0, steps),
+                needsDetection: this.externalDetection,
+                ...use,
+            };
+        }
+        // `detected` stamps the detection's own timestamp, as M2's internal
+        // path does for the frame it detected; here that is an earlier
+        // frame, and every result echoes the timestamp `process` was given —
+        // the detection's age is `detectionLatencyMs`.
+        const detected = this.detected(d);
+        const fields: TrackingFields & { timestampMs: number } = {
+            timestampMs,
+            trackLoss: firstLoss,
+            tracking: firstStats,
+            timings: this.timings(start, 0, [firstStep]),
+            needsDetection: this.externalDetection,
+            ...use,
+        };
+        return detected.ok ? { ...detected, ...fields } : { ...detected, ...fields };
+    }
+
+    /**
+     * One tracking step from the lock, which it advances when the step holds
+     * and drops when it fails. Called only with a lock and a trackable target.
+     */
+    private step(frame: GrayImage): TrackFrameResult {
+        const lock = this.lock!;
+        const r = trackFrame(
+            frame,
+            this.track!,
+            lock.previous,
+            lock.current,
+            this.trackOptions,
+            this.clock,
+        );
+        this.lock = r.ok ? { previous: lock.current, current: r.H } : null;
+        return r;
+    }
+
+    /** A `"TRACK"` result from a step that held. */
+    private tracked(
+        r: Extract<TrackFrameResult, { ok: true }>,
+        timestampMs: number,
+        sceneKeypoints: readonly Keypoint[],
+        start: number,
+        steps: readonly (TrackStepTimings | null)[],
+        use: Pick<TrackingFields, "detectionUse" | "detectionLatencyMs">,
+    ): TrackResult {
+        return {
+            ok: true,
+            state: "TRACK",
+            quality: r.quality,
+            timestampMs,
+            numMatches: r.stats.observed,
+            numInliers: r.stats.inliers,
+            H: r.H,
+            pose: this.cv.poseFromHomography(r.H, this.K),
+            sceneKeypoints,
+            trackLoss: null,
+            tracking: r.stats,
+            timings: this.timings(start, 0, steps),
+            needsDetection: false,
+            ...use,
+        };
     }
 
     /**
@@ -541,100 +724,62 @@ export class NftTracker {
      * match per level, filter, estimate, decompose.
      */
     private detect(frame: GrayImage, timestampMs: number): Detected {
-        const sceneKeypoints = this.cv.detect(frame, {
-            levels: this.sceneLevels,
-            maxKeypoints: this.maxSceneKeypoints,
-        });
-        const sceneDescriptors = this.cv.describe(frame, sceneKeypoints);
-        let matches = matchPerLevel(this.cv, sceneDescriptors, this.levels, this.ratio);
+        return this.detected(detectTarget(this.cv, this.setup, frame, timestampMs));
+    }
 
-        // Skipped exactly as the contract documents when a backend has none.
-        if (this.cv.filterMatches && this.targetKeypoints) {
-            matches = this.cv.filterMatches(
-                matches,
-                { keypoints: sceneKeypoints, width: frame.width, height: frame.height },
-                {
-                    keypoints: this.targetKeypoints,
-                    width: this.target.meta.widthPx,
-                    height: this.target.meta.heightPx,
-                },
-            );
-        }
-
-        if (matches.length < 4) {
+    /** M1's result for a detection: its `state`, `quality` and `pose` added. */
+    private detected(d: Detection): Detected {
+        if (!d.ok) {
             return {
                 ok: false,
                 state: "LOST",
                 quality: 0,
-                reason: "too-few-matches",
-                timestampMs,
-                numMatches: matches.length,
-                numInliers: 0,
+                reason: d.reason,
+                timestampMs: d.timestampMs,
+                numMatches: d.numMatches,
+                numInliers: d.numInliers,
                 H: null,
                 pose: null,
-                sceneKeypoints,
+                sceneKeypoints: d.sceneKeypoints,
             };
         }
-
-        // src = target points, dst = frame points, so H maps the target plane
-        // into the frame and its corners can be drawn straight onto it.
-        const src = new Float64Array(matches.length * 2);
-        const dst = new Float64Array(matches.length * 2);
-        const kp = this.target.keypoints;
-        for (let i = 0; i < matches.length; i++) {
-            const m = matches[i];
-            // f32 -> number widens here, which is what §5.5 means by "readers
-            // widen to Float64 when building the contract's PointArray".
-            src[i * 2] = kp.x[m.trainIdx];
-            src[i * 2 + 1] = kp.y[m.trainIdx];
-            dst[i * 2] = sceneKeypoints[m.queryIdx].x;
-            dst[i * 2 + 1] = sceneKeypoints[m.queryIdx].y;
-        }
-
-        const h = this.cv.estimateHomography(src, dst, { threshold: this.ransacThreshold });
-        if (!h.ok) {
-            return {
-                ok: false,
-                state: "LOST",
-                quality: 0,
-                reason: "no-consensus",
-                timestampMs,
-                numMatches: matches.length,
-                numInliers: h.numInliers,
-                H: null,
-                pose: null,
-                sceneKeypoints,
-            };
-        }
-
         return {
             ok: true,
             state: "DETECT",
-            // matches.length >= 4 here, so the division is safe.
-            quality: h.numInliers / matches.length,
-            timestampMs,
-            numMatches: matches.length,
-            numInliers: h.numInliers,
-            H: h.H,
-            pose: this.cv.poseFromHomography(h.H, this.K),
-            sceneKeypoints,
+            // numMatches >= 4 on an ok detection, so the division is safe.
+            quality: d.numInliers / d.numMatches,
+            timestampMs: d.timestampMs,
+            numMatches: d.numMatches,
+            numInliers: d.numInliers,
+            H: d.H,
+            pose: this.cv.poseFromHomography(d.H, this.K),
+            sceneKeypoints: d.sceneKeypoints,
         };
     }
 
+    /** The frame's timings, the tracking steps it ran summed (two, at most: see `consume`). */
     private timings(
         start: number,
         detectMs: number,
-        step: TrackStepTimings | null,
+        steps: readonly (TrackStepTimings | null)[],
     ): TrackTimings | null {
         if (this.clock === null) return null;
-        return {
+        const t = {
             totalMs: this.clock() - start,
             detectMs,
-            trackMs: step?.trackMs ?? 0,
-            pyramidMs: step?.pyramidMs ?? 0,
-            alignMs: step?.alignMs ?? 0,
-            fitMs: step?.fitMs ?? 0,
+            trackMs: 0,
+            pyramidMs: 0,
+            alignMs: 0,
+            fitMs: 0,
         };
+        for (const s of steps) {
+            if (s === null) continue;
+            t.trackMs += s.trackMs;
+            t.pyramidMs += s.pyramidMs;
+            t.alignMs += s.alignMs;
+            t.fitMs += s.fitMs;
+        }
+        return t;
     }
 }
 
@@ -645,6 +790,7 @@ export class NftTracker {
  */
 function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
     readonly detectionOnly: boolean;
+    readonly externalDetection: boolean;
     readonly clock: (() => number) | null;
     readonly track: TrackFrameOptions;
 } {
@@ -680,6 +826,7 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
     }
     return {
         detectionOnly: flag("detectionOnly", o.detectionOnly ?? false),
+        externalDetection: flag("externalDetection", o.externalDetection ?? false),
         clock: o.clock ?? null,
         track: {
             maxFrameLevels: integer(
@@ -719,25 +866,4 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
             minPatchZncc: fraction("minPatchZncc", o.minPatchZncc ?? DEFAULT_MIN_PATCH_ZNCC),
         },
     };
-}
-
-/**
- * The target's keypoint table back as the contract's `Keypoint[]`.
- *
- * `filterMatches` takes an array of objects; a `TargetDb` stores a structure
- * of arrays. The conversion happens once, in the constructor, not per frame.
- */
-function toKeypointArray(target: TargetDb): Keypoint[] {
-    const kp = target.keypoints;
-    const out: Keypoint[] = new Array(kp.count);
-    for (let i = 0; i < kp.count; i++) {
-        out[i] = {
-            x: kp.x[i],
-            y: kp.y[i],
-            score: kp.score[i],
-            angle: kp.angle[i],
-            level: kp.level[i],
-        };
-    }
-    return out;
 }

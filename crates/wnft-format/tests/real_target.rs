@@ -162,15 +162,18 @@ fn decodes_the_compiled_pinball_target() {
         other => panic!("expected a `bits` set, got `{}`", other.element_type()),
     }
 
-    // §5.7's tracking patches: compile-target's defaults, 64 patches of
+    // §5.7's tracking patches: compile-target's defaults, 48 patches of
     // 16 x 16 cut from the finest three levels, as it chose them for this
-    // image — every one from level 0 (see the `patchPyramid` note below for
-    // the one that moved there).
+    // image — 47 from level 0 and one from level 1. The default budget was 64
+    // until M3's tuning pass (docs/benchmarks/README.md, round 2), all from
+    // level 0; spaced 62 px rather than 54, the 48 reach a level-1 window.
+    // See the `patchPyramid` note below for the one that moved to level 0
+    // when the filter changed, before that.
     let patches = target
         .patches
         .expect("compile-target writes a patches section");
     assert_eq!(patches.patch_size, 16);
-    assert_eq!(patches.count, 64);
+    assert_eq!(patches.count, 48);
     let p = patches.patch_size as usize;
     let q = patches.count as usize;
     assert_eq!(patches.score.len(), q);
@@ -205,7 +208,7 @@ fn decodes_the_compiled_pinball_target() {
             .fold((u8::MAX, u8::MIN), |(lo, hi), &v| (lo.min(v), hi.max(v)));
         assert!(hi > lo, "patch {i} is flat");
     }
-    assert_eq!(per_level, [64, 0, 0]);
+    assert_eq!(per_level, [47, 1, 0]);
     // The compiler's selection order, and its default minimum score.
     assert!(patches.score.iter().all(|&s| s.is_finite() && s >= 25.0));
     assert!(
@@ -231,7 +234,7 @@ fn decodes_the_compiled_pinball_target() {
         .expect("compile-target records info.compiler");
     assert_eq!(
         compiler.get("maxPatches").and_then(|v| v.as_u64()),
-        Some(64)
+        Some(48)
     );
     assert!(
         compiler

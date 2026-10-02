@@ -38,17 +38,35 @@
  */
 
 /**
- * The pinball target as `compile-target` builds it at its defaults, in memory:
- * keypoints and descriptors from `buildTargetFromImage`, tracking patches from
- * `selectPatches` over `buildFramePyramid` — the same 64 patches
- * `examples/targets/pinball.wnft` carries (the compile-target suite checks
- * the file's pixels against this very pyramid). Built here rather than
- * decoded from that file so recompiling it never moves the tracking suites:
- * the committed file is `crates/wnft-format/tests/real_target.rs`'s to pin.
+ * The pinball target as `compile-target` built it at its M2 defaults, in
+ * memory: keypoints and descriptors from `buildTargetFromImage`, tracking
+ * patches from `selectPatches` over `buildFramePyramid` — the 64 patches
+ * `examples/targets/pinball.wnft` carried until the tuning pass lowered the
+ * default budget to 48 (the compile-target suite checks a compiled file's
+ * pixels against this very pyramid). Built here rather than decoded from that
+ * file so recompiling it never moves the tracking suites: the committed file
+ * is `crates/wnft-format/tests/real_target.rs`'s to pin.
  *
- * The four patch options are compile-target's defaults, repeated: patch size
- * 16, 64 patches, minimum score 25, spacing round(0.75 · √(512 · 640 / 64)) =
- * 54, from the first three levels (bin/compile-target.mjs).
+ * The four patch options are compile-target's defaults as of M2, repeated:
+ * patch size 16, 64 patches, minimum score 25, spacing
+ * round(0.75 · √(512 · 640 / 64)) = 54, from the first three levels
+ * (bin/compile-target.mjs).
+ *
+ * **Deliberately independent of the shipped default.** If the tuning pass
+ * (docs/benchmarks/README.md, "M3: the tuning pass") changes compile-target's
+ * defaults, these stay: this fixture exercises the tracker, and a fixture
+ * that chased the default would move counts in tests unrelated to the
+ * change, so "the default changed" and "something broke" could no longer be
+ * told apart. The shipped configuration is pinned where it ships: its file
+ * by `crates/wnft-format/tests/real_target.rs`, and its tracking on ground
+ * truth by the blocks that decode `examples/targets/pinball.wnft` itself — in
+ * `tracker_state_machine.test.ts` (the camera-path sequences, with the error
+ * over the whole target and over the part in view) and in
+ * `tracking/track_frame.test.ts` (the single-step perturbation sweep). Those
+ * are the tests a change to the default is meant to move. The rule was
+ * completed at M3's tuning pass, round 4, when a degradation of the shipped
+ * target on ground truth (extrapolation as the target leaves the frame) was
+ * found that no test on this fixture could see.
  */
 
 import type { CvBackend } from "@webarkit/cv-backend-spec";
