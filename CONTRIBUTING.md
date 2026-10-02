@@ -69,9 +69,9 @@ Before the annotated tag, all of these hold and the release PR says so:
    above) — named here so the gate is visible and not only mechanical.
 4. The milestone's open issues examined, not necessarily zero: each is closed, or moved to another
    milestone with its reason recorded in the issue. A milestone may ship with work deferred; it may
-   not ship with work unexamined. M1 is the episode behind this gate: six of its issues shipped
-   unexamined across v0.2.0 and v0.3.0, five declared "for M2" and never moved, one never mentioned
-   ([M1's closing comment](https://github.com/webarkit/webarkit/issues/22#issuecomment-5948136199)).
+   not ship with work unexamined.
+   The episode this gate was written from is recorded in
+   [M1's closing comment](https://github.com/webarkit/webarkit/issues/22#issuecomment-5948136199).
 5. If the release ships a new `.wnft` format minor, its fixture corpus is frozen under
    `fixtures/nft-target/<version>/` in the release PR
    ([format spec §8.3](docs/specs/nft-target-format.md#83-evolution-tests),
