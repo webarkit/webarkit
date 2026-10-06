@@ -64,10 +64,7 @@ self.onmessage = async ({ data }) => {
             // target of an earlier one.
             state = null;
             state = await prepareWorkerDetection(data, PREPARE_DEPS);
-            // The modules this worker observed itself loading, for the page's
-            // provenance check (#110, A1): which URLs, not which bytes.
-            const modules = performance.getEntriesByType("resource").map((e) => e.name);
-            self.postMessage({ type: "ready", targetSha256: state.targetSha256, modules });
+            self.postMessage({ type: "ready", targetSha256: state.targetSha256 });
         } else if (type === "detect") {
             if (state === null) throw new Error("detect before init: the worker has no target");
             self.postMessage(runWorkerDetection(state, data, RUN_DEPS));

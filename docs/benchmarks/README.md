@@ -3475,7 +3475,13 @@ they check.
    worker loaded, and the manifest itself since page load — and refused on
    any difference, with the reason on the page. A refused Start is not a
    run: fix the cause, rebuild, reload, and start again. Each export records
-   what was checked under `provenance`.
-4. **Last, after the last export is written:** step 2 again, printing
+   what was checked under `provenance`. A worker run is also refused when
+   the browser does not show what the worker loaded.
+4. **The page in the foreground**, from Start to the run's end, on every
+   session run: a hidden tab throttles timers and `requestAnimationFrame`.
+   Each export records `run.lostVisibility`. It is reported, not gating: a
+   run with `true` is not refused, and the session record says what it
+   decided about that run.
+5. **Last, after the last export is written:** step 2 again, printing
    nothing. A tree that changed during the session invalidates the runs
    made after the change, and the session record says which.

@@ -79,22 +79,24 @@ export const CLEAN_PATHS = [
     "package-lock.json",
 ];
 /**
- * What the bench page serves unbuilt: the page, and every `examples/js` module
- * it or the worker loads, the bundle's entry included. The page refuses a
- * session run that loads a module not listed here; a test checks the list
+ * What the bench page serves unbuilt, and which arm loads it: the page, every
+ * `examples/js` module it or the worker loads, and the bundle's entry, which
+ * nothing loads unbuilt (`bundled`). The page refuses a session run that loads
+ * a module not listed here, and a worker run in which a `worker` or `both`
+ * module is not seen loading (#110, A1); a test checks the list and the sides
  * against the imports themselves.
  */
-export const SERVED = [
-    "examples/bench-nft.html",
-    "examples/js/bench-metrics.mjs",
-    "examples/js/detection-policy.mjs",
-    "examples/js/detection-replies.mjs",
-    "examples/js/detection-worker-core.mjs",
-    "examples/js/detection-worker.mjs",
-    "examples/js/instrument-backend.mjs",
-    "examples/js/packages-bundle.mjs",
-    "examples/js/pinball-shared.mjs",
-];
+export const SERVED = {
+    "examples/bench-nft.html": "page",
+    "examples/js/bench-metrics.mjs": "both",
+    "examples/js/detection-policy.mjs": "page",
+    "examples/js/detection-replies.mjs": "page",
+    "examples/js/detection-worker-core.mjs": "worker",
+    "examples/js/detection-worker.mjs": "worker",
+    "examples/js/instrument-backend.mjs": "both",
+    "examples/js/packages-bundle.mjs": "bundled",
+    "examples/js/pinball-shared.mjs": "page",
+};
 
 const git = (...args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8" });
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -175,7 +177,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
             entry: ENTRY,
         },
         sources: hashed(sources),
-        served: hashed(SERVED),
+        served: Object.fromEntries(
+            Object.entries(hashed(Object.keys(SERVED))).map(([p, h]) => [
+                p,
+                { ...h, side: SERVED[p] },
+            ]),
+        ),
         bundledInputs: Object.fromEntries(
             inputs.filter((p) => p !== ENTRY).map((p) => [p, sha256(read(p))]),
         ),

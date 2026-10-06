@@ -84,6 +84,37 @@ describe("provenanceRefusal", () => {
         expect(provenanceRefusal(null, observed, { sessionRun: false })).toBeNull();
         expect(provenanceRefusal({ ...manifest, clean: false }, { ...observed, manifestChanged: true }, { sessionRun: false })).toBeNull();
     });
+
+    describe("in a worker run", () => {
+        const sides = {
+            ...manifest,
+            served: {
+                ...manifest.served,
+                "examples/js/w.mjs": { sha256: "w", side: "worker" },
+                "examples/js/both.mjs": { sha256: "o", side: "both" },
+                "examples/js/entry.mjs": { sha256: "e", side: "bundled" },
+            },
+        };
+        const seen = {
+            ...observed,
+            served: { ...observed.served, "examples/js/w.mjs": "w", "examples/js/both.mjs": "o", "examples/js/entry.mjs": "e" },
+            loaded: [...observed.loaded, "examples/js/w.mjs", "examples/js/both.mjs"],
+        };
+        const worker = { sessionRun: true, detection: "worker" };
+
+        it("starts when every worker-side module was seen loading", () => {
+            expect(provenanceRefusal(sides, seen, worker)).toBeNull();
+        });
+
+        it("refuses when the check is blind to a worker-side module, worker or both", () => {
+            const blind = { ...seen, loaded: observed.loaded };
+            expect(provenanceRefusal(sides, blind, worker)).toMatch(
+                /cannot be seen: examples\/js\/w\.mjs, examples\/js\/both\.mjs|cannot be seen: examples\/js\/both\.mjs, examples\/js\/w\.mjs/,
+            );
+            // The same observation is no refusal in a synchronous run, which has no worker.
+            expect(provenanceRefusal(sides, blind, { sessionRun: true, detection: "sync" })).toBeNull();
+        });
+    });
 });
 
 describe("the manifest npm run build writes", () => {
@@ -101,14 +132,14 @@ describe("the manifest npm run build writes", () => {
         expect(jsfeat.installedVersion).toBe(jsfeat.version);
     });
 
-    it("lists every package source, and served exactly what SERVED names", () => {
+    it("lists every package source, and served exactly what SERVED names, with its side", () => {
         const sources = Object.keys(manifest.sources);
         for (const p of ["cv-backend-spec", "cv-backend-jsfeatnext", "nft-tracker"]) {
             expect(sources).toContain(`packages/${p}/package.json`);
             expect(sources.some((s) => s.startsWith(`packages/${p}/src/`))).toBe(true);
         }
         expect(sources).toContain("package-lock.json");
-        expect(Object.keys(manifest.served)).toEqual(SERVED);
+        expect(Object.fromEntries(Object.entries(manifest.served).map(([p, e]) => [p, e.side]))).toEqual(SERVED);
     });
 });
 
@@ -116,19 +147,27 @@ describe("SERVED", () => {
     /** The relative modules `text` imports, as repository paths, `from` being the importer's. */
     const imports = (text, from) =>
         [...text.matchAll(/\b(?:from|import)\s*["'](\.\.?\/[^"']+)["']/g)].map((m) => new URL(m[1], new URL(from, ROOT)).href.slice(ROOT.href.length));
-
-    it("is the page, the bundle's entry, and every module the page and the worker import", () => {
-        const page = bytes("examples/bench-nft.html").toString();
-        const worker = `examples/${page.match(/const WORKER_MODULE = "([^"]+)";/)[1]}`;
+    /** Every module reachable from `roots` by relative imports, the bundle left out. */
+    const closure = (roots) => {
         const seen = new Set();
-        const queue = [...imports(page, "examples/bench-nft.html"), worker];
+        const queue = [...roots];
         while (queue.length > 0) {
             const path = queue.shift();
             if (seen.has(path) || path.startsWith("examples/dist/")) continue;
             seen.add(path);
             queue.push(...imports(bytes(path).toString(), path));
         }
-        const expected = ["examples/bench-nft.html", "examples/js/packages-bundle.mjs", ...seen].sort();
-        expect([...SERVED].sort()).toEqual(expected);
+        return seen;
+    };
+
+    it("is the page, the bundle's entry, and every module each arm imports, on the side that imports it", () => {
+        const page = bytes("examples/bench-nft.html").toString();
+        const pageSide = closure(imports(page, "examples/bench-nft.html"));
+        const workerSide = closure([`examples/${page.match(/const WORKER_MODULE = "([^"]+)";/)[1]}`]);
+        const expected = { "examples/bench-nft.html": "page", "examples/js/packages-bundle.mjs": "bundled" };
+        for (const p of new Set([...pageSide, ...workerSide])) {
+            expected[p] = pageSide.has(p) && workerSide.has(p) ? "both" : pageSide.has(p) ? "page" : "worker";
+        }
+        expect(SERVED).toEqual(expected);
     });
 });

@@ -650,15 +650,13 @@
       let runSeq = 0;
       const runs = new Map();
       /**
-       * The detection worker, in worker mode: the `Worker`, the modules it
-       * reported loading in its last `ready` (for the provenance check), the
-       * options of the last `init` sent, that `init`'s promise and, while it
-       * is unanswered, its settlers; and, once it has failed, why — after which
-       * Start stays disabled until the page is reloaded.
+       * The detection worker, in worker mode: the `Worker`, the options of the
+       * last `init` sent, that `init`'s promise and, while it is unanswered,
+       * its settlers; and, once it has failed, why — after which Start stays
+       * disabled until the page is reloaded.
        */
       const detectionWorker = {
         worker: null,
-        modules: [],
         sent: null,
         ready: null,
         pendingInit: null,
@@ -965,10 +963,18 @@
           endedAtIso: null,
           endedBy: null,
           failure: null,
+          lostVisibility: document.visibilityState === "hidden",
         };
         runs.set(run.id, run);
         return run;
       }
+
+      // A run not yet ended when the page is hidden lost visibility
+      // (DEFINITIONS.lostVisibility): reported, not gating (#110, A4).
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "hidden") return;
+        for (const run of runs.values()) if (run.endedBy === null) run.lostVisibility = true;
+      });
 
       /**
        * The end of the live run, whatever ended it: in a worker run the policy
@@ -1325,7 +1331,6 @@
               ? `The detection worker holds a target with SHA-256 ${data.targetSha256}, not ${TARGET_PATH}'s ${expected}.`
               : null;
         if (failure === null) {
-          detectionWorker.modules = Array.isArray(data.modules) ? data.modules : [];
           pending.resolve();
         } else {
           detectionWorker.failure ??= failure;
@@ -1820,8 +1825,10 @@
        * attests the bytes the server serves now, not those the page loaded; the
        * manifest compared with its copy from page load, which narrows that gap
        * to the time since the page loaded without closing it; and the modules
-       * the page and the worker observed themselves loading (which URLs, not
-       * which bytes). `DEFINITIONS.provenance`; refuses only a session run.
+       * loaded, from the page's resource timeline (which URLs, not which
+       * bytes), where Chrome also records the worker's module imports: the
+       * worker's own timeline does not hold them (#110, A1 corrected).
+       * `DEFINITIONS.provenance`; refuses only a session run.
        */
       async function checkProvenance(sessionRun) {
         const { manifest, sha256 } = await fetchManifest();
@@ -1835,19 +1842,16 @@
         const served = {};
         for (const path of Object.keys(manifest?.served ?? {})) served[path] = await hash(new URL(path, REPO_ROOT));
         // Modules only: this check's own fetches are in the timeline too.
-        const pageUrls = performance.getEntriesByType("resource").filter((e) => e.initiatorType !== "fetch");
-        const paths = (urls) => [...new Set(urls.map(modulePath).filter((p) => p !== null))].sort();
-        const loadedByWorker = paths(detectionWorker.modules);
+        const modules = performance.getEntriesByType("resource").filter((e) => e.initiatorType !== "fetch");
         const observed = {
           manifestSha256: sha256,
           manifestSha256AtLoad: manifestAtLoad,
           manifestChanged: sha256 !== manifestAtLoad,
           bundleSha256: await hash(BUNDLE_URL),
           served,
-          loaded: paths([...pageUrls.map((e) => e.name), ...detectionWorker.modules]),
-          loadedByWorker,
+          loaded: [...new Set(modules.map((e) => modulePath(e.name)).filter((p) => p !== null))].sort(),
         };
-        const refusal = provenanceRefusal(manifest, observed, { sessionRun });
+        const refusal = provenanceRefusal(manifest, observed, { sessionRun, detection: DETECTION_PATH });
         const dirty = manifest?.clean === false ? `Built from a dirty tree: ${manifest.dirtyPaths.join(", ")}.` : null;
         const note = refusal ?? dirty ?? (manifest ? null : "No provenance manifest: run `npm run build`.");
         return { manifest, observed, refusal, note };
@@ -1948,6 +1952,7 @@
                 endedAtIso: run.endedAtIso,
                 endedBy: run.endedBy,
                 failure: run.failure,
+                lostVisibility: run.lostVisibility,
               }
             : null,
           // Whether the run followed the session's protocol, and what keeps it
