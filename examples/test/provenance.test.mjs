@@ -37,7 +37,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { provenanceRefusal } from "../js/bench-metrics.mjs";
+import { provenanceFindings, provenanceRefusal } from "../js/bench-metrics.mjs";
 import { SERVED } from "../../scripts/build-provenance.mjs";
 
 const ROOT = new URL("../../", import.meta.url);
@@ -71,18 +71,31 @@ describe("provenanceRefusal", () => {
         ["a served file that differs", manifest, { ...observed, served: { ...observed.served, "examples/js/a.mjs": "x" } }, /differ from the build: examples\/js\/a\.mjs/],
         ["a served file that could not be fetched", manifest, { ...observed, served: { "examples/bench-nft.html": "h" } }, /differ from the build: examples\/js\/a\.mjs/],
         ["a module the manifest does not list", manifest, { ...observed, loaded: [...observed.loaded, "examples/js/z.mjs"] }, /does not list: examples\/js\/z\.mjs/],
+        // Blind conditions (#110, A5): the check cannot see what ran, so it refuses.
+        ["a module taken from the HTTP cache", manifest, { ...observed, unfetched: ["examples/js/a.mjs"] }, /HTTP cache without asking the server.*examples\/js\/a\.mjs.*no-store/],
+        ["a full resource timeline", manifest, { ...observed, timelineFull: true }, /buffer overflowed.*To fix: reload the page\.$/],
     ])("refuses a session run on %s", (_, m, o, why) => {
         expect(provenanceRefusal(m, o, session)).toMatch(why);
     });
 
-    it("names every reason at once", () => {
+    it("names every reason at once, each remedy once", () => {
         const refusal = provenanceRefusal({ ...manifest, clean: false }, { ...observed, bundleSha256: "x" }, session);
-        expect(refusal).toMatch(/dirty tree.*; the served bundle/);
+        expect(refusal).toMatch(/dirty tree.*; the served bundle.*To fix: commit, run `npm run build`, and reload\.$/);
+        expect(refusal.match(/npm run build/g)).toHaveLength(1);
     });
 
-    it("refuses nothing outside a session run", () => {
+    it("gives a blind condition its own remedy, never a rebuild that cannot fix it", () => {
+        for (const o of [{ ...observed, unfetched: ["examples/js/a.mjs"] }, { ...observed, timelineFull: true }]) {
+            expect(provenanceRefusal(manifest, o, session)).not.toMatch(/npm run build/);
+        }
+    });
+
+    it("refuses nothing outside a session run, and still reports what it found", () => {
         expect(provenanceRefusal(null, observed, { sessionRun: false })).toBeNull();
-        expect(provenanceRefusal({ ...manifest, clean: false }, { ...observed, manifestChanged: true }, { sessionRun: false })).toBeNull();
+        const mismatch = { ...observed, bundleSha256: "x" };
+        expect(provenanceRefusal(manifest, mismatch, { sessionRun: false })).toBeNull();
+        expect(provenanceFindings(manifest, mismatch)).toMatch(/served bundle is not the one built/);
+        expect(provenanceFindings(manifest, observed)).toBeNull();
     });
 
     describe("in a worker run", () => {
@@ -111,6 +124,8 @@ describe("provenanceRefusal", () => {
             expect(provenanceRefusal(sides, blind, worker)).toMatch(
                 /cannot be seen: examples\/js\/w\.mjs, examples\/js\/both\.mjs|cannot be seen: examples\/js\/both\.mjs, examples\/js\/w\.mjs/,
             );
+            expect(provenanceRefusal(sides, blind, worker)).toMatch(/To fix: run it in a browser that records/);
+            expect(provenanceRefusal(sides, blind, worker)).not.toMatch(/npm run build/);
             // The same observation is no refusal in a synchronous run, which has no worker.
             expect(provenanceRefusal(sides, blind, { sessionRun: true, detection: "sync" })).toBeNull();
         });

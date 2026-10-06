@@ -14,8 +14,15 @@ npm install
 npm run build          # the examples load the built dist/, not the sources;
                        # this also writes bench-nft.html's package bundle and
                        # its provenance manifest into examples/dist/ (git-ignored)
-npx http-server -p 8080 -s
+npx http-server -p 8080 -s -c-1   # -c-1: Cache-Control: no-store (below)
 ```
+
+**Serve with `Cache-Control: no-store`**, which `-c-1` sets: http-server's
+default, `max-age=3600`, lets the browser run a module from its cache
+without asking the server, so an edit made and reverted since the last
+load can still be the code that runs, and no check made at Start can see
+it. `bench-nft.html` refuses a session run when a module it loaded came
+from the cache that way; the demos are not affected.
 
 Then open <http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html>,
 <http://localhost:8080/examples/pinball-webcam-jsfeatnext-backend.html>, or
@@ -374,7 +381,12 @@ manifest changed since the page loaded, or if the page or the worker loaded a
 module the manifest does not list. A worker run is also refused when a module
 the manifest marks as the worker's is missing from the page's resource
 timeline: Chrome records the worker's imports there, and a browser that does
-not leaves the check blind, which must refuse rather than pass. This attests the bytes the server serves
+not leaves the check blind, which must refuse rather than pass. So, for the
+same reason, does a module or the page taken from the HTTP cache without the
+server being asked (its timing entry shows no bytes transferred, or no value
+at all), and a resource timeline whose buffer has overflowed. Each refusal
+names its own remedy, and every finding is also written into the export's
+`provenance.note`, in a run that is not a session run too. This attests the bytes the server serves
 at Start, not those the page loaded earlier; the load-time comparison narrows
 that gap without closing it. Other runs are only recorded. Every export
 carries what was checked under `provenance`, beside `protocol`.

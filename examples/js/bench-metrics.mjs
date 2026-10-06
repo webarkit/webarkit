@@ -360,7 +360,7 @@ export const DEFINITIONS = Object.freeze({
     protocol:
         "{ sessionRun, gaps }: whether the run followed the device session's protocol (docs/benchmarks/README.md, 2026-09-29), and what keeps it from it, one line each (sessionRunGaps): a tracking or stateless run of a bundled clip, over one warm-up loop and loops 1 to 4 counted (loops), with its place in the session's order (run.order), that ended itself (run.endedBy done) with every frame it processed in its window (ticks, a whole number, = windowSize), recording its detection path (detection.path sync or worker); in the tracking mode its lock read over those loops whole (trackTimeShare.complete), in a worker run its accounting holding (detectionAccounting); at the page's defaults: the committed target, loaded, no tracker option overridden (?tracker=), the default scene keypoint budget and processing box. What the export does not record is a gap, never a pass. The page exports a run with gaps all the same, and says so; replay-clips --transfer reads only session runs.",
     provenance:
-        "{ manifest, observed, refusal, note }: what the page checked at Start against examples/dist/provenance.json, the manifest npm run build writes (scripts/build-provenance.mjs, #110). manifest: as fetched at Start (HEAD, clean, each tracked input's SHA-256 and git blob id, each served file's side (page, worker, both, or bundled), the shared bundle's hash, jsfeat-next's lockfile entry and file hash), null when it could not be read. observed: the manifest's SHA-256 at Start and at page load (manifestSha256, manifestSha256AtLoad), the SHA-256 of the bytes the server served at Start for the bundle and each served file (not necessarily the bytes the page loaded earlier: a fetch cannot see what the module loader executed), whether the manifest changed since page load (manifestChanged), and the modules in the page's resource timeline, where Chrome records the worker's imports too (loaded: which URLs, not which bytes; a worker session run in which a module the manifest marks worker-side is missing from it is refused, since the check would be blind). refusal: provenanceRefusal's one line, or null. In a session run (?loops= or ?run=) Start refuses on it; otherwise it is only recorded. note: one line when the check refused, the tree was dirty, or there was no manifest, else null. Reported, not gating: sessionRunGaps does not read it, and an export without it is not a gap. Absent in exports older than #110, whose worker runs carry detection.workerBundleSha256 instead.",
+        "{ manifest, observed, refusal, note }: what the page checked at Start against examples/dist/provenance.json, the manifest npm run build writes (scripts/build-provenance.mjs, #110). manifest: as fetched at Start (HEAD, clean, each tracked input's SHA-256 and git blob id, each served file's side (page, worker, both, or bundled), the shared bundle's hash, jsfeat-next's lockfile entry and file hash), null when it could not be read. observed: the manifest's SHA-256 at Start and at page load (manifestSha256, manifestSha256AtLoad), the SHA-256 of the bytes the server served at Start for the bundle and each served file (not necessarily the bytes the page loaded earlier: a fetch cannot see what the module loader executed), whether the manifest changed since page load (manifestChanged), and the modules in the page's resource timeline, where Chrome records the worker's imports too (loaded: which URLs, not which bytes; a worker session run in which a module the manifest marks worker-side is missing from it is refused, since the check would be blind), unfetched (the page and the listed modules whose timing entry shows no bytes transferred, transferSize 0 or absent: taken from the HTTP cache without asking the server, so what ran is unknown) and timelineFull (the resource-timing buffer overflowed, so later loads went unrecorded); each of these blind conditions refuses a session run. refusal: provenanceRefusal's one line, or null. In a session run (?loops= or ?run=) Start refuses on it; otherwise it is only recorded. note: provenanceFindings' one line, written for every run, exploratory ones included, whenever the check found anything (no manifest, a dirty tree, a mismatch, an unlisted, unseen or cached module, a full timeline), each finding with its own remedy; else null. Reported, not gating: sessionRunGaps does not read it, and an export without it is not a gap. Absent in exports older than #110, whose worker runs carry detection.workerBundleSha256 instead.",
     detectionAccounting:
         "A worker run's detection requests and what became of each, counted over the whole run, not the window: requests (results that said needsDetection) = consumptions (detections handed to process and used) + dropped (requests made while a detection was in flight or held) + discardedAtStop (a detection in flight, or held, at Stop), and ignored (detections handed in while a lock held) = 0; posted counts the requests that started a job. accountingError checks both, and a run that fails either is not exported. In the summary the accounting is carried as given, with error: accountingError's line saying what is wrong, or null when nothing is; the summary has null for a run that gave none.",
     detectionUseFallbackFrames:
@@ -1325,41 +1325,66 @@ export function startRefusal({
 }
 
 /**
- * Why a session run may not start on what the server serves, in one line, or
+ * What the provenance check found wrong, in one line with its remedies, or
  * `null` (#110, §5). `manifest` is `examples/dist/provenance.json` as fetched
  * at Start (`null` when it could not be read); `observed` is what the page saw
  * then: `manifestChanged` (its bytes differ from the copy fetched at page
  * load), `bundleSha256` and `served` (`{ path: sha256 }`: the bytes the server
- * served at Start, not necessarily those the page loaded), and `loaded` (the
+ * served at Start, not necessarily those the page loaded), `loaded` (the
  * repository paths of the modules in the page's resource timeline, where
- * Chrome records the worker's imports too). Outside a session run nothing
- * refuses: the export only records it.
+ * Chrome records the worker's imports too), `unfetched` (the page and the
+ * listed modules whose timing entry has no bytes transferred, `transferSize`
+ * 0 or absent: taken from the HTTP cache without asking the server, so what
+ * ran is unknown) and `timelineFull` (the resource-timing buffer overflowed,
+ * so later loads went unrecorded).
  *
- * In a worker run (`detection` `"worker"`), every served file whose `side` is
- * `worker` or `both` must be in `loaded`. A check that cannot tell "clean"
- * from "blind" must refuse when it is blind: a browser that keeps the
- * worker's loads out of the page's timeline is refused, not passed (#110, A1).
+ * A check that cannot tell "clean" from "blind" must refuse when it is blind:
+ * a worker run whose `worker` or `both` modules are missing from `loaded`, a
+ * module from the cache, and a full timeline are each a finding (#110, A1, A5).
+ * Each finding names its own remedy: a refusal whose remedy does not apply
+ * teaches people to ignore refusals.
  */
-export function provenanceRefusal(manifest, observed, { sessionRun, detection = "sync" }) {
-    if (!sessionRun) return null;
+export function provenanceFindings(manifest, observed, { detection = "sync" } = {}) {
     if (!manifest) return "No provenance manifest (examples/dist/provenance.json): run `npm run build`.";
     if (observed.manifestChanged) return "The provenance manifest changed since the page loaded: reload the page.";
-    const reasons = [];
-    if (manifest.clean !== true) reasons.push(`built from a dirty tree (${(manifest.dirtyPaths ?? []).join(", ")})`);
-    if (observed.bundleSha256 !== manifest.bundle?.sha256) reasons.push(`the served bundle is not the one built`);
+    const found = [];
+    const add = (reason, remedy) => found.push({ reason, remedy });
+    const rebuild = "commit, run `npm run build`, and reload";
+    if (manifest.clean !== true) add(`built from a dirty tree (${(manifest.dirtyPaths ?? []).join(", ")})`, rebuild);
+    if (observed.bundleSha256 !== manifest.bundle?.sha256) add("the served bundle is not the one built", rebuild);
     const served = manifest.served ?? {};
     const stale = Object.keys(served).filter((p) => observed.served?.[p] !== served[p].sha256);
-    if (stale.length > 0) reasons.push(`served files differ from the build: ${stale.join(", ")}`);
-    const unlisted = (observed.loaded ?? []).filter((p) => p !== manifest.bundle?.path && !(p in served));
-    if (unlisted.length > 0) reasons.push(`modules loaded that the manifest does not list: ${unlisted.join(", ")}`);
+    if (stale.length > 0) add(`served files differ from the build: ${stale.join(", ")}`, rebuild);
+    const loaded = observed.loaded ?? [];
+    const unlisted = loaded.filter((p) => p !== manifest.bundle?.path && !(p in served));
+    if (unlisted.length > 0) add(`modules loaded that the manifest does not list: ${unlisted.join(", ")}`, rebuild);
     if (detection === "worker") {
         const unseen = Object.keys(served).filter(
-            (p) => ["worker", "both"].includes(served[p].side) && !(observed.loaded ?? []).includes(p),
+            (p) => ["worker", "both"].includes(served[p].side) && !loaded.includes(p),
         );
-        if (unseen.length > 0) reasons.push(`the worker's modules are not in the page's timeline, so what it loaded cannot be seen: ${unseen.join(", ")}`);
+        if (unseen.length > 0) {
+            add(
+                `the worker's modules are not in the page's timeline, so what it loaded cannot be seen: ${unseen.join(", ")}`,
+                "run it in a browser that records a worker's imports in the page's timeline, as Chrome does",
+            );
+        }
     }
-    if (reasons.length === 0) return null;
-    return `Not a session run's code: ${reasons.join("; ")}. Commit, run \`npm run build\`, and reload.`;
+    const unfetched = observed.unfetched ?? [];
+    if (unfetched.length > 0) {
+        add(
+            `taken from the HTTP cache without asking the server, so what ran is unknown: ${unfetched.join(", ")}`,
+            "serve with Cache-Control: no-store (npx http-server -c-1) and reload",
+        );
+    }
+    if (observed.timelineFull) add("the resource-timing buffer overflowed, so later loads went unrecorded", "reload the page");
+    if (found.length === 0) return null;
+    const remedies = [...new Set(found.map((f) => f.remedy))];
+    return `Not a session run's code: ${found.map((f) => f.reason).join("; ")}. To fix: ${remedies.join("; ")}.`;
+}
+
+/** {@link provenanceFindings} as Start's refusal: only a session run refuses; any other run only records them. */
+export function provenanceRefusal(manifest, observed, { sessionRun, detection = "sync" }) {
+    return sessionRun ? provenanceFindings(manifest, observed, { detection }) : null;
 }
 
 /**
