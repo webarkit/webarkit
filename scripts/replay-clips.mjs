@@ -37,6 +37,9 @@
  *     node scripts/replay-clips.mjs --external <latencyMs> [--seed <n>] [--out <dir>]
  *     node scripts/replay-clips.mjs --transfer <dir> [--seed <n>] [--out <dir>]
  *
+ * Every form takes `--packages <dist|bundle>` (default `dist`): the packages'
+ * `dist/`, or the bench page's shared bundle (see `PACKAGES` below).
+ *
  * **Not an on-device measurement, and not the browser's pixels.** ffmpeg and
  * ffprobe (on PATH) decode the clips and scale them (bilinear) where the page
  * has the browser's decoder and drawImage; the grey conversion is the page's.
@@ -182,18 +185,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { cpus } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
-import {
-    createJsfeatNextBackend,
-    intrinsics,
-} from "../packages/cv-backend-jsfeatnext/dist/index.js";
-import {
-    decode,
-    DEFAULT_MIN_TRACKED_PATCHES,
-    detectTarget,
-    NftTracker,
-    prepareDetection,
-} from "../packages/nft-tracker/dist/index.js";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createDetectionPolicy } from "../examples/js/detection-policy.mjs";
 import {
     accountingError,
@@ -276,6 +268,59 @@ function usage(why) {
     console.error(`replay-clips: ${why}`);
     process.exit(2);
 }
+
+/**
+ * `--packages <dist|bundle>` (default `dist`): where the packages come from —
+ * their `dist/`, or the bench page's shared bundle, which `npm run build`
+ * writes with its manifest (#110, §6). The bundled side's header and exports
+ * record the bundle's hash and the manifest's `head` and `clean`. The step
+ * probe (`tuning-probe.mjs`) stays on `dist/` on both sides, so in a bundled
+ * run it checks the bundle's tracker against a second copy of the package:
+ * agreement shows the two behave the same on these frames, not that either is
+ * right.
+ */
+const PACKAGES = arg("--packages") ?? "dist";
+if (PACKAGES !== "dist" && PACKAGES !== "bundle")
+    usage(`--packages expects dist or bundle, got "${PACKAGES}"`);
+const BUNDLE = join(EXAMPLES, "dist/webarkit-packages.mjs");
+let packageSource = { packages: "dist" };
+if (PACKAGES === "bundle") {
+    let manifest = null;
+    try {
+        manifest = JSON.parse(readFileSync(join(EXAMPLES, "dist/provenance.json"), "utf8"));
+    } catch {
+        usage("--packages bundle needs examples/dist/provenance.json: run `npm run build`");
+    }
+    let bundleBytes;
+    try {
+        bundleBytes = readFileSync(BUNDLE);
+    } catch {
+        usage("--packages bundle needs examples/dist/webarkit-packages.mjs: run `npm run build`");
+    }
+    const bundleSha256 = await sha256Hex(bundleBytes);
+    packageSource = {
+        packages: "bundle",
+        bundleSha256,
+        manifestBundleSha256: manifest.bundle?.sha256 ?? null,
+        manifestHead: manifest.head,
+        manifestClean: manifest.clean,
+    };
+}
+const {
+    createJsfeatNextBackend,
+    intrinsics,
+    decode,
+    DEFAULT_MIN_TRACKED_PATCHES,
+    detectTarget,
+    NftTracker,
+    prepareDetection,
+} =
+    PACKAGES === "bundle"
+        ? await import(pathToFileURL(BUNDLE).href)
+        : {
+              ...(await import("../packages/cv-backend-jsfeatnext/dist/index.js")),
+              ...(await import("../packages/nft-tracker/dist/index.js")),
+          };
 
 const TARGET_PATH = resolve(arg("--target") ?? join(EXAMPLES, "targets/pinball.wnft"));
 const parsedOverrides = parseTrackerOverrides(arg("--options"));
@@ -675,6 +720,7 @@ const exportOf = (clip, run, res, records, summary = {}) => ({
     metricsVersion: METRICS_VERSION,
     exportedAt: new Date().toISOString(),
     userAgent: `Node ${process.version} ${process.platform}/${process.arch}`,
+    packageSource,
     mode: run.mode,
     schedule: run.schedule,
     target: targetRec,
@@ -1060,7 +1106,12 @@ async function transferArms() {
 }
 
 console.log(
-    `Node ${process.version}, ${process.platform}/${process.arch}, ${cpus()[0]?.model ?? "unknown CPU"}\n`,
+    `Node ${process.version}, ${process.platform}/${process.arch}, ${cpus()[0]?.model ?? "unknown CPU"}`,
+);
+console.log(
+    packageSource.packages === "dist"
+        ? "packages: dist/\n"
+        : `packages: bundle ${packageSource.bundleSha256.slice(0, 12)}… (${packageSource.bundleSha256 === packageSource.manifestBundleSha256 ? "the manifest's" : "NOT the manifest's bundle"}), built at ${packageSource.manifestHead.slice(0, 7)}, ${packageSource.manifestClean ? "clean" : "DIRTY"}\n`,
 );
 
 const sequencePath = arg("--sequence");

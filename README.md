@@ -91,7 +91,7 @@ Two runnable demos exercise the full `CvBackend` pipeline — `detect → descri
 
 ```bash
 npm run build
-npx http-server -p 8080 -s
+npx http-server -p 8080 -s -c-1
 ```
 
 Then open `http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html` (two still photos, easiest to debug) or `.../pinball-webcam-jsfeatnext-backend.html` (live camera, stateless per tick).

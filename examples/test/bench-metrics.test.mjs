@@ -1948,8 +1948,13 @@ describe("parsePositiveInt and parseRunParams", () => {
             ["?loops=0", "loops"],
             ["?loops=abc", "loops"],
             ["?loops=", "loops"],
+            // Present but not a whole number: an error, never floored (#110, A3).
+            ["?loops=4.7", "loops"],
+            ["?loops=0x4", "loops"],
+            ["?loops=1e1", "loops"],
             ["?run=-2", "run"],
             ["?run=x", "run"],
+            ["?run=2.5", "run"],
         ]) {
             const p = parseRunParams(query, { bundledClips: clips });
             expect(p[key], query).toBeNull();

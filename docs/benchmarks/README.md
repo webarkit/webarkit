@@ -3445,3 +3445,90 @@ record.*
   41.0% and 37.5% in the two blocks against 20–36%, for reasons its inputs give: more
   video time locked than the prediction's input assumed (45% against round
   2's 39.1%), and waiting frames 56.5 ms of video apart rather than 40–45.
+
+## 2026-10-06 — M4: the session's runbook, provenance steps
+
+Registered before M4's plan, which #107 writes and which adopts these steps
+as its runbook's first and last. M3's runbook, above, is the record of how
+M3 was run and stays as it is: it did not run these steps, and adding them to
+it would make it false. Why they exist is #95's provenance item and
+[#110](https://github.com/webarkit/webarkit/issues/110), which built what
+they check.
+
+**Before the tablet.**
+
+1. **The guard diff**, as M3's step 1 has it, against the commit of M4's own
+   guard check (named when that check runs, #107):
+   `git diff --stat <guard commit> HEAD -- examples/bench-nft.html examples/js scripts packages`
+   shows nothing.
+2. **The clean working tree**, directly after it. Step 1 compares commits,
+   so an uncommitted edit is invisible to it, while the page serves
+   `examples/js` from the working tree:
+   ```bash
+   git status --porcelain --untracked-files=all -- examples/bench-nft.html examples/js scripts packages package.json package-lock.json
+   ```
+   prints nothing. It cannot see git-ignored build output (`dist/`); step 4
+   covers that.
+3. **The server sends `Cache-Control: no-store`** on every response, beside
+   range requests and module MIME types. A server that lets the browser
+   cache (http-server's default is `max-age=3600`; `npx http-server -c-1`
+   does not) can hand the page a module edited and reverted since its last
+   load, which runs without the server being asked, or after a 304 that a
+   date validator can grant, so no hash taken at Start can see it. Start
+   refuses a session run whose responses lack `no-store`, and one that ran
+   a module from the cache, but a refused session wastes the session: check
+   the server first, with
+   `curl -sI http://localhost:<port>/examples/js/bench-metrics.mjs`, whose
+   `Cache-Control` must read `no-store`. A server restarted with
+   `no-store` does not empty a cache an earlier server filled: clear the
+   browser's cache for the origin too.
+4. **The build and its manifest.** `npm run build` prints
+   `examples/dist/provenance.json: HEAD <head>, clean, …`, with `<head>` the
+   session's commit. Every session run (`?loops=` or `?run=`) is then
+   checked at its Start against that manifest — the bundle, the page and
+   each `examples/js` module the server serves, the modules the page and the
+   worker loaded, and the manifest itself since page load — and refused,
+   with each reason and its remedy on the page, on any difference, and
+   whenever the check is blind: a worker run whose modules the browser does
+   not show, a module run from the HTTP cache (a hit or a 304), a response
+   without `no-store`, a full resource timeline.
+   A refused Start is not a run: apply the remedy it names, reload, and
+   start again. Each export records what was checked under `provenance`.
+
+**During the session.**
+
+5. **The page in the foreground**, from Start to the run's end, on every
+   session run: a hidden tab throttles timers and `requestAnimationFrame`.
+   Each export records `run.lostVisibility`. It is reported, not gating: a
+   run with `true` is not refused, and the session record says what it
+   decided about that run.
+
+**After the last run.**
+
+6. **Step 2 again, printing nothing.** A tree that changed during the
+   session invalidates the runs made after the change, and the session
+   record says which.
+7. **The exports, into the repository.** They leave the browser as
+   downloads; this is the step where the wrong file gets committed or one
+   goes missing.
+   - **Before the session starts, the download folder is cleared of
+     `bench-nft-*.json`.** The session's exports arrive there by the same
+     route as every earlier trial's, and the count below means nothing if
+     the folder already holds files nobody can tell apart from them.
+   - **Destination:** `docs/benchmarks/<date>-tab9-m4-<path>-<clip>-<k>.json`,
+     flat in `docs/benchmarks/` as M3's are: `<date>` the session's,
+     `<path>` `sync`, `worker` or `stateless`, `<clip>` `static`, `wall` or
+     `table`, and `<k>` the run's repeat within its path and clip (the
+     stateless run has none). Stored as "A device session" above says.
+   - **Only a session run's exports are evidence.** An export from the
+     ready check, a trial, a demonstration or a refused Start is never
+     copied there; one with `protocol.sessionRun` false is copied only if
+     the plan registered it as a run and the record says why it is not a
+     session run.
+   - **The count and the identity are checked before the commit:** the
+     number of exports copied equals the number of runs the plan's order
+     called for (re-runs included, each named in the record), and each
+     export's `run.order` equals its `?run=`, its `loops.loopCount` the
+     plan's, its `bundledClip` and `detection.path` its file name's, and
+     its `provenance.manifest.head` the commit of step 4. A mismatch stops
+     the commit until the record explains it.

@@ -31,12 +31,12 @@
  * protocol. This file owns what the core must not: `self`, `postMessage`, and
  * the imports of the packages that the core receives as `deps`.
  *
- * It is not loaded as it stands. The packages import each other by bare name
- * (`@webarkit/jsfeat-next`, `@webarkit/cv-backend-spec`), and a module worker
- * does not read the page's import map, so `npm run build:worker` bundles this
- * file with esbuild into `examples/dist/detection-worker.mjs`, with every import
- * resolved. The page starts that bundle with
- * `new Worker(new URL("./dist/detection-worker.mjs", location.href), { type: "module" })`.
+ * The page starts it as it stands, with
+ * `new Worker(new URL("./js/detection-worker.mjs", location.href), { type: "module" })`.
+ * A module worker does not read the page's import map, and the packages import
+ * each other by bare name, so the packages come from the bench page's shared
+ * bundle, `../dist/webarkit-packages.mjs`, by URL: the same file the page's
+ * import map points the main thread at, so both arms run one artifact (#110).
  *
  * Any failure, in `init` or in `detect`, is answered with an `error` message,
  * so the page hears of it and no promise rejects unhandled inside the worker.
@@ -44,8 +44,7 @@
  * answered or after it failed, is one such failure.
  */
 
-import { createJsfeatNextBackend } from "@webarkit/cv-backend-jsfeatnext";
-import { decode, detectTarget, prepareDetection } from "@webarkit/nft-tracker";
+import { createJsfeatNextBackend, decode, detectTarget, prepareDetection } from "../dist/webarkit-packages.mjs";
 import { sha256Hex } from "./bench-metrics.mjs";
 import { prepareWorkerDetection, runWorkerDetection } from "./detection-worker-core.mjs";
 

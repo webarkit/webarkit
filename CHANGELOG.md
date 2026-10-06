@@ -14,6 +14,32 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+### Changed
+
+- **`examples/bench-nft.html` attests the code a session run executes**
+  ([#111](https://github.com/webarkit/webarkit/pull/111), designed in
+  [#110](https://github.com/webarkit/webarkit/issues/110)).
+  - **One bundle for both arms.** Both detection arms now load one bundle of the three
+    packages, `examples/dist/webarkit-packages.mjs`: the page through its import map, the worker
+    by URL. The separately bundled worker, `examples/dist/detection-worker.mjs`, is gone.
+  - **`npm run build` is `scripts/build-provenance.mjs`.** It builds the packages, then the bundle,
+    then `examples/dist/provenance.json`: the commit, whether the tree was clean, and the hash of
+    every input. Without git it still builds, and the manifest says the commit is unknown.
+  - **What Start checks.** A session run (`?loops=` or `?run=`) is checked at Start against that
+    manifest, and refused, with its reason and remedy, on:
+    - a mismatch with the build;
+    - a dirty tree, or a manifest built without git;
+    - a module the check cannot see, or one run from the HTTP cache;
+    - a response without `Cache-Control: no-store`.
+
+    The check attests the bytes the server serves at Start, not the bytes the page loaded. Other
+    runs refuse nothing and record the findings.
+  - **What exports carry.** Exports carry `provenance` beside `protocol`, and
+    `run.lostVisibility`. They no longer carry `detection.workerBundleSha256`.
+  - **Parameters and server.** `?loops=` and `?run=` take whole numbers only, never floored. Serve
+    the repository with `npx http-server -c-1`. The demos still load each package's own `dist/`.
+  - **Replay.** `scripts/replay-clips.mjs` takes `--packages <dist|bundle>`.
+
 ## [0.4.0] - 2026-10-01
 
 M3 of [ADR-0001](docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md), detection off the
