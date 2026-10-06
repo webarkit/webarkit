@@ -3445,3 +3445,37 @@ record.*
   41.0% and 37.5% in the two blocks against 20–36%, for reasons its inputs give: more
   video time locked than the prediction's input assumed (45% against round
   2's 39.1%), and waiting frames 56.5 ms of video apart rather than 40–45.
+
+## 2026-10-06 — M4: the session's runbook, provenance steps
+
+Registered before M4's plan, which #107 writes and which adopts these steps
+as its runbook's first and last. M3's runbook, above, is the record of how
+M3 was run and stays as it is: it did not run these steps, and adding them to
+it would make it false. Why they exist is #95's provenance item and
+[#110](https://github.com/webarkit/webarkit/issues/110), which built what
+they check.
+
+1. **The guard diff**, as M3's step 1 has it, against the commit of M4's own
+   guard check (named when that check runs, #107):
+   `git diff --stat <guard commit> HEAD -- examples/bench-nft.html examples/js scripts packages`
+   shows nothing.
+2. **The clean working tree**, directly after it, before the tablet. Step 1
+   compares commits, so an uncommitted edit is invisible to it, while the
+   page serves `examples/js` from the working tree:
+   ```bash
+   git status --porcelain --untracked-files=all -- examples/bench-nft.html examples/js scripts packages package.json package-lock.json
+   ```
+   prints nothing. It cannot see git-ignored build output (`dist/`); the
+   next step covers that.
+3. **The build and its manifest.** `npm run build` prints
+   `examples/dist/provenance.json: HEAD <head>, clean, …`, with `<head>` the
+   session's commit. Every session run (`?loops=` or `?run=`) is then
+   checked at its Start against that manifest — the bundle, the page and
+   each `examples/js` module the server serves, the modules the page and the
+   worker loaded, and the manifest itself since page load — and refused on
+   any difference, with the reason on the page. A refused Start is not a
+   run: fix the cause, rebuild, reload, and start again. Each export records
+   what was checked under `provenance`.
+4. **Last, after the last export is written:** step 2 again, printing
+   nothing. A tree that changed during the session invalidates the runs
+   made after the change, and the session record says which.
