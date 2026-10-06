@@ -19,19 +19,21 @@
     <title>CvBackend — NFT pipeline benchmark</title>
 
     <!--
-      No bundler. The packages ship ESM with explicit file extensions, so an
-      import map is enough to point the bare specifiers at the built output.
-      Run `npm run build` at the repo root first, then serve this directory
-      over HTTP (file:// will not load ES modules, and getUserMedia requires a
-      secure context — http://localhost is fine, a plain http:// host is not).
+      The packages come from one bundle, examples/dist/webarkit-packages.mjs,
+      which the detection worker loads too, by URL (a module worker reads no
+      import map): both detection arms run one artifact (#110). The bundle is
+      this page's only; the demos map the packages' own dist/, as a consumer
+      would. Run `npm run build` at the repo root first, then serve the repo
+      root over HTTP (file:// will not load ES modules, and getUserMedia
+      requires a secure context — http://localhost is fine, a plain http://
+      host is not).
     -->
     <script type="importmap">
       {
         "imports": {
-          "@webarkit/jsfeat-next": "../node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs",
-          "@webarkit/cv-backend-spec": "../packages/cv-backend-spec/dist/index.js",
-          "@webarkit/cv-backend-jsfeatnext": "../packages/cv-backend-jsfeatnext/dist/index.js",
-          "@webarkit/nft-tracker": "../packages/nft-tracker/dist/index.js"
+          "@webarkit/cv-backend-spec": "./dist/webarkit-packages.mjs",
+          "@webarkit/cv-backend-jsfeatnext": "./dist/webarkit-packages.mjs",
+          "@webarkit/nft-tracker": "./dist/webarkit-packages.mjs"
         }
       }
     </script>
@@ -263,7 +265,7 @@
       <code>LOST → DETECT → TRACK</code> state machine, which needs a target with patches:
       <code>targets/pinball.wnft</code>, loaded from the file, never built here. In the tracking mode,
       <code>?detection=worker</code> runs detection off the frame loop, in a module worker
-      (<code>dist/detection-worker.mjs</code>, which <code>npm run build</code> makes). Every run metric is defined once,
+      (<code>js/detection-worker.mjs</code>, over the bundle <code>npm run build</code> makes). Every run metric is defined once,
       in <code>js/bench-metrics.mjs</code>, and each export carries those definitions.
     </p>
 
@@ -468,11 +470,8 @@
        * 2026-09-29), in the tracking mode only.
        */
       const DETECTION_PATH = TUNING.detection;
-      /**
-       * The worker, as `npm run build` bundles it: a module worker does not read
-       * this page's import map, so every import is resolved at build time.
-       */
-      const WORKER_BUNDLE = "dist/detection-worker.mjs";
+      /** The worker's module, which imports the packages from this page's bundle by URL. */
+      const WORKER_MODULE = "js/detection-worker.mjs";
       const DETECTION_POLICY = "on-demand, one in flight, dropped not queued";
       /** A job the worker has not answered in this long stops the run. */
       const WORKER_REPLY_TIMEOUT_MS = 5000;
@@ -1263,9 +1262,9 @@
        * back to `sync`.
        */
       async function startDetectionWorker(maxSceneKeypoints) {
-        const where = `The detection worker (examples/${WORKER_BUNDLE})`;
+        const where = `The detection worker (examples/${WORKER_MODULE})`;
         if (!targets.wnft) throw new Error(`${where} needs ${TARGET_PATH}, which did not load (see above).`);
-        const url = new URL(`./${WORKER_BUNDLE}`, location.href);
+        const url = new URL(`./${WORKER_MODULE}`, location.href);
         let response;
         try {
           response = await fetch(url);
