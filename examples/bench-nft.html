@@ -969,10 +969,13 @@
         return run;
       }
 
-      // A run not yet ended when the page is hidden lost visibility
-      // (DEFINITIONS.lostVisibility): reported, not gating (#110, A4).
+      // A run not yet ended when the page is hidden lost visibility, and so
+      // does one whose Start is still being checked (DEFINITIONS.lostVisibility):
+      // reported, not gating (#110, A4).
+      let startPending = null;
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState !== "hidden") return;
+        if (startPending) startPending.lostVisibility = true;
         for (const run of runs.values()) if (run.endedBy === null) run.lostVisibility = true;
       });
 
@@ -1812,11 +1815,16 @@
         }
       }
 
-      /** A loaded module's URL as a repository path, or `null` for anything else. */
-      function modulePath(url) {
-        const u = new URL(url);
+      /**
+       * A resource-timing entry's module as a repository path; a module from
+       * outside the repository as its whole URL, which no manifest lists, so
+       * it refuses rather than being dropped; `null` for anything not a script.
+       */
+      function modulePath(entry) {
+        const u = new URL(entry.name);
         const href = u.origin + u.pathname;
-        return href.startsWith(REPO_ROOT) && /\.m?js$/.test(u.pathname) ? href.slice(REPO_ROOT.length) : null;
+        if (entry.initiatorType !== "script" && !/\.m?js$/.test(u.pathname)) return null;
+        return href.startsWith(REPO_ROOT) ? href.slice(REPO_ROOT.length) : href;
       }
 
       /**
@@ -1849,10 +1857,10 @@
           manifestChanged: sha256 !== manifestAtLoad,
           bundleSha256: await hash(BUNDLE_URL),
           served,
-          loaded: [...new Set(modules.map((e) => modulePath(e.name)).filter((p) => p !== null))].sort(),
+          loaded: [...new Set(modules.map(modulePath).filter((p) => p !== null))].sort(),
         };
         const refusal = provenanceRefusal(manifest, observed, { sessionRun, detection: DETECTION_PATH });
-        const dirty = manifest?.clean === false ? `Built from a dirty tree: ${manifest.dirtyPaths.join(", ")}.` : null;
+        const dirty = manifest?.clean === false ? `Built from a dirty tree: ${(manifest.dirtyPaths ?? []).join(", ")}.` : null;
         const note = refusal ?? dirty ?? (manifest ? null : "No provenance manifest: run `npm run build`.");
         return { manifest, observed, refusal, note };
       }
@@ -2186,15 +2194,20 @@
             return;
           }
           startButton.disabled = true;
+          // From Start, before the run exists: a hide during the check below counts.
+          startPending = { lostVisibility: document.visibilityState === "hidden" };
           // Before the worker and the source: a session run (?loops= or ?run=)
           // starts only on code the manifest attests (#110, §5).
           const provenance = await checkProvenance(TUNING.loops !== null || TUNING.run !== null);
           if (provenance.refusal) {
+            startPending = null;
             showError(provenance.refusal);
             startButton.disabled = !startAllowed();
             return;
           }
           const run = newRun();
+          run.lostVisibility ||= startPending.lostVisibility;
+          startPending = null;
           run.provenance = provenance;
           // Read once, before the source starts: the worker's `init` must be
           // for the budget the tracker runs.

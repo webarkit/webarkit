@@ -53,8 +53,7 @@
 
 import { execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { build, version as esbuildVersion } from "esbuild";
 
@@ -114,7 +113,13 @@ function hashed(paths) {
     return Object.fromEntries(paths.map((p, i) => [p, { sha256: sha256(read(p)), blob: ids[i] }]));
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Run, not imported (the tests import SERVED). Both sides real paths: Node
+// resolves links for `import.meta.url` but not in `argv[1]`, and a build that
+// silently did nothing would leave a stale bundle its manifest still attests.
+if (
+    process.argv[1] &&
+    realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+) {
     // 1. The packages, in the order AGENTS.md explains.
     for (const name of PACKAGES)
         execSync(`npm run build -w ${name}`, { cwd: ROOT, stdio: "inherit" });
@@ -131,8 +136,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         metafile: true,
         logLevel: "warning",
     });
+    const dists = PACKAGES.map((name) => `packages/${name.slice("@webarkit/".length)}/dist/`);
     const allowed = (p) =>
-        p === ENTRY || p === JSFEAT_FILE || /^packages\/[^/]+\/dist\/.+\.js$/.test(p);
+        p === ENTRY ||
+        p === JSFEAT_FILE ||
+        (dists.some((d) => p.startsWith(d)) && p.endsWith(".js"));
     const inputs = Object.keys(metafile.inputs).map((p) => p.replace(/\\/g, "/"));
     const foreign = inputs.filter((p) => !allowed(p));
     if (foreign.length > 0)
@@ -140,6 +148,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const imports = Object.values(metafile.outputs).flatMap((o) => o.imports);
     if (imports.length > 0)
         throw new Error(`the bundle still imports: ${imports.map((i) => i.path).join(", ")}`);
+    // The metafile lists only what esbuild resolved: a dynamic import it could
+    // not would be left in the text alone.
+    if (/^\s*import[\s{*"']|\bimport\s*\(/m.test(read(BUNDLE).toString())) {
+        throw new Error(`the bundle's text still contains an import: ${BUNDLE}`);
+    }
 
     // 3. The manifest.
     const lock = JSON.parse(read("package-lock.json"))?.packages?.[`node_modules/${JSFEAT}`];
@@ -158,7 +171,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         "package-lock.json",
     )
         .trim()
-        .split("\n");
+        .split("\n")
+        // A tracked file deleted and not staged is not hashed: `dirtyPaths`
+        // lists it, and the tree reads dirty.
+        .filter((p) => existsSync(ROOT + p));
     const dirtyPaths = git("status", "--porcelain", "--untracked-files=all", "--", ...CLEAN_PATHS)
         .split("\n")
         .filter(Boolean)

@@ -37,6 +37,9 @@
  *     node scripts/replay-clips.mjs --external <latencyMs> [--seed <n>] [--out <dir>]
  *     node scripts/replay-clips.mjs --transfer <dir> [--seed <n>] [--out <dir>]
  *
+ * Every form takes `--packages <dist|bundle>` (default `dist`): the packages'
+ * `dist/`, or the bench page's shared bundle (see `PACKAGES` below).
+ *
  * **Not an on-device measurement, and not the browser's pixels.** ffmpeg and
  * ffprobe (on PATH) decode the clips and scale them (bilinear) where the page
  * has the browser's decoder and drawImage; the grey conversion is the page's.
@@ -288,7 +291,13 @@ if (PACKAGES === "bundle") {
     } catch {
         usage("--packages bundle needs examples/dist/provenance.json: run `npm run build`");
     }
-    const bundleSha256 = await sha256Hex(readFileSync(BUNDLE));
+    let bundleBytes;
+    try {
+        bundleBytes = readFileSync(BUNDLE);
+    } catch {
+        usage("--packages bundle needs examples/dist/webarkit-packages.mjs: run `npm run build`");
+    }
+    const bundleSha256 = await sha256Hex(bundleBytes);
     packageSource = {
         packages: "bundle",
         bundleSha256,

@@ -361,8 +361,9 @@ baseline. The worker is `js/detection-worker.mjs` over
 `js/detection-worker-core.mjs`. A module worker does not read the page's
 import map, so it imports the packages by URL from the page's bundle,
 `dist/webarkit-packages.mjs`, which **`npm run build` writes** (git-ignored,
-like the packages' `dist/`); without that build the worker fails to load,
-and the page says so and does not start.
+like the packages' `dist/`). The page's own import map points at the same
+file, so without that build the page does not start at all: its module
+script fails to load, with the error in the console only.
 
 **Provenance.** `npm run build` also writes `dist/provenance.json`: the
 commit, whether the guarded paths were clean, and the hash of the bundle and
@@ -370,7 +371,10 @@ of each file the page serves unbuilt. At Start, a session run (`?loops=` or
 `?run=`) fetches those files again, revalidating with the server, and is
 refused, with the reason, if any differs, if the tree was dirty, if the
 manifest changed since the page loaded, or if the page or the worker loaded a
-module the manifest does not list. This attests the bytes the server serves
+module the manifest does not list. A worker run is also refused when a module
+the manifest marks as the worker's is missing from the page's resource
+timeline: Chrome records the worker's imports there, and a browser that does
+not leaves the check blind, which must refuse rather than pass. This attests the bytes the server serves
 at Start, not those the page loaded earlier; the load-time comparison narrows
 that gap without closing it. Other runs are only recorded. Every export
 carries what was checked under `provenance`, beside `protocol`.
