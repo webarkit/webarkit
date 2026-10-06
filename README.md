@@ -94,8 +94,6 @@ npm run build
 npx http-server -p 8080 -s -c-1
 ```
 
-`-c-1` makes the server send `Cache-Control: no-store`. http-server's default lets the browser cache files for an hour, and a cached module runs code the bench page's provenance check cannot see; the page refuses a session run when that happens ([examples/README.md](./examples/README.md)).
-
 Then open `http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html` (two still photos, easiest to debug) or `.../pinball-webcam-jsfeatnext-backend.html` (live camera, stateless per tick).
 
 See [`examples/README.md`](./examples/README.md) for what each demo shows, why the static one came first, and the multi-scale detection/matching details that came out of building them.

@@ -19,10 +19,13 @@ npx http-server -p 8080 -s -c-1   # -c-1: Cache-Control: no-store (below)
 
 **Serve with `Cache-Control: no-store`**, which `-c-1` sets: http-server's
 default, `max-age=3600`, lets the browser run a module from its cache
-without asking the server, so an edit made and reverted since the last
-load can still be the code that runs, and no check made at Start can see
-it. `bench-nft.html` refuses a session run when a module it loaded came
-from the cache that way; the demos are not affected.
+without asking the server, or after a 304 that a date validator can grant,
+so an edit made and reverted since the last load can still be the code that
+runs, and no hash taken at Start can see it. `bench-nft.html` refuses a
+session run when a module it loaded came from the cache, or a response
+lacks `no-store`. The demos are not affected, but the same server serves
+the whole repository, which is why the root README's command carries `-c-1`
+too.
 
 Then open <http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html>,
 <http://localhost:8080/examples/pinball-webcam-jsfeatnext-backend.html>, or
