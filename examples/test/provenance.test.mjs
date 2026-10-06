@@ -64,7 +64,7 @@ describe("provenanceRefusal", () => {
     });
 
     it.each([
-        ["no manifest", null, observed, /^No provenance manifest/],
+        ["no manifest", null, observed, /^Provenance: no manifest/],
         ["a manifest changed since page load", manifest, { ...observed, manifestChanged: true }, /changed since the page loaded/],
         ["a dirty tree", { ...manifest, clean: false, dirtyPaths: ["examples/js/a.mjs"] }, observed, /dirty tree \(examples\/js\/a\.mjs\)/],
         ["another bundle", manifest, { ...observed, bundleSha256: "x" }, /served bundle is not the one built/],
@@ -72,10 +72,17 @@ describe("provenanceRefusal", () => {
         ["a served file that could not be fetched", manifest, { ...observed, served: { "examples/bench-nft.html": "h" } }, /differ from the build: examples\/js\/a\.mjs/],
         ["a module the manifest does not list", manifest, { ...observed, loaded: [...observed.loaded, "examples/js/z.mjs"] }, /does not list: examples\/js\/z\.mjs/],
         // Blind conditions (#110, A5): the check cannot see what ran, so it refuses.
-        ["a module taken from the HTTP cache", manifest, { ...observed, unfetched: ["examples/js/a.mjs"] }, /HTTP cache without asking the server.*examples\/js\/a\.mjs.*no-store/],
+        ["a module run from the HTTP cache", manifest, { ...observed, unfetched: ["examples/js/a.mjs"] }, /run from the HTTP cache \(a hit, or a 304\).*examples\/js\/a\.mjs.*no-store/],
+        ["a response the browser may store", manifest, { ...observed, cacheControl: { "examples/js/a.mjs": "max-age=3600", "examples/bench-nft.html": "no-store" } }, /lets the browser cache: examples\/js\/a\.mjs \(max-age=3600\)\. To fix: serve with Cache-Control: no-store/],
+        ["a response with no Cache-Control at all", manifest, { ...observed, cacheControl: { "examples/js/a.mjs": null } }, /lets the browser cache: examples\/js\/a\.mjs \(no Cache-Control\)/],
         ["a full resource timeline", manifest, { ...observed, timelineFull: true }, /buffer overflowed.*To fix: reload the page\.$/],
     ])("refuses a session run on %s", (_, m, o, why) => {
         expect(provenanceRefusal(m, o, session)).toMatch(why);
+    });
+
+    it("passes responses that carry no-store, among other directives", () => {
+        const cacheControl = { "examples/js/a.mjs": "no-store", "examples/bench-nft.html": "no-cache, no-store, must-revalidate" };
+        expect(provenanceRefusal(manifest, { ...observed, cacheControl }, session)).toBeNull();
     });
 
     it("names every reason at once, each remedy once", () => {
@@ -85,7 +92,11 @@ describe("provenanceRefusal", () => {
     });
 
     it("gives a blind condition its own remedy, never a rebuild that cannot fix it", () => {
-        for (const o of [{ ...observed, unfetched: ["examples/js/a.mjs"] }, { ...observed, timelineFull: true }]) {
+        for (const o of [
+            { ...observed, unfetched: ["examples/js/a.mjs"] },
+            { ...observed, timelineFull: true },
+            { ...observed, cacheControl: { "examples/js/a.mjs": "max-age=0" } },
+        ]) {
             expect(provenanceRefusal(manifest, o, session)).not.toMatch(/npm run build/);
         }
     });

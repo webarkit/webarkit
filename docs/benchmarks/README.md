@@ -3473,11 +3473,15 @@ they check.
    range requests and module MIME types. A server that lets the browser
    cache (http-server's default is `max-age=3600`; `npx http-server -c-1`
    does not) can hand the page a module edited and reverted since its last
-   load, which runs without the server being asked, so no check at Start
-   can see it. Start refuses a session run that loaded a module that way,
-   but a refused session wastes the session: check the server first, with
+   load, which runs without the server being asked, or after a 304 that a
+   date validator can grant, so no hash taken at Start can see it. Start
+   refuses a session run whose responses lack `no-store`, and one that ran
+   a module from the cache, but a refused session wastes the session: check
+   the server first, with
    `curl -sI http://localhost:<port>/examples/js/bench-metrics.mjs`, whose
-   `Cache-Control` must read `no-store`.
+   `Cache-Control` must read `no-store`. A server restarted with
+   `no-store` does not empty a cache an earlier server filled: clear the
+   browser's cache for the origin too.
 4. **The build and its manifest.** `npm run build` prints
    `examples/dist/provenance.json: HEAD <head>, clean, …`, with `<head>` the
    session's commit. Every session run (`?loops=` or `?run=`) is then
@@ -3486,7 +3490,8 @@ they check.
    worker loaded, and the manifest itself since page load — and refused,
    with each reason and its remedy on the page, on any difference, and
    whenever the check is blind: a worker run whose modules the browser does
-   not show, a module taken from the HTTP cache, a full resource timeline.
+   not show, a module run from the HTTP cache (a hit or a 304), a response
+   without `no-store`, a full resource timeline.
    A refused Start is not a run: apply the remedy it names, reload, and
    start again. Each export records what was checked under `provenance`.
 
@@ -3506,6 +3511,10 @@ they check.
 7. **The exports, into the repository.** They leave the browser as
    downloads; this is the step where the wrong file gets committed or one
    goes missing.
+   - **Before the session starts, the download folder is cleared of
+     `bench-nft-*.json`.** The session's exports arrive there by the same
+     route as every earlier trial's, and the count below means nothing if
+     the folder already holds files nobody can tell apart from them.
    - **Destination:** `docs/benchmarks/<date>-tab9-m4-<path>-<clip>-<k>.json`,
      flat in `docs/benchmarks/` as M3's are: `<date>` the session's,
      `<path>` `sync`, `worker` or `stateless`, `<clip>` `static`, `wall` or

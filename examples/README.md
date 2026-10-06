@@ -382,9 +382,10 @@ module the manifest does not list. A worker run is also refused when a module
 the manifest marks as the worker's is missing from the page's resource
 timeline: Chrome records the worker's imports there, and a browser that does
 not leaves the check blind, which must refuse rather than pass. So, for the
-same reason, does a module or the page taken from the HTTP cache without the
-server being asked (its timing entry shows no bytes transferred, or no value
-at all), and a resource timeline whose buffer has overflowed. Each refusal
+same reason, does a module or the page run from the HTTP cache (its body did
+not cross the network: a cache hit, or a 304, which can be validated by date
+and so does not prove the bytes), a resource timeline whose buffer has
+overflowed, and a response without `Cache-Control: no-store`. Each refusal
 names its own remedy, and every finding is also written into the export's
 `provenance.note`, in a run that is not a session run too. This attests the bytes the server serves
 at Start, not those the page loaded earlier; the load-time comparison narrows

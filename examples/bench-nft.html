@@ -1812,16 +1812,19 @@
       });
 
       /** The bytes the server serves at `url` now: revalidated with it, never taken from the HTTP cache unchecked. */
-      async function servedBytes(url) {
+      async function servedBytes(url, cacheControl = {}) {
         const response = await fetch(url, { cache: "no-cache" });
         if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
+        // What the server tells the browser about caching this file (#110, A5 (b)).
+        cacheControl[modulePath({ name: response.url, initiatorType: "script" }) ?? response.url] =
+          response.headers.get("cache-control");
         return response.arrayBuffer();
       }
 
       /** The manifest as served now, and its bytes' SHA-256: both `null` when it cannot be read. */
-      async function fetchManifest() {
+      async function fetchManifest(cacheControl) {
         try {
-          const bytes = await servedBytes(PROVENANCE_URL);
+          const bytes = await servedBytes(PROVENANCE_URL, cacheControl);
           return { manifest: JSON.parse(new TextDecoder().decode(bytes)), sha256: await sha256Hex(bytes) };
         } catch {
           return { manifest: null, sha256: null };
@@ -1848,18 +1851,25 @@
        * to the time since the page loaded without closing it; and the modules
        * loaded, from the page's resource timeline (which URLs, not which
        * bytes), where Chrome also records the worker's module imports: the
-       * worker's own timeline does not hold them (#110, A1 corrected). A
-       * listed module, or the page, whose entry shows no bytes transferred came
-       * from the HTTP cache without the server being asked, so what ran is
-       * unknown; `transferSize` absent is as blind as 0 (#110, A5).
+       * worker's own timeline does not hold them (#110, A1 corrected).
+       *
+       * Two checks on the cache, different in kind (#110, A5). What ran: a
+       * listed module, or the page, whose body did not cross the network came
+       * from the cache, and what ran is unknown — a hit (`transferSize` 0, or
+       * absent, as blind as 0) or a 304 revalidation, which can be validated by
+       * date, so it does not prove the bytes. And what the server says now:
+       * each response must carry `Cache-Control: no-store`. The second removes
+       * the cause; the first is still needed because a cache can predate the
+       * server's current headers.
        * `DEFINITIONS.provenance`; refuses only a session run, and writes every
        * finding into the note either way.
        */
       async function checkProvenance(sessionRun) {
-        const { manifest, sha256 } = await fetchManifest();
+        const cacheControl = {};
+        const { manifest, sha256 } = await fetchManifest(cacheControl);
         const hash = async (url) => {
           try {
-            return await sha256Hex(await servedBytes(url));
+            return await sha256Hex(await servedBytes(url, cacheControl));
           } catch {
             return null;
           }
@@ -1869,9 +1879,13 @@
         // Modules only: this check's own fetches are in the timeline too.
         const entries = performance.getEntriesByType("resource");
         const modules = entries.filter((e) => e.initiatorType !== "fetch");
-        // Not `> 0` (a 304 revalidation is a few hundred bytes): a zero, or no
-        // value at all, means the server was not asked.
-        const blind = (e) => !(typeof e.transferSize === "number" && e.transferSize > 0);
+        // Seen only if the body crossed the network: more bytes transferred
+        // than the body holds. A zero or absent `transferSize` is a cache hit;
+        // a 304 transfers headers only, fewer bytes than the cached body.
+        const blind = (e) =>
+          !(typeof e.transferSize === "number" && e.transferSize > 0) ||
+          e.responseStatus === 304 ||
+          !(typeof e.encodedBodySize === "number" && e.transferSize > e.encodedBodySize);
         const listed = (p) => p === manifest?.bundle?.path || (p in (manifest?.served ?? {}));
         const unfetched = new Set(modules.filter(blind).map(modulePath).filter((p) => p !== null && listed(p)));
         const page = performance.getEntriesByType("navigation")[0];
@@ -1885,6 +1899,7 @@
           loaded: [...new Set(modules.map(modulePath).filter((p) => p !== null))].sort(),
           unfetched: [...unfetched].sort(),
           timelineFull: timelineOverflowed || entries.length >= RESOURCE_TIMING_BUFFER,
+          cacheControl,
         };
         // Every finding is noted, in an exploratory run too; only a session run refuses on them.
         const note = provenanceFindings(manifest, observed, { detection: DETECTION_PATH });
