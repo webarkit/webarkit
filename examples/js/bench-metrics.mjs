@@ -357,6 +357,8 @@ export const DEFINITIONS = Object.freeze({
         "In the export's run record: why the run could not go on, the one-line cause the page showed (naming the frame for a throw in a frame's callback), or null. Only a synchronous run that failed is exported with one (a worker run that failed is not exported), and its endedBy is then failed.",
     protocol:
         "{ sessionRun, gaps }: whether the run followed the device session's protocol (docs/benchmarks/README.md, 2026-09-29), and what keeps it from it, one line each (sessionRunGaps): a tracking or stateless run of a bundled clip, over one warm-up loop and loops 1 to 4 counted (loops), with its place in the session's order (run.order), that ended itself (run.endedBy done) with every frame it processed in its window (ticks, a whole number, = windowSize), recording its detection path (detection.path sync or worker); in the tracking mode its lock read over those loops whole (trackTimeShare.complete), in a worker run its accounting holding (detectionAccounting); at the page's defaults: the committed target, loaded, no tracker option overridden (?tracker=), the default scene keypoint budget and processing box. What the export does not record is a gap, never a pass. The page exports a run with gaps all the same, and says so; replay-clips --transfer reads only session runs.",
+    provenance:
+        "{ manifest, observed, refusal, note }: what the page checked at Start against examples/dist/provenance.json, the manifest npm run build writes (scripts/build-provenance.mjs, #110). manifest: as fetched at Start (HEAD, clean, each tracked input's SHA-256 and git blob id, the shared bundle's hash, jsfeat-next's lockfile entry and file hash), null when it could not be read. observed: the SHA-256 of the bytes the server served at Start for the bundle and each served file (not necessarily the bytes the page loaded earlier: a fetch cannot see what the module loader executed), whether the manifest changed since page load (manifestChanged), and the modules the page and the worker observed themselves loading (loaded: which URLs, not which bytes). refusal: provenanceRefusal's one line, or null. In a session run (?loops= or ?run=) Start refuses on it; otherwise it is only recorded. note: one line when the tree was dirty or the check refused, else null. Reported, not gating: sessionRunGaps does not read it, and an export without it is not a gap. Absent in exports older than #110, whose worker runs carry detection.workerBundleSha256 instead.",
     detectionAccounting:
         "A worker run's detection requests and what became of each, counted over the whole run, not the window: requests (results that said needsDetection) = consumptions (detections handed to process and used) + dropped (requests made while a detection was in flight or held) + discardedAtStop (a detection in flight, or held, at Stop), and ignored (detections handed in while a lock held) = 0; posted counts the requests that started a job. accountingError checks both, and a run that fails either is not exported. In the summary the accounting is carried as given, with error: accountingError's line saying what is wrong, or null when nothing is; the summary has null for a run that gave none.",
     detectionUseFallbackFrames:
@@ -1134,7 +1136,8 @@ export function parseRunParams(search, { bundledClips }) {
     }
     const positive = (name) => {
         const raw = p.get(name);
-        const n = parsePositiveInt(raw);
+        // Not floored: ?loops=4.7 is present but unreadable, never 4 loops.
+        const n = Number.isInteger(Number(raw)) ? parsePositiveInt(raw) : null;
         if (raw !== null && n === null)
             paramErrors.push(`?${name}=${raw}: expected a positive integer`);
         return n;
@@ -1316,6 +1319,32 @@ export function startRefusal({
     }
     if (loops !== null && source === "webcam") return "?loops= needs a looping clip, not the webcam.";
     return mode === "tracking" ? trackabilityError(target.db, minTrackedPatches) : null;
+}
+
+/**
+ * Why a session run may not start on what the server serves, in one line, or
+ * `null` (#110, §5). `manifest` is `examples/dist/provenance.json` as fetched
+ * at Start (`null` when it could not be read); `observed` is what the page saw
+ * then: `manifestChanged` (its bytes differ from the copy fetched at page
+ * load), `bundleSha256` and `served` (`{ path: sha256 }`: the bytes the server
+ * served at Start, not necessarily those the page loaded), and `loaded` (the
+ * repository paths of the modules the page and the worker observed themselves
+ * loading). Outside a session run nothing refuses: the export only records it.
+ */
+export function provenanceRefusal(manifest, observed, { sessionRun }) {
+    if (!sessionRun) return null;
+    if (!manifest) return "No provenance manifest (examples/dist/provenance.json): run `npm run build`.";
+    if (observed.manifestChanged) return "The provenance manifest changed since the page loaded: reload the page.";
+    const reasons = [];
+    if (manifest.clean !== true) reasons.push(`built from a dirty tree (${(manifest.dirtyPaths ?? []).join(", ")})`);
+    if (observed.bundleSha256 !== manifest.bundle?.sha256) reasons.push(`the served bundle is not the one built`);
+    const served = manifest.served ?? {};
+    const stale = Object.keys(served).filter((p) => observed.served?.[p] !== served[p].sha256);
+    if (stale.length > 0) reasons.push(`served files differ from the build: ${stale.join(", ")}`);
+    const unlisted = (observed.loaded ?? []).filter((p) => p !== manifest.bundle?.path && !(p in served));
+    if (unlisted.length > 0) reasons.push(`modules loaded that the manifest does not list: ${unlisted.join(", ")}`);
+    if (reasons.length === 0) return null;
+    return `Not a session run's code: ${reasons.join("; ")}. Commit, run \`npm run build\`, and reload.`;
 }
 
 /**

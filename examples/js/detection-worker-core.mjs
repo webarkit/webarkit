@@ -53,10 +53,11 @@
  *
  * worker → page
  *
- * - `{ type: "ready", targetSha256 }`: after `init`, when the worker can
- *   detect. `targetSha256` is the SHA-256 of the bytes it decoded, or `null`
- *   where SubtleCrypto is unavailable, so the page can check the worker holds
- *   the target it sent.
+ * - `{ type: "ready", targetSha256, modules }`: after `init`, when the worker
+ *   can detect. `targetSha256` is the SHA-256 of the bytes it decoded, or
+ *   `null` where SubtleCrypto is unavailable, so the page can check the worker
+ *   holds the target it sent. `modules`: the URLs of the resources the worker
+ *   observed itself loading, for the page's provenance check (#110, A1).
  * - `{ type: "result", jobId, runId, detection, workerMs }`: the answer to one
  *   `detect`, built by {@link runWorkerDetection}.
  * - `{ type: "error", jobId?, runId?, message }`: a request the worker could

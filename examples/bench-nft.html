@@ -439,6 +439,7 @@
         parsePositiveInt,
         parseRunParams,
         percentile,
+        provenanceRefusal,
         sessionRunGaps,
         sha256Hex,
         stageSamples,
@@ -649,14 +650,15 @@
       let runSeq = 0;
       const runs = new Map();
       /**
-       * The detection worker, in worker mode: the `Worker`, its bundle's SHA-256,
-       * the options of the last `init` sent, that `init`'s promise and, while it
+       * The detection worker, in worker mode: the `Worker`, the modules it
+       * reported loading in its last `ready` (for the provenance check), the
+       * options of the last `init` sent, that `init`'s promise and, while it
        * is unanswered, its settlers; and, once it has failed, why — after which
        * Start stays disabled until the page is reloaded.
        */
       const detectionWorker = {
         worker: null,
-        bundleSha256: null,
+        modules: [],
         sent: null,
         ready: null,
         pendingInit: null,
@@ -1253,26 +1255,18 @@
       }
 
       /**
-       * The detection worker, in worker mode: created once, from the bundle, and
-       * sent the `.wnft` bytes and the detection options the tracker runs. Its
-       * bundle is fetched as well, for the export's SHA-256. Resolves when the
-       * worker has answered `init` with `ready` and the SHA-256 of the target
-       * the page decoded; rejects, naming the worker, otherwise — and the page
-       * then never enables Start: a URL that asked for the worker never falls
-       * back to `sync`.
+       * The detection worker, in worker mode: created once, from its module,
+       * and sent the `.wnft` bytes and the detection options the tracker runs.
+       * Its code is attested at Start, with the page's (`checkProvenance`).
+       * Resolves when the worker has answered `init` with `ready` and the
+       * SHA-256 of the target the page decoded; rejects, naming the worker,
+       * otherwise — and the page then never enables Start: a URL that asked for
+       * the worker never falls back to `sync`.
        */
       async function startDetectionWorker(maxSceneKeypoints) {
         const where = `The detection worker (examples/${WORKER_MODULE})`;
         if (!targets.wnft) throw new Error(`${where} needs ${TARGET_PATH}, which did not load (see above).`);
         const url = new URL(`./${WORKER_MODULE}`, location.href);
-        let response;
-        try {
-          response = await fetch(url);
-        } catch (e) {
-          throw new Error(`${where} could not be fetched: ${e.message}.`);
-        }
-        if (!response.ok) throw new Error(`${where} could not be loaded: HTTP ${response.status}. \`npm run build\` makes it.`);
-        detectionWorker.bundleSha256 = await sha256Hex(await response.arrayBuffer());
         const worker = new Worker(url, { type: "module" });
         worker.onmessage = onWorkerMessage;
         worker.onerror = (e) => workerFailed(`${where} failed: ${e.message || "it did not load"}.`);
@@ -1331,6 +1325,7 @@
               ? `The detection worker holds a target with SHA-256 ${data.targetSha256}, not ${TARGET_PATH}'s ${expected}.`
               : null;
         if (failure === null) {
+          detectionWorker.modules = Array.isArray(data.modules) ? data.modules : [];
           pending.resolve();
         } else {
           detectionWorker.failure ??= failure;
@@ -1787,6 +1782,73 @@
         return ($("deviceLabel").value || "device").replace(/[^a-z0-9-]+/gi, "-");
       }
 
+      /** The bundle this page's import map and the worker load, and the manifest `npm run build` writes beside it (#110). */
+      const BUNDLE_URL = new URL("./dist/webarkit-packages.mjs", location.href);
+      const PROVENANCE_URL = new URL("./dist/provenance.json", location.href);
+      /** The repository root, which the manifest's paths are relative to. */
+      const REPO_ROOT = new URL("../", location.href).href;
+      /** The manifest's SHA-256 as fetched at page load, `null` if it could not be read then (D6). */
+      let manifestAtLoad = null;
+
+      /** The bytes the server serves at `url` now: revalidated with it, never taken from the HTTP cache unchecked. */
+      async function servedBytes(url) {
+        const response = await fetch(url, { cache: "no-cache" });
+        if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
+        return response.arrayBuffer();
+      }
+
+      /** The manifest as served now, and its bytes' SHA-256: both `null` when it cannot be read. */
+      async function fetchManifest() {
+        try {
+          const bytes = await servedBytes(PROVENANCE_URL);
+          return { manifest: JSON.parse(new TextDecoder().decode(bytes)), sha256: await sha256Hex(bytes) };
+        } catch {
+          return { manifest: null, sha256: null };
+        }
+      }
+
+      /** A loaded module's URL as a repository path, or `null` for anything else. */
+      function modulePath(url) {
+        const u = new URL(url);
+        const href = u.origin + u.pathname;
+        return href.startsWith(REPO_ROOT) && /\.m?js$/.test(u.pathname) ? href.slice(REPO_ROOT.length) : null;
+      }
+
+      /**
+       * The provenance check, at Start (#110, §5): the manifest, the bundle and
+       * each file the manifest lists as served, fetched again and hashed, which
+       * attests the bytes the server serves now, not those the page loaded; the
+       * manifest compared with its copy from page load, which narrows that gap
+       * to the time since the page loaded without closing it; and the modules
+       * the page and the worker observed themselves loading (which URLs, not
+       * which bytes). `DEFINITIONS.provenance`; refuses only a session run.
+       */
+      async function checkProvenance(sessionRun) {
+        const { manifest, sha256 } = await fetchManifest();
+        const hash = async (url) => {
+          try {
+            return await sha256Hex(await servedBytes(url));
+          } catch {
+            return null;
+          }
+        };
+        const served = {};
+        for (const path of Object.keys(manifest?.served ?? {})) served[path] = await hash(new URL(path, REPO_ROOT));
+        const urls = [...performance.getEntriesByType("resource").map((e) => e.name), ...detectionWorker.modules];
+        const observed = {
+          manifestSha256: sha256,
+          manifestSha256AtLoad: manifestAtLoad,
+          manifestChanged: sha256 !== manifestAtLoad,
+          bundleSha256: await hash(BUNDLE_URL),
+          served,
+          loaded: [...new Set(urls.map(modulePath).filter((p) => p !== null))].sort(),
+        };
+        const refusal = provenanceRefusal(manifest, observed, { sessionRun });
+        const dirty = manifest?.clean === false ? `Built from a dirty tree: ${manifest.dirtyPaths.join(", ")}.` : null;
+        const note = refusal ?? dirty ?? (manifest ? null : "No provenance manifest: run `npm run build`.");
+        return { manifest, observed, refusal, note };
+      }
+
       /**
        * Why the last run may not be exported, in one line, or `null`: a worker
        * run is exported only once it has ended, if it did not fail, and with
@@ -1799,13 +1861,17 @@
         return run.failure ?? accountingError(run.policy.accounting());
       }
 
-      /** The export's record of how a run detected: `DEFINITIONS.detectionPath`, and in a worker run its policy, bundle, jobs and accounting. */
+      /**
+       * The export's record of how a run detected: `DEFINITIONS.detectionPath`,
+       * and in a worker run its policy, jobs and accounting. Its code is in the
+       * export's `provenance` (#110): older worker exports carry
+       * `workerBundleSha256` here instead.
+       */
       function detectionRecord(run) {
         const worker = run.path === "worker";
         return {
           path: run.path,
           policy: worker ? DETECTION_POLICY : null,
-          workerBundleSha256: worker ? detectionWorker.bundleSha256 : null,
           jobs: run.jobs,
           accounting: worker ? run.policy.accounting() : null,
           // Replies to this run's own jobs that arrived after it ended, discarded
@@ -1884,6 +1950,9 @@
           // from it (sessionRunGaps, DEFINITIONS.protocol): set below, from
           // this record.
           protocol: null,
+          // What Start checked against the build's manifest (checkProvenance,
+          // DEFINITIONS.provenance); absent in exports older than #110.
+          provenance: run?.provenance ?? null,
           // ?loops=: the counted loops runSummary reads, loop 0 being the
           // warm-up; null for a run that set none. clipDurationS: the clip's
           // duration, null for a webcam.
@@ -1935,7 +2004,12 @@
         saveJson(payload, `bench-nft-${payload.mode}-${deviceSlug()}-${Date.now()}.json`);
         // An exploratory run is exported all the same, and says what keeps it
         // from being a session's, without touching the status row.
-        if (gaps.length > 0) showNotice(`Exported; not a session run: ${gaps.join("; ")}`);
+        // A dirty tree, or no manifest, says so too (DEFINITIONS.provenance).
+        const notes = [
+          gaps.length > 0 ? `not a session run: ${gaps.join("; ")}` : null,
+          payload.provenance?.note ?? null,
+        ].filter(Boolean);
+        if (notes.length > 0) showNotice(`Exported; ${notes.join(" ")}`);
       }
 
       /**
@@ -1996,6 +2070,9 @@
       async function main() {
         // In worker mode Start waits for the worker's `ready` (below).
         if (DETECTION_PATH === "worker") startButton.disabled = true;
+        // The manifest as the page loaded with it: Start refuses a session run
+        // if it has changed since (checkProvenance, D6).
+        manifestAtLoad = (await fetchManifest()).sha256;
         const cv = await createJsfeatNextBackend();
 
         clockResolutionMs = clockResolution(clock);
@@ -2100,7 +2177,16 @@
             return;
           }
           startButton.disabled = true;
+          // Before the worker and the source: a session run (?loops= or ?run=)
+          // starts only on code the manifest attests (#110, §5).
+          const provenance = await checkProvenance(TUNING.loops !== null || TUNING.run !== null);
+          if (provenance.refusal) {
+            showError(provenance.refusal);
+            startButton.disabled = !startAllowed();
+            return;
+          }
           const run = newRun();
+          run.provenance = provenance;
           // Read once, before the source starts: the worker's `init` must be
           // for the budget the tracker runs.
           const maxKeypoints = readMaxKeypoints();
