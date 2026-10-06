@@ -101,16 +101,33 @@ const git = (...args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8"
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const read = (path) => readFileSync(ROOT + path);
 
-/** `{ path: { sha256, blob } }`, the blob id as `git add` would store the file. */
-function hashed(paths) {
-    const ids = execFileSync("git", ["hash-object", "--stdin-paths"], {
-        cwd: ROOT,
-        input: paths.join("\n") + "\n",
-        encoding: "utf8",
-    })
-        .trim()
-        .split("\n");
-    return Object.fromEntries(paths.map((p, i) => [p, { sha256: sha256(read(p)), blob: ids[i] }]));
+/**
+ * Whether git can describe this tree. `npm install` runs this script (through
+ * `prepare`), and a source download without `.git`, or a machine without git,
+ * must still install: the build then degrades instead of failing.
+ */
+function gitUsable() {
+    try {
+        return git("rev-parse", "--is-inside-work-tree").trim() === "true";
+    } catch {
+        return false;
+    }
+}
+
+/** `{ path: { sha256, blob } }`, the blob id as `git add` would store the file, `null` without git. */
+function hashed(paths, withGit) {
+    const ids = withGit
+        ? execFileSync("git", ["hash-object", "--stdin-paths"], {
+              cwd: ROOT,
+              input: paths.join("\n") + "\n",
+              encoding: "utf8",
+          })
+              .trim()
+              .split("\n")
+        : [];
+    return Object.fromEntries(
+        paths.map((p, i) => [p, { sha256: sha256(read(p)), blob: ids[i] ?? null }]),
+    );
 }
 
 // Run, not imported (the tests import SERVED). Both sides real paths: Node
@@ -162,29 +179,42 @@ if (
             `${JSFEAT} ${installedVersion} is installed, the lockfile pins ${lock?.version}: run \`npm ci\``,
         );
     }
-    const sources = git(
-        "ls-files",
-        "--",
-        "packages/*/src/**",
-        "packages/*/package.json",
-        "packages/*/tsconfig*.json",
-        "package-lock.json",
-    )
-        .trim()
-        .split("\n")
-        // A tracked file deleted and not staged is not hashed: `dirtyPaths`
-        // lists it, and the tree reads dirty.
-        .filter((p) => existsSync(ROOT + p));
-    const dirtyPaths = git("status", "--porcelain", "--untracked-files=all", "--", ...CLEAN_PATHS)
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => line.slice(3));
+    // Without git the commit and the tree's cleanliness are unknown: the
+    // manifest says so (`head` null, `clean` false), the page refuses a session
+    // run on it, and the build still succeeds.
+    const withGit = gitUsable();
+    if (!withGit) {
+        console.warn(
+            "build-provenance: git is not usable here, so the manifest records no commit and an unknown tree; session runs will be refused.",
+        );
+    }
+    const sources = !withGit
+        ? []
+        : git(
+              "ls-files",
+              "--",
+              "packages/*/src/**",
+              "packages/*/package.json",
+              "packages/*/tsconfig*.json",
+              "package-lock.json",
+          )
+              .trim()
+              .split("\n")
+              // A tracked file deleted and not staged is not hashed: `dirtyPaths`
+              // lists it, and the tree reads dirty.
+              .filter((p) => existsSync(ROOT + p));
+    const dirtyPaths = !withGit
+        ? []
+        : git("status", "--porcelain", "--untracked-files=all", "--", ...CLEAN_PATHS)
+              .split("\n")
+              .filter(Boolean)
+              .map((line) => line.slice(3));
     const bundleBytes = read(BUNDLE);
     const manifest = {
         schema: "webarkit-bench-provenance/1",
         builtAt: new Date().toISOString(),
-        head: git("rev-parse", "HEAD").trim(),
-        clean: dirtyPaths.length === 0,
+        head: withGit ? git("rev-parse", "HEAD").trim() : null,
+        clean: withGit && dirtyPaths.length === 0,
         dirtyPaths,
         bundle: {
             path: BUNDLE,
@@ -192,9 +222,9 @@ if (
             bytes: bundleBytes.length,
             entry: ENTRY,
         },
-        sources: hashed(sources),
+        sources: hashed(sources, withGit),
         served: Object.fromEntries(
-            Object.entries(hashed(Object.keys(SERVED))).map(([p, h]) => [
+            Object.entries(hashed(Object.keys(SERVED), withGit)).map(([p, h]) => [
                 p,
                 { ...h, side: SERVED[p] },
             ]),
@@ -217,6 +247,6 @@ if (
     mkdirSync(ROOT + "examples/dist", { recursive: true });
     writeFileSync(ROOT + MANIFEST, JSON.stringify(manifest, null, 2) + "\n");
     console.log(
-        `${MANIFEST}: HEAD ${manifest.head.slice(0, 7)}, ${manifest.clean ? "clean" : `DIRTY (${dirtyPaths.length} paths)`}, bundle ${manifest.bundle.sha256.slice(0, 12)}…`,
+        `${MANIFEST}: HEAD ${manifest.head?.slice(0, 7) ?? "unknown (no git)"}, ${manifest.clean ? "clean" : withGit ? `DIRTY (${dirtyPaths.length} paths)` : "not known to be clean"}, bundle ${manifest.bundle.sha256.slice(0, 12)}…`,
     );
 }

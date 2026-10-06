@@ -46,6 +46,7 @@ const sha256 = (path) => createHash("sha256").update(bytes(path)).digest("hex");
 
 describe("provenanceRefusal", () => {
     const manifest = {
+        head: "0123456789abcdef0123456789abcdef01234567",
         clean: true,
         dirtyPaths: [],
         bundle: { path: "examples/dist/webarkit-packages.mjs", sha256: "b" },
@@ -76,6 +77,8 @@ describe("provenanceRefusal", () => {
         ["a response the browser may store", manifest, { ...observed, cacheControl: { "examples/js/a.mjs": "max-age=3600", "examples/bench-nft.html": "no-store" } }, /lets the browser cache: examples\/js\/a\.mjs \(max-age=3600\)\. To fix: serve with Cache-Control: no-store/],
         ["a response with no Cache-Control at all", manifest, { ...observed, cacheControl: { "examples/js/a.mjs": null } }, /lets the browser cache: examples\/js\/a\.mjs \(no Cache-Control\)/],
         ["a full resource timeline", manifest, { ...observed, timelineFull: true }, /buffer overflowed.*To fix: reload the page\.$/],
+        ["a bundle missing from the timeline", manifest, { ...observed, loaded: ["examples/js/a.mjs"] }, /not in the page's resource timeline.*examples\/dist\/webarkit-packages\.mjs/],
+        ["a manifest built without git", { ...manifest, head: null, clean: false }, observed, /git could not describe the tree.*To fix: in a git checkout, commit/],
     ])("refuses a session run on %s", (_, m, o, why) => {
         expect(provenanceRefusal(m, o, session)).toMatch(why);
     });
@@ -89,6 +92,13 @@ describe("provenanceRefusal", () => {
         const refusal = provenanceRefusal({ ...manifest, clean: false }, { ...observed, bundleSha256: "x" }, session);
         expect(refusal).toMatch(/dirty tree.*; the served bundle.*To fix: commit, run `npm run build`, and reload\.$/);
         expect(refusal.match(/npm run build/g)).toHaveLength(1);
+    });
+
+    it("names every other finding beside a changed manifest, with every remedy", () => {
+        const cacheControl = { "examples/js/a.mjs": "max-age=3600" };
+        const refusal = provenanceRefusal(manifest, { ...observed, manifestChanged: true, cacheControl }, session);
+        expect(refusal).toMatch(/changed since the page loaded; the server lets the browser cache/);
+        expect(refusal).toMatch(/To fix: reload the page; serve with Cache-Control: no-store/);
     });
 
     it("gives a blind condition its own remedy, never a rebuild that cannot fix it", () => {
@@ -114,6 +124,7 @@ describe("provenanceRefusal", () => {
             ...manifest,
             served: {
                 ...manifest.served,
+                "examples/js/p.mjs": { sha256: "p", side: "page" },
                 "examples/js/w.mjs": { sha256: "w", side: "worker" },
                 "examples/js/both.mjs": { sha256: "o", side: "both" },
                 "examples/js/entry.mjs": { sha256: "e", side: "bundled" },
@@ -121,24 +132,37 @@ describe("provenanceRefusal", () => {
         };
         const seen = {
             ...observed,
-            served: { ...observed.served, "examples/js/w.mjs": "w", "examples/js/both.mjs": "o", "examples/js/entry.mjs": "e" },
-            loaded: [...observed.loaded, "examples/js/w.mjs", "examples/js/both.mjs"],
+            served: { ...observed.served, "examples/js/p.mjs": "p", "examples/js/w.mjs": "w", "examples/js/both.mjs": "o", "examples/js/entry.mjs": "e" },
+            loaded: [...observed.loaded, "examples/js/p.mjs", "examples/js/w.mjs", "examples/js/both.mjs"],
         };
         const worker = { sessionRun: true, detection: "worker" };
+        const sync = { sessionRun: true, detection: "sync" };
+        const without = (...paths) => ({ ...seen, loaded: seen.loaded.filter((p) => !paths.includes(p)) });
 
-        it("starts when every worker-side module was seen loading", () => {
+        it("starts when every module the run loads was seen loading; the bundled entry is never required", () => {
             expect(provenanceRefusal(sides, seen, worker)).toBeNull();
+            expect(provenanceRefusal(sides, seen, sync)).toBeNull();
         });
 
-        it("refuses when the check is blind to a worker-side module, worker or both", () => {
-            const blind = { ...seen, loaded: observed.loaded };
-            expect(provenanceRefusal(sides, blind, worker)).toMatch(
-                /cannot be seen: examples\/js\/w\.mjs, examples\/js\/both\.mjs|cannot be seen: examples\/js\/both\.mjs, examples\/js\/w\.mjs/,
-            );
-            expect(provenanceRefusal(sides, blind, worker)).toMatch(/To fix: run it in a browser that records/);
-            expect(provenanceRefusal(sides, blind, worker)).not.toMatch(/npm run build/);
-            // The same observation is no refusal in a synchronous run, which has no worker.
-            expect(provenanceRefusal(sides, blind, { sessionRun: true, detection: "sync" })).toBeNull();
+        it("refuses a worker run blind to a worker-side module, worker or both", () => {
+            const refusal = provenanceRefusal(sides, without("examples/js/w.mjs", "examples/js/both.mjs"), worker);
+            expect(refusal).toMatch(/cannot be seen: examples\/js\/w\.mjs, examples\/js\/both\.mjs/);
+            expect(refusal).toMatch(/To fix: run it in a browser that records module loads/);
+            expect(refusal).not.toMatch(/npm run build/);
+        });
+
+        it("does not ask a synchronous run for the worker's own modules", () => {
+            expect(provenanceRefusal(sides, without("examples/js/w.mjs"), sync)).toBeNull();
+        });
+
+        it.each([
+            ["a page-side module", "examples/js/p.mjs"],
+            ["a module both arms load", "examples/js/both.mjs"],
+            ["the bundle", "examples/dist/webarkit-packages.mjs"],
+        ])("refuses either arm blind to %s", (_, path) => {
+            for (const arm of [sync, worker]) {
+                expect(provenanceRefusal(sides, without(path), arm)).toMatch(new RegExp(`cannot be seen: ${path.replace(/[./]/g, "\\$&")}`));
+            }
         });
     });
 });
