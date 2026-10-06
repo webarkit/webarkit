@@ -1379,7 +1379,7 @@ export function provenanceFindings(manifest, observed, { detection = "sync" } = 
     if (observed.timelineFull) add("the resource-timing buffer overflowed, so later loads went unrecorded", "reload the page");
     if (found.length === 0) return null;
     const remedies = [...new Set(found.map((f) => f.remedy))];
-    return `Not a session run's code: ${found.map((f) => f.reason).join("; ")}. To fix: ${remedies.join("; ")}.`;
+    return `Provenance: ${found.map((f) => f.reason).join("; ")}. To fix: ${remedies.join("; ")}.`;
 }
 
 /** {@link provenanceFindings} as Start's refusal: only a session run refuses; any other run only records them. */

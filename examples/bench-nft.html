@@ -2053,7 +2053,7 @@
           gaps.length > 0 ? `not a session run: ${gaps.join("; ")}` : null,
           payload.provenance?.note ?? null,
         ].filter(Boolean);
-        if (notes.length > 0) showNotice(`Exported; ${notes.join(" ")}`);
+        if (notes.length > 0) showNotice(`Exported; ${notes.join("; ")}`);
       }
 
       /**
