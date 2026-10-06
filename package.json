@@ -7,8 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @webarkit/cv-backend-spec && npm run build -w @webarkit/cv-backend-jsfeatnext && npm run build -w @webarkit/nft-tracker && npm run build:bundle",
-    "build:bundle": "esbuild examples/js/packages-bundle.mjs --bundle --format=esm --platform=browser --target=es2022 --outfile=examples/dist/webarkit-packages.mjs",
+    "build": "node scripts/build-provenance.mjs",
     "prepare": "npm run build",
     "test": "npm run test --workspaces --if-present && npm run test:examples",
     "test:examples": "vitest run --root examples",
