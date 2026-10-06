@@ -12,8 +12,8 @@ Prerequisites: Node.js as pinned in [`.nvmrc`](../.nvmrc) (currently v24.18.0), 
 ```bash
 npm install
 npm run build          # the examples load the built dist/, not the sources;
-                       # this also bundles bench-nft.html's detection worker
-                       # into examples/dist/ (git-ignored)
+                       # this also writes bench-nft.html's package bundle and
+                       # its provenance manifest into examples/dist/ (git-ignored)
 npx http-server -p 8080 -s
 ```
 
@@ -25,9 +25,20 @@ Serve over HTTP: ES modules do not load from `file://`, and `getUserMedia`
 (the webcam demo) additionally requires a secure context — `http://localhost`
 qualifies, a plain non-localhost `http://` host does not.
 
-There is no bundler. The packages emit ESM with explicit file extensions, so an
-import map in the page is enough to point the bare specifiers at the built
-output.
+The demos use no bundler. The packages emit ESM with explicit file extensions,
+so an import map in the page is enough to point the bare specifiers at the
+built output.
+
+**Two loading schemes, and why.** The demos load each package's own `dist/`
+through an import map, because a demo must show how a consumer loads the
+packages. `bench-nft.html` loads one bundle of the three instead,
+`dist/webarkit-packages.mjs`, because it measures two detection arms that
+must run the same code: its detection worker cannot read an import map, and
+the packages import each other by bare name, so the worker loads the bundle
+by URL and the page maps the package names to that same file. One artifact
+for both arms, so they cannot diverge
+([#110](https://github.com/webarkit/webarkit/issues/110)). The bundle is the
+bench page's only; it is not how the packages are meant to be consumed.
 
 ## `pinball-static-jsfeatnext-backend.html`
 
@@ -348,9 +359,21 @@ frame loop into a module worker — the measurement
 default, is the tracker's own detection on the frame loop, and stays the
 baseline. The worker is `js/detection-worker.mjs` over
 `js/detection-worker-core.mjs`. A module worker does not read the page's
-import map, so **`npm run build` bundles it** with esbuild into
-`dist/detection-worker.mjs` (git-ignored, like the packages' `dist/`); without
-that build the page says so, naming the file, and does not start.
+import map, so it imports the packages by URL from the page's bundle,
+`dist/webarkit-packages.mjs`, which **`npm run build` writes** (git-ignored,
+like the packages' `dist/`); without that build the worker fails to load,
+and the page says so and does not start.
+
+**Provenance.** `npm run build` also writes `dist/provenance.json`: the
+commit, whether the guarded paths were clean, and the hash of the bundle and
+of each file the page serves unbuilt. At Start, a session run (`?loops=` or
+`?run=`) fetches those files again, revalidating with the server, and is
+refused, with the reason, if any differs, if the tree was dirty, if the
+manifest changed since the page loaded, or if the page or the worker loaded a
+module the manifest does not list. This attests the bytes the server serves
+at Start, not those the page loaded earlier; the load-time comparison narrows
+that gap without closing it. Other runs are only recorded. Every export
+carries what was checked under `provenance`, beside `protocol`.
 
 At load the page starts the worker and sends it the `.wnft` bytes and the
 detection options the tracker runs with (`init` is sent again at Start if the
@@ -380,8 +403,9 @@ callback, rather than leave its loop dead with no error shown; its export stays
 possible, with `run.endedBy: "failed"`, and its `protocol` says it is not a
 session run.
 
-A worker run's export adds `detection`: its `path`, `policy`,
-`workerBundleSha256`, `accounting`, `staleReplies` (the worker's replies to
+A worker run's export adds `detection`: its `path`, `policy` (exports older
+than #110 also carry `workerBundleSha256`, the old worker bundle's hash; newer
+ones attest the code under `provenance`), `accounting`, `staleReplies` (the worker's replies to
 this run's own jobs that arrived after it ended — one per job it discarded at
 its end, so never more than `discardedAtStop`; a second reply to such a job
 fails the worker — discarded rather than handed in, counted on this run
