@@ -1879,13 +1879,16 @@
         // Modules only: this check's own fetches are in the timeline too.
         const entries = performance.getEntriesByType("resource");
         const modules = entries.filter((e) => e.initiatorType !== "fetch");
-        // Seen only if the body crossed the network: more bytes transferred
-        // than the body holds. A zero or absent `transferSize` is a cache hit;
-        // a 304 transfers headers only, fewer bytes than the cached body.
+        // Seen only if the body crossed the network: a body counted, and more
+        // bytes transferred than it holds. A zero or absent `transferSize` is a
+        // cache hit. A 304 transfers headers only, and Chrome may report it as
+        // `responseStatus` 200 with `encodedBodySize` 0 (#110, A5): every
+        // listed file has a body, so a zero or absent one is a revalidation.
         const blind = (e) =>
           !(typeof e.transferSize === "number" && e.transferSize > 0) ||
+          !(typeof e.encodedBodySize === "number" && e.encodedBodySize > 0) ||
           e.responseStatus === 304 ||
-          !(typeof e.encodedBodySize === "number" && e.transferSize > e.encodedBodySize);
+          !(e.transferSize > e.encodedBodySize);
         const listed = (p) => p === manifest?.bundle?.path || (p in (manifest?.served ?? {}));
         const unfetched = new Set(modules.filter(blind).map(modulePath).filter((p) => p !== null && listed(p)));
         const page = performance.getEntriesByType("navigation")[0];
