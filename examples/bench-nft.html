@@ -1834,14 +1834,18 @@
         };
         const served = {};
         for (const path of Object.keys(manifest?.served ?? {})) served[path] = await hash(new URL(path, REPO_ROOT));
-        const urls = [...performance.getEntriesByType("resource").map((e) => e.name), ...detectionWorker.modules];
+        // Modules only: this check's own fetches are in the timeline too.
+        const pageUrls = performance.getEntriesByType("resource").filter((e) => e.initiatorType !== "fetch");
+        const paths = (urls) => [...new Set(urls.map(modulePath).filter((p) => p !== null))].sort();
+        const loadedByWorker = paths(detectionWorker.modules);
         const observed = {
           manifestSha256: sha256,
           manifestSha256AtLoad: manifestAtLoad,
           manifestChanged: sha256 !== manifestAtLoad,
           bundleSha256: await hash(BUNDLE_URL),
           served,
-          loaded: [...new Set(urls.map(modulePath).filter((p) => p !== null))].sort(),
+          loaded: paths([...pageUrls.map((e) => e.name), ...detectionWorker.modules]),
+          loadedByWorker,
         };
         const refusal = provenanceRefusal(manifest, observed, { sessionRun });
         const dirty = manifest?.clean === false ? `Built from a dirty tree: ${manifest.dirtyPaths.join(", ")}.` : null;
