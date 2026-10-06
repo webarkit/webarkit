@@ -107,8 +107,14 @@ const read = (path) => readFileSync(ROOT + path);
  * must still install: the build then degrades instead of failing.
  */
 function gitUsable() {
+    // A commit to name, not only a work tree: after `git init` with nothing
+    // committed, `HEAD` does not resolve. Quiet: git's own `fatal:` is not news.
     try {
-        return git("rev-parse", "--is-inside-work-tree").trim() === "true";
+        execFileSync("git", ["rev-parse", "--verify", "--quiet", "HEAD"], {
+            cwd: ROOT,
+            stdio: ["ignore", "pipe", "ignore"],
+        });
+        return true;
     } catch {
         return false;
     }
