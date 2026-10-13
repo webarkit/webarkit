@@ -1125,6 +1125,27 @@ describe("detection locks, first steps and outcomes", () => {
         expect(DEFINITIONS.detectionOutcomes).toMatch(/detection-only run's own DETECT frames count as locked/);
     });
 
+    // #95, found by the review of the validity fixes: unwrapMediaTimes stands a frame up to 1 ms
+    // past the clip's duration at the duration; firstStepLatency did not, and dropped the sample
+    // of a lock detected on such a frame whose first step is the next loop's frame at media time 0.
+    it("reads a detected frame up to 1 ms past the clip's duration at the duration, as the timeline does", () => {
+        const D = 1;
+        const atEnd = [
+            own("DETECT", 1000, { mediaTimeSeconds: 1.0005 }),
+            frame("TRACK", 1033, { mediaTimeSeconds: 0, tracking: step }),
+        ];
+        const r = firstStepLatency(atEnd, { clipDurationS: D });
+        expect(r.videoMs).toMatchObject({ n: 1, p50: 0 });
+        // A consumed detection's frame the same way: 20 ms of video to its first step, not 19.5.
+        const consumedAtEnd = [
+            frame("LOST", 900, { mediaTimeSeconds: 0.9, reason: "no-detection" }),
+            consumed("TRACK", 1053, detectedAt(1000, 1, 1.0005), { mediaTimeSeconds: 0.02 }),
+        ];
+        const c = firstStepLatency(consumedAtEnd, { clipDurationS: D });
+        expect(c.videoMs.n).toBe(1);
+        expect(c.videoMs.p50).toBeCloseTo(20, 9);
+    });
+
     it("measures first-step latency by one rule in both modes", () => {
         // Synchronous: the tracker's own detection at t = 0, its first step on the next frame.
         const sync = firstStepLatency([own("DETECT", 0), frame("TRACK", 120, { tracking: step })]);

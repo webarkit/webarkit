@@ -690,12 +690,15 @@ export function detectionLocks(frames) {
 /**
  * See `DEFINITIONS.firstStepLatency`. `clipDurationS`, when given, is what a
  * loop wrap between a detection and its first step is unwrapped with, as
- * {@link unwrapMediaTimes} does. Without it, the locks with a wrap between
- * the two frames are left out of `videoMs` alone, and nothing throws: a
- * webcam run has no clip, and so no duration.
+ * {@link unwrapMediaTimes} does, a frame up to 1 ms past it standing at it as
+ * there. Without it, the locks with a wrap between the two frames are left
+ * out of `videoMs` alone, and nothing throws: a webcam run has no clip, and so
+ * no duration.
  */
 export function firstStepLatency(frames, { clipDurationS = null } = {}) {
     if (clipDurationS !== null) checkClipDuration(clipDurationS);
+    // As on the unwrapped timeline: up to 1 ms past D is rounding, and stands at D.
+    const at = (m) => (clipDurationS === null ? m : Math.min(m, clipDurationS));
     const ms = [];
     const videoMs = [];
     const processed = [];
@@ -703,7 +706,7 @@ export function firstStepLatency(frames, { clipDurationS = null } = {}) {
         if (!step || !detected) continue;
         ms.push(step.timestampMs - detected.timestampMs);
         processed.push(consumed ? detected.framesAgo : detected.framesAgo + 1);
-        let video = step.mediaTimeSeconds - detected.mediaTimeSeconds;
+        let video = at(step.mediaTimeSeconds) - at(detected.mediaTimeSeconds);
         if (video < 0 && clipDurationS !== null) video += clipDurationS;
         if (video >= 0) videoMs.push(video * 1000);
     }
