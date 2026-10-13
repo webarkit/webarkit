@@ -1036,8 +1036,11 @@
        * `protocol` says it is not a session run. `endedBy` is set here, not only
        * through `stopRun`: a run whose own end threw — `stopRun("done")` after
        * `endRun` — is no longer live when it fails, and would keep `done`.
+       * `afterEnd` is a worker run whose worker failed after the run had ended
+       * (`workerFailed`): it fails all the same, so that its export is refused,
+       * and says so rather than that it stopped.
        */
-      function failRun(run, message) {
+      function failRun(run, message, { afterEnd = false } = {}) {
         if (run.failure !== null) return;
         run.failure = message;
         run.endedBy = "failed";
@@ -1045,9 +1048,11 @@
         if (worker) detectionWorker.failure ??= message;
         stopRun("failed");
         showError(
-          worker
-            ? `${message}\n\nThe run stopped, and it will not be exported. Reload the page to run again.`
-            : `${message}\n\nThe run stopped. Its export stays possible, and is not a session run.`,
+          afterEnd
+            ? `${message}\n\nThe worker failed after the run ended, so the run cannot show it was clean, and it will not be exported. Reload the page to run again.`
+            : worker
+              ? `${message}\n\nThe run stopped, and it will not be exported. Reload the page to run again.`
+              : `${message}\n\nThe run stopped. Its export stays possible, and is not a session run.`,
         );
       }
 
@@ -1352,18 +1357,38 @@
 
       /**
        * The worker cannot be used (`onerror`, a message it cannot have meant): an
-       * `init` in progress is rejected with why, a live run fails, and otherwise
-       * the error is shown. Start stays disabled either way.
+       * `init` in progress is rejected with why, and a live run fails. With no
+       * run live, the failure attaches to the run it is about — `run`, the one
+       * the reply's route names (`routeReply`), else the last run: an `onerror`
+       * names none — when that is a worker run that has ended and not failed.
+       * Dropped, it left that run's Download exporting it as `done`, with
+       * `failure: null`, although its worker then failed (#95, from Qodo's
+       * review of #100). Otherwise the error is shown. Start stays disabled
+       * either way.
+       *
+       * No frame of the ended run depended on such a failure: the handlers run
+       * as each event is delivered, between frames, so one delivered while a run
+       * is live fails that run, and only one delivered after its end gets here.
+       * That holds only while nothing buffers the worker's messages or errors
+       * between the worker and `routeReply`; a queue put there would let an
+       * error delivered during a run be handled after it, and the argument (the
+       * comment on #95's item) would have to be made again.
        */
-      function workerFailed(message) {
+      function workerFailed(message, run = null) {
         detectionWorker.failure ??= message;
         const pending = detectionWorker.pendingInit;
         detectionWorker.pendingInit = null;
-        if (pending) {
-          pending.reject(new Error(message));
-        } else if (liveRun) {
+        if (pending) pending.reject(new Error(message));
+        if (liveRun) {
           failRun(liveRun, message);
-        } else {
+          return;
+        }
+        const ended = run ?? lastRun;
+        if (ended?.path === "worker" && ended.failure === null) {
+          failRun(ended, message, { afterEnd: true });
+          return;
+        }
+        if (!pending) {
           showError(message);
           startButton.disabled = true;
         }
@@ -1394,7 +1419,8 @@
           return;
         }
         if (route.kind === "fail") {
-          workerFailed(route.message);
+          // The run the reply is about, which an ended run's failure attaches to.
+          workerFailed(route.message, route.run);
           return;
         }
         const { run, job } = route;

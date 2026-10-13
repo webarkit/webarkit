@@ -358,7 +358,7 @@ export const DEFINITIONS = Object.freeze({
     summaryMsFrames:
         "Which frames summaryMs reads: counted loops (a ?loops= run: loops 1 to its loop count, as the run summary reads them) or window (the window's frames).",
     endedBy:
-        "How a run ended, in the export's run record beside order, startedAtIso and endedAtIso: done (a ?loops= run, on its first frame after its counted loops), stopped (Stop) or failed (the run could not go on; a worker run that failed is not exported). A run that failed is failed whatever ended it first, its own end included.",
+        "How a run ended, in the export's run record beside order, startedAtIso and endedAtIso: done (a ?loops= run, on its first frame after its counted loops), stopped (Stop) or failed (the run could not go on; a worker run that failed is not exported). A run that failed is failed whatever ended it first, its own end included; so is a worker run whose worker failed after the run had ended, since the run cannot then show it was clean.",
     failure:
         "In the export's run record: why the run could not go on, the one-line cause the page showed (naming the frame for a throw in a frame's callback), or null. Only a synchronous run that failed is exported with one (a worker run that failed is not exported), and its endedBy is then failed.",
     lostVisibility:

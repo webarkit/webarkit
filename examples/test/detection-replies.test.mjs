@@ -152,6 +152,42 @@ describe("routeReply", () => {
         expect({ jobs: b.jobs, staleReplies: b.staleReplies }).toEqual(bBefore);
     });
 
+    // #95, from the triage of Qodo's review of #100 (finding 3): a worker failure delivered after
+    // a run ended was dropped, and the run exported as clean. The page now attaches it to the run
+    // the route names, so every failure about a run the page has must name that run, an ended
+    // run's included; one that names none the page attaches to its last run.
+    it("names the run in every failure about a run the page has, an ended one included", () => {
+        const a = newRun(1);
+        // A job answered while the run was live, and consumed, as the page settles one.
+        const answered = post(a);
+        a.policy.arrive({});
+        answered.arrivedAtMs = 120;
+        a.jobInFlight = null;
+        a.policy.take();
+        a.policy.afterProcess({ needsDetection: false, detectionUse: "consumed" }, () => {});
+        answered.outcome = "consumed";
+        const discarded = post(a);
+        end(a);
+        const between = { liveRunId: null, runsById: byId(a) };
+        countLateReply(routeReply(result(a, discarded), between), 900);
+        for (const data of [
+            result(a, answered), // a job the run did not discard unanswered
+            { type: "error", runId: a.id, jobId: answered.jobId, message: "late" },
+            { type: "result", runId: a.id, jobId: 99, detection: {} }, // a job it never posted
+            result(a, discarded), // a second reply, its late one already counted
+        ]) {
+            expect(routeReply(data, between)).toMatchObject({ kind: "fail", run: a });
+            const b = newRun(2);
+            post(b);
+            const during = { liveRunId: b.id, runsById: byId(a, b) };
+            expect(routeReply(data, during)).toMatchObject({ kind: "fail", run: a });
+        }
+        // Nothing the page had: no run to name.
+        expect(routeReply({ type: "bogus" }, between)).toMatchObject({ kind: "fail", run: null });
+        const unknown = { type: "result", runId: 9, jobId: 1, detection: {} };
+        expect(routeReply(unknown, between)).toMatchObject({ kind: "fail", run: null });
+    });
+
     it("fails a reply that names a run the page never had", () => {
         const a = newRun(1);
         post(a);
