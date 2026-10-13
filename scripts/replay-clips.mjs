@@ -802,8 +802,17 @@ function runExternal(clip, arm, params) {
 /**
  * One external arm's export: its `records` summarised over the counted loops,
  * and what it was run with (`model`, and the seed, options, loops and step). An
- * arm is `{ schedule, path, external }`, and its path is the summary's, which
- * refuses a worker arm's frame without `detectionUse`. Exits 1, one line, when
+ * arm is `{ schedule, path, external }`: `path` is the mode it stands for, and
+ * for an external arm the mode whose latency it models. The export's
+ * `detection.path` is the path its frame loop ran, as `DEFINITIONS.detectionPath`
+ * reads a page's: `sync` for an arm that detects on the frame loop, and `worker`
+ * for every external one, whose detections are handed in under the on-demand
+ * policy, whichever mode's latency it models; `detection.latencyOf` names that
+ * mode (`null` on the frame loop). So the fallback re-check, and the transfer's
+ * synchronous arm, are `worker` runs at `sync`'s latency, never `sync` runs: a
+ * consumer filtering on the path does not find them among the synchronous ones.
+ * The summary reads the same path, and refuses a worker arm's frame without
+ * `detectionUse`. Exits 1, one line, when
  * the summary refuses the arm (the clip's duration, `unwrapMediaTimes`: a frame
  * past it, whose loops would lie over each other; or such a frame), and when
  * `trackTimeShare` is incomplete: the run does not reach loop
@@ -823,6 +832,7 @@ function armExport({
     model,
 }) {
     const run = { mode: "tracking", schedule: arm.schedule };
+    const path = arm.external ? "worker" : "sync";
     let e;
     try {
         e = exportOf(clip, run, { width, height }, records, {
@@ -830,7 +840,7 @@ function armExport({
             loops: M3_COUNTED,
             jobs,
             accounting,
-            path: arm.path,
+            path,
         });
     } catch (err) {
         if (!(err instanceof RangeError)) throw err;
@@ -842,7 +852,14 @@ function armExport({
     e.loops = M3_COUNTED;
     e.clipDurationS = clipDurationS;
     e.stepMs = stepMs;
-    e.detection = { path: arm.path, external: arm.external, model, jobs, accounting };
+    e.detection = {
+        path,
+        external: arm.external,
+        latencyOf: arm.external ? arm.path : null,
+        model,
+        jobs,
+        accounting,
+    };
     if (!e.runSummary.trackTimeShare.complete) {
         console.error(
             `replay-clips: ${clip}, ${arm.schedule}: trackTimeShare is incomplete: the run does not reach loop ${M3_COUNTED.firstLoop + M3_COUNTED.loopCount}`,
