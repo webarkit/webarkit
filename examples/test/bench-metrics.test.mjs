@@ -31,6 +31,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
     accountingError,
+    bundleManifestRefusal,
     clockResolution,
     cornerJitter,
     countedLoopFrames,
@@ -2357,6 +2358,23 @@ describe("parseTrackerOverrides applies the tracker's domains", () => {
                 "maxFrameLevels:256,alignMaxIterations:1,minTrackedPatches:4,maxOutlierShare:0,minPatchZncc:0",
             ).ok,
         ).toBe(true);
+    });
+});
+
+// #113: replay-clips --packages bundle threw a TypeError on a manifest built without git, where
+// #111 made head null possible. A refusal names its cause; a TypeError is not a refusal.
+describe("bundleManifestRefusal: what --packages bundle refuses in the build's manifest", () => {
+    it("refuses none, and one whose commit git could not describe, naming the cause and the fix", () => {
+        expect(bundleManifestRefusal(null)).toMatch(/needs examples\/dist\/provenance\.json: run `npm run build`/);
+        const blind = bundleManifestRefusal({ head: null, clean: false, bundle: { sha256: "ab" } });
+        expect(blind).toMatch(/built where git could not describe the tree \(head null\)/);
+        expect(blind).toMatch(/To fix: in a git checkout, commit, and run `npm run build`/);
+        for (const r of [bundleManifestRefusal(null), blind]) expect(r).not.toMatch(/\n/);
+    });
+
+    it("takes a manifest that names its commit, clean or not: the header says which", () => {
+        expect(bundleManifestRefusal({ head: "668d6fa", clean: true })).toBeNull();
+        expect(bundleManifestRefusal({ head: "668d6fa", clean: false })).toBeNull();
     });
 });
 

@@ -197,6 +197,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createDetectionPolicy } from "../examples/js/detection-policy.mjs";
 import {
     accountingError,
+    bundleManifestRefusal,
     compareExports,
     framesAt,
     frameRecord,
@@ -306,8 +307,11 @@ if (PACKAGES === "bundle") {
     try {
         manifest = JSON.parse(readFileSync(join(EXAMPLES, "dist/provenance.json"), "utf8"));
     } catch {
-        usage("--packages bundle needs examples/dist/provenance.json: run `npm run build`");
+        manifest = null;
     }
+    // Refused by name, before the header reads `head`: a manifest built without git has none.
+    const refused = bundleManifestRefusal(manifest);
+    if (refused) usage(refused);
     let bundleBytes;
     try {
         bundleBytes = readFileSync(BUNDLE);

@@ -1524,6 +1524,23 @@ export function provenanceFindings(manifest, observed, { detection = "sync" } = 
     return `Provenance: ${found.map((f) => f.reason).join("; ")}. To fix: ${remedies.join("; ")}.`;
 }
 
+/**
+ * Why `scripts/replay-clips.mjs --packages bundle` cannot run on `manifest`,
+ * the build's `examples/dist/provenance.json` (`null` when it could not be
+ * read), in one line with its remedy, or `null` when it can. A manifest built
+ * where git could not describe the tree (`head` null, which #111 made
+ * possible) is refused: its commit is unknown, so the replay could not name
+ * the code it ran. A dirty tree is not refused here: the replay's header says
+ * so.
+ */
+export function bundleManifestRefusal(manifest) {
+    if (!manifest) return "--packages bundle needs examples/dist/provenance.json: run `npm run build`";
+    if (manifest.head == null) {
+        return "--packages bundle needs a manifest whose commit is known: examples/dist/provenance.json was built where git could not describe the tree (head null). To fix: in a git checkout, commit, and run `npm run build`";
+    }
+    return null;
+}
+
 /** {@link provenanceFindings} as Start's refusal: only a session run refuses; any other run only records them. */
 export function provenanceRefusal(manifest, observed, { sessionRun, detection = "sync" }) {
     return sessionRun ? provenanceFindings(manifest, observed, { detection }) : null;
