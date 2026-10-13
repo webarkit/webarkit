@@ -25,6 +25,7 @@
  *
  */
 
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -60,6 +61,7 @@ import {
     reprojectCorners,
     sequenceRefusal,
     sequenceSettings,
+    sessionDefaults,
     sessionRunGaps,
     sha256Hex,
     stageSummary,
@@ -2931,6 +2933,48 @@ describe("trackerDefaults", () => {
     it("refuses a package that lacks one, naming the export", () => {
         expect(() => trackerDefaults({})).toThrow(TypeError);
         expect(() => trackerDefaults({})).toThrow(/DEFAULT_MAX_FRAME_LEVELS/);
+    });
+});
+
+// The independent check of 24d1b6d: "M3's committed exports stay admissible" rested on a manual
+// check. A change to sessionRunGaps, to a tracker default, or to the defaults the replay builds
+// would have made --transfer refuse that evidence with every test green.
+describe("sessionDefaults, and M3's committed exports read by them", () => {
+    const pkg = () => import("../../packages/nft-tracker/dist/index.js");
+
+    it("are the page's defaults, the tracker's read from its package", async () => {
+        const p = await pkg();
+        expect(sessionDefaults(p)).toEqual({
+            targetFile: "targets/pinball.wnft",
+            processingBox: { width: 480, height: 360 },
+            maxKeypoints: p.DEFAULT_MAX_SCENE_KEYPOINTS,
+            trackerOptions: trackerDefaults(p),
+        });
+        expect(() => sessionDefaults({})).toThrow(TypeError);
+    });
+
+    it("read every committed M3 export as a session run, and --transfer's plan takes them all", async () => {
+        const defaults = sessionDefaults(await pkg());
+        const dir = fileURLToPath(new URL("../../docs/benchmarks/", import.meta.url));
+        const files = readdirSync(dir)
+            .filter((name) => /^2026-10-01-tab9-m3-.*\.json$/.test(name))
+            .sort()
+            .map((name) => ({ name, e: JSON.parse(readFileSync(`${dir}${name}`, "utf8")) }));
+        expect(files).toHaveLength(17);
+        for (const { name, e } of files) {
+            expect(e.protocol?.sessionRun, name).toBe(true);
+            expect(sessionRunGaps(e, defaults), name).toEqual([]);
+        }
+        const target = readFileSync(fileURLToPath(new URL("../targets/pinball.wnft", import.meta.url)));
+        const clips = ["pinball-static.mp4", "pinball-bench.mp4", "pinball-bench-table.mp4"];
+        const plan = transferPlan(files, {
+            clips,
+            sha256: createHash("sha256").update(target).digest("hex"),
+            defaults,
+        });
+        expect(plan.refusal).toBeNull();
+        expect(plan.skipped.map((s) => s.name)).toEqual(["2026-10-01-tab9-m3-stateless-static.json"]);
+        expect(plan.clips.map((c) => c.clip)).toEqual(clips);
     });
 });
 

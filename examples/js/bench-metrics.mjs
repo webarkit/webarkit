@@ -1852,6 +1852,34 @@ export function trackerDefaults(pkg) {
 }
 
 /**
+ * The processing box `bench-nft.html` runs at when no `?procWidth=` or
+ * `?procHeight=` says otherwise: its `PROC_WIDTH` × `PROC_HEIGHT`, which a
+ * session run uses ({@link sessionRunGaps}), and the box the desktop replay
+ * fits its frames into.
+ */
+export const PAGE_PROCESSING_BOX = Object.freeze({ width: 480, height: 360 });
+
+/**
+ * The page's defaults as {@link sessionRunGaps} takes them, built from the
+ * tracker package `pkg`: the committed target, {@link PAGE_PROCESSING_BOX},
+ * the package's default scene keypoint budget, and its tracking defaults
+ * ({@link trackerDefaults}). What `scripts/replay-clips.mjs --transfer`
+ * recomputes each export's protocol with ({@link transferPlan}). A package
+ * without one of them throws a `TypeError` naming it.
+ */
+export function sessionDefaults(pkg) {
+    if (!Number.isFinite(pkg?.DEFAULT_MAX_SCENE_KEYPOINTS)) {
+        throw new TypeError("sessionDefaults: the tracker package exports no DEFAULT_MAX_SCENE_KEYPOINTS");
+    }
+    return {
+        targetFile: DEFAULT_TARGET_FILE,
+        processingBox: PAGE_PROCESSING_BOX,
+        maxKeypoints: pkg.DEFAULT_MAX_SCENE_KEYPOINTS,
+        trackerOptions: trackerDefaults(pkg),
+    };
+}
+
+/**
  * Why `scripts/replay-clips.mjs --transfer` reads nothing from export `e`, or
  * `null` when it reads it: a page's export of a tracking run on one of
  * `clips`, that ran on one of the detection paths. Not the replay's own
