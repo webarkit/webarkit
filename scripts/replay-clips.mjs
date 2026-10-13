@@ -151,8 +151,12 @@
  *   frame's work, which is where the loop's post is;
  * - the acquisition: the p50 of `acquire` + `gray` over the frames that are not
  *   TRACK;
- * - the step: the p50 of `trackerTimings.trackMs` over TRACK frames, the
- *   session's own `trackStepMs`, in place of `--device-ratio`'s scaled one.
+ * - the step: the p50 of `trackerTimings.trackMs` over every TRACK frame of
+ *   the mode's exports, pooled, in place of `--device-ratio`'s scaled one.
+ *   That is `trackStepMs`'s statistic, but not the exports' own
+ *   `trackStepMs`, which reads their counted loops: the pool takes the
+ *   warm-up loop's TRACK frames and the partial loop after the counted ones
+ *   too, as it takes their latencies and acquisitions.
  *
  * The draws come from their own seeded stream (mulberry32 of the seed XOR a
  * constant), at the start of each arm, so a run repeats, and neither arm's
@@ -372,7 +376,7 @@ if (TRANSFER_DIR !== null) {
         "--sequence":
             "--transfer replays the bundled clips with a session's latencies; --sequence replays one export's frames: the two cannot be combined",
         "--device-ratio":
-            "--transfer steps by the session's own trackStepMs; --device-ratio scales the desktop's: the two cannot be combined",
+            "--transfer steps by the session's measured trackMs; --device-ratio scales the desktop's: the two cannot be combined",
         "--options":
             "--transfer replays what the session ran, the tracker at its defaults; --options would change them: the two cannot be combined",
     };

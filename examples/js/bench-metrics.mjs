@@ -1777,10 +1777,12 @@ function transferSkip(e, clips) {
  *   work, which is where the replay's post is.
  * - `acquireMs`: the p50 of `acquire` + `gray` over the frames that are not
  *   TRACK.
- * - `stepMs`: the p50 of `trackerTimings.trackMs` over TRACK frames, the
- *   `trackStepMs` definition.
+ * - `stepMs`: the p50 of `trackerTimings.trackMs` over TRACK frames:
+ *   `trackStepMs`'s statistic, but not an export's own `trackStepMs`, which
+ *   reads its counted loops.
  *
- * Every frame and job of every export is read, the warm-up loop's included.
+ * Every frame and job of every export is read, the warm-up loop's and the
+ * partial loop's after the counted ones included.
  * A quantity that has no sample is `null`, and its statistics are.
  */
 function transferProfile(path, named) {
