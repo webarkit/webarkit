@@ -3550,3 +3550,140 @@ first counted run.
      plan's, its `bundledClip` and `detection.path` its file name's, and
      its `provenance.manifest.head` the commit of step 4. A mismatch stops
      the commit until the record explains it.
+
+## 2026-10-13 — M4: the plan's first entries, the setup and the pre-flight run
+
+[#107](https://github.com/webarkit/webarkit/issues/107)'s plan is registered
+here, as M3's was, and is written as it is decided. These are its first
+entries: the setup every counted run shares, and the pre-flight run of
+2026-10-13. The rest of what #107 asks of the plan is not written yet:
+predictions with what would refuse each, the adoption rule, the run order,
+the validity checks and the stopping rules. No counted run is made before it
+is.
+
+**The setup, the same for every counted run.**
+
+1. **The build attested at `37dc6d4`, never redone.**
+   `examples/dist/provenance.json` names head
+   `37dc6d4fa3507992bbe7e13cd8da7cb759b7265c`, a clean tree, and the bundle
+   `3a2567c15d59b1fb669a82a52d9f1eedcd1586664936250ff2fbf21e87513876`.
+   Every counted run's export carries that head (step 7) and that bundle.
+   A commit outside the frozen paths, such as this one, moves the
+   checkout's HEAD past `37dc6d4` and leaves the build as it is.
+2. **The guard check's reference commit is `37dc6d4`**, not M3's
+   `c261b77`. Step 1 is
+   `git diff --stat 37dc6d4 HEAD -- examples/bench-nft.html examples/js scripts packages`,
+   which shows nothing.
+3. **The transport is USB.** The page is served over `adb reverse` to
+   `localhost`, because a direct LAN address has no secure context. On
+   `http://192.168.1.4:8093`, `crypto.subtle` is undefined (checked in
+   Chrome on 2026-10-13), so the page has no SHA-256, and Start refuses
+   every session run there: as a mismatch, naming a rebuild as the remedy,
+   which does not apply. That is the reason for the cable; it is not a
+   preference. (The tablet could not reach that address either; the cause
+   was not diagnosed.) Serving over https, so that a later campaign need
+   not depend on a cable, is
+   [#116](https://github.com/webarkit/webarkit/issues/116), after this one.
+   The route is identical across runs:
+   - **the server:** `npx http-server -p 8093 -s -c-1` (http-server
+     14.1.1) at the repository root, as `examples/README.md` gives it with
+     the port changed: 8080 was held by another process. Step 3's `curl`
+     reads `Cache-Control: no-cache, no-store, must-revalidate`;
+   - **the tunnel:** `adb -s Tab9WEEA0001504 reverse tcp:8093 tcp:8093`;
+   - **the page:** `http://localhost:8093/examples/bench-nft.html?…`,
+     which is a secure context.
+
+   **A drop of the USB link removes the tunnel.** On 2026-10-13, before
+   the pre-flight run, the link dropped again and again (adb's log:
+   `read failed`). Each drop removed the mapping and brought the tablet's
+   authorization prompt back. The last drop was at 14:50:06Z, and none
+   followed up to 14:56:10Z, which covers the pre-flight run and its
+   download. So before every Start,
+   `adb -s Tab9WEEA0001504 reverse --list` shows `tcp:8093 tcp:8093`.
+4. **A drop of the USB link during a counted run invalidates that run.**
+   Not because a drop is known to change what is measured, but because the
+   page cannot tell whether it did, and an unattested condition cannot back
+   a counted measurement. The run counts for nothing; what replaces it is
+   for the stopping rules, not written yet.
+
+   **The link monitor runs for every counted run, and its log is kept
+   beside that run's export.** "No drop" is attested, never assumed.
+   - **It runs from before Start to after the export's download.** At each
+     end it records the UTC time, `adb -s Tab9WEEA0001504 devices -l`
+     (whose `transport_id` changes at every reconnection), and
+     `adb -s Tab9WEEA0001504 reverse --list`. At the start it also records
+     `adb --version`.
+   - **Between the two ends, it keeps everything the adb server's own log
+     gained.** That log is `%TEMP%\adb.log` on the session's Windows PC.
+     The monitor notes the log's length at the start, and at the end copies
+     every line written since.
+   - **Its log is `<the export's name>.link.txt`,** beside the export in
+     `docs/benchmarks/`, and committed with it. It is `.txt` because this
+     repository ignores `*.log`.
+   - **"No drop" holds when all three agree:** the log gained no
+     `connection terminated` line naming the device, the `transport_id` is
+     the same at both ends, and the mapping shows at both ends. Anything
+     else is a drop.
+5. **The browser is Chrome 154 on the tablet** (`Chrome/154.0.0.0` in the
+   pre-flight run's `userAgent`). M3's session ran on Chrome 153, in all 17
+   of its exports. Any comparison with M3's figures carries that caveat,
+   and is not treated as paired.
+6. **Forward gaps within a loop are not checked by the page.** `isLoopWrap`
+   reads step backs only. Forward gaps belong to the validity checks,
+   through the stall check that M3's step 7 used.
+   - **Beside each counted run's verdict, the record names the tool and its
+     version:** `stall-check.mjs`, SHA-256
+     `cccb475bcc74f29fb6592577e31cdcf7eb5d2bb511c39d5e6a8c4edf3cf7f1be`.
+     The file carries no version number, so its hash names it.
+   - **Its verdict is supplementary.** The copy that runs is kept outside
+     the repository, with the session drivers. The repository holds the
+     tool only as a copy embedded in M3's record
+     ([`2026-10-01-m3-session-additions.md`](./2026-10-01-m3-session-additions.md),
+     "The scripts"), not as a tested tool: nothing tests that copy, CI does
+     not run it, and only the hash shows the two copies are the same.
+   - **On 2026-10-13 the two were byte-identical:** the same SHA-256, and
+     the same verdict on the pre-flight run's export. So a verdict
+     reproduces from the repository only while the tool's recorded hash
+     equals the embedded copy's. Bringing it into the repository as a
+     tested module is
+     [#117](https://github.com/webarkit/webarkit/issues/117), after the
+     campaign.
+
+*Item 3's first paragraph was rewritten, and items 4 and 6 were added, on
+2026-10-13, after the pre-flight run and before any counted run. Item 3
+first called the LAN address "preferred"; it is not usable, which is why
+the transport is USB. Its last sentence left a drop's reading to the
+validity checks; item 4 now decides it.*
+
+**The pre-flight run.**
+
+- **What it is:** a baseline of provenance, and of the loop-wrap bound's
+  headroom ([#114](https://github.com/webarkit/webarkit/issues/114)), on
+  the attested build. It is not an M4 measurement: `37dc6d4` contains none
+  of M4's pipeline (#104, #105, #106), so it ran M3's synchronous pipeline.
+- **What ran:**
+  `?mode=tracking&target=wnft&detection=sync&clip=pinball-bench.mp4&loops=4&window=2000`,
+  device label `Tab_9_WiFi`.
+  - Before it, Chrome's cached files were cleared, and the download folder
+    held no `bench-nft-*.json`. The earlier ones were in the tablet's
+    trash, which keeps them in the folder, renamed `.trashed-…`.
+  - It ran one warm-up loop and four counted loops, from 14:52:33.741Z to
+    14:53:33.952Z: 623 frames, 5 wraps.
+  - It ended `done` and never lost visibility.
+- **Why it is not a session run:** `?run=` was left out on purpose. So
+  `protocol.sessionRun` is `false`, with the one gap `run.order none`.
+  That is correct, and it stays: the run belongs to no block, and step 7's
+  count does not include it.
+- **Provenance at Start:**
+  - the manifest's head `37dc6d4…`, clean;
+  - the bundle `3a2567c15d59…`, in the manifest and as observed;
+  - all 9 served files equal to the manifest;
+  - nothing run from the cache, and the manifest unchanged since page load;
+  - `refusal` and `note` both `null`.
+- **Its export:** `2026-10-13-tab9-m4-preflight-sync-wall.json`, the
+  page's file unchanged (SHA-256 `2dfb93f8…`). A pre-flight export is
+  named `<date>-tab9-m4-preflight-<path>-<clip>.json`, apart from step 7's
+  session names, so that no count of a session's exports takes it in.
+- **Its figures for #114:** the bound's three inputs, over the whole run
+  and over the counted loops. They are in #114's comment of 2026-10-13,
+  and move into this plan when the plan is written.
