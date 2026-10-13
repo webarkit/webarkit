@@ -113,6 +113,19 @@ describe("replay-clips.mjs command line", () => {
         expect(r.stderr).toMatch(/--external.*--sequence/);
     });
 
+    // #95, Task 7: --tracking-only skips the default runs' detection-only runs, and these
+    // forms run none, so it was accepted and did nothing: silently redundant.
+    it.each([
+        ["--external", "70"],
+        ["--transfer", "session"],
+        ["--sequence", "export.json"],
+    ])("refuses --tracking-only with %s, which runs no detection-only run", (form, value) => {
+        const r = run(form, value, "--tracking-only");
+        expect(r.status).toBe(2);
+        expect(r.stderr).toMatch(new RegExp(`--tracking-only.*${form}`));
+        expect(r.stderr.trim().split("\n")).toHaveLength(1);
+    });
+
     it.each(["abc", "-5", "", "Infinity"])(
         "refuses a latency that is not a number of milliseconds (%j)",
         (latency) => {

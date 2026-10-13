@@ -79,7 +79,9 @@
  *   runs' frames diverge. Without it the replay draws as it always has.
  * - `--tracking-only`: skip the detection-only runs. They do not depend on the
  *   patches or the tracking options, so a round needs them once per seed, for
- *   the static clip's jitter ratio.
+ *   the static clip's jitter ratio. The default runs only: `--external`,
+ *   `--transfer` and `--sequence` run no detection-only run, and refuse it
+ *   rather than accept it and do nothing.
  * - `--device-ratio <x>` (default 3.15, the middle of 2026-09-26's measured
  *   3.0–3.3): a further schedule, "device, scaled step", whose tracking step
  *   costs this configuration's own every-frame `trackStepMs` p50 times the
@@ -167,8 +169,8 @@
  * no protocol record. Prints, per clip, each arm's `trackTimeShare` and the
  * difference, worker minus sync, in points. Not with `--external`,
  * `--sequence`, `--device-ratio` or `--options`: the session ran the
- * tracker's defaults, and the transfer replays what it ran; `--tracking-only`
- * has nothing to skip.
+ * tracker's defaults, and the transfer replays what it ran; nor with
+ * `--tracking-only`, which has nothing to skip.
  *
  * The transfer explains a device result and weighs in when the table clip is
  * inconclusive; it never overrides the device. Both modes run as external
@@ -239,6 +241,13 @@ const M3_ACQUIRE_MS = {
 /** `--external`'s loops per run: loop 0 warms up, loops 1 to 4 are counted, loop 5 closes them (`trackTimeShare`). */
 const M3_LOOPS = 6;
 const M3_COUNTED = { firstLoop: 1, loopCount: 4 };
+/** `M3_COUNTED` as the headers print it: the warm-up loops before the counted ones, then those. */
+function countedLoopsText({ firstLoop, loopCount }) {
+    const counted = `loops ${firstLoop}–${firstLoop + loopCount - 1} counted`;
+    if (firstLoop === 0) return counted;
+    const warmUp = firstLoop === 1 ? "loop 0" : `loops 0–${firstLoop - 1}`;
+    return `${warmUp} warm-up, ${counted}`;
+}
 const LOOPS = 2;
 const RUNS = [
     { mode: "tracking", schedule: "every frame", stepMs: null },
@@ -368,6 +377,22 @@ if (TRANSFER_DIR !== null) {
             "--transfer replays what the session ran, the tracker at its defaults; --options would change them: the two cannot be combined",
     };
     for (const [flag, why] of Object.entries(other)) if (arg(flag) !== null) usage(why);
+}
+if (TRACKING_ONLY) {
+    // Accepted and ignored, it would say a run was restricted that never had anything to drop.
+    const form =
+        EXTERNAL_MS !== null
+            ? "--external"
+            : TRANSFER_DIR !== null
+              ? "--transfer"
+              : arg("--sequence") !== null
+                ? "--sequence"
+                : null;
+    if (form !== null) {
+        usage(
+            `--tracking-only skips the default runs' detection-only runs, and ${form} runs none: drop it`,
+        );
+    }
 }
 
 /** mulberry32, as compile-target and the tests' seeded_rng use it. */
@@ -600,22 +625,23 @@ function replayRun({
 }
 
 /**
- * One run of `--external`'s arms that detects off the frame: the tracker in
- * `externalDetection` mode, and the page's own on-demand policy
- * (`createDetectionPolicy`) deciding what is asked and what is handed in. On a
- * frame whose result says `needsDetection`, with nothing in flight or held,
- * this detects that very frame now (inside the run's seed, so it repeats) and
- * holds the result back until the first frame processed at or after
+ * One run of an arm that detects off the frame, `--external`'s and
+ * `--transfer`'s: the tracker in `externalDetection` mode, and the page's own
+ * on-demand policy (`createDetectionPolicy`) deciding what is asked and what is
+ * handed in. On a frame whose result says `needsDetection`, with nothing in
+ * flight or held, this detects that very frame now (inside the run's seed, so
+ * it repeats) and holds the result back until the first frame processed at or
+ * after
  *
  *     post + latencyMs, where post = the frame's time + acquireMs + stepMs,
  *
  * the step counted when the frame ran one: the post comes at the end of the
- * frame's main-thread work before it, and the latency counts from the post, as
- * the device measures it (`detectionPostToArrivalMs`). Requests made while a
- * job is in flight are dropped. Frames are stamped with their time on the
- * loops' continuous timeline, so a detection posted before a wrap and consumed
- * after it has a latency that is not negative; `mediaTimeSeconds` stays the
- * clip's own.
+ * frame's main-thread work, and the latency counts from the post, as the
+ * device measures it (`detectionTime.postToArrivalMs`). A request made while
+ * a job is in flight or its result held is dropped. Frames are stamped with
+ * their time on the loops' continuous timeline, so a detection posted before
+ * a wrap and consumed after it has a latency that is not negative;
+ * `mediaTimeSeconds` stays the clip's own.
  *
  * `everyFrame` processes every frame; otherwise a frame that waits costs the
  * device only `acquireMs` and a step if it ran one (`nextFrameIndex`), and so
@@ -904,7 +930,7 @@ function externalRow(clip, width, height, e) {
 async function externalArms() {
     const label = (clip) => clip.replace(/^pinball-|\.mp4$/g, "");
     console.log(
-        `external detection: latency ${EXTERNAL_MS} ms, counted from the post; acquisition (acquire + gray p50) ${CLIPS.map((clip) => `${label(clip)} ${M3_ACQUIRE_MS[clip]} ms`).join(", ")}; the synchronous mode's detection ${DEVICE_DETECT_MS} ms; ${M3_LOOPS} loops a run, loop 0 warm-up, loops 1–${M3_COUNTED.loopCount} counted
+        `external detection: latency ${EXTERNAL_MS} ms, counted from the post; acquisition (acquire + gray p50) ${CLIPS.map((clip) => `${label(clip)} ${M3_ACQUIRE_MS[clip]} ms`).join(", ")}; the synchronous mode's detection ${DEVICE_DETECT_MS} ms; ${M3_LOOPS} loops a run, ${countedLoopsText(M3_COUNTED)}
 `,
     );
     console.log(tableHead([...TABLE_COLUMNS, ...EXTERNAL_COLUMNS]));
@@ -1058,7 +1084,7 @@ async function transferArms() {
     }
     const seedNote = arg("--seed") === null ? " (the default: --seed was not given)" : "";
     console.log(
-        `latency transfer from ${TRANSFER_DIR}: ${files.length - plan.skipped.length} page exports; each job's latency drawn with replacement from its mode's samples, counted from the post, seed ${SEED}${seedNote}; each mode's acquisition (acquire + gray p50 on frames that are not TRACK) and tracking step (trackMs p50 on TRACK frames) from its own exports; the device schedule; ${M3_LOOPS} loops a run, loop 0 warm-up, loops 1–${M3_COUNTED.loopCount} counted
+        `latency transfer from ${TRANSFER_DIR}: ${files.length - plan.skipped.length} page exports; each job's latency drawn with replacement from its mode's samples, counted from the post, seed ${SEED}${seedNote}; each mode's acquisition (acquire + gray p50 on frames that are not TRACK) and tracking step (trackMs p50 on TRACK frames) from its own exports; the device schedule; ${M3_LOOPS} loops a run, ${countedLoopsText(M3_COUNTED)}
 `,
     );
     for (const { clip, sync, worker } of plan.clips) {
