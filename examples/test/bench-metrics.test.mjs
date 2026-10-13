@@ -2374,6 +2374,16 @@ describe("startRefusal names the target file it was given", () => {
             /targets\/pinball\.wnft is not loaded/,
         );
     });
+
+    // #113, Task 6's defect on the synchronous arm: Start clears the error line, then refused
+    // "… is not loaded (see above)", pointing at the line it had just cleared.
+    it("names why the file did not load, and points at no line above", () => {
+        const failed = { mode: "tracking", target: null, minTrackedPatches: 8 };
+        expect(startRefusal({ ...failed, loadFailure: "HTTP 404" })).toBe(
+            "targets/pinball.wnft could not be loaded (HTTP 404).",
+        );
+        expect(startRefusal(failed)).toBe("targets/pinball.wnft is not loaded.");
+    });
 });
 
 describe("startRefusal and the detection worker", () => {

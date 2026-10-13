@@ -1409,7 +1409,10 @@ export function trackabilityError(db, minTrackedPatches) {
  * longer has, such as the old `tracker`, leaves the select empty), a target
  * that did not load, or a tracking run on a target the tracker would not
  * track (`trackabilityError`). Checked before any source starts. `file` is
- * the target file the page tried to load, for the message.
+ * the target file the page tried to load, for the message, and `loadFailure`
+ * why it did not load, when the page knows: named here, since the page clears
+ * its error line at Start, and a message pointing above it would point at
+ * nothing.
  *
  * Three more refusals for the worker's run parameters, none of which applies
  * to a caller that passes none of them: `detection` `"worker"` outside the
@@ -1423,12 +1426,15 @@ export function startRefusal({
     target,
     minTrackedPatches,
     file = DEFAULT_TARGET_FILE,
+    loadFailure = null,
     detection = "sync",
     source = null,
     loops = null,
 }) {
     if (!MODES.includes(mode)) return `Unknown mode "${mode}": choose one of ${MODES.join(", ")}.`;
-    if (!target) return `${file} is not loaded (see above).`;
+    if (!target) {
+        return loadFailure ? `${file} could not be loaded (${loadFailure}).` : `${file} is not loaded.`;
+    }
     if (detection === "worker") {
         if (mode !== "tracking") return "?detection=worker runs in tracking mode only.";
         if (target.record?.source !== "wnft") {

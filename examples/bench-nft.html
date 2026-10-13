@@ -2272,6 +2272,8 @@
                   target,
                   minTrackedPatches: TUNING.trackerOverrides.minTrackedPatches ?? DEFAULT_MIN_TRACKED_PATCHES,
                   file: TARGET_PATH,
+                  // Named in the refusal: Start has just cleared the line that showed it.
+                  loadFailure: targetSelect.value === "wnft" ? wnftLoadFailure : null,
                   detection: DETECTION_PATH,
                   source,
                   loops: TUNING.loops,
