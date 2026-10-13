@@ -3574,15 +3574,17 @@ is.
    `c261b77`. Step 1 is
    `git diff --stat 37dc6d4 HEAD -- examples/bench-nft.html examples/js scripts packages`,
    which shows nothing.
-3. **The tablet reaches the server through the USB tunnel, on port 8093.**
-   A direct LAN address was preferred, and cannot be used. On
-   `http://192.168.1.4:8093` the page is not a secure context, so
-   `crypto.subtle` is undefined (checked in Chrome on 2026-10-13). Every
-   SHA-256 Start takes is then `null`, and Start refuses every session run
-   as a mismatch, naming a rebuild as the remedy, which does not apply. The
-   tablet could not reach that address either; the cause was not
-   diagnosed. So the tunnel is part of the setup, and identical across
-   runs:
+3. **The transport is USB.** The page is served over `adb reverse` to
+   `localhost`, because a direct LAN address has no secure context. On
+   `http://192.168.1.4:8093`, `crypto.subtle` is undefined (checked in
+   Chrome on 2026-10-13), so the page has no SHA-256, and Start refuses
+   every session run there: as a mismatch, naming a rebuild as the remedy,
+   which does not apply. That is the reason for the cable; it is not a
+   preference. (The tablet could not reach that address either; the cause
+   was not diagnosed.) Serving over https, so that a later campaign need
+   not depend on a cable, is
+   [#116](https://github.com/webarkit/webarkit/issues/116), after this one.
+   The route is identical across runs:
    - **the server:** `npx http-server -p 8093 -s -c-1` (http-server
      14.1.1) at the repository root, as `examples/README.md` gives it with
      the port changed: 8080 was held by another process. Step 3's `curl`
@@ -3597,13 +3599,61 @@ is.
    authorization prompt back. The last drop was at 14:50:06Z, and none
    followed up to 14:56:10Z, which covers the pre-flight run and its
    download. So before every Start,
-   `adb -s Tab9WEEA0001504 reverse --list` shows `tcp:8093 tcp:8093`. How
-   a run during which the link dropped is read is for the validity checks,
-   not written yet.
-4. **The browser is Chrome 154 on the tablet** (`Chrome/154.0.0.0` in the
+   `adb -s Tab9WEEA0001504 reverse --list` shows `tcp:8093 tcp:8093`.
+4. **A drop of the USB link during a counted run invalidates that run.**
+   Not because a drop is known to change what is measured, but because the
+   page cannot tell whether it did, and an unattested condition cannot back
+   a counted measurement. The run counts for nothing; what replaces it is
+   for the stopping rules, not written yet.
+
+   **The link monitor runs for every counted run, and its log is kept
+   beside that run's export.** "No drop" is attested, never assumed.
+   - **It runs from before Start to after the export's download.** At each
+     end it records the UTC time, `adb -s Tab9WEEA0001504 devices -l`
+     (whose `transport_id` changes at every reconnection), and
+     `adb -s Tab9WEEA0001504 reverse --list`. At the start it also records
+     `adb --version`.
+   - **Between the two ends, it keeps everything the adb server's own log
+     gained.** That log is `%TEMP%\adb.log` on the session's Windows PC.
+     The monitor notes the log's length at the start, and at the end copies
+     every line written since.
+   - **Its log is `<the export's name>.link.txt`,** beside the export in
+     `docs/benchmarks/`, and committed with it. It is `.txt` because this
+     repository ignores `*.log`.
+   - **"No drop" holds when all three agree:** the log gained no
+     `connection terminated` line naming the device, the `transport_id` is
+     the same at both ends, and the mapping shows at both ends. Anything
+     else is a drop.
+5. **The browser is Chrome 154 on the tablet** (`Chrome/154.0.0.0` in the
    pre-flight run's `userAgent`). M3's session ran on Chrome 153, in all 17
    of its exports. Any comparison with M3's figures carries that caveat,
    and is not treated as paired.
+6. **Forward gaps within a loop are not checked by the page.** `isLoopWrap`
+   reads step backs only. Forward gaps belong to the validity checks,
+   through the stall check that M3's step 7 used.
+   - **Beside each counted run's verdict, the record names the tool and its
+     version:** `stall-check.mjs`, SHA-256
+     `cccb475bcc74f29fb6592577e31cdcf7eb5d2bb511c39d5e6a8c4edf3cf7f1be`.
+     The file carries no version number, so its hash names it.
+   - **Its verdict is supplementary.** The copy that runs is kept outside
+     the repository, with the session drivers. The repository holds the
+     tool only as a copy embedded in M3's record
+     ([`2026-10-01-m3-session-additions.md`](./2026-10-01-m3-session-additions.md),
+     "The scripts"), not as a tested tool: nothing tests that copy, CI does
+     not run it, and only the hash shows the two copies are the same.
+   - **On 2026-10-13 the two were byte-identical:** the same SHA-256, and
+     the same verdict on the pre-flight run's export. So a verdict
+     reproduces from the repository only while the tool's recorded hash
+     equals the embedded copy's. Bringing it into the repository as a
+     tested module is
+     [#117](https://github.com/webarkit/webarkit/issues/117), after the
+     campaign.
+
+*Item 3's first paragraph was rewritten, and items 4 and 6 were added, on
+2026-10-13, after the pre-flight run and before any counted run. Item 3
+first called the LAN address "preferred"; it is not usable, which is why
+the transport is USB. Its last sentence left a drop's reading to the
+validity checks; item 4 now decides it.*
 
 **The pre-flight run.**
 
