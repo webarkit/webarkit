@@ -1363,8 +1363,9 @@
        * names none — when that is a worker run that has ended and not failed.
        * Dropped, it left that run's Download exporting it as `done`, with
        * `failure: null`, although its worker then failed (#95, from Qodo's
-       * review of #100). Otherwise the error is shown. Start stays disabled
-       * either way.
+       * review of #100). Otherwise the error is shown, if it is the worker's
+       * first: a later one is logged instead, so the error line keeps the cause
+       * the failed run's export refusal names. Start stays disabled either way.
        *
        * No frame of the ended run depended on such a failure: the handlers run
        * as each event is delivered, between frames, so one delivered while a run
@@ -1375,6 +1376,7 @@
        * comment on #95's item) would have to be made again.
        */
       function workerFailed(message, run = null) {
+        const first = detectionWorker.failure === null;
         detectionWorker.failure ??= message;
         const pending = detectionWorker.pendingInit;
         detectionWorker.pendingInit = null;
@@ -1389,7 +1391,8 @@
           return;
         }
         if (!pending) {
-          showError(message);
+          if (first) showError(message);
+          else console.error(`The detection worker failed again, after "${detectionWorker.failure}": ${message}`);
           startButton.disabled = true;
         }
       }
