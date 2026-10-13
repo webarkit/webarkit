@@ -40,6 +40,32 @@ release pull request's body and the GitHub Release's notes.
     the repository with `npx http-server -c-1`. The demos still load each package's own `dist/`.
   - **Replay.** `scripts/replay-clips.mjs` takes `--packages <dist|bundle>`.
 
+### Fixed
+
+- **The bench's guarded paths, before M4's measurements open**
+  ([#96](https://github.com/webarkit/webarkit/issues/96) and
+  [#95](https://github.com/webarkit/webarkit/issues/95)'s `[guarded]` items, the guarded-items
+  half of M4's step 0).
+  - **A loop wrap is the clip restarting.** Any step back in media time used to count as a loop
+    wrap, so a stutter or a seek could fabricate a loop in every metric read per loop, and end a
+    `?loops=` run a loop early. A step back is now a wrap only near the clip's start, with at most
+    0.5 s skipped across the wrap; any other step back refuses the run, naming the frame. No
+    committed export's figures change.
+  - **`replay-clips --transfer` recomputes each export's protocol** with the tracker's own
+    defaults, and refuses a record the rule does not bear out, rather than trust
+    `protocol.sessionRun`. M3's committed exports all pass, and their transfer is unchanged.
+  - **A worker failure after a run ended fails that run**, and the run a Download exports, so
+    that Download is refused; it used to be dropped, and the run exported as clean. A later
+    failure no longer replaces the first on the error line.
+  - **Smaller corrections.** The worker passes on the decoder's warnings. Worker mode names why
+    a `.wnft` did not load. A replay arm with external detection exports `detection.path:
+    "worker"` and a new `detection.latencyOf`. `--tracking-only` is refused where it does
+    nothing. `firstStepLatency` keeps a sample detected up to 1 ms past the clip's end. Refusals
+    number frames alike, and a count recorded as text is quoted.
+  - **`packages/nft-tracker/README.md`** documents the four detection options and their
+    domains, and its options paragraph says what M3's tuning pass did to the defaults, where it
+    had called them provisional until a pass that has since run.
+
 ## [0.4.0] - 2026-10-01
 
 M3 of [ADR-0001](docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md), detection off the
