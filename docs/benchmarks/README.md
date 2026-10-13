@@ -3707,14 +3707,47 @@ validity checks; item 4 now decides it.*
 - **What a survivor means.** A surviving mutant means that no test would
   notice the change, not that the code is wrong. Whether the campaign can
   run on `37dc6d4` turns on the guards' behaviour, not on their tests.
-  - For every page survivor, and for every other survivor whose condition
-    the agent could produce from a run, a replay or a build, it produced
-    that condition on the unmutated build first. The guard refused each
-    time. No guard it could trigger failed to guard.
-  - What it could not trigger, and why, is in #120: a racy window (PG23),
-    conditions that need a second fault to show (RS2, RE1, RE2, TPR1), and
-    no trigger at all (BB2). The six equivalent mutants change nothing
-    reachable.
+  - For every survivor whose condition the agent could produce from a run,
+    a replay or a build, it produced that condition on the unmutated build
+    first. The guard refused each time. No guard it could trigger failed to
+    guard.
+  - It did not trigger six: PG23 (a racy window), RS2, RE1, RE2 and TPR1
+    (each needs a second fault to show), and BB2 (no trigger could be
+    built). The six equivalent mutants change nothing reachable.
+- **The six it did not trigger, against a counted run on the tablet,**
+  given the pinned parameters and the frozen build:
+  - **PG23,** `bench-nft.html:2359`, a worker that fails after
+    `workerReady` while the source starts: **can occur.** The pinned
+    string allows `detection=worker`, and a worker can fail at any moment.
+    It was produced on the unmutated build (below).
+  - **RS2,** `replay-clips.mjs:1202`, `--sequence` refusing an export whose
+    box fits the clip to another resolution: cannot. It is a desktop replay
+    of an export, never run on the tablet.
+  - **RE1,** `replay-clips.mjs:840`, an `--external` arm whose accounting
+    does not balance: cannot. It is a desktop replay.
+  - **RE2,** `replay-clips.mjs:907`, an `--external` arm that does not
+    reach the loop after its counted ones: cannot. It is a desktop replay.
+  - **TPR1,** `tuning-probe.mjs:151`, the tuning probe diverging from the
+    tracker: cannot. It is a desktop tool the replay runs.
+  - **BB2,** `build-provenance.mjs:172`, the build refusing a bundle whose
+    metafile output still imports: cannot. It runs only when the bundle is
+    built, and the campaign's build is never redone.
+- **PG23, produced on the unmutated build (2026-10-13, before any counted
+  run).** Desktop headless Chrome 155 ran the pinned string's worker form,
+  with `run=1`. It used the campaign tree, served with `no-store`, and
+  changed no file. Through the DevTools protocol, the page's worker was made
+  to fail inside `startBundled`'s `video.play()`: after `workerReady`, and
+  before `runBenchmark` makes the run live.
+  - **Without the fault (the control),** the run started and reached
+    `tracking`.
+  - **With it, Start refused within 217 ms.** The status went to `failed`.
+    The error line named the worker's own failure, then "The run did not
+    start, and nothing was exported." Start stayed disabled.
+  - **No run went live,** so no 5 s reply timeout hid the cause. That is
+    the guard at `:2359`: its throw lands in Start's catch (`:2382`), whose
+    hint is the one for a failed worker.
+  - **So the one of the six that a counted run on the tablet can meet**
+    has been produced on the unmutated build, and its guard refused.
 - **The stop condition was the maintainer's, and it was the wrong
   instrument.** It stopped the campaign's start on "a guard that does not
   refuse when mutated", and so on 78 survivors. It conflated test coverage
@@ -3784,5 +3817,37 @@ not counted.
        is read instead: `ticks` equals `windowSize`, so no frame was lost.
 
      So the comparison is exact for everything the export records. The
-     string itself is not in the export: comparing it character for
-     character would need each run's URL kept beside its export.
+     string itself is not in the export.
+   - **The recorded URL.** Each counted run is opened with one command,
+     never typed:
+     `adb -s Tab9WEEA0001504 shell "am start -a android.intent.action.VIEW -d '<URL>' com.android.chrome"`.
+     - The `<URL>` it passes is kept beside the export as
+       `<the export's name>.url.txt`, and committed with it.
+     - It must read `http://localhost:8093/examples/bench-nft.html`,
+       followed by the pinned string with its slots filled, character for
+       character.
+   - **The two checks are independent, and must agree.**
+     - The field check catches a parameter whose effect is wrong.
+     - The recorded URL catches a parameter the export reflects not at
+       all.
+     - The URL attests what was asked, not what the browser received.
+
+     So neither is authoritative alone. A run passes rule 3 only when both
+     pass.
+   - **Rule 3 verifies the parameters' effects, which is weaker than
+     verifying the parameters.** `window=2000` is the proof. The pre-flight
+     run asked for 2000, and its export records `windowSize` 623, the frames
+     it held, and the 2000 nowhere.
+   - **Is there a URL parameter whose effect the export records nowhere?
+     Yes: `camera`.**
+     - On a bundled-clip run, `?camera=` only presets the webcam's control.
+       The page reads it for a webcam source alone, and the export's
+       `camera` is `null` for any other run.
+     - So `camera` is invisible to both checks: the field check cannot see
+       its effect, and the recorded URL shows only that it was asked.
+     - The same holds for a parameter the page does not read at all, and
+       for a repeat of one it reads, since only the first is read.
+     - The pinned string admits none of them, so the recorded URL refuses
+       a run whose command carried one. What none of the checks could see
+       is such a parameter reaching the browser some other way. On a
+       bundled-clip run, it would change nothing the run does.
