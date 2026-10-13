@@ -1269,6 +1269,23 @@ describe("detection locks, first steps and outcomes", () => {
         const c = firstStepLatency(consumedAtEnd, { clipDurationS: D });
         expect(c.videoMs.n).toBe(1);
         expect(c.videoMs.p50).toBeCloseTo(20, 9);
+        // The independent check: the step's frame stands at D too, 500 ms of video, not 500.5.
+        const stepAtEnd = [
+            own("DETECT", 500, { mediaTimeSeconds: 0.5 }),
+            frame("TRACK", 1000, { mediaTimeSeconds: 1.0005, tracking: step }),
+        ];
+        expect(firstStepLatency(stepAtEnd, { clipDurationS: D }).videoMs.p50).toBeCloseTo(500, 6);
+    });
+
+    // The independent check: the clamp stood any frame past D at D, where the timeline's
+    // tolerance is 1 ms and a frame past it is refused there. Past it, a frame is read as it was
+    // before the clamp: a duration that short is the timeline's to refuse, not this to absorb.
+    it("stands at the clip's duration only a frame within 1 ms past it", () => {
+        const pastTolerance = [
+            own("DETECT", 1000, { mediaTimeSeconds: 1.005 }),
+            frame("TRACK", 1033, { mediaTimeSeconds: 0, tracking: step }),
+        ];
+        expect(firstStepLatency(pastTolerance, { clipDurationS: 1 }).videoMs.n).toBe(0);
     });
 
     it("measures first-step latency by one rule in both modes", () => {

@@ -751,8 +751,12 @@ export function detectionLocks(frames, { clipDurationS = null } = {}) {
  */
 export function firstStepLatency(frames, { clipDurationS = null } = {}) {
     if (clipDurationS !== null) checkClipDuration(clipDurationS);
-    // As on the unwrapped timeline: up to 1 ms past D is rounding, and stands at D.
-    const at = (m) => (clipDurationS === null ? m : Math.min(m, clipDurationS));
+    // As on the unwrapped timeline: up to 1 ms past D is rounding, and stands at D. Past that,
+    // a frame is read as it is: a duration that short is the timeline's to refuse.
+    const at = (m) =>
+        clipDurationS !== null && m > clipDurationS && m <= clipDurationS + CLIP_END_TOLERANCE_S
+            ? clipDurationS
+            : m;
     const ms = [];
     const videoMs = [];
     const processed = [];
