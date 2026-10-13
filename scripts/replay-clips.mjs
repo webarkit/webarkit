@@ -853,7 +853,6 @@ function armExport({
     jobs,
     accounting,
     stepMs,
-    acquireMs,
     clipDurationS,
     model,
 }) {
@@ -1003,7 +1002,6 @@ async function externalArms() {
                 jobs,
                 accounting,
                 stepMs,
-                acquireMs,
                 clipDurationS,
                 model: { latencyMs: arm.latencyMs, acquireMs, detectMs: DEVICE_DETECT_MS },
             });
@@ -1128,7 +1126,6 @@ async function transferArms() {
                 jobs,
                 accounting,
                 stepMs: p.stepMs,
-                acquireMs: p.acquireMs,
                 clipDurationS,
                 model: {
                     latencyMs: null,
