@@ -1654,26 +1654,7 @@ export const SESSION_LOOPS = Object.freeze({ firstLoop: 1, loopCount: 4 });
  * the same field, an absent default would pass it.
  */
 export function sessionRunGaps(e, defaults) {
-    const missing = [];
-    if (typeof defaults?.targetFile !== "string") missing.push("targetFile");
-    if (defaults?.processingBox == null) missing.push("processingBox");
-    else {
-        for (const side of ["width", "height"]) {
-            if (!Number.isFinite(defaults.processingBox[side])) missing.push(`processingBox.${side}`);
-        }
-    }
-    if (!Number.isFinite(defaults?.maxKeypoints)) missing.push("maxKeypoints");
-    if (defaults?.trackerOptions == null) missing.push("trackerOptions");
-    else {
-        for (const key of TUNABLE_TRACKER_OPTIONS) {
-            if (defaults.trackerOptions[key] == null) missing.push(`trackerOptions.${key}`);
-        }
-    }
-    if (missing.length > 0) {
-        throw new TypeError(
-            `sessionRunGaps needs the page's defaults: ${missing.join(", ")} missing ({ targetFile, processingBox, maxKeypoints, trackerOptions })`,
-        );
-    }
+    checkSessionDefaults(defaults, "sessionRunGaps");
     const gaps = [];
     const shown = (v) => (v === null || v === undefined ? "none" : v);
     const mode = e?.mode;
@@ -1765,6 +1746,50 @@ export function sessionRunGaps(e, defaults) {
 }
 
 /**
+ * Refuses `defaults`, as {@link sessionRunGaps} takes them, unless every one is
+ * given: a `TypeError` from `caller` naming each one missing.
+ */
+function checkSessionDefaults(defaults, caller) {
+    const missing = [];
+    if (typeof defaults?.targetFile !== "string") missing.push("targetFile");
+    if (defaults?.processingBox == null) missing.push("processingBox");
+    else {
+        for (const side of ["width", "height"]) {
+            if (!Number.isFinite(defaults.processingBox[side])) missing.push(`processingBox.${side}`);
+        }
+    }
+    if (!Number.isFinite(defaults?.maxKeypoints)) missing.push("maxKeypoints");
+    if (defaults?.trackerOptions == null) missing.push("trackerOptions");
+    else {
+        for (const key of TUNABLE_TRACKER_OPTIONS) {
+            if (defaults.trackerOptions[key] == null) missing.push(`trackerOptions.${key}`);
+        }
+    }
+    if (missing.length > 0) {
+        throw new TypeError(
+            `${caller} needs the page's defaults: ${missing.join(", ")} missing ({ targetFile, processingBox, maxKeypoints, trackerOptions })`,
+        );
+    }
+}
+
+/**
+ * The tracking state's defaults, one per {@link TUNABLE_TRACKER_OPTIONS}, read
+ * from the tracker package `pkg` by its `DEFAULT_*` names (`minTrackedPatches`
+ * is `DEFAULT_MIN_TRACKED_PATCHES`): the `trackerOptions` {@link sessionRunGaps}
+ * compares an export with. This module imports no package, so its caller
+ * passes the one it loaded. A package without one of them throws a
+ * `TypeError` naming the export.
+ */
+export function trackerDefaults(pkg) {
+    const name = (key) => `DEFAULT_${key.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase()}`;
+    const absent = TUNABLE_TRACKER_OPTIONS.map(name).filter((n) => pkg?.[n] === undefined);
+    if (absent.length > 0) {
+        throw new TypeError(`trackerDefaults: the tracker package exports no ${absent.join(", ")}`);
+    }
+    return Object.fromEntries(TUNABLE_TRACKER_OPTIONS.map((key) => [key, pkg[name(key)]]));
+}
+
+/**
  * Why `scripts/replay-clips.mjs --transfer` reads nothing from export `e`, or
  * `null` when it reads it: a page's export of a tracking run on one of
  * `clips`, that ran on one of the detection paths. Not the replay's own
@@ -1835,7 +1860,9 @@ function transferProfile(path, named) {
 /**
  * What `scripts/replay-clips.mjs --transfer` replays, from the page exports of a
  * session: `files` are `{ name, e }`, and `clips` the bundled clips (in the
- * order they are replayed) and `sha256` the target the replay runs. Returns
+ * order they are replayed), `sha256` the target the replay runs and `defaults`
+ * the page's, as {@link sessionRunGaps} takes them, which a caller that gives
+ * none, or not every one, is refused for before any export is read. Returns
  * `{ clips, skipped, refusal }`. `clips` has, for each clip with an export,
  * its `sync` and `worker` profile (`transferProfile`): `{ path, files,
  * latencyMs, latency, acquireMs, stepMs }`. A clip with no export is not
@@ -1855,10 +1882,16 @@ function transferProfile(path, named) {
  * 4. an export, of either path, that the page did not record as a session run
  *    (`protocol.sessionRun` not `true`, {@link sessionRunGaps}), named with the
  *    gaps it recorded, or that has no `protocol` record at all: the transfer
- *    replays what the session ran, and a run outside its protocol is not that;
+ *    replays what the session ran, and a run outside its protocol is not that.
+ *    A record that says it is one is not trusted either: once every record
+ *    has been read, the protocol is recomputed from each export with
+ *    `defaults`, and an export with gaps by that rule is refused, named with
+ *    them. A record left stale by a later change to the rule, or edited by
+ *    hand, would otherwise pass;
  * 5. a mode with no latency sample, no acquisition or no step to replay with.
  */
-export function transferPlan(files, { clips, sha256 }) {
+export function transferPlan(files, { clips, sha256, defaults }) {
+    checkSessionDefaults(defaults, "transferPlan");
     const skipped = [];
     const byClip = new Map(clips.map((clip) => [clip, { sync: [], worker: [] }]));
     for (const file of files) {
@@ -1906,6 +1939,18 @@ export function transferPlan(files, { clips, sha256 }) {
                         ? protocol.gaps.join("; ")
                         : "its protocol record names no gap";
                 return refuse(`${clip}: ${name} is not a session run: ${gaps}`);
+            }
+        }
+    }
+    // After every record's own word: an export that says it is no session run is named as
+    // such before another whose claim to be one the rule does not bear out.
+    for (const [clip, { sync, worker }] of present) {
+        for (const { name, e } of [...worker, ...sync]) {
+            const recomputed = sessionRunGaps(e, defaults);
+            if (recomputed.length > 0) {
+                return refuse(
+                    `${clip}: ${name} records a session run, but recomputed from the export it has gaps: ${recomputed.join("; ")}`,
+                );
             }
         }
     }

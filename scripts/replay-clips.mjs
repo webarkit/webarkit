@@ -169,8 +169,10 @@
  * checked before exporting it) or that records none — a session holding an
  * invalid run is an invalid session, not a file to skip — and an export of
  * either path that the page did not record as a session run
- * (`protocol.sessionRun`, `sessionRunGaps`), named with its gaps, or that has
- * no protocol record. Prints, per clip, each arm's `trackTimeShare` and the
+ * (`protocol.sessionRun`, `sessionRunGaps`), named with its gaps, that has
+ * no protocol record, or whose record says it is one while its protocol,
+ * recomputed from the export with the tracker's defaults (`SESSION_DEFAULTS`),
+ * has gaps. Prints, per clip, each arm's `trackTimeShare` and the
  * difference, worker minus sync, in points. Not with `--external`,
  * `--sequence`, `--device-ratio` or `--options`: the session ran the
  * tracker's defaults, and the transfer replays what it ran; nor with
@@ -196,6 +198,7 @@ import { createDetectionPolicy } from "../examples/js/detection-policy.mjs";
 import {
     accountingError,
     compareExports,
+    DEFAULT_TARGET_FILE,
     framesAt,
     frameRecord,
     METRICS_VERSION,
@@ -209,6 +212,7 @@ import {
     summarizeRun,
     targetCorners,
     targetRecord,
+    trackerDefaults,
     transferPlan,
 } from "../examples/js/bench-metrics.mjs";
 import { fitSize } from "../examples/js/pinball-shared.mjs";
@@ -319,21 +323,35 @@ if (PACKAGES === "bundle") {
         manifestClean: manifest.clean,
     };
 }
-const {
-    createJsfeatNextBackend,
-    intrinsics,
-    decode,
-    DEFAULT_MIN_TRACKED_PATCHES,
-    detectTarget,
-    NftTracker,
-    prepareDetection,
-} =
+const packages =
     PACKAGES === "bundle"
         ? await import(pathToFileURL(BUNDLE).href)
         : {
               ...(await import("../packages/cv-backend-jsfeatnext/dist/index.js")),
               ...(await import("../packages/nft-tracker/dist/index.js")),
           };
+const {
+    createJsfeatNextBackend,
+    intrinsics,
+    decode,
+    DEFAULT_MAX_SCENE_KEYPOINTS,
+    DEFAULT_MIN_TRACKED_PATCHES,
+    detectTarget,
+    NftTracker,
+    prepareDetection,
+} = packages;
+/**
+ * What a session's runs ran at, as the page passes `sessionRunGaps` its own
+ * defaults: the committed target, the page's box, the default scene keypoint
+ * budget, and the tracker's defaults, read from the package loaded here.
+ * `--transfer` recomputes each export's protocol with them (`transferPlan`).
+ */
+const SESSION_DEFAULTS = {
+    targetFile: DEFAULT_TARGET_FILE,
+    processingBox: BOX,
+    maxKeypoints: DEFAULT_MAX_SCENE_KEYPOINTS,
+    trackerOptions: trackerDefaults(packages),
+};
 
 const TARGET_PATH = resolve(arg("--target") ?? join(EXAMPLES, "targets/pinball.wnft"));
 const parsedOverrides = parseTrackerOverrides(arg("--options"));
@@ -1078,7 +1096,11 @@ function readTransferDir(dir) {
  */
 async function transferArms() {
     const files = readTransferDir(TRANSFER_DIR);
-    const plan = transferPlan(files, { clips: CLIPS, sha256: targetRec.sha256 });
+    const plan = transferPlan(files, {
+        clips: CLIPS,
+        sha256: targetRec.sha256,
+        defaults: SESSION_DEFAULTS,
+    });
     for (const { name, why } of plan.skipped) console.log(`skipped ${name}: ${why}`);
     if (plan.refusal) {
         console.error(`replay-clips: --transfer ${TRANSFER_DIR}: ${plan.refusal}`);

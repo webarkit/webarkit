@@ -70,6 +70,7 @@ import {
     texturedFrame,
     timeRepeated,
     trackabilityError,
+    trackerDefaults,
     trackFramesWithDetectionInFlight,
     TRACK_TIME_BIN_MS,
     trackTimeShare,
@@ -2788,18 +2789,60 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
     });
 });
 
+// #95: the replay recomputes a session run's protocol, and the tracker's defaults reach it from
+// the package, by name, rather than as a third hand-written copy beside the page's.
+describe("trackerDefaults", () => {
+    it("reads every tunable option's default from the tracker package, by its DEFAULT_ name", async () => {
+        const pkg = await import("../../packages/nft-tracker/dist/index.js");
+        const d = trackerDefaults(pkg);
+        expect(Object.keys(d)).toEqual([...TUNABLE_TRACKER_OPTIONS]);
+        expect(d.maxFrameLevels).toBe(pkg.DEFAULT_MAX_FRAME_LEVELS);
+        expect(d.photometric).toBe(pkg.DEFAULT_PHOTOMETRIC);
+        expect(d.tukeyC).toBe(pkg.DEFAULT_TUKEY_C);
+        expect(d.minTrackedPatches).toBe(pkg.DEFAULT_MIN_TRACKED_PATCHES);
+        expect(d.maxFitRms).toBe(pkg.DEFAULT_MAX_FIT_RMS);
+        expect(d.minPatchZncc).toBe(pkg.DEFAULT_MIN_PATCH_ZNCC);
+        for (const [k, v] of Object.entries(d)) expect(v, k).not.toBeUndefined();
+    });
+
+    it("refuses a package that lacks one, naming the export", () => {
+        expect(() => trackerDefaults({})).toThrow(TypeError);
+        expect(() => trackerDefaults({})).toThrow(/DEFAULT_MAX_FRAME_LEVELS/);
+    });
+});
+
 describe("transferPlan: what --transfer reads from a session's page exports", () => {
     const CLIPS = ["pinball-static.mp4", "pinball-bench.mp4", "pinball-bench-table.mp4"];
     const SHA = "ab";
     const frame = (state, timings, o = {}) => ({ state, ok: state !== "LOST", timings, ...o });
     // What the page records of a run that followed the session's protocol (sessionRunGaps).
     const SESSION_RUN = Object.freeze({ sessionRun: true, gaps: [] });
+    // The page's defaults, as test values, which the plan recomputes each protocol with; and
+    // the fields a session run records at them, which every export here carries unless a test
+    // says otherwise, so that the recomputed protocol bears its record out.
+    const DEFAULTS = Object.freeze({
+        targetFile: "targets/pinball.wnft",
+        processingBox: { width: 480, height: 360 },
+        maxKeypoints: 300,
+        trackerOptions: Object.fromEntries(TUNABLE_TRACKER_OPTIONS.map((k, i) => [k, i + 1])),
+    });
+    const SESSION_FIELDS = Object.freeze({
+        loops: { firstLoop: 1, loopCount: 4 },
+        run: { order: 1, endedBy: "done" },
+        ticks: 1512,
+        windowSize: 1512,
+        runSummary: { trackTimeShare: { share: 0.5, complete: true } },
+        tracker: { options: { ...DEFAULTS.trackerOptions } },
+        maxKeypoints: 300,
+        processingBox: { width: 480, height: 360 },
+    });
     const pageExport = (path, frames, o = {}) => ({
         mode: "tracking",
         source: "bundled",
         bundledClip: "pinball-bench.mp4",
-        target: { sha256: SHA },
+        target: { source: "wnft", file: "targets/pinball.wnft", sha256: SHA },
         protocol: SESSION_RUN,
+        ...SESSION_FIELDS,
         ...(path === null ? {} : { detection: { path, jobs: [] } }),
         frames,
         ...o,
@@ -2868,7 +2911,7 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
     const plan = (exports, sha256 = SHA) =>
         transferPlan(
             exports.map((e, i) => ({ name: `export-${i}.json`, e })),
-            { clips: CLIPS, sha256 },
+            { clips: CLIPS, sha256, defaults: DEFAULTS },
         );
 
     it("reads each mode's latency samples, acquisition and step from its exports", () => {
@@ -2922,9 +2965,14 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
         );
         expect(exportDetectionPath(older)).toBe("sync");
         expect(exportDetectionPath(workerExport())).toBe("worker");
-        // Older than the protocol record too, so no session's: it is refused (below). Given one,
-        // its frames are read on M2's rule.
-        const p = plan([workerExport(), { ...older, protocol: SESSION_RUN }]);
+        // Older than the protocol record too, so no session's: it is refused (below). A session
+        // run records its detection path, so recomputed it is refused even given a record.
+        expect(plan([workerExport(), { ...older, protocol: SESSION_RUN }]).refusal).toMatch(
+            /export-1\.json records a session run, but recomputed from the export it has gaps: detection\.path none: /,
+        );
+        // Frames without detectionUse, in an export that names its path, are read on M2's rule.
+        const named = { ...older, protocol: SESSION_RUN, detection: { path: "sync", jobs: [] } };
+        const p = plan([workerExport(), named]);
         expect(p.refusal).toBeNull();
         expect(p.clips[0].sync.latencyMs).toEqual([69, 80]);
     });
@@ -3104,6 +3152,47 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
                 );
             },
         );
+
+        // #95, found by the review of the validity fixes: the plan trusted the recorded protocol, so
+        // a record left stale by a later change to the rule, or edited by hand, passed while it
+        // said sessionRun: true. It is now recomputed from the export, with the page's defaults.
+        it.each(["worker", "sync"])(
+            "refuses a %s export recorded as a session run that the rule, recomputed, does not bear out",
+            (path) => {
+                const stopped = { run: { order: 1, endedBy: "stopped" } };
+                const worker = workerExport(path === "worker" ? stopped : {});
+                const sync = pageExport("sync", syncFrames(), path === "sync" ? stopped : {});
+                const r = refusal([worker, sync]);
+                expect(r).toMatch(/^pinball-bench\.mp4: /);
+                expect(r).toMatch(path === "worker" ? /export-0\.json/ : /export-1\.json/);
+                expect(r).toMatch(
+                    /records a session run, but recomputed from the export it has gaps: run\.endedBy stopped: [^;]*$/,
+                );
+                expect(r).not.toMatch(/\n/);
+            },
+        );
+
+        it("recomputes with the defaults it is given: an option the export ran with is read against them", () => {
+            const tuned = { tracker: { options: { ...DEFAULTS.trackerOptions, minTrackedPatches: 42 } } };
+            expect(refusal([workerExport(tuned), pageExport("sync", syncFrames())])).toMatch(
+                /export-0\.json records a session run, but .*tracker option minTrackedPatches 42/,
+            );
+        });
+
+        it("refuses a caller that gives no defaults, before it reads any export", () => {
+            for (const read of [
+                () => transferPlan([], { clips: CLIPS, sha256: SHA }),
+                () =>
+                    transferPlan([], {
+                        clips: CLIPS,
+                        sha256: SHA,
+                        defaults: { ...DEFAULTS, maxKeypoints: undefined },
+                    }),
+            ]) {
+                expect(read).toThrow(TypeError);
+                expect(read).toThrow(/^transferPlan needs the page's defaults: /);
+            }
+        });
 
         it("refuses an export with no protocol record, an older one among them", () => {
             for (const sync of [
