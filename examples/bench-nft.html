@@ -1319,7 +1319,11 @@
         if (detectionWorker.sent.maxSceneKeypoints !== maxSceneKeypoints) await initWorker(maxSceneKeypoints);
       }
 
-      /** The answer to the `init` in progress: `ready` for the target the page decoded, or else a failure. */
+      /**
+       * The answer to the `init` in progress: `ready` for the target the page
+       * decoded, or else a failure. A `ready`'s decoder warnings are logged as
+       * the page logs its own decode's.
+       */
       function settleInit(data) {
         const pending = detectionWorker.pendingInit;
         if (!pending) {
@@ -1335,6 +1339,7 @@
               ? `The detection worker holds a target with SHA-256 ${data.targetSha256}, not ${TARGET_PATH}'s ${expected}.`
               : null;
         if (failure === null) {
+          for (const w of data.warnings ?? []) console.warn(`${TARGET_FILE}, in the detection worker: ${w.code} — ${w.detail}`);
           pending.resolve();
         } else {
           detectionWorker.failure ??= failure;

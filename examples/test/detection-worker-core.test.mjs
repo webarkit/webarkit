@@ -118,6 +118,27 @@ describe("prepareWorkerDetection", () => {
         expect(state.setup.ratio).toBe(0.8);
     });
 
+    // #95, Task 1: the decoder's warnings were dropped, where the page logs its own.
+    it("keeps the decoder's warnings, for the page to log as it logs its own", async () => {
+        const file = readFileSync(
+            new URL("../../fixtures/nft-target/0.3/warnings/unknown-chunk.wnft", import.meta.url),
+        );
+        const bytes = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
+        const state = await prepareWorkerDetection(
+            { targetBytes: bytes, options: OPTIONS },
+            PREPARE_DEPS,
+        );
+        expect(state.warnings).toEqual([
+            { code: "UNKNOWN_CHUNK_SKIPPED", detail: 'chunk type "XTRA"' },
+        ]);
+
+        const clean = await prepareWorkerDetection(
+            { targetBytes: targetBytes(), options: OPTIONS },
+            PREPARE_DEPS,
+        );
+        expect(clean.warnings).toEqual([]);
+    });
+
     it("refuses a target the decoder refuses, with the decoder's reason", async () => {
         await expect(
             prepareWorkerDetection(
