@@ -633,6 +633,11 @@
       let ticks = 0;
       /** The two targets, prepared at page load: `image` always, `wnft` when the file loaded. */
       const targets = { image: null, wnft: null };
+      /**
+       * Why the `.wnft` did not load, or `null`: kept so a later message can
+       * name the cause, rather than point at an error line it has replaced.
+       */
+      let wnftLoadFailure = null;
       /** `clockResolution(clock)`, measured once at page load. */
       let clockResolutionMs = null;
       /**
@@ -1272,7 +1277,8 @@
        */
       async function startDetectionWorker(maxSceneKeypoints) {
         const where = `The detection worker (examples/${WORKER_MODULE})`;
-        if (!targets.wnft) throw new Error(`${where} needs ${TARGET_PATH}, which did not load (see above).`);
+        // The cause by name: this message replaces the line that showed it.
+        if (!targets.wnft) throw new Error(`${where} needs ${TARGET_PATH}, which could not be loaded (${wnftLoadFailure}).`);
         const url = new URL(`./${WORKER_MODULE}`, location.href);
         const worker = new Worker(url, { type: "module" });
         worker.onmessage = onWorkerMessage;
@@ -2194,6 +2200,7 @@
           targetSelect.querySelector('option[value="wnft"]').textContent =
             `${TARGET_PATH}, loaded (${p ? `${p.count} patches of ${p.patchSize} × ${p.patchSize}` : "no patches"})`;
         } catch (e) {
+          wnftLoadFailure = e.message;
           targetSelect.querySelector('option[value="wnft"]').disabled = true;
           errorEl.textContent =
             `${TARGET_PATH} could not be loaded (${e.message}); the tracking mode needs it. ` +
