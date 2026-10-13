@@ -1037,8 +1037,12 @@ export const MODES = Object.freeze(["stateless", "detection-only", "tracking"]);
 /** Where a run's detection happens, as `?detection=` names it: see `DEFINITIONS.detectionPath`. */
 export const DETECTION_PATHS = Object.freeze(["sync", "worker"]);
 
-/** The counts a detection policy keeps (`detection-policy.mjs`), whole numbers all. */
-const ACCOUNTING_COUNTS = Object.freeze([
+/**
+ * The counts a detection policy keeps, whole numbers all: the one list of their
+ * names, which `createDetectionPolicy` (`detection-policy.mjs`) keeps its counts
+ * under and {@link accountingError} checks.
+ */
+export const ACCOUNTING_COUNTS = Object.freeze([
     "requests",
     "posted",
     "consumptions",
