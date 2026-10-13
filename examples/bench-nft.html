@@ -434,6 +434,7 @@
         clockResolution,
         DEFAULT_TARGET_FILE,
         DEFINITIONS,
+        DETECTION_STAGES,
         frameRecord,
         METRICS_VERSION,
         parsePositiveInt,
@@ -507,17 +508,13 @@
       const PROC_WIDTH = 480;
       const PROC_HEIGHT = 360;
 
-      const STAGES = [
-        "acquire",
-        "gray",
-        "detect",
-        "describe",
-        "match",
-        "filterMatches",
-        "estimateHomography",
-        "pose",
-        "total",
-      ];
+      /**
+       * Every stage a frame's timings hold, in table order: the frame's
+       * acquisition and grey conversion, the backend's detection stages as
+       * bench-metrics lists them (`DETECTION_STAGES`, the one list the worker
+       * times too), the pose, and the frame's total.
+       */
+      const STAGES = ["acquire", "gray", ...DETECTION_STAGES, "pose", "total"];
       const STAGE_LABELS = {
         acquire: "frame acquisition",
         gray: "grayscale conversion",
