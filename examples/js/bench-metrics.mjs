@@ -842,16 +842,16 @@ export function cornerJitter(frames) {
     const posed = frames.filter((f) => f.corners);
     let spreadPx = null;
     if (posed.length > 0) {
-        let sum = 0;
+        let squares = 0;
         for (let c = 0; c < 4; c++) {
             for (let axis = 0; axis < 2; axis++) {
                 let mean = 0;
                 for (const f of posed) mean += f.corners[c][axis];
                 mean /= posed.length;
-                for (const f of posed) sum += (f.corners[c][axis] - mean) ** 2;
+                for (const f of posed) squares += (f.corners[c][axis] - mean) ** 2;
             }
         }
-        spreadPx = Math.sqrt(sum / (4 * posed.length));
+        spreadPx = Math.sqrt(squares / (4 * posed.length));
     }
     const windows = new Map();
     let loop = 0;
