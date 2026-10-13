@@ -407,8 +407,15 @@ returned as `"DETECT"`.
 
 **Options.** Every threshold the tracking state judges a frame by is an
 option, checked at construction (a value out of its domain throws a
-`RangeError` naming it), and every default is **provisional until the M2
-tuning pass** (#48). The fixed guards against degeneracy are constants, not
+`RangeError` naming it). The defaults are what M3's tuning pass left them,
+which is unchanged: it closed in
+[#93](https://github.com/webarkit/webarkit/pull/93) without changing any
+option here — `alignMaxIterations` stays 30 (round 1) and
+`minTrackedPatches` 8 (round 4) — and its one adoption, 48 patches, is
+`compile-target`'s `--patches` default, not a tracker option. Round 5, on
+`alignEpsilon`, did not run, so that default is untested by the pass
+([`docs/benchmarks/README.md`](../../docs/benchmarks/README.md), "The pass
+(2026-09-29)"). The fixed guards against degeneracy are constants, not
 tuning thresholds: `alignPatch`'s floor for a singular patch, and the
 numerical singularity tests in `predictHomography` and `robustHomography`
 (`SINGULAR_RELATIVE_DET`, `SINGULAR_PIVOT_RATIO`). Each option is
