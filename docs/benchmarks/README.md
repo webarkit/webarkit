@@ -3731,7 +3731,9 @@ validity checks; item 4 now decides it.*
     tracker: cannot. It is a desktop tool the replay runs.
   - **BB2,** `build-provenance.mjs:172`, the build refusing a bundle whose
     metafile output still imports: cannot. It runs only when the bundle is
-    built, and the campaign's build is never redone.
+    built, and the campaign's build is never redone. That the campaign
+    never builds the bundle is true because of the freeze: here the freeze
+    works as a proof, not only as a constraint.
 - **PG23, produced on the unmutated build (2026-10-13, before any counted
   run).** Desktop headless Chrome 155 ran the pinned string's worker form,
   with `run=1`. It used the campaign tree, served with `no-store`, and
@@ -3748,6 +3750,21 @@ validity checks; item 4 now decides it.*
     hint is the one for a failed worker.
   - **So the one of the six that a counted run on the tablet can meet**
     has been produced on the unmutated build, and its guard refused.
+  - **Why a result from desktop Chrome 155 transfers to the tablet's
+    Chrome 154.** The reason is written here, not assumed: twice already,
+    the maintainer notes, one environment was assumed to stand for
+    another, wrongly.
+    - The guard is plain JavaScript control flow,
+      `if (run.path === "worker" && detectionWorker.failure !== null) throw new Error(detectionWorker.failure);`,
+      and a catch reached only by that throw. No platform API is involved
+      in either, so nothing that differs between the two browsers is on
+      that path.
+    - One step did involve a platform API, and the exercise stood in for
+      it: a worker's failure reaching the page as an `error` event on its
+      `Worker`. The exercise dispatched that event itself. That the browser
+      delivers a real failure as that event is what every worker-failure
+      guard on the page rests on (PG30, PG32); PG23 adds no new
+      assumption.
 - **The stop condition was the maintainer's, and it was the wrong
   instrument.** It stopped the campaign's start on "a guard that does not
   refuse when mutated", and so on 78 survivors. It conflated test coverage
@@ -3851,3 +3868,10 @@ not counted.
        a run whose command carried one. What none of the checks could see
        is such a parameter reaching the browser some other way. On a
        bundled-clip run, it would change nothing the run does.
+     - **`camera`'s inertness depends on the run's shape.**
+       - Counted runs are bundled-clip runs: the pinned string's `clip=`
+         makes the source `bundled`. A webcam run is out of scope for this
+         campaign.
+       - If one is ever wanted, `camera` must first be made visible to a
+         check. On a webcam run it would become live and stay invisible in
+         the same moment.
