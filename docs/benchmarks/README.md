@@ -3506,9 +3506,11 @@ they check.
 **A run the loop-wrap rule refuses** (added 2026-10-13, before any M4 run;
 [#113](https://github.com/webarkit/webarkit/pull/113)). A step back in media
 time that is not the clip restarting refuses the run on the page, naming the
-frame: `isLoopWrap`, with the 0.5 s bound
-[#114](https://github.com/webarkit/webarkit/issues/114) fixes before the
-first counted run.
+frame: `isLoopWrap`, with its 0.5 s bound, whose derivation and revisiting
+[#114](https://github.com/webarkit/webarkit/issues/114) holds. *Corrected
+on 2026-10-13: the sentence restated #114's first criterion ("the 0.5 s
+bound #114 fixes before the first counted run"). It now points at #114
+instead.*
 
 - **It is a rejected sample, not a failed measurement.** The run is re-run,
   and it is not recorded. Its export, if the page lets one be taken, is not

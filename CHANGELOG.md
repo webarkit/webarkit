@@ -56,8 +56,8 @@ release pull request's body and the GitHub Release's notes.
       ([`docs/benchmarks/2026-10-01-m3-session-additions.md`](docs/benchmarks/2026-10-01-m3-session-additions.md)).
     - **The fallback is chosen.** Without a clip duration, the rule asks for a step back of more
       than 0.5 s; that reuses the value, and was not derived.
-    - **M4's campaign re-derives it if it must.**
-      [#114](https://github.com/webarkit/webarkit/issues/114) records when, and by what rule.
+    - **Its revisiting is [#114](https://github.com/webarkit/webarkit/issues/114)'s:** when, and
+      by what rule.
     - **A refused run is a rejected sample.** M4's runbook re-runs it and does not record it.
   - **`replay-clips --transfer` recomputes each export's protocol** with the tracker's own
     defaults, and refuses a record the rule does not bear out, rather than trust
