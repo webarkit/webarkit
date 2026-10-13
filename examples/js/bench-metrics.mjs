@@ -314,7 +314,7 @@ export const DEFINITIONS = Object.freeze({
     trackShare:
         "TRACK frames ÷ frames. Counted per processed frame: a TRACK frame costs less than a DETECT frame, so more of them fit in a second of video.",
     loopWraps:
-        "Frames whose mediaTimeSeconds is lower than the frame's before: the video looped between the two. A webcam has none.",
+        "Frames whose mediaTimeSeconds is lower than the frame's before as the clip restarting: the video looped between the two. A step back is a wrap only when the frame is within 0.5 s of the clip's start and, read with the clip's duration (clipDurationS, whenever the run records one), the video skipped across the wrap, from the frame before to the clip's end and from its start to the frame, is at most 0.5 s; read without one, the step goes back more than 0.5 s. Any other step back, a stutter, a decoder hiccup or a seek, is refused, not counted (#96). A webcam has none.",
     reacquisitions:
         "DETECT frames after an earlier frame of the window had a pose, other than the first frame after a loop wrap. In the stateless and detection-only modes every posed frame after the first is one.",
     reacquisitionsAtLoopWrap:
@@ -376,7 +376,7 @@ export const DEFINITIONS = Object.freeze({
     detectionUse:
         "Per frame, what became of detection, from NftTracker's result: needsDetection (the frame ended without a lock and the tracker has externalDetection: an application is asked for a detection), detectionUse (internal: the tracker detected on this frame; consumed: a detection computed elsewhere was handed to process and used; ignored: one was handed in while a lock held; none: neither; null: the stateless pipeline, and any export older than the field, which read as M2's tracker: its own detection on every frame that is not TRACK), detectionLatencyMs (this frame's timestamp minus the consumed detection's, else null), detectionInFlight (a worker's detection was in flight when process ran) and detectedAt ({ timestampMs, mediaTimeSeconds, framesAgo }, the frame the used detection was computed on: this frame, with framesAgo 0, for an internal one, and the frame the worker was given for a consumed one, framesAgo processed frames back; null when none was used).",
     trackTimeShare:
-        `The share of video time with a confirmed lock, over whole loops of the clip, on a fixed grid of media time: { share, perLoop, binMs, loops: [first, last], complete }, from every frame's state and mediaTimeSeconds. Media time is unwrapped onto one timeline, loop k covering [k·D, (k + 1)·D), D being the clip's duration, and the run's first pass is loop 0, a warm-up that is not counted: loops 1 to 4 are. A D shorter than the clip would lay the loops over each other, so a frame whose media time is past D by more than 1 ms, or whose unwrapped time comes before the frame's before it, is refused, not read; one past D by at most 1 ms, rounding, stands at D, across the wrap after it too. A frame whose media time is not a finite number is refused. Bin j of loop k starts at k·D + j·binMs (binMs ${TRACK_TIME_BIN_MS}) and takes the state of the most recent processed frame at or before its start, held across a loop wrap; share = bins in TRACK ÷ all bins, and perLoop is each counted loop's own. A DETECT frame's pose is an unconfirmed detection and counts as no lock. It reads all the run's frames, not only the counted loops': the frame before a loop supplies the state its first bins take, and a frame of the loop after the last closes it. Deleting a frame whose state equals both its neighbours' cannot change it, so a schedule that processes more frames, a worker's waiting ones, does not move it as it moves trackShare, which counts processed frames. complete is false, and share and perLoop null, unless a frame stands at or before the first bin and one at or after the start of the loop after the last; a summary given no counted loops has null.`,
+        `The share of video time with a confirmed lock, over whole loops of the clip, on a fixed grid of media time: { share, perLoop, binMs, loops: [first, last], complete }, from every frame's state and mediaTimeSeconds. Media time is unwrapped onto one timeline, loop k covering [k·D, (k + 1)·D), D being the clip's duration, and the run's first pass is loop 0, a warm-up that is not counted: loops 1 to 4 are. A D shorter than the clip would lay the loops over each other, so a frame whose media time is past D by more than 1 ms is refused, not read, as is a step back in media time that is not the clip restarting (loopWraps, read with D); one past D by at most 1 ms, rounding, stands at D, across the wrap after it too. A frame whose media time is not a finite number is refused. Bin j of loop k starts at k·D + j·binMs (binMs ${TRACK_TIME_BIN_MS}) and takes the state of the most recent processed frame at or before its start, held across a loop wrap; share = bins in TRACK ÷ all bins, and perLoop is each counted loop's own. A DETECT frame's pose is an unconfirmed detection and counts as no lock. It reads all the run's frames, not only the counted loops': the frame before a loop supplies the state its first bins take, and a frame of the loop after the last closes it. Deleting a frame whose state equals both its neighbours' cannot change it, so a schedule that processes more frames, a worker's waiting ones, does not move it as it moves trackShare, which counts processed frames. complete is false, and share and perLoop null, unless a frame stands at or before the first bin and one at or after the start of the loop after the last; a summary given no counted loops has null.`,
     detectionLocks:
         "{ n, confirmed, refused, reacquisitions, reacquisitionsAtLoopWrap }: the locks the tracker set from a detection, by one rule for the synchronous and the worker modes, from each frame's state, detectionUse, reason, tracking and trackLoss. A lock is set on a DETECT frame that ran the tracker's own detection (detectionUse internal; an export older than the field reads every DETECT frame so), and on a frame that consumed a detection (consumed) and is TRACK or has the reason unconfirmed. Its first step is the tracking step that carries the detection's pose to a frame: the next frame's (its tracking not null) after the tracker's own detection, the same frame's after a consumed one. n: the locks whose first step is in the window; confirmed: those whose first step returned TRACK; refused: the rest, per that step's trackLoss (in a worker run, the stale refusals), a step that records none under (none), which the current tracker never produces. reacquisitions: the locks set after an earlier frame of the window had a pose, other than on the first frame after a loop wrap, which reacquisitionsAtLoopWrap counts apart: the jump there is the clip's. On a synchronous run n and confirmed equal firstSteps.n and firstSteps.confirmed, and both reacquisitions keys those of the same names, which stay under their own definitions.",
     firstStepLatency:
@@ -393,27 +393,83 @@ export const DEFINITIONS = Object.freeze({
         "Where detection's time goes, on the frame loop and off it, over the window's frames and the jobs (one per detection posted to the worker) posted from them. onLoop: the main thread's detection-related time, the sum of the detection stages (detect, describe, match, filterMatches, estimateHomography) of the frames that ran the tracker's own detection (detectionUse internal; an export older than the field reads every frame that is not TRACK so), timings.detectionPost of the frames that posted, and each job's handlerMs, the result handler, which runs between frames and is outside timings.total. share: that time ÷ (Σ timings.total + Σ handlerMs). msPerVideoSecond: that time per second of video covered, which is the counted loops' whole duration (their number × clipDurationS) in a summary that has them, and null there unless the run covered those loops whole (trackTimeShare.complete): an empty or partial window covers less than that duration, and would read 0 or a rate biased low; else the media time between consecutive frames, a loop wrap counting nothing, and null when that is 0. postMs: { n, min, p50, p95, max } of timings.detectionPost over the frames that carry one (a frame that did not post carries none), and handlerMs the same of the jobs' handlerMs. offLoop: workerMs, { n, min, p50, p95, max } of each job's workerMs.total, the worker's pipeline time on its own clock, and msPerVideoSecond, the sum of those per second of video covered. postToArrivalMs: { n, min, p50, p95, max } of each job's arrivedAtMs − postedAtMs, both on the main thread's clock: the latency of a detection from its post to its result's arrival.",
 });
 
-/** Whether the video looped between two consecutive frames: media time went back. */
-export function isLoopWrap(prev, cur) {
-    return cur.mediaTimeSeconds < prev.mediaTimeSeconds;
+/**
+ * How far into the clip the frame after a loop wrap may be, how far back a wrap
+ * steps at least, and how much video it may skip across the clip's end,
+ * seconds: the bound of the device session's stall check, whose monotonicity
+ * arm reads a step back as the clip restarting only within it
+ * (docs/benchmarks/2026-10-01-m3-session-additions.md, #96).
+ */
+const WRAP_BOUND_S = 0.5;
+
+/**
+ * Whether the video looped between two consecutive frames, `prev` then `cur`:
+ * the clip restarting. A step forward, or none, is no wrap. A step back is one
+ * only when `cur` is within 0.5 s of the clip's start (media time 0) and, given
+ * `clipDurationS`, the video skipped across the wrap — from `prev` to the
+ * clip's end, a frame up to 1 ms past it standing at it as on
+ * {@link unwrapMediaTimes}' timeline, then from its start to `cur` — is at most
+ * 0.5 s; without it, which is the end, the step back must be more than 0.5 s.
+ *
+ * Any other step back — a stutter, a decoder hiccup, a seek — is refused with a
+ * `RangeError`, in one line naming `frame` when given, rather than read as the
+ * clip restarting: every reader of a wrap counts a loop there, so a step read
+ * as one would miscount loops, shift `trackTimeShare`'s bins and the counted
+ * loops, split `jitterPx`'s windows and misattribute wrap counts (#96). Without
+ * a clip duration a seek back to the clip's start from more than 0.5 s into it
+ * cannot be told from a restart.
+ */
+export function isLoopWrap(prev, cur, clipDurationS = null, frame = null) {
+    const before = prev.mediaTimeSeconds;
+    const m = cur.mediaTimeSeconds;
+    if (!(m < before)) return false;
+    const skipped = clipDurationS === null ? null : clipDurationS - Math.min(before, clipDurationS) + m;
+    const why =
+        m < 0
+            ? "it is before the clip's start"
+            : m > WRAP_BOUND_S + TIME_EPS_S
+              ? "it is more than 0.5 s into the clip"
+              : skipped !== null
+                ? skipped > WRAP_BOUND_S + TIME_EPS_S
+                    ? `it skips ${seconds(skipped)} across the wrap (clipDurationS ${seconds(clipDurationS)}), more than 0.5 s`
+                    : null
+                : before - m <= WRAP_BOUND_S
+                  ? `it steps back ${seconds(before - m)}, not more than 0.5 s (no clipDurationS to read the wrap by)`
+                  : null;
+    if (why === null) return true;
+    throw new RangeError(
+        `${frame === null ? "" : `frame ${frame}: `}media time ${seconds(m)}, after ${seconds(before)}, is not the clip restarting: ${why}; a step back that is not, a stutter or a seek, is refused rather than read as a loop`,
+    );
 }
 
-/** See `DEFINITIONS.loopWraps`. */
-export function countLoopWraps(frames) {
-    let wraps = 0;
-    for (let i = 1; i < frames.length; i++) if (isLoopWrap(frames[i - 1], frames[i])) wraps++;
-    return wraps;
+/**
+ * For each of `frames`, in the order they were processed, whether it is the
+ * first after a loop wrap ({@link isLoopWrap}). Every consecutive pair is read,
+ * so each reader of a wrap refuses the same runs, whichever frames it counts.
+ */
+function wrapsOf(frames, clipDurationS = null) {
+    return frames.map((f, i) => i > 0 && isLoopWrap(frames[i - 1], f, clipDurationS, i));
+}
+
+/**
+ * See `DEFINITIONS.loopWraps`. Here and in every reader of a wrap below,
+ * `clipDurationS`, when the caller has it, is what {@link isLoopWrap} reads a
+ * wrap by.
+ */
+export function countLoopWraps(frames, { clipDurationS = null } = {}) {
+    return wrapsOf(frames, clipDurationS).filter(Boolean).length;
 }
 
 /** See `DEFINITIONS.reacquisitions` and `DEFINITIONS.reacquisitionsAtLoopWrap`. */
-export function reacquisitions(frames) {
+export function reacquisitions(frames, { clipDurationS = null } = {}) {
+    const wraps = wrapsOf(frames, clipDurationS);
     let hadPose = false;
     let count = 0;
     let atWrap = 0;
     for (let i = 0; i < frames.length; i++) {
         const f = frames[i];
         if (f.state === "DETECT" && hadPose) {
-            if (i > 0 && isLoopWrap(frames[i - 1], f)) atWrap++;
+            if (wraps[i]) atWrap++;
             else count++;
         }
         if (f.ok) hadPose = true;
@@ -422,7 +478,8 @@ export function reacquisitions(frames) {
 }
 
 /** See `DEFINITIONS.firstSteps` and `DEFINITIONS.heldLockSteps`. */
-export function lockSteps(frames) {
+export function lockSteps(frames, { clipDurationS = null } = {}) {
+    const wraps = wrapsOf(frames, clipDurationS);
     const firstSteps = { n: 0, confirmed: 0 };
     const heldLockSteps = { n: 0, lost: 0, lostAtLoopWrap: 0 };
     for (let i = 1; i < frames.length; i++) {
@@ -435,7 +492,7 @@ export function lockSteps(frames) {
         } else if (before === "TRACK") {
             heldLockSteps.n++;
             if (f.trackLoss) {
-                if (isLoopWrap(frames[i - 1], f)) heldLockSteps.lostAtLoopWrap++;
+                if (wraps[i]) heldLockSteps.lostAtLoopWrap++;
                 else heldLockSteps.lost++;
             }
         }
@@ -476,15 +533,17 @@ const seconds = (s) => `${+s.toFixed(6)} s`;
 /**
  * Every frame's time on one timeline, seconds: loop *k* adds *k*·D to its
  * media time, D being `clipDurationS`, and a loop is counted at each wrap
- * (media time going back, {@link isLoopWrap}). The first frame is in loop 0
+ * ({@link isLoopWrap}, given D: the clip restarting; any other step back in
+ * media time is refused, naming the frame). The first frame is in loop 0
  * whatever its media time: a run that starts mid-clip has a first pass that is
  * only part of one. `frames` in the order they were processed.
  *
  * A D shorter than the clip would lay each loop over the next, and a share read
  * on that timeline would look whole while it is not the run's, so it is
  * refused, in one line naming the frame, its media time and D: a `RangeError`
- * when a frame's media time is past D by more than 1 ms, or when a frame's
- * unwrapped time comes before the frame's before it. A frame past D by at most
+ * when a frame's media time is past D by more than 1 ms. So is a step back that
+ * is not the clip restarting ({@link isLoopWrap}, read with D), which leaves no
+ * way for a frame's unwrapped time to come before the frame's before it. A frame past D by at most
  * 1 ms — rounding between the duration and the frames' times — stands at D, so
  * the next loop's first frame, at k·D, does not come before it, whichever
  * frames the run's schedule processed. A media time that is not a finite number
@@ -502,7 +561,6 @@ function unwrap(frames, clipDurationS) {
     const D = seconds(clipDurationS);
     const overlaps = "a duration shorter than the clip lays its loops over each other";
     let loop = 0;
-    let previous = -Infinity;
     return frames.map((f, i) => {
         const m = f.mediaTimeSeconds;
         if (!Number.isFinite(m)) {
@@ -515,16 +573,11 @@ function unwrap(frames, clipDurationS) {
                 `frame ${i}: media time ${seconds(m)} is past clipDurationS ${D} by more than 1 ms: ${overlaps}`,
             );
         }
-        if (i > 0 && isLoopWrap(frames[i - 1], f)) loop++;
+        // A step back that is not the clip restarting is refused here, so the time never goes
+        // back: a restart unwraps to the loop's start or after it, at or past the frame before.
+        if (i > 0 && isLoopWrap(frames[i - 1], f, clipDurationS, i)) loop++;
         // Up to 1 ms past D, a frame stands at D: the tolerance holds across the wrap after it.
-        const t = loop * clipDurationS + Math.min(m, clipDurationS);
-        if (t < previous) {
-            throw new RangeError(
-                `frame ${i}: media time ${seconds(m)} unwraps to ${seconds(t)}, before frame ${i - 1}'s ${seconds(previous)} (clipDurationS ${D}): ${overlaps}`,
-            );
-        }
-        previous = t;
-        return t;
+        return loop * clipDurationS + Math.min(m, clipDurationS);
     });
 }
 
@@ -637,7 +690,8 @@ function setsLock(f, use) {
  * detection that names none. `afterPose` is whether an earlier frame had a
  * pose, `atWrap` whether the lock's frame is the first after a loop wrap.
  */
-function detectionLockList(frames) {
+function detectionLockList(frames, clipDurationS = null) {
+    const wraps = wrapsOf(frames, clipDurationS);
     const locks = [];
     let hadPose = false;
     for (let i = 0; i < frames.length; i++) {
@@ -657,7 +711,7 @@ function detectionLockList(frames) {
                           framesAgo: 0,
                       },
                 afterPose: hadPose,
-                atWrap: i > 0 && isLoopWrap(frames[i - 1], f),
+                atWrap: wraps[i],
             });
         }
         if (f.ok) hadPose = true;
@@ -666,9 +720,9 @@ function detectionLockList(frames) {
 }
 
 /** See `DEFINITIONS.detectionLocks`. `frames` in the order they were processed. */
-export function detectionLocks(frames) {
+export function detectionLocks(frames, { clipDurationS = null } = {}) {
     const out = { n: 0, confirmed: 0, refused: {}, reacquisitions: 0, reacquisitionsAtLoopWrap: 0 };
-    for (const lock of detectionLockList(frames)) {
+    for (const lock of detectionLockList(frames, clipDurationS)) {
         if (lock.afterPose) {
             if (lock.atWrap) out.reacquisitionsAtLoopWrap++;
             else out.reacquisitions++;
@@ -702,7 +756,7 @@ export function firstStepLatency(frames, { clipDurationS = null } = {}) {
     const ms = [];
     const videoMs = [];
     const processed = [];
-    for (const { consumed, step, detected } of detectionLockList(frames)) {
+    for (const { consumed, step, detected } of detectionLockList(frames, clipDurationS)) {
         if (!step || !detected) continue;
         ms.push(step.timestampMs - detected.timestampMs);
         processed.push(consumed ? detected.framesAgo : detected.framesAgo + 1);
@@ -854,9 +908,14 @@ function jobsPostedFrom(jobs, frames) {
 /**
  * See `DEFINITIONS.jitterPx`, `spreadPx`, `posedFrames` and `jitterWindows`.
  * `frames` in the order they were processed: a loop wrap is read from it.
+ * `include` selects the frames the statistics read, every one by default; the
+ * loops are read from all of `frames`, since a selection can leave out both
+ * neighbours of a wrap, which would then not be seen ({@link compareExports}).
  */
-export function cornerJitter(frames) {
-    const posed = frames.filter((f) => f.corners);
+export function cornerJitter(frames, { include = () => true, clipDurationS = null } = {}) {
+    const wraps = wrapsOf(frames, clipDurationS);
+    const read = (f) => f.corners && include(f);
+    const posed = frames.filter(read);
     let spreadPx = null;
     if (posed.length > 0) {
         let squares = 0;
@@ -873,9 +932,9 @@ export function cornerJitter(frames) {
     const windows = new Map();
     let loop = 0;
     for (let i = 0; i < frames.length; i++) {
-        if (i > 0 && isLoopWrap(frames[i - 1], frames[i])) loop++;
+        if (wraps[i]) loop++;
         const f = frames[i];
-        if (!f.corners) continue;
+        if (!read(f)) continue;
         const key = `${loop}:${Math.floor(f.mediaTimeSeconds / JITTER_WINDOW_S)}`;
         if (!windows.has(key)) windows.set(key, []);
         windows.get(key).push(f);
@@ -963,14 +1022,16 @@ export function summarizeRun(
         frameLevels[f.tracking.frameLevels] = (frameLevels[f.tracking.frameLevels] ?? 0) + 1;
     const fits = frames.filter((f) => f.tracking && f.tracking.fitConverged !== null);
     const lock = loops ? trackTimeShare(runFrames, { clipDurationS, ...loops }) : null;
+    // Every reader of a wrap reads it by the clip's duration when the summary has one.
+    const clip = { clipDurationS };
     return {
         frames: frames.length,
         states,
         trackShare: frames.length > 0 ? states.TRACK / frames.length : null,
-        ...reacquisitions(frames),
-        loopWraps: countLoopWraps(frames),
+        ...reacquisitions(frames, clip),
+        loopWraps: countLoopWraps(frames, clip),
         lockLosses,
-        ...lockSteps(frames),
+        ...lockSteps(frames, clip),
         trackStepMs: stepTiming("trackMs"),
         pyramidMs: stepTiming("pyramidMs"),
         alignMs: stepTiming("alignMs"),
@@ -984,9 +1045,9 @@ export function summarizeRun(
         quality: stats(track.map((f) => f.quality)),
         trackedPatches: stats(stepped.map((f) => f.tracking.inliers)),
         lowQualityTrackFrames: track.filter((f) => f.quality <= LOW_QUALITY).length,
-        ...cornerJitter(frames),
+        ...cornerJitter(frames, clip),
         trackTimeShare: lock,
-        detectionLocks: detectionLocks(frames),
+        detectionLocks: detectionLocks(frames, clip),
         firstStepLatency: firstStepLatency(frames, { clipDurationS }),
         detectionOutcomes: detectionOutcomes(frames),
         trackFramesWithDetectionInFlight: trackFramesWithDetectionInFlight(frames),
@@ -1053,12 +1114,13 @@ export function compareExports(first, second) {
     const inFirst = posed(first);
     const common = new Set([...posed(second)].filter((k) => inFirst.has(k)));
     if (common.size === 0) refuse("there is no media time both runs posed, so no frame to compare");
-    const restrict = (e) =>
-        e.frames.filter((f) => f.corners && common.has(mediaKey(f.mediaTimeSeconds)));
+    // Each run's loops from all its frames: the frames both posed can skip a wrap's neighbours.
+    const include = (f) => common.has(mediaKey(f.mediaTimeSeconds));
+    const jitter = (e) => cornerJitter(e.frames, { include, clipDurationS: e.clipDurationS ?? null });
     return {
         commonMediaTimes: common.size,
-        first: cornerJitter(restrict(first)),
-        second: cornerJitter(restrict(second)),
+        first: jitter(first),
+        second: jitter(second),
     };
 }
 

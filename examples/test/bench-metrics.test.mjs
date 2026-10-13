@@ -43,6 +43,7 @@ import {
     firstStepLatency,
     frameMs,
     frameRecord,
+    isLoopWrap,
     framesAt,
     framesForStage,
     lockSteps,
@@ -541,7 +542,8 @@ describe("stageSummary: the export's per-stage p50, p95 and max", () => {
     it("reads a loops run's counted loops: the warm-up's cold acquisition is not in its max", () => {
         const D = 1;
         // Loop 0 (the warm-up, its first acquisition cold), loop 1 counted, loop 2's first frame.
-        const run = [frame(0, 400), frame(0.5, 30), frame(0.2, 31), frame(0.7, 29), frame(0.1, 45)];
+        // Each loop ends near the clip's end: a step back is a wrap only as the clip restarting.
+        const run = [frame(0, 400), frame(0.9, 30), frame(0.2, 31), frame(0.7, 29), frame(0.1, 45)];
         const stages = ["acquire", "total"];
         expect(stageSummary(run, { stages }).acquire.max).toBe(400);
         const loops = { firstLoop: 1, loopCount: 1 };
@@ -584,6 +586,66 @@ describe("stageSummary: the export's per-stage p50, p95 and max", () => {
     });
 });
 
+// #96: isLoopWrap read any step back in media time as the clip restarting.
+describe("isLoopWrap: a step back is a wrap only when the clip restarts", () => {
+    const at = (m) => ({ mediaTimeSeconds: m });
+
+    it("reads a step forward, or none, as no wrap", () => {
+        expect(isLoopWrap(at(1), at(1.04))).toBe(false);
+        expect(isLoopWrap(at(1), at(1))).toBe(false);
+        expect(isLoopWrap(at(11.9), at(12.1), 11.96)).toBe(false);
+    });
+
+    it("reads the clip restarting as a wrap, with or without its duration", () => {
+        expect(isLoopWrap(at(11.9), at(0.05))).toBe(true);
+        expect(isLoopWrap(at(11.9), at(0.05), 11.96)).toBe(true);
+        expect(isLoopWrap(at(11.9), at(0))).toBe(true);
+        // The tablet skips frames: what is bounded is the video skipped across the wrap, 0.5 s.
+        expect(isLoopWrap(at(11.66), at(0.2), 11.96)).toBe(true);
+        // A frame up to 1 ms past the duration stands at it, as on the timeline.
+        expect(isLoopWrap(at(8.9005), at(0), 8.9)).toBe(true);
+    });
+
+    it("refuses a step back that is not a restart, in one line, naming the frame when told it", () => {
+        const read = () => isLoopWrap(at(5), at(4.96), 11.96, 7);
+        expect(read).toThrow(RangeError);
+        expect(read).toThrow(/^frame 7: media time 4\.96 s, after 5 s, is not the clip restarting/);
+        expect(() => isLoopWrap(at(5), at(4.96))).toThrow(/^media time 4\.96 s, after 5 s, is not/);
+        expect(() => isLoopWrap(at(0.3), at(0.27))).toThrow(RangeError);
+        expect(() => isLoopWrap(at(0.9), at(-0.2))).toThrow(RangeError);
+    });
+
+    it("refuses, given the clip's duration, a restart that skips more than 0.5 s across the wrap", () => {
+        // From 11.0 s to 0.1 s on an 11.96 s clip: 1.06 s skipped at the wrap, a stall or a seek.
+        // Without the duration nothing tells it from the clip restarting.
+        expect(isLoopWrap(at(11.0), at(0.1))).toBe(true);
+        expect(() => isLoopWrap(at(11.0), at(0.1), 11.96)).toThrow(RangeError);
+        expect(() => isLoopWrap(at(11.0), at(0.1), 11.96)).toThrow(/1\.06 s across the wrap/);
+        // So the timeline refuses it, and with it the counted loops and the lock read on them.
+        const run = [at(10.9), at(11.0), at(0.1), at(0.2)];
+        expect(() => unwrapMediaTimes(run, 11.96)).toThrow(/^frame 2: media time 0\.1 s, after 11 s/);
+        expect(() => trackTimeShare(run, { clipDurationS: 11.96 })).toThrow(/^frame 2: /);
+    });
+});
+
+// #96, "Audited: no committed export triggers it": pinned, so that a later change to the rule
+// that would reread published evidence fails here rather than in a figure.
+describe("every committed export reads under the loop-wrap rule", () => {
+    const dir = fileURLToPath(new URL("../../docs/benchmarks/", import.meta.url));
+    const exports = readdirSync(dir)
+        .filter((n) => n.endsWith(".json"))
+        .map((name) => ({ name, e: JSON.parse(readFileSync(`${dir}${name}`, "utf8")) }))
+        .filter(({ e }) => Array.isArray(e.frames));
+
+    it("has its wraps read, with its clip duration where it records one", () => {
+        expect(exports.length).toBeGreaterThan(80);
+        for (const { name, e } of exports) {
+            expect(() => countLoopWraps(e.frames), name).not.toThrow();
+            if (e.clipDurationS) expect(() => unwrapMediaTimes(e.frames, e.clipDurationS), name).not.toThrow();
+        }
+    });
+});
+
 describe("loop wraps, re-acquisitions and lock steps", () => {
     const f = (state, t, o = {}) => ({
         state,
@@ -595,7 +657,9 @@ describe("loop wraps, re-acquisitions and lock steps", () => {
     });
     const step = { observed: 40 };
 
-    it("counts a wrap wherever media time goes back", () => {
+    // #96: any step back used to be read as a wrap, so a stutter, a decoder hiccup or a seek
+    // fabricated a loop. A step back is a wrap only when it is the clip restarting.
+    it("counts a wrap where the clip restarts: the next frame near its start, far back", () => {
         expect(
             countLoopWraps([
                 f("DETECT", 11.9),
@@ -605,6 +669,38 @@ describe("loop wraps, re-acquisitions and lock steps", () => {
             ]),
         ).toBe(1);
         expect(countLoopWraps([])).toBe(0);
+    });
+
+    it.each([
+        ["a stutter mid-clip", 5.0, 4.96],
+        ["a stutter near the clip's start, which steps back too little to be a restart", 0.3, 0.27],
+        ["a seek back to mid-clip", 9.0, 3.0],
+        ["a media time below the clip's start", 0.9, -0.2],
+    ])("refuses %s in every reader of a wrap, naming the frame, rather than count a loop", (_, before, after) => {
+        const frames = [
+            f("DETECT", before - 0.04),
+            f("TRACK", before, { tracking: step }),
+            f("TRACK", after, { tracking: step }),
+        ];
+        for (const [name, read] of [
+            ["countLoopWraps", () => countLoopWraps(frames)],
+            ["reacquisitions", () => reacquisitions(frames)],
+            ["lockSteps", () => lockSteps(frames)],
+            ["cornerJitter", () => cornerJitter(frames)],
+            ["detectionLocks", () => detectionLocks(frames)],
+            ["firstStepLatency", () => firstStepLatency(frames)],
+            ["summarizeRun", () => summarizeRun(frames)],
+        ]) {
+            expect(read, name).toThrow(RangeError);
+            expect(read, name).toThrow(/^frame 2: media time .* is not the clip restarting/);
+            let message = "";
+            try {
+                read();
+            } catch (e) {
+                message = e.message;
+            }
+            expect(message, name).not.toMatch(/\n/);
+        }
     });
 
     it("counts DETECT frames after an earlier pose, not the window's first lock", () => {
@@ -676,21 +772,33 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
         expect(actual).toHaveLength(expected.length);
         actual.forEach((t, i) => expect(t).toBeCloseTo(expected[i], 9));
     };
-    // Unwrapped time in the comment. Loop 0 is the warm-up; its last frame holds a lock.
+    // Unwrapped time in the comment. Loop 0 is the warm-up; its last frame holds a lock. Every
+    // loop ends at 0.9 and the next starts at 0.1, so each wrap is the clip restarting (#96);
+    // the frames there repeat the state before them, which cannot move the share.
     const run = [
         frame("LOST", 0), // 0
         frame("TRACK", 0.5), // 0.5
         frame("TRACK", 0.9), // 0.9: the warm-up's last frame
-        frame("TRACK", 0.5), // 1.5: loop 1
-        frame("LOST", 0.25), // 2.25: loop 2
+        frame("TRACK", 0.1), // 1.1: loop 1
+        frame("TRACK", 0.5), // 1.5
+        frame("TRACK", 0.9), // 1.9
+        frame("TRACK", 0.1), // 2.1: loop 2
+        frame("LOST", 0.25), // 2.25
         frame("TRACK", 0.75), // 2.75
-        frame("TRACK", 0.5), // 3.5: loop 3
-        frame("LOST", 0.25), // 4.25: loop 4
+        frame("TRACK", 0.9), // 2.9
+        frame("TRACK", 0.1), // 3.1: loop 3
+        frame("TRACK", 0.5), // 3.5
+        frame("TRACK", 0.9), // 3.9
+        frame("TRACK", 0.1), // 4.1: loop 4
+        frame("LOST", 0.25), // 4.25
+        frame("LOST", 0.9), // 4.9
         frame("LOST", 0.1), // 5.1: loop 5, which closes loop 4
     ];
 
     it("puts every frame on one timeline, loop k adding k times the clip's duration", () => {
-        closeTo(unwrapMediaTimes(run, D), [0, 0.5, 0.9, 1.5, 2.25, 2.75, 3.5, 4.25, 5.1]);
+        closeTo(unwrapMediaTimes(run, D), [
+            0, 0.5, 0.9, 1.1, 1.5, 1.9, 2.1, 2.25, 2.75, 2.9, 3.1, 3.5, 3.9, 4.1, 4.25, 4.9, 5.1,
+        ]);
         // A run that starts mid-clip: its first pass is loop 0 all the same.
         closeTo(
             unwrapMediaTimes([frame("LOST", 10.8), frame("LOST", 11.9), frame("LOST", 0.1)], 11.96),
@@ -700,23 +808,22 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
     });
 
     it("takes the frames whose unwrapped time is in [first · D, (first + count) · D)", () => {
-        expect(countedLoopFrames(run, { clipDurationS: D, firstLoop: 1, loopCount: 2 })).toEqual([
-            run[3],
-            run[4],
-            run[5],
-        ]);
+        expect(countedLoopFrames(run, { clipDurationS: D, firstLoop: 1, loopCount: 2 })).toEqual(
+            run.slice(3, 10),
+        );
         // Loops 1 to 4 by default.
-        expect(countedLoopFrames(run, { clipDurationS: D })).toEqual(run.slice(3, 8));
+        expect(countedLoopFrames(run, { clipDurationS: D })).toEqual(run.slice(3, 16));
         // The first frame of a loop, at its media time 0, is inside it; the next loop's is not.
         const edges = [
             frame("LOST", 0.5),
             frame("LOST", 0.9),
             frame("TRACK", 0), // 1
             frame("TRACK", 0.5), // 1.5
+            frame("TRACK", 0.9), // 1.9
             frame("LOST", 0), // 2
         ];
         expect(countedLoopFrames(edges, { clipDurationS: D, firstLoop: 1, loopCount: 1 })).toEqual(
-            [edges[2], edges[3]],
+            [edges[2], edges[3], edges[4]],
         );
     });
 
@@ -777,6 +884,7 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
             frame("LOST", 0.95),
             frame("TRACK", 0.05), // 1.05
             frame("LOST", 0.07), // 1.07
+            frame("LOST", 0.95), // 1.95
             frame("LOST", 0.02), // 2.02: loop 2
         ];
         const fine = trackTimeShare(brief, { clipDurationS: D, loopCount: 1 });
@@ -850,7 +958,7 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
             8.8, 8.9, 8.9,
         ]);
         // Its loop still reads whole: loop 1's first bins take the frame standing at D.
-        const whole = [...rounding, frame("LOST", 0.2)]; // 2.2: loop 2 closes loop 1
+        const whole = [...rounding, frame("LOST", 0.9), frame("LOST", 0.2)]; // 2.2: loop 2 closes loop 1
         expect(trackTimeShare(whole, { clipDurationS: D, loopCount: 1 })).toMatchObject({
             share: 0.5,
             complete: true,
@@ -867,10 +975,10 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
             /^frame 3: media time 1\.002 s is past clipDurationS 1 s by more than 1 ms/,
         );
         expect(() => trackTimeShare(after, { clipDurationS: D, loopCount: 1 })).toThrow(/^frame 3:/);
-        // Unwrapped time that goes back is still refused, strictly: a media time below 0 after a
-        // wrap is the only way left to it.
+        // A media time below 0 is no restart, and is refused as a step back (#96): it was the
+        // last way for unwrapped time to go back, which the timeline refused on its own before.
         expect(() => unwrapMediaTimes([frame("LOST", 0.9), frame("LOST", -0.2)], D)).toThrow(
-            /^frame 1: media time -0\.2 s unwraps to 0\.8 s, before frame 0's 0\.9 s \(clipDurationS 1 s\)/,
+            /^frame 1: media time -0\.2 s, after 0\.9 s, is not the clip restarting: it is before the clip's start/,
         );
     });
 
@@ -1467,7 +1575,7 @@ describe("cornerJitter", () => {
             at(0.1),
             at(0.3),
             at(0.5),
-            at(0.7),
+            at(0.8),
             at(0.2, 5),
             at(0.4, 5),
             at(0.6, 5),
@@ -1899,6 +2007,7 @@ describe("summarizeRun", () => {
                 rec("LOST", "none", 0.9),
                 rec("LOST", "none", 0.05), // loop 1: the first counted frame
                 rec("LOST", undefined, 0.5), // window frame 4, counted frame 1
+                rec("LOST", "none", 0.9),
                 rec("LOST", "none", 0.05), // loop 2
             ];
             const counted = { clipDurationS: 1, loops: { firstLoop: 1, loopCount: 1 }, path: "worker" };

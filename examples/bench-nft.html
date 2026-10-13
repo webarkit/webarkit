@@ -436,6 +436,7 @@
         DEFINITIONS,
         DETECTION_STAGES,
         frameRecord,
+        isLoopWrap,
         METRICS_VERSION,
         parsePositiveInt,
         parseRunParams,
@@ -1530,9 +1531,18 @@
         return performance.now() - postedAtMs;
       }
 
-      /** Advances `loop` to the frame at `mediaTimeSeconds` and returns its loop of the clip: 0 from the run's first frame, one more at each wrap (media time going back). */
-      function advanceLoop(loop, mediaTimeSeconds) {
-        if (loop.lastMediaTime !== null && mediaTimeSeconds < loop.lastMediaTime) loop.index++;
+      /**
+       * Advances `loop` to the frame at `mediaTimeSeconds` and returns its loop
+       * of the clip: 0 from the run's first frame, one more at each wrap, the
+       * clip restarting as `isLoopWrap` reads it with the clip's duration
+       * (#96). Any other step back throws, so the frame's callback fails the
+       * run: read as a wrap, a stutter would end a `?loops=` run a loop early.
+       */
+      function advanceLoop(loop, mediaTimeSeconds, clipDurationS) {
+        const frame = { mediaTimeSeconds };
+        if (loop.lastMediaTime !== null && isLoopWrap({ mediaTimeSeconds: loop.lastMediaTime }, frame, clipDurationS)) {
+          loop.index++;
+        }
         loop.lastMediaTime = mediaTimeSeconds;
         return loop.index;
       }
@@ -1696,7 +1706,7 @@
           // frameRecord's doc and examples/README.md ("A shared startAt is not
           // a shared frame sequence"). Compare two exports by it, never by index.
           const mediaTimeSeconds = metadata?.mediaTime ?? video.currentTime;
-          const loopIndex = loop ? advanceLoop(loop, mediaTimeSeconds) : null;
+          const loopIndex = loop ? advanceLoop(loop, mediaTimeSeconds, run.clipDurationS) : null;
           const endsRun = loop !== null && loopIndex > run.loops.loopCount;
 
           const frame = toGrayTimed(video, video.videoWidth, video.videoHeight, box.width, box.height, timings);
