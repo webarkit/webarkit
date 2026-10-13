@@ -191,10 +191,13 @@ reproducible instead of quietly making every recompile a new file — and when
 that day comes, the seed will be changing target data too, which is the case
 this option exists for.
 
-**The patch options are first choices, not tuned values.** Each default's
-reason, and what it was measured on, is written where it is defined in
-`bin/compile-target.mjs`; the M2 tuning pass, which can measure alignment, is
-expected to revise them. The score is defined in
+**Two patch options were tuned; the rest are first choices.** M3's tuning
+pass moved `--patches` from 64 to 48 (round 2) and kept `--patch-size` at 16
+(round 3); it did not take up `--patch-levels`, `--patch-min-score` or
+`--patch-spacing`, and how patches are selected is
+[#89](https://github.com/webarkit/webarkit/issues/89)'s question. Each
+default's reason, and what it was measured on, is written where it is defined
+in `bin/compile-target.mjs`. The score is defined in
 [`src/tracking/select_patches.ts`](./src/tracking/select_patches.ts): the
 smaller eigenvalue of the mean structure tensor of a window's interior, in
 level-0 units so patches from different levels compete fairly. Fewer than four
@@ -486,7 +489,10 @@ a median of 0.079 px.
   and roll changes measured, the next step came within 0.9 px or refused,
   and the one after within 0.25 px or re-detected. Right fits on as few
   patches also reach a quality of 0.20, so quality flags such a pose without
-  separating it; which rule should is the tuning pass's question
+  separating it. Which rule should is
+  [#92](https://github.com/webarkit/webarkit/issues/92)'s question, which M3's
+  tuning pass sent onward (round 3) and M4's conditioning signal
+  ([#104](https://github.com/webarkit/webarkit/issues/104)) is weighed against
   (`DEFAULT_MAX_FIT_RMS` in `src/tracker.ts` has the measurements).
 - **A target leaving the frame** is tracked on the few patches still in view
   until too few are left; those last frames extrapolate, up to 1.2 px RMS off
@@ -498,7 +504,7 @@ a median of 0.079 px.
   these poses: the next step refused every lock they seeded
   (`tracker_state_machine.test.ts`). The `"DETECT"` result itself is
   returned.
-- **Patch levels** are the first thing the tuning pass should revisit: 47 of
+- **Patch levels** are a lever M3's tuning pass did not try: 47 of
   `examples/targets/pinball.wnft`'s 48 patches are level 0 and one is level 1,
   and on the camera path, where the target is seen at about half level 0's
   scale, every one of them is sharper than the frame it is aligned in, which
