@@ -3555,11 +3555,13 @@ first counted run.
 
 [#107](https://github.com/webarkit/webarkit/issues/107)'s plan is registered
 here, as M3's was, and is written as it is decided. These are its first
-entries: the setup every counted run shares, and the pre-flight run of
-2026-10-13. The rest of what #107 asks of the plan is not written yet:
-predictions with what would refuse each, the adoption rule, the run order,
-the validity checks and the stopping rules. No counted run is made before it
-is.
+entries: the setup every counted run shares, the pre-flight run of
+2026-10-13, and, added the same day after it, the reading of the
+independent check of the evidence guards and three validity rules. The rest
+of what #107 asks of the plan is not written yet: predictions with what
+would refuse each, the adoption rule, the run order, the validity checks
+beyond those three, and the stopping rules. No counted run is made before
+it is.
 
 **The setup, the same for every counted run.**
 
@@ -3687,3 +3689,98 @@ validity checks; item 4 now decides it.*
 - **Its figures for #114:** the bound's three inputs, over the whole run
   and over the counted loops. They are in #114's comment of 2026-10-13,
   and move into this plan when the plan is written.
+
+**The independent check of the evidence guards (2026-10-13).**
+
+- **What ran.** An agent that did not write the code mutated the evidence
+  guards at `37dc6d4`, one at a time, in a separate worktree. A fresh
+  install and build there reproduced the bundle `3a2567c15d59…` byte for
+  byte.
+  - Of 258 mutations, 179 were killed by a test or a page check, 1 hung
+    the test suite (T3), and 78 survived, 6 of them equivalent.
+  - Its survivors, with their IDs, and the hang are
+    [#120](https://github.com/webarkit/webarkit/issues/120). The two gaps
+    it found in the code itself are
+    [#119](https://github.com/webarkit/webarkit/issues/119).
+- **What a survivor means.** A surviving mutant means that no test would
+  notice the change, not that the code is wrong. Whether the campaign can
+  run on `37dc6d4` turns on the guards' behaviour, not on their tests.
+  - For every page survivor, and for every other survivor whose condition
+    the agent could produce from a run, a replay or a build, it produced
+    that condition on the unmutated build first. The guard refused each
+    time. No guard it could trigger failed to guard.
+  - What it could not trigger, and why, is in #120: a racy window (PG23),
+    conditions that need a second fault to show (RS2, RE1, RE2, TPR1), and
+    no trigger at all (BB2). The six equivalent mutants change nothing
+    reachable.
+- **The stop condition was the maintainer's, and it was the wrong
+  instrument.** It stopped the campaign's start on "a guard that does not
+  refuse when mutated", and so on 78 survivors. It conflated test coverage
+  with guard behaviour. Ruled on 2026-10-13: the campaign starts at
+  `37dc6d4`.
+- **What it leaves.** From now on, the campaign's data rests on guards
+  with no tests.
+  - Closing that is the first work of the window after the campaign
+    (#120).
+  - No test is added before then. The code cannot change, so a test now
+    would gain nothing; `examples/test/` is covered neither by the manifest
+    nor by Start; and one cv-backend test is already flaky, failing once
+    in about 25 runs during the check.
+  - Validity rules 1 and 2, below, cover the two code gaps at analysis
+    time.
+
+**Validity rules, read at analysis time from each committed export.**
+Registered on 2026-10-13, before any counted run. A run that fails one is
+not counted.
+
+1. **`run.failure` is `null`, and `run.endedBy` is `"done"`.** A run ended
+   by Stop is never counted.
+   - **The reason: the check's three page survivors that stick.** Break the
+     failure handling of a throw in a frame (PG17), of the worker path
+     (PG18) or of the worker's 5 s timeout (PG29), and the run does not
+     fail: it sticks. A stuck run can only be ended by Stop, so requiring a
+     run that ended itself closes that signature without touching code.
+   - **Reading `run.failure` as well covers #119's second gap:** nothing
+     that reads `protocol.sessionRun` reads `run.failure`.
+2. **The export's manifest (`provenance.manifest`) names head
+   `37dc6d4fa3507992bbe7e13cd8da7cb759b7265c`, `clean: true`, and an empty
+   `dirtyPaths`.**
+   - **The analysis compares `clean` with `dirtyPaths` itself,** because
+     the page does not (#119). The flag is not trusted: the flag and the
+     list must agree.
+   - **The head is compared in full,** so a `head` of `""` fails the rule.
+3. **The parameters are the pinned string's, exactly.** Every counted
+   run's parameter string is one of these two, character for character,
+   with nothing else on it:
+   ```
+   ?mode=tracking&target=wnft&detection=<path>&clip=<clip>&loops=4&window=2000&run=<n>
+   ?mode=stateless&target=wnft&clip=<clip>&loops=4&window=2000&run=<n>
+   ```
+   - **The slots:** `<path>` is `sync` or `worker`; `<clip>` is
+     `pinball-static.mp4`, `pinball-bench.mp4` or
+     `pinball-bench-table.mp4`; and `<n>` is the run's place in the order.
+     The run order, not yet written, fills them. The two forms are M3's
+     (its runbook's step 4). The pre-flight run used the first, without
+     `&run=`.
+   - **The reason: G14b.** `sessionRunGaps` checks only the processing
+     box's width, so a wrong `?procHeight=` exports as a valid session run.
+   - **How it is read.** The export does not record its URL; it records
+     each parameter's effect. So the analysis compares, one field at a
+     time, what the export records with what the pinned string sets:
+     - `mode`; `target=wnft` as `target.source` `wnft`; `detection` as
+       `detection.path` (`sync` for the stateless form, which sets none);
+       `clip` as `bundledClip`, with `source` `bundled`; `loops=4` as
+       `loops` `{firstLoop: 1, loopCount: 4}`; and `run` as `run.order`;
+     - every parameter the string leaves out, at its default as the export
+       records it: `maxKeypoints` 300, `processingBox` 480 × 360 (no
+       `?procWidth=` or `?procHeight=`), `target.file`
+       `targets/pinball.wnft` (no `?targetFile=`), `camera` `null`, and
+       each option `?tracker=` can set present in `tracker.options` and
+       equal to the package's default;
+     - `window=2000`, the one value the export does not record:
+       `windowSize` is the number of frames held, not the cap. Its effect
+       is read instead: `ticks` equals `windowSize`, so no frame was lost.
+
+     So the comparison is exact for everything the export records. The
+     string itself is not in the export: comparing it character for
+     character would need each run's URL kept beside its export.
