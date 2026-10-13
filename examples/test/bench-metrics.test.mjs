@@ -2496,6 +2496,13 @@ describe("accountingError", () => {
             "detection accounting: dropped is -1, not a whole number ≥ 0",
         );
         expect(accountingError({ requests: 1 })).toMatch(/: posted is undefined, not a whole number/);
+        // Only text is quoted: JSON would print NaN and Infinity as null.
+        expect(accountingError({ ...balanced, requests: NaN })).toBe(
+            "detection accounting: requests is NaN, not a whole number ≥ 0",
+        );
+        expect(accountingError({ ...balanced, posted: Infinity })).toBe(
+            "detection accounting: posted is Infinity, not a whole number ≥ 0",
+        );
     });
 
     it("says it in one line, whatever is wrong", () => {
