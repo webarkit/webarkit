@@ -336,13 +336,17 @@ exported as two pure functions, so that the application can run it where it
 likes — in a worker it owns — and hand the result back:
 
 ```ts
+// The detection options (see Options below), the same on both sides: the
+// worker detects in the tracker's place.
+const detectionOptions = { maxSceneKeypoints: 300 };
+
 // In the worker, once: the same target, its own backend.
-const setup = prepareDetection(cv, target, { maxSceneKeypoints: 300 });
+const setup = prepareDetection(cv, target, detectionOptions);
 // In the worker, per request: a fixed-shape Detection, safe to postMessage.
 const detection = detectTarget(cv, setup, frame, timestampMs);
 
 // On the main thread.
-const tracker = new NftTracker(cv, target, K, { externalDetection: true });
+const tracker = new NftTracker(cv, target, K, { externalDetection: true, ...detectionOptions });
 const result = tracker.process(frame, timestampMs); // no lock, no detection:
 // LOST, "no-detection". Ask for one — while none is in flight, which is the
 // application's policy to keep: the tracker asks on every lost frame.
@@ -411,10 +415,20 @@ numerical singularity tests in `predictHomography` and `robustHomography`
 documented, with the measurement behind it, where it is defined in
 [`src/tracker.ts`](./src/tracker.ts).
 
+The four detection options are `prepareDetection`'s as well, which the
+constructor calls, and are checked there in the same way; they are defined in
+[`src/detection.ts`](./src/detection.ts). A worker that detects for an
+`externalDetection` tracker passes `prepareDetection` the values the tracker
+was given, or its detections are not the ones the tracker would have made.
+
 | Option | Default | What it bounds |
 |---|---|---|
 | `detectionOnly` | `false` | Never track |
 | `externalDetection` | `false` | Never detect: the application hands detections to `process` |
+| `sceneLevels` | 1 | Pyramid levels `detect` searches in the frame; an integer ≥ 1 |
+| `maxSceneKeypoints` | 300 | `detect`'s keypoint budget in the frame; an integer ≥ 1 |
+| `ratio` | 0.8 | `match`'s ratio test; in `(0, 1]` |
+| `ransacThreshold` | 4 px | `estimateHomography`'s inlier threshold; finite and > 0 |
 | `maxFrameLevels` | 4 | Frame pyramid levels; fewer are built when the patches start on fewer (one on the camera path) |
 | `alignMaxIterations`, `alignEpsilon` | 30, 0.01 px | `alignPatch`'s cap and convergence step |
 | `photometric` | `true` | Gain and bias estimated per patch |
