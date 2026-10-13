@@ -233,14 +233,17 @@ function checkPath(path) {
  * `detectionUse`, absent or `null` — which `detectionUseFallbackFrames` counts.
  * In a worker run there may be none: its waiting frames do not detect, and a
  * frame read as one that did would bias every detection metric, so `caller`
- * refuses it, in one line naming the frame and its media time.
+ * refuses it, in one line naming the frame and its media time. The frame is
+ * numbered in `window`, the frames the caller was given, of which `frames` may
+ * be the counted loops': as {@link unwrapMediaTimes} numbers the frames it
+ * refuses, so that two refusals of one run name a frame alike.
  */
-function fallbackFrames(frames, path, caller) {
+function fallbackFrames(frames, path, caller, window = frames) {
     const fallback = frames.filter((f) => f.detectionUse == null);
     if (path === "worker" && fallback.length > 0) {
         const f = fallback[0];
         throw new RangeError(
-            `${caller}: frame ${frames.indexOf(f)} of a worker run (media time ${f.mediaTimeSeconds} s) has no detectionUse, which would be read as a detection on the frame loop: a worker run's waiting frames do not detect`,
+            `${caller}: frame ${window.indexOf(f)} of a worker run (media time ${f.mediaTimeSeconds} s) has no detectionUse, which would be read as a detection on the frame loop: a worker run's waiting frames do not detect`,
         );
     }
     return fallback;
@@ -264,7 +267,7 @@ function fallbackFrames(frames, path, caller) {
 export function stageSummary(frames, { stages, clipDurationS = null, loops = null, path = null }) {
     checkPath(path);
     const read = loops ? countedLoopFrames(frames, { clipDurationS, ...loops }) : frames;
-    fallbackFrames(read, path, "stageSummary");
+    fallbackFrames(read, path, "stageSummary", frames);
     const summary = {};
     for (const [stage, samples] of stageSamples(read, stages)) {
         const values = samples.sort((a, b) => a - b);
@@ -941,7 +944,7 @@ export function summarizeRun(
 ) {
     checkPath(path);
     const frames = loops ? countedLoopFrames(runFrames, { clipDurationS, ...loops }) : runFrames;
-    const fallback = fallbackFrames(frames, path, "summarizeRun");
+    const fallback = fallbackFrames(frames, path, "summarizeRun", runFrames);
     const states = { LOST: 0, DETECT: 0, TRACK: 0 };
     const lockLosses = {};
     for (const f of frames) {

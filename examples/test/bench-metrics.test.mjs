@@ -1867,6 +1867,24 @@ describe("summarizeRun", () => {
             expect(summarizeRun(lacking).detectionUseFallbackFrames).toBe(1);
         });
 
+        // #95, found by the review of the validity fixes: with counted loops the refusal numbered
+        // the frame among the counted loops' frames, while the clip-duration refusal numbers it in
+        // the window. Both now number it in the window.
+        it("numbers the frame in the window, as the clip-duration refusal does, when loops are counted", () => {
+            const run = [
+                current[0], // loop 0: the warm-up
+                rec("LOST", "none", 0.5),
+                rec("LOST", "none", 0.9),
+                rec("LOST", "none", 0.05), // loop 1: the first counted frame
+                rec("LOST", undefined, 0.5), // window frame 4, counted frame 1
+                rec("LOST", "none", 0.05), // loop 2
+            ];
+            const counted = { clipDurationS: 1, loops: { firstLoop: 1, loopCount: 1 }, path: "worker" };
+            const named = /: frame 4 of a worker run \(media time 0\.5 s\) has no detectionUse/;
+            expect(() => summarizeRun(run, counted)).toThrow(named);
+            expect(() => stageSummary(run, { stages: ["acquire", "total"], ...counted })).toThrow(named);
+        });
+
         it("counts the frames an older export's synchronous summary reads by the fallback", () => {
             const e = JSON.parse(
                 readFileSync(`${dir}2026-09-29-tab9-tuning-r2-p48-s16-wall.json`, "utf8"),
