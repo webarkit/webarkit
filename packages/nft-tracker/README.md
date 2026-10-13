@@ -337,8 +337,8 @@ likes — in a worker it owns — and hand the result back:
 
 ```ts
 // The detection options (see Options below), the same on both sides: the
-// worker detects in the tracker's place.
-const detectionOptions = { maxSceneKeypoints: 300 };
+// worker detects in the tracker's place. Typed, so a misspelt key is an error.
+const detectionOptions: DetectTargetOptions = { maxSceneKeypoints: 300 };
 
 // In the worker, once: the same target, its own backend.
 const setup = prepareDetection(cv, target, detectionOptions);
@@ -424,9 +424,11 @@ documented, with the measurement behind it, where it is defined in
 
 The four detection options are `prepareDetection`'s as well, which the
 constructor calls, and are checked there in the same way; they are defined in
-[`src/detection.ts`](./src/detection.ts). A worker that detects for an
-`externalDetection` tracker passes `prepareDetection` the values the tracker
-was given, or its detections are not the ones the tracker would have made.
+[`src/detection.ts`](./src/detection.ts). An `externalDetection` tracker
+checks them but never detects with them: only what the worker passes
+`prepareDetection` decides its detections. So the worker passes the values
+the tracker was given, or its detections are not the ones the tracker would
+have made in the default mode.
 
 | Option | Default | What it bounds |
 |---|---|---|
