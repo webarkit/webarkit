@@ -53,6 +53,7 @@ import {
     parseRunParams,
     parseTrackerOverrides,
     percentile,
+    postToArrivalSamples,
     proxyRatio,
     reacquisitions,
     reprojectCorners,
@@ -1255,6 +1256,21 @@ describe("frame time and where detection's time goes", () => {
         expect(w.onLoop.share).toBeCloseTo(0.6 / 64.7, 12);
         expect(w.offLoop.workerMs).toEqual(stats([70]));
         expect(w.postToArrivalMs).toEqual(stats([75]));
+    });
+
+    // #95, Task 8: the filter was written twice, here and in the transfer's profile. One
+    // definition now, which both read.
+    it("takes one post-to-arrival sample per job that came back, in job order", () => {
+        const jobs = [
+            { postedAtMs: 10, arrivedAtMs: 85 },
+            { postedAtMs: 100, arrivedAtMs: null }, // in flight or held at Stop
+            { postedAtMs: 200 }, // an older record with no arrival field
+            { postedAtMs: null, arrivedAtMs: 300 },
+            { postedAtMs: 400, arrivedAtMs: 510 },
+        ];
+        expect(postToArrivalSamples(jobs)).toEqual([75, 110]);
+        expect(postToArrivalSamples([])).toEqual([]);
+        expect(detectionTime([], jobs).postToArrivalMs).toEqual(stats(postToArrivalSamples(jobs)));
     });
 
     it("leaves a job that never came back out of the latency, handler and worker statistics", () => {

@@ -751,6 +751,20 @@ export function unlockedResidualMs(frames) {
     return stats(finite(residuals));
 }
 
+/**
+ * Each job's latency from its post to its result's arrival, `arrivedAtMs −
+ * postedAtMs` on the main thread's clock, in job order, over the jobs that
+ * came back: a job that never arrived, posted and still in flight or held at
+ * Stop, has no latency, and a `null` would otherwise subtract as 0. The one
+ * definition `detectionTime.postToArrivalMs` and the transfer's worker
+ * latencies (`transferPlan`) both read.
+ */
+export function postToArrivalSamples(jobs) {
+    return jobs
+        .filter((j) => Number.isFinite(j.postedAtMs) && Number.isFinite(j.arrivedAtMs))
+        .map((j) => j.arrivedAtMs - j.postedAtMs);
+}
+
 /** Seconds of video between consecutive frames, a loop wrap (media time going back) counting for nothing. */
 function coveredVideoSeconds(frames) {
     let seconds = 0;
@@ -791,10 +805,7 @@ export function detectionTime(
     }
     const handlers = finite(jobs.map((j) => j.handlerMs));
     const workers = finite(jobs.map((j) => j.workerMs?.total));
-    // A job that never arrived has no latency: null would otherwise subtract as 0.
-    const arrivals = jobs
-        .filter((j) => Number.isFinite(j.postedAtMs) && Number.isFinite(j.arrivedAtMs))
-        .map((j) => j.arrivedAtMs - j.postedAtMs);
+    const arrivals = postToArrivalSamples(jobs);
     const onLoopMs = stagesMs + sum(posts) + sum(handlers);
     const loopMs = totalMs + sum(handlers);
     const counted = loops ? countedLoops({ clipDurationS, ...loops }) : null;
@@ -1769,8 +1780,8 @@ function transferSkip(e, clips) {
  * a detection takes in that mode, the acquisition a frame costs it, and the
  * tracking step. `named` are `{ name, e }` of one `path`.
  *
- * - `latencyMs`: the worker's `arrivedAtMs − postedAtMs` over the jobs that
- *   came back (a job that never did has none); the synchronous mode's, the
+ * - `latencyMs`: the worker's {@link postToArrivalSamples}, over the jobs
+ *   that came back (a job that never did has none); the synchronous mode's, the
  *   sum of the `DETECTION_STAGES` timings of each frame that ran the tracker's
  *   own detection (`detectionUse` internal, as {@link framesForStage} reads
  *   it). Both are counted from the end of the detected frame's main-thread
@@ -1790,13 +1801,7 @@ function transferProfile(path, named) {
     const acquire = [];
     const steps = [];
     for (const { e } of named) {
-        if (path === "worker") {
-            for (const job of e.detection?.jobs ?? []) {
-                if (Number.isFinite(job.postedAtMs) && Number.isFinite(job.arrivedAtMs)) {
-                    latencyMs.push(job.arrivedAtMs - job.postedAtMs);
-                }
-            }
-        }
+        if (path === "worker") latencyMs.push(...postToArrivalSamples(e.detection?.jobs ?? []));
         for (const f of e.frames) {
             if (path === "sync" && detectionUseOf(f) === "internal") {
                 const stages = finite(DETECTION_STAGES.map((stage) => f.timings?.[stage]));
