@@ -95,6 +95,17 @@ describe("compareExports", () => {
         expect(r.first).toMatchObject({ posedFrames: 4, jitterWindows: 0, jitterPx: null });
     });
 
+    // The independent check of #96: nothing pinned that each export's own clip duration is
+    // what its wraps are read by; passing none survived.
+    it("reads each run's wraps by its own clip duration, where it records one", () => {
+        // A restart that skips 0.7 s across the wrap: only the duration tells it from one.
+        const frames = [at(11.0), at(11.3), lost(0.4), at(0.6), at(0.8)];
+        expect(() => compareExports(run(frames), run(frames))).not.toThrow();
+        expect(() =>
+            compareExports(run(frames, { clipDurationS: 12 }), run(frames, { clipDurationS: 12 })),
+        ).toThrow(/^frame 2: media time 0\.4 s, after 11\.3 s, is not the clip restarting: it skips 1\.1 s/);
+    });
+
     it("matches media times to the microsecond, not to the last bit", () => {
         expect(
             compareExports(run([at(5.933333)]), run([at(5.9333330000001)])).commonMediaTimes,

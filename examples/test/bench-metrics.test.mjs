@@ -615,6 +615,20 @@ describe("isLoopWrap: a step back is a wrap only when the clip restarts", () => 
         expect(() => isLoopWrap(at(0.9), at(-0.2))).toThrow(RangeError);
     });
 
+    // The independent check of #96: no test pinned the 0.5 s bound itself; 0.6 survived.
+    it("draws each bound at 0.5 s, inclusive where the rule says at most", () => {
+        // Into the clip: 0.5 s is near its start, 0.55 s is not.
+        expect(isLoopWrap(at(11.9), at(0.5))).toBe(true);
+        expect(() => isLoopWrap(at(11.9), at(0.55))).toThrow(/more than 0\.5 s into the clip/);
+        // Across the wrap, with the duration: 0.5 s may be skipped, 0.55 s may not.
+        expect(isLoopWrap(at(11.6), at(0.1), 12)).toBe(true);
+        expect(() => isLoopWrap(at(11.55), at(0.1), 12)).toThrow(/skips 0\.55 s across the wrap/);
+        // Without it, the step back must be more than 0.5 s: exactly 0.5 s is refused.
+        // (0.75 and 0.25 are exact in binary, so the step is exactly 0.5 s.)
+        expect(isLoopWrap(at(0.75), at(0.2))).toBe(true);
+        expect(() => isLoopWrap(at(0.75), at(0.25))).toThrow(/steps back 0\.5 s, not more than 0\.5 s/);
+    });
+
     it("refuses, given the clip's duration, a restart that skips more than 0.5 s across the wrap", () => {
         // From 11.0 s to 0.1 s on an 11.96 s clip: 1.06 s skipped at the wrap, a stall or a seek.
         // Without the duration nothing tells it from the clip restarting.
