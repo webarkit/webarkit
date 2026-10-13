@@ -428,7 +428,7 @@
       import { toGrayTimed } from "./js/pinball-shared.mjs";
       import { instrumentBackend } from "./js/instrument-backend.mjs";
       import { createDetectionPolicy } from "./js/detection-policy.mjs";
-      import { countLateReply, routeReply } from "./js/detection-replies.mjs";
+      import { countLateReply, failedRuns, routeReply } from "./js/detection-replies.mjs";
       import {
         accountingError,
         clockResolution,
@@ -1358,13 +1358,13 @@
 
       /**
        * The worker cannot be used (`onerror`, a message it cannot have meant): an
-       * `init` in progress is rejected with why, and a live run fails. With no
-       * run live, the failure attaches to the run it is about — `run`, the one
-       * the reply's route names (`routeReply`), else the last run: an `onerror`
-       * names none — when that is a worker run that has ended and not failed.
-       * Dropped, it left that run's Download exporting it as `done`, with
-       * `failure: null`, although its worker then failed (#95, from Qodo's
-       * review of #100). Otherwise the error is shown, if it is the worker's
+       * `init` in progress is rejected with why, and the runs `failedRuns`
+       * (js/detection-replies.mjs) names fail: the live run, or with none live,
+       * the run the reply's route names (`run`) and the last run, the one a
+       * Download exports, each if it is a worker run that has ended and not
+       * failed. Dropped, a failure left the run's Download exporting it as
+       * `done`, with `failure: null`, although its worker then failed (#95, from
+       * Qodo's review of #100). Otherwise the error is shown, if it is the worker's
        * first: a later one is logged instead, so the error line keeps the cause
        * the failed run's export refusal names. Start stays disabled either way.
        *
@@ -1382,15 +1382,9 @@
         const pending = detectionWorker.pendingInit;
         detectionWorker.pendingInit = null;
         if (pending) pending.reject(new Error(message));
-        if (liveRun) {
-          failRun(liveRun, message);
-          return;
-        }
-        const ended = run ?? lastRun;
-        if (ended?.path === "worker" && ended.failure === null) {
-          failRun(ended, message, { afterEnd: true });
-          return;
-        }
+        const failing = failedRuns(run, { liveRun, lastRun });
+        for (const r of failing) failRun(r, message, { afterEnd: r !== liveRun });
+        if (failing.length > 0) return;
         if (!pending) {
           if (first) showError(message);
           else console.error(`The detection worker failed again, after "${detectionWorker.failure}": ${message}`);

@@ -27,7 +27,7 @@
 
 import { describe, expect, it } from "vitest";
 import { createDetectionPolicy } from "../js/detection-policy.mjs";
-import { countLateReply, routeReply } from "../js/detection-replies.mjs";
+import { countLateReply, failedRuns, routeReply } from "../js/detection-replies.mjs";
 
 // The page's run records, as far as the routing reads them: an id, the jobs posted, the one in
 // flight, the stale replies counted, and the run's own policy.
@@ -238,5 +238,44 @@ describe("routeReply", () => {
         const odd = routeReply({ type: "progress" }, none);
         expect(odd.kind).toBe("fail");
         expect(odd.message).toMatch(/unknown type: progress/);
+    });
+});
+
+// #95, Qodo's finding 3 on #100, and the independent check of its fix: which runs a worker
+// failure fails. The page's `workerFailed` reads this, so its half now has a Node test.
+describe("failedRuns", () => {
+    // The page's run records, as far as this reads them.
+    const ended = (id, o = {}) => ({ id, path: "worker", endedBy: "done", failure: null, ...o });
+    const live = (id) => ended(id, { endedBy: null });
+
+    it("fails the live run, whatever run the failure names", () => {
+        const a = ended(1);
+        const b = live(2);
+        expect(failedRuns(a, { liveRun: b, lastRun: b })).toEqual([b]);
+        expect(failedRuns(null, { liveRun: b, lastRun: b })).toEqual([b]);
+    });
+
+    it("with no run live, fails the run it names and the last run, which Download would export", () => {
+        // The independent check's reproduction: run A stopped, its late reply counted; run C
+        // ended done; the worker answers A's job again. The route names A, and C is the run a
+        // Download takes: both fail, so C's export is refused.
+        const a = ended(1, { endedBy: "stopped" });
+        const c = ended(3);
+        expect(failedRuns(a, { liveRun: null, lastRun: c })).toEqual([a, c]);
+        // Named and last the same run: failed once.
+        expect(failedRuns(c, { liveRun: null, lastRun: c })).toEqual([c]);
+        // An onerror names no run: the last run.
+        expect(failedRuns(null, { liveRun: null, lastRun: c })).toEqual([c]);
+    });
+
+    it("leaves out a run that already failed, one not ended, and one that is not a worker run", () => {
+        const failed = ended(1, { endedBy: "failed", failure: "the first cause" });
+        expect(failedRuns(failed, { liveRun: null, lastRun: failed })).toEqual([]);
+        const c = ended(2);
+        expect(failedRuns(failed, { liveRun: null, lastRun: c })).toEqual([c]);
+        expect(failedRuns(live(4), { liveRun: null, lastRun: null })).toEqual([]);
+        expect(failedRuns(null, { liveRun: null, lastRun: ended(5, { path: "sync" }) })).toEqual([]);
+        // No run at all: nothing to fail, and the page only shows the failure.
+        expect(failedRuns(null, { liveRun: null, lastRun: null })).toEqual([]);
     });
 });
