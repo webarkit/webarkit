@@ -3506,9 +3506,11 @@ they check.
 **A run the loop-wrap rule refuses** (added 2026-10-13, before any M4 run;
 [#113](https://github.com/webarkit/webarkit/pull/113)). A step back in media
 time that is not the clip restarting refuses the run on the page, naming the
-frame: `isLoopWrap`, with the 0.5 s bound
-[#114](https://github.com/webarkit/webarkit/issues/114) fixes before the
-first counted run.
+frame: `isLoopWrap`, with its 0.5 s bound, whose derivation and revisiting
+[#114](https://github.com/webarkit/webarkit/issues/114) holds. *Corrected
+on 2026-10-13: the sentence restated #114's first criterion ("the 0.5 s
+bound #114 fixes before the first counted run"). It now points at #114
+instead.*
 
 - **It is a rejected sample, not a failed measurement.** The run is re-run,
   and it is not recorded. Its export, if the page lets one be taken, is not
@@ -3555,11 +3557,13 @@ first counted run.
 
 [#107](https://github.com/webarkit/webarkit/issues/107)'s plan is registered
 here, as M3's was, and is written as it is decided. These are its first
-entries: the setup every counted run shares, and the pre-flight run of
-2026-10-13. The rest of what #107 asks of the plan is not written yet:
-predictions with what would refuse each, the adoption rule, the run order,
-the validity checks and the stopping rules. No counted run is made before it
-is.
+entries: the setup every counted run shares, the pre-flight run of
+2026-10-13, and, added the same day after it, the reading of the
+independent check of the evidence guards and three validity rules. The rest
+of what #107 asks of the plan is not written yet: predictions with what
+would refuse each, the adoption rule, the run order, the validity checks
+beyond those three, and the stopping rules. No counted run is made before
+it is.
 
 **The setup, the same for every counted run.**
 
@@ -3687,3 +3691,187 @@ validity checks; item 4 now decides it.*
 - **Its figures for #114:** the bound's three inputs, over the whole run
   and over the counted loops. They are in #114's comment of 2026-10-13,
   and move into this plan when the plan is written.
+
+**The independent check of the evidence guards (2026-10-13).**
+
+- **What ran.** An agent that did not write the code mutated the evidence
+  guards at `37dc6d4`, one at a time, in a separate worktree. A fresh
+  install and build there reproduced the bundle `3a2567c15d59…` byte for
+  byte.
+  - Of 258 mutations, 179 were killed by a test or a page check, 1 hung
+    the test suite (T3), and 78 survived, 6 of them equivalent.
+  - Its survivors, with their IDs, and the hang are
+    [#120](https://github.com/webarkit/webarkit/issues/120). The two gaps
+    it found in the code itself are
+    [#119](https://github.com/webarkit/webarkit/issues/119).
+- **What a survivor means.** A surviving mutant means that no test would
+  notice the change, not that the code is wrong. Whether the campaign can
+  run on `37dc6d4` turns on the guards' behaviour, not on their tests.
+  - For every survivor whose condition the agent could produce from a run,
+    a replay or a build, it produced that condition on the unmutated build
+    first. The guard refused each time. No guard it could trigger failed to
+    guard.
+  - It did not trigger six: PG23 (a racy window), RS2, RE1, RE2 and TPR1
+    (each needs a second fault to show), and BB2 (no trigger could be
+    built). The six equivalent mutants change nothing reachable.
+- **The six it did not trigger, against a counted run on the tablet,**
+  given the pinned parameters and the frozen build:
+  - **PG23,** `bench-nft.html:2359`, a worker that fails after
+    `workerReady` while the source starts: **can occur.** The pinned
+    string allows `detection=worker`, and a worker can fail at any moment.
+    It was produced on the unmutated build (below).
+  - **RS2,** `replay-clips.mjs:1202`, `--sequence` refusing an export whose
+    box fits the clip to another resolution: cannot. It is a desktop replay
+    of an export, never run on the tablet.
+  - **RE1,** `replay-clips.mjs:840`, an `--external` arm whose accounting
+    does not balance: cannot. It is a desktop replay.
+  - **RE2,** `replay-clips.mjs:907`, an `--external` arm that does not
+    reach the loop after its counted ones: cannot. It is a desktop replay.
+  - **TPR1,** `tuning-probe.mjs:151`, the tuning probe diverging from the
+    tracker: cannot. It is a desktop tool the replay runs.
+  - **BB2,** `build-provenance.mjs:172`, the build refusing a bundle whose
+    metafile output still imports: cannot. It runs only when the bundle is
+    built, and the campaign's build is never redone. That the campaign
+    never builds the bundle is true because of the freeze: here the freeze
+    works as a proof, not only as a constraint.
+- **PG23, produced on the unmutated build (2026-10-13, before any counted
+  run).** Desktop headless Chrome 155 ran the pinned string's worker form,
+  with `run=1`. It used the campaign tree, served with `no-store`, and
+  changed no file. Through the DevTools protocol, the page's worker was made
+  to fail inside `startBundled`'s `video.play()`: after `workerReady`, and
+  before `runBenchmark` makes the run live.
+  - **Without the fault (the control),** the run started and reached
+    `tracking`.
+  - **With it, Start refused within 217 ms.** The status went to `failed`.
+    The error line named the worker's own failure, then "The run did not
+    start, and nothing was exported." Start stayed disabled.
+  - **No run went live,** so no 5 s reply timeout hid the cause. That is
+    the guard at `:2359`: its throw lands in Start's catch (`:2382`), whose
+    hint is the one for a failed worker.
+  - **So the one of the six that a counted run on the tablet can meet**
+    has been produced on the unmutated build, and its guard refused.
+  - **Why a result from desktop Chrome 155 transfers to the tablet's
+    Chrome 154.** The reason is written here, not assumed: twice already,
+    the maintainer notes, one environment was assumed to stand for
+    another, wrongly.
+    - The guard is plain JavaScript control flow,
+      `if (run.path === "worker" && detectionWorker.failure !== null) throw new Error(detectionWorker.failure);`,
+      and a catch reached only by that throw. No platform API is involved
+      in either, so nothing that differs between the two browsers is on
+      that path.
+    - One step did involve a platform API, and the exercise stood in for
+      it: a worker's failure reaching the page as an `error` event on its
+      `Worker`. The exercise dispatched that event itself. That the browser
+      delivers a real failure as that event is what every worker-failure
+      guard on the page rests on (PG30, PG32); PG23 adds no new
+      assumption.
+- **The stop condition was the maintainer's, and it was the wrong
+  instrument.** It stopped the campaign's start on "a guard that does not
+  refuse when mutated", and so on 78 survivors. It conflated test coverage
+  with guard behaviour. Ruled on 2026-10-13: the campaign starts at
+  `37dc6d4`.
+- **What it leaves.** From now on, the campaign's data rests on guards
+  with no tests.
+  - Closing that is the first work of the window after the campaign
+    (#120).
+  - No test is added before then. The code cannot change, so a test now
+    would gain nothing; `examples/test/` is covered neither by the manifest
+    nor by Start; and one cv-backend test is already flaky, failing once
+    in about 25 runs during the check.
+  - Validity rules 1 and 2, below, cover the two code gaps at analysis
+    time.
+
+**Validity rules, read at analysis time from each committed export.**
+Registered on 2026-10-13, before any counted run. A run that fails one is
+not counted.
+
+1. **`run.failure` is `null`, and `run.endedBy` is `"done"`.** A run ended
+   by Stop is never counted.
+   - **The reason: the check's three page survivors that stick.** Break the
+     failure handling of a throw in a frame (PG17), of the worker path
+     (PG18) or of the worker's 5 s timeout (PG29), and the run does not
+     fail: it sticks. A stuck run can only be ended by Stop, so requiring a
+     run that ended itself closes that signature without touching code.
+   - **Reading `run.failure` as well covers #119's second gap:** nothing
+     that reads `protocol.sessionRun` reads `run.failure`.
+2. **The export's manifest (`provenance.manifest`) names head
+   `37dc6d4fa3507992bbe7e13cd8da7cb759b7265c`, `clean: true`, and an empty
+   `dirtyPaths`.**
+   - **The analysis compares `clean` with `dirtyPaths` itself,** because
+     the page does not (#119). The flag is not trusted: the flag and the
+     list must agree.
+   - **The head is compared in full,** so a `head` of `""` fails the rule.
+3. **The parameters are the pinned string's, exactly.** Every counted
+   run's parameter string is one of these two, character for character,
+   with nothing else on it:
+   ```
+   ?mode=tracking&target=wnft&detection=<path>&clip=<clip>&loops=4&window=2000&run=<n>
+   ?mode=stateless&target=wnft&clip=<clip>&loops=4&window=2000&run=<n>
+   ```
+   - **The slots:** `<path>` is `sync` or `worker`; `<clip>` is
+     `pinball-static.mp4`, `pinball-bench.mp4` or
+     `pinball-bench-table.mp4`; and `<n>` is the run's place in the order.
+     The run order, not yet written, fills them. The two forms are M3's
+     (its runbook's step 4). The pre-flight run used the first, without
+     `&run=`.
+   - **The reason: G14b.** `sessionRunGaps` checks only the processing
+     box's width, so a wrong `?procHeight=` exports as a valid session run.
+   - **How it is read.** The export does not record its URL; it records
+     each parameter's effect. So the analysis compares, one field at a
+     time, what the export records with what the pinned string sets:
+     - `mode`; `target=wnft` as `target.source` `wnft`; `detection` as
+       `detection.path` (`sync` for the stateless form, which sets none);
+       `clip` as `bundledClip`, with `source` `bundled`; `loops=4` as
+       `loops` `{firstLoop: 1, loopCount: 4}`; and `run` as `run.order`;
+     - every parameter the string leaves out, at its default as the export
+       records it: `maxKeypoints` 300, `processingBox` 480 × 360 (no
+       `?procWidth=` or `?procHeight=`), `target.file`
+       `targets/pinball.wnft` (no `?targetFile=`), `camera` `null`, and
+       each option `?tracker=` can set present in `tracker.options` and
+       equal to the package's default;
+     - `window=2000`, the one value the export does not record:
+       `windowSize` is the number of frames held, not the cap. Its effect
+       is read instead: `ticks` equals `windowSize`, so no frame was lost.
+
+     So the comparison is exact for everything the export records. The
+     string itself is not in the export.
+   - **The recorded URL.** Each counted run is opened with one command,
+     never typed:
+     `adb -s Tab9WEEA0001504 shell "am start -a android.intent.action.VIEW -d '<URL>' com.android.chrome"`.
+     - The `<URL>` it passes is kept beside the export as
+       `<the export's name>.url.txt`, and committed with it.
+     - It must read `http://localhost:8093/examples/bench-nft.html`,
+       followed by the pinned string with its slots filled, character for
+       character.
+   - **The two checks are independent, and must agree.**
+     - The field check catches a parameter whose effect is wrong.
+     - The recorded URL catches a parameter the export reflects not at
+       all.
+     - The URL attests what was asked, not what the browser received.
+
+     So neither is authoritative alone. A run passes rule 3 only when both
+     pass.
+   - **Rule 3 verifies the parameters' effects, which is weaker than
+     verifying the parameters.** `window=2000` is the proof. The pre-flight
+     run asked for 2000, and its export records `windowSize` 623, the frames
+     it held, and the 2000 nowhere.
+   - **Is there a URL parameter whose effect the export records nowhere?
+     Yes: `camera`.**
+     - On a bundled-clip run, `?camera=` only presets the webcam's control.
+       The page reads it for a webcam source alone, and the export's
+       `camera` is `null` for any other run.
+     - So `camera` is invisible to both checks: the field check cannot see
+       its effect, and the recorded URL shows only that it was asked.
+     - The same holds for a parameter the page does not read at all, and
+       for a repeat of one it reads, since only the first is read.
+     - The pinned string admits none of them, so the recorded URL refuses
+       a run whose command carried one. What none of the checks could see
+       is such a parameter reaching the browser some other way. On a
+       bundled-clip run, it would change nothing the run does.
+     - **`camera`'s inertness depends on the run's shape.**
+       - Counted runs are bundled-clip runs: the pinned string's `clip=`
+         makes the source `bundled`. A webcam run is out of scope for this
+         campaign.
+       - If one is ever wanted, `camera` must first be made visible to a
+         check. On a webcam run it would become live and stay invisible in
+         the same moment.

@@ -51,13 +51,12 @@ release pull request's body and the GitHub Release's notes.
     `?loops=` run a loop early. A step back is now a wrap only near the clip's start, with at most
     0.5 s skipped across the wrap; any other step back refuses the run, naming the frame. No
     committed export's figures change.
-    - **The 0.5 s bound is calibrated.** It is M3's stall check's: round 2's largest gap on
-      Tab_9_WiFi, 240.8 ms, doubled and rounded up
-      ([`docs/benchmarks/2026-10-01-m3-session-additions.md`](docs/benchmarks/2026-10-01-m3-session-additions.md)).
+    - **Where the 0.5 s bound comes from, and its status, are
+      [#114](https://github.com/webarkit/webarkit/issues/114)'s.**
     - **The fallback is chosen.** Without a clip duration, the rule asks for a step back of more
       than 0.5 s; that reuses the value, and was not derived.
-    - **M4's campaign re-derives it if it must.**
-      [#114](https://github.com/webarkit/webarkit/issues/114) records when, and by what rule.
+    - **Its revisiting is [#114](https://github.com/webarkit/webarkit/issues/114)'s:** when, and
+      by what rule.
     - **A refused run is a rejected sample.** M4's runbook re-runs it and does not record it.
   - **`replay-clips --transfer` recomputes each export's protocol** with the tracker's own
     defaults, and refuses a record the rule does not bear out, rather than trust
