@@ -3503,6 +3503,24 @@ they check.
    run with `true` is not refused, and the session record says what it
    decided about that run.
 
+**A run the loop-wrap rule refuses** (added 2026-10-13, before any M4 run;
+[#113](https://github.com/webarkit/webarkit/pull/113)). A step back in media
+time that is not the clip restarting refuses the run on the page, naming the
+frame: `isLoopWrap`, with the 0.5 s bound
+[#114](https://github.com/webarkit/webarkit/issues/114) fixes before the
+first counted run.
+
+- **It is a rejected sample, not a failed measurement.** The run is re-run,
+  and it is not recorded. Its export, if the page lets one be taken, is not
+  copied into `docs/benchmarks/`, and nothing reads its numbers. The re-run
+  that replaces it is named in the session record, as step 7 names every
+  re-run.
+- **A refusal naming a frame is the rule doing its job, not a defect to
+  debug mid-campaign.** On a loaded device, a stall that lands on a wrap is
+  expected now and then, and the rule exists to keep that run out.
+- **The bound is not changed mid-campaign.** How many re-runs a block allows
+  before the session stops is for the campaign's plan to register (#107).
+
 **After the last run.**
 
 6. **Step 2 again, printing nothing.** A tree that changed during the

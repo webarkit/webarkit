@@ -27,7 +27,7 @@
 
 import { describe, expect, it } from "vitest";
 import { createDetectionPolicy } from "../js/detection-policy.mjs";
-import { countLateReply, routeReply } from "../js/detection-replies.mjs";
+import { countLateReply, failedRuns, routeReply } from "../js/detection-replies.mjs";
 
 // The page's run records, as far as the routing reads them: an id, the jobs posted, the one in
 // flight, the stale replies counted, and the run's own policy.
@@ -152,6 +152,42 @@ describe("routeReply", () => {
         expect({ jobs: b.jobs, staleReplies: b.staleReplies }).toEqual(bBefore);
     });
 
+    // #95, from the triage of Qodo's review of #100 (finding 3): a worker failure delivered after
+    // a run ended was dropped, and the run exported as clean. The page now attaches it to the run
+    // the route names, so every failure about a run the page has must name that run, an ended
+    // run's included; one that names none the page attaches to its last run.
+    it("names the run in every failure about a run the page has, an ended one included", () => {
+        const a = newRun(1);
+        // A job answered while the run was live, and consumed, as the page settles one.
+        const answered = post(a);
+        a.policy.arrive({});
+        answered.arrivedAtMs = 120;
+        a.jobInFlight = null;
+        a.policy.take();
+        a.policy.afterProcess({ needsDetection: false, detectionUse: "consumed" }, () => {});
+        answered.outcome = "consumed";
+        const discarded = post(a);
+        end(a);
+        const between = { liveRunId: null, runsById: byId(a) };
+        countLateReply(routeReply(result(a, discarded), between), 900);
+        for (const data of [
+            result(a, answered), // a job the run did not discard unanswered
+            { type: "error", runId: a.id, jobId: answered.jobId, message: "late" },
+            { type: "result", runId: a.id, jobId: 99, detection: {} }, // a job it never posted
+            result(a, discarded), // a second reply, its late one already counted
+        ]) {
+            expect(routeReply(data, between)).toMatchObject({ kind: "fail", run: a });
+            const b = newRun(2);
+            post(b);
+            const during = { liveRunId: b.id, runsById: byId(a, b) };
+            expect(routeReply(data, during)).toMatchObject({ kind: "fail", run: a });
+        }
+        // Nothing the page had: no run to name.
+        expect(routeReply({ type: "bogus" }, between)).toMatchObject({ kind: "fail", run: null });
+        const unknown = { type: "result", runId: 9, jobId: 1, detection: {} };
+        expect(routeReply(unknown, between)).toMatchObject({ kind: "fail", run: null });
+    });
+
     it("fails a reply that names a run the page never had", () => {
         const a = newRun(1);
         post(a);
@@ -202,5 +238,44 @@ describe("routeReply", () => {
         const odd = routeReply({ type: "progress" }, none);
         expect(odd.kind).toBe("fail");
         expect(odd.message).toMatch(/unknown type: progress/);
+    });
+});
+
+// #95, Qodo's finding 3 on #100, and the independent check of its fix: which runs a worker
+// failure fails. The page's `workerFailed` reads this, so its half now has a Node test.
+describe("failedRuns", () => {
+    // The page's run records, as far as this reads them.
+    const ended = (id, o = {}) => ({ id, path: "worker", endedBy: "done", failure: null, ...o });
+    const live = (id) => ended(id, { endedBy: null });
+
+    it("fails the live run, whatever run the failure names", () => {
+        const a = ended(1);
+        const b = live(2);
+        expect(failedRuns(a, { liveRun: b, lastRun: b })).toEqual([b]);
+        expect(failedRuns(null, { liveRun: b, lastRun: b })).toEqual([b]);
+    });
+
+    it("with no run live, fails the run it names and the last run, which Download would export", () => {
+        // The independent check's reproduction: run A stopped, its late reply counted; run C
+        // ended done; the worker answers A's job again. The route names A, and C is the run a
+        // Download takes: both fail, so C's export is refused.
+        const a = ended(1, { endedBy: "stopped" });
+        const c = ended(3);
+        expect(failedRuns(a, { liveRun: null, lastRun: c })).toEqual([a, c]);
+        // Named and last the same run: failed once.
+        expect(failedRuns(c, { liveRun: null, lastRun: c })).toEqual([c]);
+        // An onerror names no run: the last run.
+        expect(failedRuns(null, { liveRun: null, lastRun: c })).toEqual([c]);
+    });
+
+    it("leaves out a run that already failed, one not ended, and one that is not a worker run", () => {
+        const failed = ended(1, { endedBy: "failed", failure: "the first cause" });
+        expect(failedRuns(failed, { liveRun: null, lastRun: failed })).toEqual([]);
+        const c = ended(2);
+        expect(failedRuns(failed, { liveRun: null, lastRun: c })).toEqual([c]);
+        expect(failedRuns(live(4), { liveRun: null, lastRun: null })).toEqual([]);
+        expect(failedRuns(null, { liveRun: null, lastRun: ended(5, { path: "sync" }) })).toEqual([]);
+        // No run at all: nothing to fail, and the page only shows the failure.
+        expect(failedRuns(null, { liveRun: null, lastRun: null })).toEqual([]);
     });
 });

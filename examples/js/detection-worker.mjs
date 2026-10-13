@@ -64,7 +64,7 @@ self.onmessage = async ({ data }) => {
             // target of an earlier one.
             state = null;
             state = await prepareWorkerDetection(data, PREPARE_DEPS);
-            self.postMessage({ type: "ready", targetSha256: state.targetSha256 });
+            self.postMessage({ type: "ready", targetSha256: state.targetSha256, warnings: state.warnings });
         } else if (type === "detect") {
             if (state === null) throw new Error("detect before init: the worker has no target");
             self.postMessage(runWorkerDetection(state, data, RUN_DEPS));

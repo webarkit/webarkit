@@ -119,3 +119,25 @@ export function countLateReply(route, arrivedAtMs) {
     route.job.lateReplyAtMs = arrivedAtMs;
     route.run.staleReplies++;
 }
+
+/**
+ * The runs a worker failure fails — `workerFailed` on the page — given `run`,
+ * the run it is about (a `fail` route's, `null` for an `onerror`, which names
+ * none), and the page's `liveRun` and `lastRun`:
+ *
+ * - the live run, when there is one: the worker failed while it ran;
+ * - else each worker run that has ended (`endedBy` set) and not failed, of the
+ *   run named and the last run. The named run because the failure is about
+ *   it; the last run because it is the one a Download exports, and a run whose
+ *   worker failed after it ended cannot show it was clean (#95, from Qodo's
+ *   review of #100). Failing only the named run left the last run, ended clean
+ *   on the same worker, exporting as `done`.
+ *
+ * Empty when there is none, and the page then only shows the failure.
+ */
+export function failedRuns(run, { liveRun, lastRun }) {
+    if (liveRun) return [liveRun];
+    return [...new Set([run, lastRun])].filter(
+        (r) => r?.path === "worker" && r.endedBy !== null && r.failure === null,
+    );
+}

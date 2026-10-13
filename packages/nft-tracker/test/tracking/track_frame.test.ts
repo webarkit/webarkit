@@ -373,6 +373,9 @@ describe("trackFrame", () => {
         expect(capped.stats.fitConverged).toBe(false);
     });
 
+    // Its own limit, as its neighbours set theirs (#112). Measured: 2.1–2.3 s here (an
+    // i7-9700, idle, three runs on 2026-10-13), 2.8 s on CI (59ea1a4), and 7.1 s on a machine
+    // at 100% CPU, where the 5000 ms default failed it.
     it("survives a prediction up to 4 px off (32/32 within 0.5 px); at 4.25 px 1/32, at 4.5 and 6 px none, and never accepts a wrong fit", () => {
         // 16 directions × 2 views per distance. Past the basin a step may
         // fail, but it never accepts a wrong H: an accepted fit this far off
@@ -398,7 +401,7 @@ describe("trackFrame", () => {
             expect(s.recovered).toBe(recovered);
             expect(s.losses).toEqual(losses);
         }
-    });
+    }, 30_000);
 
     it("recovers from 3.5° of roll and 5% of scale on both views; from 4° of roll or past 8% of scale it may accept a wrong pose, here up to 9.19 px off", () => {
         // On 5 renders of both views, roll to ±3.5° and scale to ±5% recover

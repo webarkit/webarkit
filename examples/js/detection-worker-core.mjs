@@ -53,10 +53,11 @@
  *
  * worker → page
  *
- * - `{ type: "ready", targetSha256 }`: after `init`, when the worker can
- *   detect. `targetSha256` is the SHA-256 of the bytes it decoded, or `null`
- *   where SubtleCrypto is unavailable, so the page can check the worker holds
- *   the target it sent.
+ * - `{ type: "ready", targetSha256, warnings }`: after `init`, when the worker
+ *   can detect. `targetSha256` is the SHA-256 of the bytes it decoded, or
+ *   `null` where SubtleCrypto is unavailable, so the page can check the worker
+ *   holds the target it sent. `warnings` are the decoder's (`{ code, detail }`
+ *   each, none for a clean file), which the page logs as it logs its own.
  * - `{ type: "result", jobId, runId, detection, workerMs }`: the answer to one
  *   `detect`, built by {@link runWorkerDetection}.
  * - `{ type: "error", jobId?, runId?, message }`: a request the worker could
@@ -79,8 +80,9 @@ import { instrumentBackend } from "./instrument-backend.mjs";
  * whatever `prepareDetection` throws on one the backend cannot read or on an
  * option out of its domain.
  *
- * Returns `{ cv, setup, timings, targetSha256 }`, which
- * {@link runWorkerDetection} takes as its `state`.
+ * Returns `{ cv, setup, timings, targetSha256, warnings }`, which
+ * {@link runWorkerDetection} takes as its `state`; `warnings` are the
+ * decoder's, for the `ready` reply.
  */
 export async function prepareWorkerDetection({ targetBytes, options }, deps) {
     const decoded = deps.decode(targetBytes);
@@ -91,7 +93,13 @@ export async function prepareWorkerDetection({ targetBytes, options }, deps) {
     const timings = Object.fromEntries([...DETECTION_STAGES, "pose"].map((stage) => [stage, 0]));
     const cv = instrumentBackend(await deps.createBackend(), timings);
     const setup = deps.prepareDetection(cv, decoded.target, options);
-    return { cv, setup, timings, targetSha256: await deps.sha256Hex(targetBytes) };
+    return {
+        cv,
+        setup,
+        timings,
+        targetSha256: await deps.sha256Hex(targetBytes),
+        warnings: decoded.warnings,
+    };
 }
 
 /**

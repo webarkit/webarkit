@@ -40,6 +40,45 @@ release pull request's body and the GitHub Release's notes.
     the repository with `npx http-server -c-1`. The demos still load each package's own `dist/`.
   - **Replay.** `scripts/replay-clips.mjs` takes `--packages <dist|bundle>`.
 
+### Fixed
+
+- **The bench's guarded paths, before M4's measurements open**
+  ([#96](https://github.com/webarkit/webarkit/issues/96) and
+  [#95](https://github.com/webarkit/webarkit/issues/95)'s `[guarded]` items, the guarded-items
+  half of M4's step 0).
+  - **A loop wrap is the clip restarting.** Any step back in media time used to count as a loop
+    wrap, so a stutter or a seek could fabricate a loop in every metric read per loop, and end a
+    `?loops=` run a loop early. A step back is now a wrap only near the clip's start, with at most
+    0.5 s skipped across the wrap; any other step back refuses the run, naming the frame. No
+    committed export's figures change.
+    - **The 0.5 s bound is calibrated.** It is M3's stall check's: round 2's largest gap on
+      Tab_9_WiFi, 240.8 ms, doubled and rounded up
+      ([`docs/benchmarks/2026-10-01-m3-session-additions.md`](docs/benchmarks/2026-10-01-m3-session-additions.md)).
+    - **The fallback is chosen.** Without a clip duration, the rule asks for a step back of more
+      than 0.5 s; that reuses the value, and was not derived.
+    - **M4's campaign re-derives it if it must.**
+      [#114](https://github.com/webarkit/webarkit/issues/114) records when, and by what rule.
+    - **A refused run is a rejected sample.** M4's runbook re-runs it and does not record it.
+  - **`replay-clips --transfer` recomputes each export's protocol** with the tracker's own
+    defaults, and refuses a record the rule does not bear out, rather than trust
+    `protocol.sessionRun`. M3's committed exports all pass, and their transfer is unchanged.
+  - **A worker failure after a run ended fails that run**, and the run a Download exports, so
+    that Download is refused; it used to be dropped, and the run exported as clean. A later
+    failure no longer replaces the first on the error line.
+  - **Smaller corrections.**
+    - The worker passes on the decoder's warnings.
+    - Start names why a `.wnft` did not load, on both detection paths, where it had pointed at
+      an error line it had just cleared.
+    - A replay arm with external detection exports `detection.path: "worker"` and a new
+      `detection.latencyOf`.
+    - `replay-clips` refuses `--tracking-only` where it does nothing. It also refuses
+      `--packages bundle` on a manifest built without git, where it had thrown a `TypeError`.
+    - `firstStepLatency` keeps a sample detected up to 1 ms past the clip's end.
+    - Refusals number frames alike, and a count recorded as text is quoted.
+  - **`packages/nft-tracker`'s README and `src/tracker.ts`** say what M3's tuning pass did to
+    each default, where they had called the defaults provisional until a pass that has since
+    run. The README also documents the four detection options and their domains.
+
 ## [0.4.0] - 2026-10-01
 
 M3 of [ADR-0001](docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md), detection off the

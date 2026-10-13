@@ -46,8 +46,11 @@
  * result that arrives between frames is `arrive(detection)`; Stop is `stop()`.
  *
  * The counts it keeps are the run's accounting, and they are asserted, not
- * described: see `accountingError` in `bench-metrics.mjs`.
+ * described: see `accountingError` in `bench-metrics.mjs`, whose
+ * `ACCOUNTING_COUNTS` names them, here as there.
  */
+
+import { ACCOUNTING_COUNTS } from "./bench-metrics.mjs";
 
 /**
  * A fresh policy for one run.
@@ -75,14 +78,7 @@ export function createDetectionPolicy() {
     let phase = "idle";
     let detection = null;
     let stopped = false;
-    const counts = {
-        requests: 0,
-        posted: 0,
-        consumptions: 0,
-        ignored: 0,
-        dropped: 0,
-        discardedAtStop: 0,
-    };
+    const counts = Object.fromEntries(ACCOUNTING_COUNTS.map((name) => [name, 0]));
 
     return {
         /**

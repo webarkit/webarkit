@@ -191,10 +191,13 @@ reproducible instead of quietly making every recompile a new file — and when
 that day comes, the seed will be changing target data too, which is the case
 this option exists for.
 
-**The patch options are first choices, not tuned values.** Each default's
-reason, and what it was measured on, is written where it is defined in
-`bin/compile-target.mjs`; the M2 tuning pass, which can measure alignment, is
-expected to revise them. The score is defined in
+**Two patch options were tuned; the rest are first choices.** M3's tuning
+pass moved `--patches` from 64 to 48 (round 2) and kept `--patch-size` at 16
+(round 3); it did not take up `--patch-levels`, `--patch-min-score` or
+`--patch-spacing`, and how patches are selected is
+[#89](https://github.com/webarkit/webarkit/issues/89)'s question. Each
+default's reason, and what it was measured on, is written where it is defined
+in `bin/compile-target.mjs`. The score is defined in
 [`src/tracking/select_patches.ts`](./src/tracking/select_patches.ts): the
 smaller eigenvalue of the mean structure tensor of a window's interior, in
 level-0 units so patches from different levels compete fairly. Fewer than four
@@ -336,13 +339,17 @@ exported as two pure functions, so that the application can run it where it
 likes — in a worker it owns — and hand the result back:
 
 ```ts
+// The detection options (see Options below), the same on both sides: the
+// worker detects in the tracker's place. Typed, so a misspelt key is an error.
+const detectionOptions: DetectTargetOptions = { maxSceneKeypoints: 300 };
+
 // In the worker, once: the same target, its own backend.
-const setup = prepareDetection(cv, target, { maxSceneKeypoints: 300 });
+const setup = prepareDetection(cv, target, detectionOptions);
 // In the worker, per request: a fixed-shape Detection, safe to postMessage.
 const detection = detectTarget(cv, setup, frame, timestampMs);
 
 // On the main thread.
-const tracker = new NftTracker(cv, target, K, { externalDetection: true });
+const tracker = new NftTracker(cv, target, K, { externalDetection: true, ...detectionOptions });
 const result = tracker.process(frame, timestampMs); // no lock, no detection:
 // LOST, "no-detection". Ask for one — while none is in flight, which is the
 // application's policy to keep: the tracker asks on every lost frame.
@@ -403,18 +410,40 @@ returned as `"DETECT"`.
 
 **Options.** Every threshold the tracking state judges a frame by is an
 option, checked at construction (a value out of its domain throws a
-`RangeError` naming it), and every default is **provisional until the M2
-tuning pass** (#48). The fixed guards against degeneracy are constants, not
-tuning thresholds: `alignPatch`'s floor for a singular patch, and the
+`RangeError` naming it). M3's tuning pass, closed in
+[#93](https://github.com/webarkit/webarkit/pull/93), changed none of these
+defaults. It tuned two of them and kept both: `alignMaxIterations` at 30
+(round 1) and `minTrackedPatches` at 8 (round 4). Round 5, on
+`alignEpsilon`, did not run. The rest were outside its scope, as its plan
+says ("What this plan does not test"): `minPatchZncc`, the pyramid
+(`maxFrameLevels`), the fit's options, `photometric`, and the detection
+pipeline with its four options below. Its one adoption, 48 patches, is
+`compile-target`'s `--patches` default, not a tracker option
+([`docs/benchmarks/README.md`](../../docs/benchmarks/README.md#the-pass-2026-09-29-not-tunable-above-the-contract),
+"The pass (2026-09-29): not tunable above the contract"). The fixed guards
+against degeneracy are constants, not tuning thresholds: `alignPatch`'s floor
+for a singular patch, and the
 numerical singularity tests in `predictHomography` and `robustHomography`
 (`SINGULAR_RELATIVE_DET`, `SINGULAR_PIVOT_RATIO`). Each option is
 documented, with the measurement behind it, where it is defined in
 [`src/tracker.ts`](./src/tracker.ts).
 
+The four detection options are `prepareDetection`'s as well, which the
+constructor calls, and are checked there in the same way; they are defined in
+[`src/detection.ts`](./src/detection.ts). An `externalDetection` tracker
+checks them but never detects with them: only what the worker passes
+`prepareDetection` decides its detections. So the worker passes the values
+the tracker was given, or its detections are not the ones the tracker would
+have made in the default mode.
+
 | Option | Default | What it bounds |
 |---|---|---|
 | `detectionOnly` | `false` | Never track |
 | `externalDetection` | `false` | Never detect: the application hands detections to `process` |
+| `sceneLevels` | 1 | Pyramid levels `detect` searches in the frame; an integer ≥ 1 |
+| `maxSceneKeypoints` | 300 | `detect`'s keypoint budget in the frame; an integer ≥ 1 |
+| `ratio` | 0.8 | `match`'s ratio test; in `(0, 1]` |
+| `ransacThreshold` | 4 px | `estimateHomography`'s inlier threshold; finite and > 0 |
 | `maxFrameLevels` | 4 | Frame pyramid levels; fewer are built when the patches start on fewer (one on the camera path) |
 | `alignMaxIterations`, `alignEpsilon` | 30, 0.01 px | `alignPatch`'s cap and convergence step |
 | `photometric` | `true` | Gain and bias estimated per patch |
@@ -460,7 +489,10 @@ a median of 0.079 px.
   and roll changes measured, the next step came within 0.9 px or refused,
   and the one after within 0.25 px or re-detected. Right fits on as few
   patches also reach a quality of 0.20, so quality flags such a pose without
-  separating it; which rule should is the tuning pass's question
+  separating it. Which rule should is
+  [#92](https://github.com/webarkit/webarkit/issues/92)'s question, which M3's
+  tuning pass sent onward (round 3) and M4's conditioning signal
+  ([#104](https://github.com/webarkit/webarkit/issues/104)) is weighed against
   (`DEFAULT_MAX_FIT_RMS` in `src/tracker.ts` has the measurements).
 - **A target leaving the frame** is tracked on the few patches still in view
   until too few are left; those last frames extrapolate, up to 1.2 px RMS off
@@ -472,7 +504,7 @@ a median of 0.079 px.
   these poses: the next step refused every lock they seeded
   (`tracker_state_machine.test.ts`). The `"DETECT"` result itself is
   returned.
-- **Patch levels** are the first thing the tuning pass should revisit: 47 of
+- **Patch levels** are a lever M3's tuning pass did not try: 47 of
   `examples/targets/pinball.wnft`'s 48 patches are level 0 and one is level 1,
   and on the camera path, where the target is seen at about half level 0's
   scale, every one of them is sharper than the frame it is aligned in, which

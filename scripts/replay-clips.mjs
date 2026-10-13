@@ -79,7 +79,9 @@
  *   runs' frames diverge. Without it the replay draws as it always has.
  * - `--tracking-only`: skip the detection-only runs. They do not depend on the
  *   patches or the tracking options, so a round needs them once per seed, for
- *   the static clip's jitter ratio.
+ *   the static clip's jitter ratio. The default runs only: `--external`,
+ *   `--transfer` and `--sequence` run no detection-only run, and refuse it
+ *   rather than accept it and do nothing.
  * - `--device-ratio <x>` (default 3.15, the middle of 2026-09-26's measured
  *   3.0–3.3): a further schedule, "device, scaled step", whose tracking step
  *   costs this configuration's own every-frame `trackStepMs` p50 times the
@@ -149,8 +151,12 @@
  *   frame's work, which is where the loop's post is;
  * - the acquisition: the p50 of `acquire` + `gray` over the frames that are not
  *   TRACK;
- * - the step: the p50 of `trackerTimings.trackMs` over TRACK frames, the
- *   session's own `trackStepMs`, in place of `--device-ratio`'s scaled one.
+ * - the step: the p50 of `trackerTimings.trackMs` over every TRACK frame of
+ *   the mode's exports, pooled, in place of `--device-ratio`'s scaled one.
+ *   That is `trackStepMs`'s statistic, but not the exports' own
+ *   `trackStepMs`, which reads their counted loops: the pool takes the
+ *   warm-up loop's TRACK frames and the partial loop after the counted ones
+ *   too, as it takes their latencies and acquisitions.
  *
  * The draws come from their own seeded stream (mulberry32 of the seed XOR a
  * constant), at the start of each arm, so a run repeats, and neither arm's
@@ -163,12 +169,14 @@
  * checked before exporting it) or that records none — a session holding an
  * invalid run is an invalid session, not a file to skip — and an export of
  * either path that the page did not record as a session run
- * (`protocol.sessionRun`, `sessionRunGaps`), named with its gaps, or that has
- * no protocol record. Prints, per clip, each arm's `trackTimeShare` and the
+ * (`protocol.sessionRun`, `sessionRunGaps`), named with its gaps, that has
+ * no protocol record, or whose record says it is one while its protocol,
+ * recomputed from the export with the page's defaults (`SESSION_DEFAULTS`),
+ * has gaps. Prints, per clip, each arm's `trackTimeShare` and the
  * difference, worker minus sync, in points. Not with `--external`,
  * `--sequence`, `--device-ratio` or `--options`: the session ran the
- * tracker's defaults, and the transfer replays what it ran; `--tracking-only`
- * has nothing to skip.
+ * tracker's defaults, and the transfer replays what it ran; nor with
+ * `--tracking-only`, which has nothing to skip.
  *
  * The transfer explains a device result and weighs in when the table clip is
  * inconclusive; it never overrides the device. Both modes run as external
@@ -189,15 +197,18 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createDetectionPolicy } from "../examples/js/detection-policy.mjs";
 import {
     accountingError,
+    bundleManifestRefusal,
     compareExports,
     framesAt,
     frameRecord,
     METRICS_VERSION,
     nextFrameIndex,
+    PAGE_PROCESSING_BOX,
     parseTrackerOverrides,
     proxyRatio,
     sequenceRefusal,
     sequenceSettings,
+    sessionDefaults,
     sha256Hex,
     stats,
     summarizeRun,
@@ -210,7 +221,7 @@ import { createStepProbe } from "./tuning-probe.mjs";
 
 const EXAMPLES = fileURLToPath(new URL("../examples/", import.meta.url));
 /** bench-nft.html's default processing box. */
-const BOX = { width: 480, height: 360 };
+const BOX = PAGE_PROCESSING_BOX;
 const CLIPS = ["pinball-static.mp4", "pinball-bench.mp4", "pinball-bench-table.mp4"];
 /**
  * acquire + gray p50 on Tab_9_WiFi (docs/benchmarks/README.md): the wall clip
@@ -239,6 +250,13 @@ const M3_ACQUIRE_MS = {
 /** `--external`'s loops per run: loop 0 warms up, loops 1 to 4 are counted, loop 5 closes them (`trackTimeShare`). */
 const M3_LOOPS = 6;
 const M3_COUNTED = { firstLoop: 1, loopCount: 4 };
+/** `M3_COUNTED` as the headers print it: the warm-up loops before the counted ones, then those. */
+function countedLoopsText({ firstLoop, loopCount }) {
+    const counted = `loops ${firstLoop}–${firstLoop + loopCount - 1} counted`;
+    if (firstLoop === 0) return counted;
+    const warmUp = firstLoop === 1 ? "loop 0" : `loops 0–${firstLoop - 1}`;
+    return `${warmUp} warm-up, ${counted}`;
+}
 const LOOPS = 2;
 const RUNS = [
     { mode: "tracking", schedule: "every frame", stepMs: null },
@@ -289,8 +307,11 @@ if (PACKAGES === "bundle") {
     try {
         manifest = JSON.parse(readFileSync(join(EXAMPLES, "dist/provenance.json"), "utf8"));
     } catch {
-        usage("--packages bundle needs examples/dist/provenance.json: run `npm run build`");
+        manifest = null;
     }
+    // Refused by name, before the header reads `head`: a manifest built without git has none.
+    const refused = bundleManifestRefusal(manifest);
+    if (refused) usage(refused);
     let bundleBytes;
     try {
         bundleBytes = readFileSync(BUNDLE);
@@ -306,6 +327,13 @@ if (PACKAGES === "bundle") {
         manifestClean: manifest.clean,
     };
 }
+const packages =
+    PACKAGES === "bundle"
+        ? await import(pathToFileURL(BUNDLE).href)
+        : {
+              ...(await import("../packages/cv-backend-jsfeatnext/dist/index.js")),
+              ...(await import("../packages/nft-tracker/dist/index.js")),
+          };
 const {
     createJsfeatNextBackend,
     intrinsics,
@@ -314,13 +342,13 @@ const {
     detectTarget,
     NftTracker,
     prepareDetection,
-} =
-    PACKAGES === "bundle"
-        ? await import(pathToFileURL(BUNDLE).href)
-        : {
-              ...(await import("../packages/cv-backend-jsfeatnext/dist/index.js")),
-              ...(await import("../packages/nft-tracker/dist/index.js")),
-          };
+} = packages;
+/**
+ * What a session's runs ran at, as the page passes `sessionRunGaps` its own
+ * defaults (`sessionDefaults`, from the package loaded here). `--transfer`
+ * recomputes each export's protocol with them (`transferPlan`).
+ */
+const SESSION_DEFAULTS = sessionDefaults(packages);
 
 const TARGET_PATH = resolve(arg("--target") ?? join(EXAMPLES, "targets/pinball.wnft"));
 const parsedOverrides = parseTrackerOverrides(arg("--options"));
@@ -363,11 +391,27 @@ if (TRANSFER_DIR !== null) {
         "--sequence":
             "--transfer replays the bundled clips with a session's latencies; --sequence replays one export's frames: the two cannot be combined",
         "--device-ratio":
-            "--transfer steps by the session's own trackStepMs; --device-ratio scales the desktop's: the two cannot be combined",
+            "--transfer steps by the session's measured trackMs; --device-ratio scales the desktop's: the two cannot be combined",
         "--options":
             "--transfer replays what the session ran, the tracker at its defaults; --options would change them: the two cannot be combined",
     };
     for (const [flag, why] of Object.entries(other)) if (arg(flag) !== null) usage(why);
+}
+if (TRACKING_ONLY) {
+    // Accepted and ignored, it would say a run was restricted that never had anything to drop.
+    const form =
+        EXTERNAL_MS !== null
+            ? "--external"
+            : TRANSFER_DIR !== null
+              ? "--transfer"
+              : arg("--sequence") !== null
+                ? "--sequence"
+                : null;
+    if (form !== null) {
+        usage(
+            `--tracking-only skips the default runs' detection-only runs, and ${form} runs none: drop it`,
+        );
+    }
 }
 
 /** mulberry32, as compile-target and the tests' seeded_rng use it. */
@@ -600,22 +644,23 @@ function replayRun({
 }
 
 /**
- * One run of `--external`'s arms that detects off the frame: the tracker in
- * `externalDetection` mode, and the page's own on-demand policy
- * (`createDetectionPolicy`) deciding what is asked and what is handed in. On a
- * frame whose result says `needsDetection`, with nothing in flight or held,
- * this detects that very frame now (inside the run's seed, so it repeats) and
- * holds the result back until the first frame processed at or after
+ * One run of an arm that detects off the frame, `--external`'s and
+ * `--transfer`'s: the tracker in `externalDetection` mode, and the page's own
+ * on-demand policy (`createDetectionPolicy`) deciding what is asked and what is
+ * handed in. On a frame whose result says `needsDetection`, with nothing in
+ * flight or held, this detects that very frame now (inside the run's seed, so
+ * it repeats) and holds the result back until the first frame processed at or
+ * after
  *
  *     post + latencyMs, where post = the frame's time + acquireMs + stepMs,
  *
  * the step counted when the frame ran one: the post comes at the end of the
- * frame's main-thread work before it, and the latency counts from the post, as
- * the device measures it (`detectionPostToArrivalMs`). Requests made while a
- * job is in flight are dropped. Frames are stamped with their time on the
- * loops' continuous timeline, so a detection posted before a wrap and consumed
- * after it has a latency that is not negative; `mediaTimeSeconds` stays the
- * clip's own.
+ * frame's main-thread work, and the latency counts from the post, as the
+ * device measures it (`detectionTime.postToArrivalMs`). A request made while
+ * a job is in flight or its result held is dropped. Frames are stamped with
+ * their time on the loops' continuous timeline, so a detection posted before
+ * a wrap and consumed after it has a latency that is not negative;
+ * `mediaTimeSeconds` stays the clip's own.
  *
  * `everyFrame` processes every frame; otherwise a frame that waits costs the
  * device only `acquireMs` and a step if it ran one (`nextFrameIndex`), and so
@@ -802,8 +847,17 @@ function runExternal(clip, arm, params) {
 /**
  * One external arm's export: its `records` summarised over the counted loops,
  * and what it was run with (`model`, and the seed, options, loops and step). An
- * arm is `{ schedule, path, external }`, and its path is the summary's, which
- * refuses a worker arm's frame without `detectionUse`. Exits 1, one line, when
+ * arm is `{ schedule, path, external }`: `path` is the mode it stands for, and
+ * for an external arm the mode whose latency it models. The export's
+ * `detection.path` is the path its frame loop ran, as `DEFINITIONS.detectionPath`
+ * reads a page's: `sync` for an arm that detects on the frame loop, and `worker`
+ * for every external one, whose detections are handed in under the on-demand
+ * policy, whichever mode's latency it models; `detection.latencyOf` names that
+ * mode (`null` on the frame loop). So the fallback re-check, and the transfer's
+ * synchronous arm, are `worker` runs at `sync`'s latency, never `sync` runs: a
+ * consumer filtering on the path does not find them among the synchronous ones.
+ * The summary reads the same path, and refuses a worker arm's frame without
+ * `detectionUse`. Exits 1, one line, when
  * the summary refuses the arm (the clip's duration, `unwrapMediaTimes`: a frame
  * past it, whose loops would lie over each other; or such a frame), and when
  * `trackTimeShare` is incomplete: the run does not reach loop
@@ -818,11 +872,11 @@ function armExport({
     jobs,
     accounting,
     stepMs,
-    acquireMs,
     clipDurationS,
     model,
 }) {
     const run = { mode: "tracking", schedule: arm.schedule };
+    const path = arm.external ? "worker" : "sync";
     let e;
     try {
         e = exportOf(clip, run, { width, height }, records, {
@@ -830,7 +884,7 @@ function armExport({
             loops: M3_COUNTED,
             jobs,
             accounting,
-            path: arm.path,
+            path,
         });
     } catch (err) {
         if (!(err instanceof RangeError)) throw err;
@@ -842,7 +896,14 @@ function armExport({
     e.loops = M3_COUNTED;
     e.clipDurationS = clipDurationS;
     e.stepMs = stepMs;
-    e.detection = { path: arm.path, external: arm.external, model, jobs, accounting };
+    e.detection = {
+        path,
+        external: arm.external,
+        latencyOf: arm.external ? arm.path : null,
+        model,
+        jobs,
+        accounting,
+    };
     if (!e.runSummary.trackTimeShare.complete) {
         console.error(
             `replay-clips: ${clip}, ${arm.schedule}: trackTimeShare is incomplete: the run does not reach loop ${M3_COUNTED.firstLoop + M3_COUNTED.loopCount}`,
@@ -887,7 +948,7 @@ function externalRow(clip, width, height, e) {
 async function externalArms() {
     const label = (clip) => clip.replace(/^pinball-|\.mp4$/g, "");
     console.log(
-        `external detection: latency ${EXTERNAL_MS} ms, counted from the post; acquisition (acquire + gray p50) ${CLIPS.map((clip) => `${label(clip)} ${M3_ACQUIRE_MS[clip]} ms`).join(", ")}; the synchronous mode's detection ${DEVICE_DETECT_MS} ms; ${M3_LOOPS} loops a run, loop 0 warm-up, loops 1–${M3_COUNTED.loopCount} counted
+        `external detection: latency ${EXTERNAL_MS} ms, counted from the post; acquisition (acquire + gray p50) ${CLIPS.map((clip) => `${label(clip)} ${M3_ACQUIRE_MS[clip]} ms`).join(", ")}; the synchronous mode's detection ${DEVICE_DETECT_MS} ms; ${M3_LOOPS} loops a run, ${countedLoopsText(M3_COUNTED)}
 `,
     );
     console.log(tableHead([...TABLE_COLUMNS, ...EXTERNAL_COLUMNS]));
@@ -960,7 +1021,6 @@ async function externalArms() {
                 jobs,
                 accounting,
                 stepMs,
-                acquireMs,
                 clipDurationS,
                 model: { latencyMs: arm.latencyMs, acquireMs, detectMs: DEVICE_DETECT_MS },
             });
@@ -1033,7 +1093,11 @@ function readTransferDir(dir) {
  */
 async function transferArms() {
     const files = readTransferDir(TRANSFER_DIR);
-    const plan = transferPlan(files, { clips: CLIPS, sha256: targetRec.sha256 });
+    const plan = transferPlan(files, {
+        clips: CLIPS,
+        sha256: targetRec.sha256,
+        defaults: SESSION_DEFAULTS,
+    });
     for (const { name, why } of plan.skipped) console.log(`skipped ${name}: ${why}`);
     if (plan.refusal) {
         console.error(`replay-clips: --transfer ${TRANSFER_DIR}: ${plan.refusal}`);
@@ -1041,7 +1105,7 @@ async function transferArms() {
     }
     const seedNote = arg("--seed") === null ? " (the default: --seed was not given)" : "";
     console.log(
-        `latency transfer from ${TRANSFER_DIR}: ${files.length - plan.skipped.length} page exports; each job's latency drawn with replacement from its mode's samples, counted from the post, seed ${SEED}${seedNote}; each mode's acquisition (acquire + gray p50 on frames that are not TRACK) and tracking step (trackMs p50 on TRACK frames) from its own exports; the device schedule; ${M3_LOOPS} loops a run, loop 0 warm-up, loops 1–${M3_COUNTED.loopCount} counted
+        `latency transfer from ${TRANSFER_DIR}: ${files.length - plan.skipped.length} page exports; each job's latency drawn with replacement from its mode's samples, counted from the post, seed ${SEED}${seedNote}; each mode's acquisition (acquire + gray p50 on frames that are not TRACK) and tracking step (trackMs p50 on TRACK frames) from its own exports; the device schedule; ${M3_LOOPS} loops a run, ${countedLoopsText(M3_COUNTED)}
 `,
     );
     for (const { clip, sync, worker } of plan.clips) {
@@ -1085,7 +1149,6 @@ async function transferArms() {
                 jobs,
                 accounting,
                 stepMs: p.stepMs,
-                acquireMs: p.acquireMs,
                 clipDurationS,
                 model: {
                     latencyMs: null,

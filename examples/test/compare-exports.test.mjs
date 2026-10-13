@@ -84,6 +84,28 @@ describe("compareExports", () => {
         expect(r.second).toMatchObject({ posedFrames: 4, jitterWindows: 1, jitterPx: 0 });
     });
 
+    // #96: the loops are read off each run's own frames, not off the posed frames both share,
+    // which can skip a wrap's neighbours, as when the target is out of view at the clip's end.
+    it("reads each run's loops from all its frames, so a wrap no posed frame is beside still counts", () => {
+        const frames = [at(10.5), at(11.0), lost(11.5), lost(11.9), lost(0.05), lost(0.5), at(1.0), at(1.5)];
+        const r = compareExports(run(frames), run(frames, { mode: "stateless" }));
+        expect(r.commonMediaTimes).toBe(4);
+        // Two windows of two frames each, at 10–11 s of loop 0 and 1–2 s of loop 1: neither
+        // holds 4, and none spans the wrap.
+        expect(r.first).toMatchObject({ posedFrames: 4, jitterWindows: 0, jitterPx: null });
+    });
+
+    // The independent check of #96: nothing pinned that each export's own clip duration is
+    // what its wraps are read by; passing none survived.
+    it("reads each run's wraps by its own clip duration, where it records one", () => {
+        // A restart that skips 0.7 s across the wrap: only the duration tells it from one.
+        const frames = [at(11.0), at(11.3), lost(0.4), at(0.6), at(0.8)];
+        expect(() => compareExports(run(frames), run(frames))).not.toThrow();
+        expect(() =>
+            compareExports(run(frames, { clipDurationS: 12 }), run(frames, { clipDurationS: 12 })),
+        ).toThrow(/^frame 2: media time 0\.4 s, after 11\.3 s, is not the clip restarting: it skips 1\.1 s/);
+    });
+
     it("matches media times to the microsecond, not to the last bit", () => {
         expect(
             compareExports(run([at(5.933333)]), run([at(5.9333330000001)])).commonMediaTimes,
@@ -92,7 +114,8 @@ describe("compareExports", () => {
 
     it("keeps every occurrence of a media time the loop revisits, one window per loop", () => {
         const loop = (dx) => [at(0.1, dx), at(0.2, dx), at(0.3, dx), at(0.4, dx)];
-        const r = compareExports(run([...loop(0), ...loop(3)]), run(loop(0)));
+        // The clip restarts after its end (#96): an unposed frame stands there.
+        const r = compareExports(run([...loop(0), lost(0.9), ...loop(3)]), run(loop(0)));
         expect(r.first).toMatchObject({ posedFrames: 8, jitterWindows: 2, jitterPx: 0 });
         expect(r.second).toMatchObject({ posedFrames: 4, jitterWindows: 1 });
     });

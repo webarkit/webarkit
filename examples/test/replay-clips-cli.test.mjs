@@ -113,6 +113,19 @@ describe("replay-clips.mjs command line", () => {
         expect(r.stderr).toMatch(/--external.*--sequence/);
     });
 
+    // #95, Task 7: --tracking-only skips the default runs' detection-only runs, and these
+    // forms run none, so it was accepted and did nothing: silently redundant.
+    it.each([
+        ["--external", "70"],
+        ["--transfer", "session"],
+        ["--sequence", "export.json"],
+    ])("refuses --tracking-only with %s, which runs no detection-only run", (form, value) => {
+        const r = run(form, value, "--tracking-only");
+        expect(r.status).toBe(2);
+        expect(r.stderr).toMatch(new RegExp(`--tracking-only.*${form}`));
+        expect(r.stderr.trim().split("\n")).toHaveLength(1);
+    });
+
     it.each(["abc", "-5", "", "Infinity"])(
         "refuses a latency that is not a number of milliseconds (%j)",
         (latency) => {
@@ -240,6 +253,17 @@ describe("replay-clips.mjs command line", () => {
             expect(none.status).toBe(1);
             expect(none.stderr).toMatch(/worker-1\.json is not a session run \(no protocol record\)/);
             expect(none.stderr.trim().split("\n")).toHaveLength(1);
+            // #95: a record that says sessionRun is recomputed, with the tracker's own defaults.
+            // These exports record none of the fields the rule reads, so it is not borne out.
+            const claimed = transfer({
+                "worker-1.json": worker(),
+                "sync-1.json": pageExport("sync", { protocol: session }),
+            });
+            expect(claimed.status).toBe(1);
+            expect(claimed.stderr).toMatch(
+                /worker-1\.json records a session run, but recomputed from the export it has gaps: loops none: /,
+            );
+            expect(claimed.stderr.trim().split("\n")).toHaveLength(1);
         });
 
         it("refuses a file that is not JSON, naming it", () => {

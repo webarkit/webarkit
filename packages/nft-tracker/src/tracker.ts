@@ -105,7 +105,8 @@
  * in view and extrapolate to the rest: up to 1.2 px RMS off over the patch
  * centres, 2.5 px at the far end.
  *
- * **Patch levels are the first thing the tuning pass should revisit.** All
+ * **Patch levels are a lever M3's tuning pass did not try** (its rounds were
+ * the iteration cap, the patch count, the lock minimum and the patch size). All
  * but one patch of `examples/targets/pinball.wnft` come from level 0 (47 of
  * 48; the other is from level 1), and on the camera path the target is seen
  * at about half level 0's scale: each patch is sharper than the frame it is
@@ -164,31 +165,42 @@ import type {
 import type { DetectionUse, TrackingState } from "./tracking/types.js";
 
 /*
- * The tracking state's defaults. Every one is provisional until the M2
- * tuning pass (#48, "Evaluation"), which replaces each with a measured value
- * and its reason. Where one was measured already, the measurement is cited;
- * the others are the configurations #63 and #64 measured their functions
- * under.
+ * The tracking state's defaults. M3's tuning pass (#93;
+ * docs/benchmarks/README.md, "The pass (2026-09-29): not tunable above the
+ * contract") changed none of them. It tuned two and kept both,
+ * `alignMaxIterations` (round 1) and `minTrackedPatches` (round 4); round 5,
+ * on `alignEpsilon`, did not run; and the rest were outside its scope ("What
+ * this plan does not test"). Each comment below says which. Where one was
+ * measured, the measurement is cited; the others are the configurations #63
+ * and #64 measured their functions under.
  */
 
 /**
  * Most frame pyramid levels a tracking frame builds. Fewer are built when the
  * patches start on fewer (`frameLevelsFor`): on the camera path, pinball's
  * patches need one, the frame itself. Four covers a level-0 patch seen at up
- * to twice its scale. Provisional until the M2 tuning pass.
+ * to twice its scale. Outside M3's tuning pass (the pyramid).
  */
 export const DEFAULT_MAX_FRAME_LEVELS = 4;
 
-/** `alignPatch`'s iteration cap per level: #63's measured configuration. Provisional until the M2 tuning pass. */
+/**
+ * `alignPatch`'s iteration cap per level: #63's measured configuration, kept
+ * by M3's tuning pass (round 1: a lower cap bought 11–17% of the step on
+ * moving footage by cutting right alignments short).
+ */
 export const DEFAULT_ALIGN_MAX_ITERATIONS = 30;
 
-/** `alignPatch`'s convergence step, frame px: #63's measured configuration. Provisional until the M2 tuning pass. */
+/**
+ * `alignPatch`'s convergence step, frame px: #63's measured configuration.
+ * Untested by M3's tuning pass: round 5, its round, did not run.
+ */
 export const DEFAULT_ALIGN_EPSILON = 0.01;
 
 /**
  * Estimate gain and bias with each patch's translation: camera exposure
  * changes, and a lost patch then ends `"singular"`, which the tracker reads
- * (align_patch.ts, point 6). Provisional until the M2 tuning pass.
+ * (align_patch.ts, point 6). Outside M3's tuning pass: the ZNCC gate reads the
+ * least-squares gain, which only photometric alignment has.
  */
 export const DEFAULT_PHOTOMETRIC = true;
 
@@ -196,8 +208,8 @@ export const DEFAULT_PHOTOMETRIC = true;
  * Tukey's cutoff, frame px: the detection state's RANSAC threshold, and #64's
  * configuration for its 45% breakdown. It also bounds the prediction error a
  * step survives: 4 px measured on the camera path (track_frame.test.ts),
- * since `robustHomography` starts weighting at the prediction. Provisional
- * until the M2 tuning pass.
+ * since `robustHomography` starts weighting at the prediction. Outside M3's tuning pass
+ * (the fit's options).
  */
 export const DEFAULT_TUKEY_C = 4;
 
@@ -205,11 +217,14 @@ export const DEFAULT_TUKEY_C = 4;
  * `robustHomography`'s iteration cap: #64's measured configuration. A fit that
  * reaches it is reported (`TrackStats.fitConverged`), not refused; on the
  * camera path only a fit the other rules refused has (`TrackStats`).
- * Provisional until the M2 tuning pass.
+ * Outside M3's tuning pass (the fit's options).
  */
 export const DEFAULT_FIT_MAX_ITERATIONS = 20;
 
-/** `robustHomography`'s convergence tolerance, px: #64's measured configuration. Provisional until the M2 tuning pass. */
+/**
+ * `robustHomography`'s convergence tolerance, px: #64's measured
+ * configuration. Outside M3's tuning pass (the fit's options).
+ */
 export const DEFAULT_FIT_EPSILON = 1e-6;
 
 /**
@@ -226,8 +241,9 @@ export const DEFAULT_FIT_EPSILON = 1e-6;
  * track_frame.test.ts pins one render): right fits kept 12 inliers or more,
  * and the wrong fits the rules let through 8–13. So 8 narrows the wrong fits
  * without separating them; 12 would refuse 15 of those 24, every one over
- * 1.6 px off among them, at no margin to the right fits — the tuning pass's
- * call, on real frames. Provisional until the M2 tuning pass.
+ * 1.6 px off among them, at no margin to the right fits. M3's tuning pass
+ * kept 8 (round 4): lowering the minimum won no right fit, and every fit it
+ * let through was wrong.
  */
 export const DEFAULT_MIN_TRACKED_PATCHES = 8;
 
@@ -235,7 +251,7 @@ export const DEFAULT_MIN_TRACKED_PATCHES = 8;
  * Largest share of correspondences the fit may weigh 0 before the frame is
  * lost: #64's measured breakdown (every outlier rejected in 2000 seeds of
  * 2000 up to 45%; failures from 50%, 40 patches, a prediction 3 px off).
- * Provisional until the M2 tuning pass.
+ * Outside M3's tuning pass (the fit's options).
  */
 export const DEFAULT_MAX_OUTLIER_SHARE = 0.45;
 
@@ -252,8 +268,9 @@ export const DEFAULT_MAX_OUTLIER_SHARE = 0.45;
  * 9–10% too large in scale. 0.4 px would have refused every one more than
  * 1.5 px off, 0.03 px above the right fits: too thin a margin to set on
  * synthetic frames, since the residual scales with the alignment noise and
- * real frames may need more. The tuning pass sets it on real ones.
- * Provisional until then.
+ * real frames may need more. Outside M3's tuning pass (the fit's options): the wrong
+ * fits it lets through are #92's question, which M4's conditioning signal
+ * (#104) is weighed against.
  */
 export const DEFAULT_MAX_FIT_RMS = 0.6;
 
@@ -274,8 +291,8 @@ export const DEFAULT_MAX_FIT_RMS = 0.6;
  * to 0.190 px with half the patches culled, and 0.085 to 0.109 px with some
  * covered (track_frame.test.ts pins the values with the gate). It reads the
  * alignment's gain and bias as least-squares estimates, so with
- * `photometric: false` it is not a correlation. Provisional until the M2
- * tuning pass.
+ * `photometric: false` it is not a correlation. Outside M3's tuning pass, which names
+ * it among what it does not test.
  */
 export const DEFAULT_MIN_PATCH_ZNCC = 0.6;
 

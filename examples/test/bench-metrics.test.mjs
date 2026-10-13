@@ -25,11 +25,13 @@
  *
  */
 
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
     accountingError,
+    bundleManifestRefusal,
     clockResolution,
     cornerJitter,
     countedLoopFrames,
@@ -43,6 +45,7 @@ import {
     firstStepLatency,
     frameMs,
     frameRecord,
+    isLoopWrap,
     framesAt,
     framesForStage,
     lockSteps,
@@ -53,11 +56,13 @@ import {
     parseRunParams,
     parseTrackerOverrides,
     percentile,
+    postToArrivalSamples,
     proxyRatio,
     reacquisitions,
     reprojectCorners,
     sequenceRefusal,
     sequenceSettings,
+    sessionDefaults,
     sessionRunGaps,
     sha256Hex,
     stageSummary,
@@ -69,7 +74,9 @@ import {
     texturedFrame,
     timeRepeated,
     trackabilityError,
+    trackerDefaults,
     trackFramesWithDetectionInFlight,
+    TRACK_TIME_BIN_MS,
     trackTimeShare,
     transferPlan,
     TUNABLE_TRACKER_OPTIONS,
@@ -538,7 +545,8 @@ describe("stageSummary: the export's per-stage p50, p95 and max", () => {
     it("reads a loops run's counted loops: the warm-up's cold acquisition is not in its max", () => {
         const D = 1;
         // Loop 0 (the warm-up, its first acquisition cold), loop 1 counted, loop 2's first frame.
-        const run = [frame(0, 400), frame(0.5, 30), frame(0.2, 31), frame(0.7, 29), frame(0.1, 45)];
+        // Each loop ends near the clip's end: a step back is a wrap only as the clip restarting.
+        const run = [frame(0, 400), frame(0.9, 30), frame(0.2, 31), frame(0.7, 29), frame(0.1, 45)];
         const stages = ["acquire", "total"];
         expect(stageSummary(run, { stages }).acquire.max).toBe(400);
         const loops = { firstLoop: 1, loopCount: 1 };
@@ -581,6 +589,80 @@ describe("stageSummary: the export's per-stage p50, p95 and max", () => {
     });
 });
 
+// #96: isLoopWrap read any step back in media time as the clip restarting.
+describe("isLoopWrap: a step back is a wrap only when the clip restarts", () => {
+    const at = (m) => ({ mediaTimeSeconds: m });
+
+    it("reads a step forward, or none, as no wrap", () => {
+        expect(isLoopWrap(at(1), at(1.04))).toBe(false);
+        expect(isLoopWrap(at(1), at(1))).toBe(false);
+        expect(isLoopWrap(at(11.9), at(12.1), 11.96)).toBe(false);
+    });
+
+    it("reads the clip restarting as a wrap, with or without its duration", () => {
+        expect(isLoopWrap(at(11.9), at(0.05))).toBe(true);
+        expect(isLoopWrap(at(11.9), at(0.05), 11.96)).toBe(true);
+        expect(isLoopWrap(at(11.9), at(0))).toBe(true);
+        // The tablet skips frames: what is bounded is the video skipped across the wrap, 0.5 s.
+        expect(isLoopWrap(at(11.66), at(0.2), 11.96)).toBe(true);
+        // A frame up to 1 ms past the duration stands at it, as on the timeline.
+        expect(isLoopWrap(at(8.9005), at(0), 8.9)).toBe(true);
+    });
+
+    it("refuses a step back that is not a restart, in one line, naming the frame when told it", () => {
+        const read = () => isLoopWrap(at(5), at(4.96), 11.96, 7);
+        expect(read).toThrow(RangeError);
+        expect(read).toThrow(/^frame 7: media time 4\.96 s, after 5 s, is not the clip restarting/);
+        expect(() => isLoopWrap(at(5), at(4.96))).toThrow(/^media time 4\.96 s, after 5 s, is not/);
+        expect(() => isLoopWrap(at(0.3), at(0.27))).toThrow(RangeError);
+        expect(() => isLoopWrap(at(0.9), at(-0.2))).toThrow(RangeError);
+    });
+
+    // The independent check of #96: no test pinned the 0.5 s bound itself; 0.6 survived.
+    it("draws each bound at 0.5 s, inclusive where the rule says at most", () => {
+        // Into the clip: 0.5 s is near its start, 0.55 s is not.
+        expect(isLoopWrap(at(11.9), at(0.5))).toBe(true);
+        expect(() => isLoopWrap(at(11.9), at(0.55))).toThrow(/more than 0\.5 s into the clip/);
+        // Across the wrap, with the duration: 0.5 s may be skipped, 0.55 s may not.
+        expect(isLoopWrap(at(11.6), at(0.1), 12)).toBe(true);
+        expect(() => isLoopWrap(at(11.55), at(0.1), 12)).toThrow(/skips 0\.55 s across the wrap/);
+        // Without it, the step back must be more than 0.5 s: exactly 0.5 s is refused.
+        // (0.75 and 0.25 are exact in binary, so the step is exactly 0.5 s.)
+        expect(isLoopWrap(at(0.75), at(0.2))).toBe(true);
+        expect(() => isLoopWrap(at(0.75), at(0.25))).toThrow(/steps back 0\.5 s, not more than 0\.5 s/);
+    });
+
+    it("refuses, given the clip's duration, a restart that skips more than 0.5 s across the wrap", () => {
+        // From 11.0 s to 0.1 s on an 11.96 s clip: 1.06 s skipped at the wrap, a stall or a seek.
+        // Without the duration nothing tells it from the clip restarting.
+        expect(isLoopWrap(at(11.0), at(0.1))).toBe(true);
+        expect(() => isLoopWrap(at(11.0), at(0.1), 11.96)).toThrow(RangeError);
+        expect(() => isLoopWrap(at(11.0), at(0.1), 11.96)).toThrow(/1\.06 s across the wrap/);
+        // So the timeline refuses it, and with it the counted loops and the lock read on them.
+        const run = [at(10.9), at(11.0), at(0.1), at(0.2)];
+        expect(() => unwrapMediaTimes(run, 11.96)).toThrow(/^frame 2: media time 0\.1 s, after 11 s/);
+        expect(() => trackTimeShare(run, { clipDurationS: 11.96 })).toThrow(/^frame 2: /);
+    });
+});
+
+// #96, "Audited: no committed export triggers it": pinned, so that a later change to the rule
+// that would reread published evidence fails here rather than in a figure.
+describe("every committed export reads under the loop-wrap rule", () => {
+    const dir = fileURLToPath(new URL("../../docs/benchmarks/", import.meta.url));
+    const exports = readdirSync(dir)
+        .filter((n) => n.endsWith(".json"))
+        .map((name) => ({ name, e: JSON.parse(readFileSync(`${dir}${name}`, "utf8")) }))
+        .filter(({ e }) => Array.isArray(e.frames));
+
+    it("has its wraps read, with its clip duration where it records one", () => {
+        expect(exports.length).toBeGreaterThan(80);
+        for (const { name, e } of exports) {
+            expect(() => countLoopWraps(e.frames), name).not.toThrow();
+            if (e.clipDurationS) expect(() => unwrapMediaTimes(e.frames, e.clipDurationS), name).not.toThrow();
+        }
+    });
+});
+
 describe("loop wraps, re-acquisitions and lock steps", () => {
     const f = (state, t, o = {}) => ({
         state,
@@ -592,7 +674,9 @@ describe("loop wraps, re-acquisitions and lock steps", () => {
     });
     const step = { observed: 40 };
 
-    it("counts a wrap wherever media time goes back", () => {
+    // #96: any step back used to be read as a wrap, so a stutter, a decoder hiccup or a seek
+    // fabricated a loop. A step back is a wrap only when it is the clip restarting.
+    it("counts a wrap where the clip restarts: the next frame near its start, far back", () => {
         expect(
             countLoopWraps([
                 f("DETECT", 11.9),
@@ -602,6 +686,38 @@ describe("loop wraps, re-acquisitions and lock steps", () => {
             ]),
         ).toBe(1);
         expect(countLoopWraps([])).toBe(0);
+    });
+
+    it.each([
+        ["a stutter mid-clip", 5.0, 4.96],
+        ["a stutter near the clip's start, which steps back too little to be a restart", 0.3, 0.27],
+        ["a seek back to mid-clip", 9.0, 3.0],
+        ["a media time below the clip's start", 0.9, -0.2],
+    ])("refuses %s in every reader of a wrap, naming the frame, rather than count a loop", (_, before, after) => {
+        const frames = [
+            f("DETECT", before - 0.04),
+            f("TRACK", before, { tracking: step }),
+            f("TRACK", after, { tracking: step }),
+        ];
+        for (const [name, read] of [
+            ["countLoopWraps", () => countLoopWraps(frames)],
+            ["reacquisitions", () => reacquisitions(frames)],
+            ["lockSteps", () => lockSteps(frames)],
+            ["cornerJitter", () => cornerJitter(frames)],
+            ["detectionLocks", () => detectionLocks(frames)],
+            ["firstStepLatency", () => firstStepLatency(frames)],
+            ["summarizeRun", () => summarizeRun(frames)],
+        ]) {
+            expect(read, name).toThrow(RangeError);
+            expect(read, name).toThrow(/^frame 2: media time .* is not the clip restarting/);
+            let message = "";
+            try {
+                read();
+            } catch (e) {
+                message = e.message;
+            }
+            expect(message, name).not.toMatch(/\n/);
+        }
     });
 
     it("counts DETECT frames after an earlier pose, not the window's first lock", () => {
@@ -673,21 +789,33 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
         expect(actual).toHaveLength(expected.length);
         actual.forEach((t, i) => expect(t).toBeCloseTo(expected[i], 9));
     };
-    // Unwrapped time in the comment. Loop 0 is the warm-up; its last frame holds a lock.
+    // Unwrapped time in the comment. Loop 0 is the warm-up; its last frame holds a lock. Every
+    // loop ends at 0.9 and the next starts at 0.1, so each wrap is the clip restarting (#96);
+    // the frames there repeat the state before them, which cannot move the share.
     const run = [
         frame("LOST", 0), // 0
         frame("TRACK", 0.5), // 0.5
         frame("TRACK", 0.9), // 0.9: the warm-up's last frame
-        frame("TRACK", 0.5), // 1.5: loop 1
-        frame("LOST", 0.25), // 2.25: loop 2
+        frame("TRACK", 0.1), // 1.1: loop 1
+        frame("TRACK", 0.5), // 1.5
+        frame("TRACK", 0.9), // 1.9
+        frame("TRACK", 0.1), // 2.1: loop 2
+        frame("LOST", 0.25), // 2.25
         frame("TRACK", 0.75), // 2.75
-        frame("TRACK", 0.5), // 3.5: loop 3
-        frame("LOST", 0.25), // 4.25: loop 4
+        frame("TRACK", 0.9), // 2.9
+        frame("TRACK", 0.1), // 3.1: loop 3
+        frame("TRACK", 0.5), // 3.5
+        frame("TRACK", 0.9), // 3.9
+        frame("TRACK", 0.1), // 4.1: loop 4
+        frame("LOST", 0.25), // 4.25
+        frame("LOST", 0.9), // 4.9
         frame("LOST", 0.1), // 5.1: loop 5, which closes loop 4
     ];
 
     it("puts every frame on one timeline, loop k adding k times the clip's duration", () => {
-        closeTo(unwrapMediaTimes(run, D), [0, 0.5, 0.9, 1.5, 2.25, 2.75, 3.5, 4.25, 5.1]);
+        closeTo(unwrapMediaTimes(run, D), [
+            0, 0.5, 0.9, 1.1, 1.5, 1.9, 2.1, 2.25, 2.75, 2.9, 3.1, 3.5, 3.9, 4.1, 4.25, 4.9, 5.1,
+        ]);
         // A run that starts mid-clip: its first pass is loop 0 all the same.
         closeTo(
             unwrapMediaTimes([frame("LOST", 10.8), frame("LOST", 11.9), frame("LOST", 0.1)], 11.96),
@@ -697,23 +825,22 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
     });
 
     it("takes the frames whose unwrapped time is in [first · D, (first + count) · D)", () => {
-        expect(countedLoopFrames(run, { clipDurationS: D, firstLoop: 1, loopCount: 2 })).toEqual([
-            run[3],
-            run[4],
-            run[5],
-        ]);
+        expect(countedLoopFrames(run, { clipDurationS: D, firstLoop: 1, loopCount: 2 })).toEqual(
+            run.slice(3, 10),
+        );
         // Loops 1 to 4 by default.
-        expect(countedLoopFrames(run, { clipDurationS: D })).toEqual(run.slice(3, 8));
+        expect(countedLoopFrames(run, { clipDurationS: D })).toEqual(run.slice(3, 16));
         // The first frame of a loop, at its media time 0, is inside it; the next loop's is not.
         const edges = [
             frame("LOST", 0.5),
             frame("LOST", 0.9),
             frame("TRACK", 0), // 1
             frame("TRACK", 0.5), // 1.5
+            frame("TRACK", 0.9), // 1.9
             frame("LOST", 0), // 2
         ];
         expect(countedLoopFrames(edges, { clipDurationS: D, firstLoop: 1, loopCount: 1 })).toEqual(
-            [edges[2], edges[3]],
+            [edges[2], edges[3], edges[4]],
         );
     });
 
@@ -774,6 +901,7 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
             frame("LOST", 0.95),
             frame("TRACK", 0.05), // 1.05
             frame("LOST", 0.07), // 1.07
+            frame("LOST", 0.95), // 1.95
             frame("LOST", 0.02), // 2.02: loop 2
         ];
         const fine = trackTimeShare(brief, { clipDurationS: D, loopCount: 1 });
@@ -791,6 +919,23 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
         expect(() => countedLoopFrames(run, { clipDurationS: D, firstLoop: -1 })).toThrow(
             /firstLoop/,
         );
+    });
+
+    // #95, Task 4: called without options, both threw a bare TypeError from destructuring
+    // `undefined`, where a missing clip duration is refused by name.
+    it("refuses a call without options as one without a clip duration, by name", () => {
+        const named = /^clipDurationS must be a positive number of seconds, got undefined$/;
+        for (const read of [() => trackTimeShare(run), () => countedLoopFrames(run)]) {
+            expect(read).toThrow(RangeError);
+            expect(read).toThrow(named);
+        }
+    });
+
+    // #95, Task 4: the 10 ms bin was a literal twice, in the default and in the definition.
+    it("bins at TRACK_TIME_BIN_MS unless told otherwise, the size its definition names", () => {
+        expect(TRACK_TIME_BIN_MS).toBe(10);
+        expect(trackTimeShare(run, { clipDurationS: D }).binMs).toBe(TRACK_TIME_BIN_MS);
+        expect(DEFINITIONS.trackTimeShare).toContain(`(binMs ${TRACK_TIME_BIN_MS})`);
     });
 
     // A duration shorter than the clip unwraps each loop onto the next: the run's time overlaps
@@ -830,7 +975,7 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
             8.8, 8.9, 8.9,
         ]);
         // Its loop still reads whole: loop 1's first bins take the frame standing at D.
-        const whole = [...rounding, frame("LOST", 0.2)]; // 2.2: loop 2 closes loop 1
+        const whole = [...rounding, frame("LOST", 0.9), frame("LOST", 0.2)]; // 2.2: loop 2 closes loop 1
         expect(trackTimeShare(whole, { clipDurationS: D, loopCount: 1 })).toMatchObject({
             share: 0.5,
             complete: true,
@@ -847,10 +992,10 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
             /^frame 3: media time 1\.002 s is past clipDurationS 1 s by more than 1 ms/,
         );
         expect(() => trackTimeShare(after, { clipDurationS: D, loopCount: 1 })).toThrow(/^frame 3:/);
-        // Unwrapped time that goes back is still refused, strictly: a media time below 0 after a
-        // wrap is the only way left to it.
+        // A media time below 0 is no restart, and is refused as a step back (#96): it was the
+        // last way for unwrapped time to go back, which the timeline refused on its own before.
         expect(() => unwrapMediaTimes([frame("LOST", 0.9), frame("LOST", -0.2)], D)).toThrow(
-            /^frame 1: media time -0\.2 s unwraps to 0\.8 s, before frame 0's 0\.9 s \(clipDurationS 1 s\)/,
+            /^frame 1: media time -0\.2 s, after 0\.9 s, is not the clip restarting: it is before the clip's start/,
         );
     });
 
@@ -1023,6 +1168,20 @@ describe("detection locks, first steps and outcomes", () => {
         });
     });
 
+    // #95, Task 5: a refused first step without a trackLoss was counted under the key its
+    // absent value stringifies to, "undefined" or "null". The current tracker never makes one.
+    it("counts a refused first step that records no trackLoss under (none), not undefined", () => {
+        for (const trackLoss of [undefined, null]) {
+            const frames = [
+                frame("LOST", 0, { reason: "no-detection" }),
+                consumed("LOST", 100, detectedAt(0, 1), { reason: "unconfirmed", trackLoss }),
+            ];
+            const locks = detectionLocks(frames);
+            expect(locks.refused, String(trackLoss)).toEqual({ "(none)": 1 });
+            expect(locks.confirmed + refusedTotal(locks)).toBe(locks.n);
+        }
+    });
+
     it("counts a lock set on the first frame after a loop wrap apart, in both modes", () => {
         const wrap = [
             own("DETECT", 0, { mediaTimeSeconds: 11.9 }),
@@ -1087,6 +1246,47 @@ describe("detection locks, first steps and outcomes", () => {
             reacquisitionsAtLoopWrap: 0,
         });
         expect(firstStepLatency(detectionOnly).ms.n).toBe(0);
+        // #95, Task 5: and its own DETECT frames count as locked, which the definition now says.
+        expect(detectionOutcomes(detectionOnly)).toMatchObject({ used: 3, locked: 2 });
+        expect(DEFINITIONS.detectionOutcomes).toMatch(/detection-only run's own DETECT frames count as locked/);
+    });
+
+    // #95, found by the review of the validity fixes: unwrapMediaTimes stands a frame up to 1 ms
+    // past the clip's duration at the duration; firstStepLatency did not, and dropped the sample
+    // of a lock detected on such a frame whose first step is the next loop's frame at media time 0.
+    it("reads a detected frame up to 1 ms past the clip's duration at the duration, as the timeline does", () => {
+        const D = 1;
+        const atEnd = [
+            own("DETECT", 1000, { mediaTimeSeconds: 1.0005 }),
+            frame("TRACK", 1033, { mediaTimeSeconds: 0, tracking: step }),
+        ];
+        const r = firstStepLatency(atEnd, { clipDurationS: D });
+        expect(r.videoMs).toMatchObject({ n: 1, p50: 0 });
+        // A consumed detection's frame the same way: 20 ms of video to its first step, not 19.5.
+        const consumedAtEnd = [
+            frame("LOST", 900, { mediaTimeSeconds: 0.9, reason: "no-detection" }),
+            consumed("TRACK", 1053, detectedAt(1000, 1, 1.0005), { mediaTimeSeconds: 0.02 }),
+        ];
+        const c = firstStepLatency(consumedAtEnd, { clipDurationS: D });
+        expect(c.videoMs.n).toBe(1);
+        expect(c.videoMs.p50).toBeCloseTo(20, 9);
+        // The independent check: the step's frame stands at D too, 500 ms of video, not 500.5.
+        const stepAtEnd = [
+            own("DETECT", 500, { mediaTimeSeconds: 0.5 }),
+            frame("TRACK", 1000, { mediaTimeSeconds: 1.0005, tracking: step }),
+        ];
+        expect(firstStepLatency(stepAtEnd, { clipDurationS: D }).videoMs.p50).toBeCloseTo(500, 6);
+    });
+
+    // The independent check: the clamp stood any frame past D at D, where the timeline's
+    // tolerance is 1 ms and a frame past it is refused there. Past it, a frame is read as it was
+    // before the clamp: a duration that short is the timeline's to refuse, not this to absorb.
+    it("stands at the clip's duration only a frame within 1 ms past it", () => {
+        const pastTolerance = [
+            own("DETECT", 1000, { mediaTimeSeconds: 1.005 }),
+            frame("TRACK", 1033, { mediaTimeSeconds: 0, tracking: step }),
+        ];
+        expect(firstStepLatency(pastTolerance, { clipDurationS: 1 }).videoMs.n).toBe(0);
     });
 
     it("measures first-step latency by one rule in both modes", () => {
@@ -1220,6 +1420,21 @@ describe("frame time and where detection's time goes", () => {
         expect(w.onLoop.share).toBeCloseTo(0.6 / 64.7, 12);
         expect(w.offLoop.workerMs).toEqual(stats([70]));
         expect(w.postToArrivalMs).toEqual(stats([75]));
+    });
+
+    // #95, Task 8: the filter was written twice, here and in the transfer's profile. One
+    // definition now, which both read.
+    it("takes one post-to-arrival sample per job that came back, in job order", () => {
+        const jobs = [
+            { postedAtMs: 10, arrivedAtMs: 85 },
+            { postedAtMs: 100, arrivedAtMs: null }, // in flight or held at Stop
+            { postedAtMs: 200 }, // an older record with no arrival field
+            { postedAtMs: null, arrivedAtMs: 300 },
+            { postedAtMs: 400, arrivedAtMs: 510 },
+        ];
+        expect(postToArrivalSamples(jobs)).toEqual([75, 110]);
+        expect(postToArrivalSamples([])).toEqual([]);
+        expect(detectionTime([], jobs).postToArrivalMs).toEqual(stats(postToArrivalSamples(jobs)));
     });
 
     it("leaves a job that never came back out of the latency, handler and worker statistics", () => {
@@ -1394,7 +1609,7 @@ describe("cornerJitter", () => {
             at(0.1),
             at(0.3),
             at(0.5),
-            at(0.7),
+            at(0.8),
             at(0.2, 5),
             at(0.4, 5),
             at(0.6, 5),
@@ -1816,6 +2031,25 @@ describe("summarizeRun", () => {
             expect(summarizeRun(lacking).detectionUseFallbackFrames).toBe(1);
         });
 
+        // #95, found by the review of the validity fixes: with counted loops the refusal numbered
+        // the frame among the counted loops' frames, while the clip-duration refusal numbers it in
+        // the window. Both now number it in the window.
+        it("numbers the frame in the window, as the clip-duration refusal does, when loops are counted", () => {
+            const run = [
+                current[0], // loop 0: the warm-up
+                rec("LOST", "none", 0.5),
+                rec("LOST", "none", 0.9),
+                rec("LOST", "none", 0.05), // loop 1: the first counted frame
+                rec("LOST", undefined, 0.5), // window frame 4, counted frame 1
+                rec("LOST", "none", 0.9),
+                rec("LOST", "none", 0.05), // loop 2
+            ];
+            const counted = { clipDurationS: 1, loops: { firstLoop: 1, loopCount: 1 }, path: "worker" };
+            const named = /: frame 4 of a worker run \(media time 0\.5 s\) has no detectionUse/;
+            expect(() => summarizeRun(run, counted)).toThrow(named);
+            expect(() => stageSummary(run, { stages: ["acquire", "total"], ...counted })).toThrow(named);
+        });
+
         it("counts the frames an older export's synchronous summary reads by the fallback", () => {
             const e = JSON.parse(
                 readFileSync(`${dir}2026-09-29-tab9-tuning-r2-p48-s16-wall.json`, "utf8"),
@@ -2127,6 +2361,23 @@ describe("parseTrackerOverrides applies the tracker's domains", () => {
     });
 });
 
+// #113: replay-clips --packages bundle threw a TypeError on a manifest built without git, where
+// #111 made head null possible. A refusal names its cause; a TypeError is not a refusal.
+describe("bundleManifestRefusal: what --packages bundle refuses in the build's manifest", () => {
+    it("refuses none, and one whose commit git could not describe, naming the cause and the fix", () => {
+        expect(bundleManifestRefusal(null)).toMatch(/needs examples\/dist\/provenance\.json: run `npm run build`/);
+        const blind = bundleManifestRefusal({ head: null, clean: false, bundle: { sha256: "ab" } });
+        expect(blind).toMatch(/built where git could not describe the tree \(head null\)/);
+        expect(blind).toMatch(/To fix: in a git checkout, commit, and run `npm run build`/);
+        for (const r of [bundleManifestRefusal(null), blind]) expect(r).not.toMatch(/\n/);
+    });
+
+    it("takes a manifest that names its commit, clean or not: the header says which", () => {
+        expect(bundleManifestRefusal({ head: "668d6fa", clean: true })).toBeNull();
+        expect(bundleManifestRefusal({ head: "668d6fa", clean: false })).toBeNull();
+    });
+});
+
 describe("startRefusal names the target file it was given", () => {
     it("says which file did not load, pinball.wnft when none is named", () => {
         expect(
@@ -2140,6 +2391,16 @@ describe("startRefusal names the target file it was given", () => {
         expect(startRefusal({ mode: "tracking", target: null, minTrackedPatches: 8 })).toMatch(
             /targets\/pinball\.wnft is not loaded/,
         );
+    });
+
+    // #113, Task 6's defect on the synchronous arm: Start clears the error line, then refused
+    // "… is not loaded (see above)", pointing at the line it had just cleared.
+    it("names why the file did not load, and points at no line above", () => {
+        const failed = { mode: "tracking", target: null, minTrackedPatches: 8 };
+        expect(startRefusal({ ...failed, loadFailure: "HTTP 404" })).toBe(
+            "targets/pinball.wnft could not be loaded (HTTP 404).",
+        );
+        expect(startRefusal(failed)).toBe("targets/pinball.wnft is not loaded.");
     });
 });
 
@@ -2248,6 +2509,28 @@ describe("accountingError", () => {
         ["no accounting at all", undefined],
     ])("refuses %s as not a whole number", (_, acc) => {
         expect(accountingError(acc)).toMatch(/whole number/);
+    });
+
+    // #95, found by the independent check: a text count printed as "posted is 31, not a whole
+    // number", which reads as if 31 were refused. Quoted, it says what was there.
+    it("quotes a text count, so the message does not refuse the number it names", () => {
+        expect(accountingError({ ...balanced, posted: "31" })).toBe(
+            'detection accounting: posted is "31", not a whole number ≥ 0',
+        );
+        expect(accountingError({ ...balanced, posted: "" })).toBe(
+            'detection accounting: posted is "", not a whole number ≥ 0',
+        );
+        expect(accountingError({ ...balanced, dropped: -1 })).toBe(
+            "detection accounting: dropped is -1, not a whole number ≥ 0",
+        );
+        expect(accountingError({ requests: 1 })).toMatch(/: posted is undefined, not a whole number/);
+        // Only text is quoted: JSON would print NaN and Infinity as null.
+        expect(accountingError({ ...balanced, requests: NaN })).toBe(
+            "detection accounting: requests is NaN, not a whole number ≥ 0",
+        );
+        expect(accountingError({ ...balanced, posted: Infinity })).toBe(
+            "detection accounting: posted is Infinity, not a whole number ≥ 0",
+        );
     });
 
     it("says it in one line, whatever is wrong", () => {
@@ -2683,18 +2966,102 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
     });
 });
 
+// #95: the replay recomputes a session run's protocol, and the tracker's defaults reach it from
+// the package, by name, rather than as a third hand-written copy beside the page's.
+describe("trackerDefaults", () => {
+    it("reads every tunable option's default from the tracker package, by its DEFAULT_ name", async () => {
+        const pkg = await import("../../packages/nft-tracker/dist/index.js");
+        const d = trackerDefaults(pkg);
+        expect(Object.keys(d)).toEqual([...TUNABLE_TRACKER_OPTIONS]);
+        expect(d.maxFrameLevels).toBe(pkg.DEFAULT_MAX_FRAME_LEVELS);
+        expect(d.photometric).toBe(pkg.DEFAULT_PHOTOMETRIC);
+        expect(d.tukeyC).toBe(pkg.DEFAULT_TUKEY_C);
+        expect(d.minTrackedPatches).toBe(pkg.DEFAULT_MIN_TRACKED_PATCHES);
+        expect(d.maxFitRms).toBe(pkg.DEFAULT_MAX_FIT_RMS);
+        expect(d.minPatchZncc).toBe(pkg.DEFAULT_MIN_PATCH_ZNCC);
+        for (const [k, v] of Object.entries(d)) expect(v, k).not.toBeUndefined();
+    });
+
+    it("refuses a package that lacks one, naming the export", () => {
+        expect(() => trackerDefaults({})).toThrow(TypeError);
+        expect(() => trackerDefaults({})).toThrow(/DEFAULT_MAX_FRAME_LEVELS/);
+    });
+});
+
+// The independent check of 24d1b6d: "M3's committed exports stay admissible" rested on a manual
+// check. A change to sessionRunGaps, to a tracker default, or to the defaults the replay builds
+// would have made --transfer refuse that evidence with every test green.
+describe("sessionDefaults, and M3's committed exports read by them", () => {
+    const pkg = () => import("../../packages/nft-tracker/dist/index.js");
+
+    it("are the page's defaults, the tracker's read from its package", async () => {
+        const p = await pkg();
+        expect(sessionDefaults(p)).toEqual({
+            targetFile: "targets/pinball.wnft",
+            processingBox: { width: 480, height: 360 },
+            maxKeypoints: p.DEFAULT_MAX_SCENE_KEYPOINTS,
+            trackerOptions: trackerDefaults(p),
+        });
+        expect(() => sessionDefaults({})).toThrow(TypeError);
+    });
+
+    it("read every committed M3 export as a session run, and --transfer's plan takes them all", async () => {
+        const defaults = sessionDefaults(await pkg());
+        const dir = fileURLToPath(new URL("../../docs/benchmarks/", import.meta.url));
+        const files = readdirSync(dir)
+            .filter((name) => /^2026-10-01-tab9-m3-.*\.json$/.test(name))
+            .sort()
+            .map((name) => ({ name, e: JSON.parse(readFileSync(`${dir}${name}`, "utf8")) }));
+        expect(files).toHaveLength(17);
+        for (const { name, e } of files) {
+            expect(e.protocol?.sessionRun, name).toBe(true);
+            expect(sessionRunGaps(e, defaults), name).toEqual([]);
+        }
+        const target = readFileSync(fileURLToPath(new URL("../targets/pinball.wnft", import.meta.url)));
+        const clips = ["pinball-static.mp4", "pinball-bench.mp4", "pinball-bench-table.mp4"];
+        const plan = transferPlan(files, {
+            clips,
+            sha256: createHash("sha256").update(target).digest("hex"),
+            defaults,
+        });
+        expect(plan.refusal).toBeNull();
+        expect(plan.skipped.map((s) => s.name)).toEqual(["2026-10-01-tab9-m3-stateless-static.json"]);
+        expect(plan.clips.map((c) => c.clip)).toEqual(clips);
+    });
+});
+
 describe("transferPlan: what --transfer reads from a session's page exports", () => {
     const CLIPS = ["pinball-static.mp4", "pinball-bench.mp4", "pinball-bench-table.mp4"];
     const SHA = "ab";
     const frame = (state, timings, o = {}) => ({ state, ok: state !== "LOST", timings, ...o });
     // What the page records of a run that followed the session's protocol (sessionRunGaps).
     const SESSION_RUN = Object.freeze({ sessionRun: true, gaps: [] });
+    // The page's defaults, as test values, which the plan recomputes each protocol with; and
+    // the fields a session run records at them, which every export here carries unless a test
+    // says otherwise, so that the recomputed protocol bears its record out.
+    const DEFAULTS = Object.freeze({
+        targetFile: "targets/pinball.wnft",
+        processingBox: { width: 480, height: 360 },
+        maxKeypoints: 300,
+        trackerOptions: Object.fromEntries(TUNABLE_TRACKER_OPTIONS.map((k, i) => [k, i + 1])),
+    });
+    const SESSION_FIELDS = Object.freeze({
+        loops: { firstLoop: 1, loopCount: 4 },
+        run: { order: 1, endedBy: "done" },
+        ticks: 1512,
+        windowSize: 1512,
+        runSummary: { trackTimeShare: { share: 0.5, complete: true } },
+        tracker: { options: { ...DEFAULTS.trackerOptions } },
+        maxKeypoints: 300,
+        processingBox: { width: 480, height: 360 },
+    });
     const pageExport = (path, frames, o = {}) => ({
         mode: "tracking",
         source: "bundled",
         bundledClip: "pinball-bench.mp4",
-        target: { sha256: SHA },
+        target: { source: "wnft", file: "targets/pinball.wnft", sha256: SHA },
         protocol: SESSION_RUN,
+        ...SESSION_FIELDS,
         ...(path === null ? {} : { detection: { path, jobs: [] } }),
         frames,
         ...o,
@@ -2763,7 +3130,7 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
     const plan = (exports, sha256 = SHA) =>
         transferPlan(
             exports.map((e, i) => ({ name: `export-${i}.json`, e })),
-            { clips: CLIPS, sha256 },
+            { clips: CLIPS, sha256, defaults: DEFAULTS },
         );
 
     it("reads each mode's latency samples, acquisition and step from its exports", () => {
@@ -2817,9 +3184,14 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
         );
         expect(exportDetectionPath(older)).toBe("sync");
         expect(exportDetectionPath(workerExport())).toBe("worker");
-        // Older than the protocol record too, so no session's: it is refused (below). Given one,
-        // its frames are read on M2's rule.
-        const p = plan([workerExport(), { ...older, protocol: SESSION_RUN }]);
+        // Older than the protocol record too, so no session's: it is refused (below). A session
+        // run records its detection path, so recomputed it is refused even given a record.
+        expect(plan([workerExport(), { ...older, protocol: SESSION_RUN }]).refusal).toMatch(
+            /export-1\.json records a session run, but recomputed from the export it has gaps: detection\.path none: /,
+        );
+        // Frames without detectionUse, in an export that names its path, are read on M2's rule.
+        const named = { ...older, protocol: SESSION_RUN, detection: { path: "sync", jobs: [] } };
+        const p = plan([workerExport(), named]);
         expect(p.refusal).toBeNull();
         expect(p.clips[0].sync.latencyMs).toEqual([69, 80]);
     });
@@ -2999,6 +3371,47 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
                 );
             },
         );
+
+        // #95, found by the review of the validity fixes: the plan trusted the recorded protocol, so
+        // a record left stale by a later change to the rule, or edited by hand, passed while it
+        // said sessionRun: true. It is now recomputed from the export, with the page's defaults.
+        it.each(["worker", "sync"])(
+            "refuses a %s export recorded as a session run that the rule, recomputed, does not bear out",
+            (path) => {
+                const stopped = { run: { order: 1, endedBy: "stopped" } };
+                const worker = workerExport(path === "worker" ? stopped : {});
+                const sync = pageExport("sync", syncFrames(), path === "sync" ? stopped : {});
+                const r = refusal([worker, sync]);
+                expect(r).toMatch(/^pinball-bench\.mp4: /);
+                expect(r).toMatch(path === "worker" ? /export-0\.json/ : /export-1\.json/);
+                expect(r).toMatch(
+                    /records a session run, but recomputed from the export it has gaps: run\.endedBy stopped: [^;]*$/,
+                );
+                expect(r).not.toMatch(/\n/);
+            },
+        );
+
+        it("recomputes with the defaults it is given: an option the export ran with is read against them", () => {
+            const tuned = { tracker: { options: { ...DEFAULTS.trackerOptions, minTrackedPatches: 42 } } };
+            expect(refusal([workerExport(tuned), pageExport("sync", syncFrames())])).toMatch(
+                /export-0\.json records a session run, but .*tracker option minTrackedPatches 42/,
+            );
+        });
+
+        it("refuses a caller that gives no defaults, before it reads any export", () => {
+            for (const read of [
+                () => transferPlan([], { clips: CLIPS, sha256: SHA }),
+                () =>
+                    transferPlan([], {
+                        clips: CLIPS,
+                        sha256: SHA,
+                        defaults: { ...DEFAULTS, maxKeypoints: undefined },
+                    }),
+            ]) {
+                expect(read).toThrow(TypeError);
+                expect(read).toThrow(/^transferPlan needs the page's defaults: /);
+            }
+        });
 
         it("refuses an export with no protocol record, an older one among them", () => {
             for (const sync of [
