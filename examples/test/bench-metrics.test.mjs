@@ -1041,6 +1041,20 @@ describe("detection locks, first steps and outcomes", () => {
         });
     });
 
+    // #95, Task 5: a refused first step without a trackLoss was counted under the key its
+    // absent value stringifies to, "undefined" or "null". The current tracker never makes one.
+    it("counts a refused first step that records no trackLoss under (none), not undefined", () => {
+        for (const trackLoss of [undefined, null]) {
+            const frames = [
+                frame("LOST", 0, { reason: "no-detection" }),
+                consumed("LOST", 100, detectedAt(0, 1), { reason: "unconfirmed", trackLoss }),
+            ];
+            const locks = detectionLocks(frames);
+            expect(locks.refused, String(trackLoss)).toEqual({ "(none)": 1 });
+            expect(locks.confirmed + refusedTotal(locks)).toBe(locks.n);
+        }
+    });
+
     it("counts a lock set on the first frame after a loop wrap apart, in both modes", () => {
         const wrap = [
             own("DETECT", 0, { mediaTimeSeconds: 11.9 }),
