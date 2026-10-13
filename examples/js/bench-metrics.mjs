@@ -1088,7 +1088,9 @@ export function accountingError(acc) {
     for (const key of ACCOUNTING_COUNTS) {
         const n = acc?.[key];
         if (!(Number.isInteger(n) && n >= 0)) {
-            return `detection accounting: ${key} is ${String(n)}, not a whole number ≥ 0`;
+            // A text count quoted: "posted is 31" would read as if 31 were refused.
+            const shown = typeof n === "string" ? JSON.stringify(n) : String(n);
+            return `detection accounting: ${key} is ${shown}, not a whole number ≥ 0`;
         }
     }
     if (acc.ignored !== 0) {

@@ -2301,6 +2301,21 @@ describe("accountingError", () => {
         expect(accountingError(acc)).toMatch(/whole number/);
     });
 
+    // #95, found by the independent check: a text count printed as "posted is 31, not a whole
+    // number", which reads as if 31 were refused. Quoted, it says what was there.
+    it("quotes a text count, so the message does not refuse the number it names", () => {
+        expect(accountingError({ ...balanced, posted: "31" })).toBe(
+            'detection accounting: posted is "31", not a whole number ≥ 0',
+        );
+        expect(accountingError({ ...balanced, posted: "" })).toBe(
+            'detection accounting: posted is "", not a whole number ≥ 0',
+        );
+        expect(accountingError({ ...balanced, dropped: -1 })).toBe(
+            "detection accounting: dropped is -1, not a whole number ≥ 0",
+        );
+        expect(accountingError({ requests: 1 })).toMatch(/: posted is undefined, not a whole number/);
+    });
+
     it("says it in one line, whatever is wrong", () => {
         for (const acc of [
             { ...balanced, requests: 42 },
