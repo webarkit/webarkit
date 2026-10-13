@@ -394,11 +394,23 @@ export const DEFINITIONS = Object.freeze({
 });
 
 /**
- * How far into the clip the frame after a loop wrap may be, how far back a wrap
- * steps at least, and how much video it may skip across the clip's end,
- * seconds: the bound of the device session's stall check, whose monotonicity
- * arm reads a step back as the clip restarting only within it
- * (docs/benchmarks/2026-10-01-m3-session-additions.md, #96).
+ * How much video a loop wrap may skip across the clip's end, how far into the
+ * clip the frame after it may be, and how far back it steps at least, seconds
+ * (#96).
+ *
+ * Calibrated, for the first two. It is the per-gap bound of M3's stall check,
+ * whose monotonicity arm reads a step back as the clip restarting only within
+ * it: the largest gap in round 2's sixteen Tab_9_WiFi exports, 240.8 ms,
+ * doubled and rounded up (docs/benchmarks/2026-10-01-m3-session-additions.md,
+ * "A per-run check for a stalled clip", "The bound, from the tablet"). Read
+ * with the clip's duration, the second follows from the first.
+ *
+ * Chosen, for the third. Without a duration, "steps back more than 0.5 s"
+ * stands in for "from near the clip's end", reusing the value; it was not
+ * derived. The smallest real step back in the committed exports is 8.63 s.
+ *
+ * Measured under M3's per-frame cost, which M4 raises: #114 says when M4's
+ * campaign re-derives it, and by what rule. It is not changed mid-campaign.
  */
 const WRAP_BOUND_S = 0.5;
 
