@@ -1119,6 +1119,9 @@ describe("detection locks, first steps and outcomes", () => {
             reacquisitionsAtLoopWrap: 0,
         });
         expect(firstStepLatency(detectionOnly).ms.n).toBe(0);
+        // #95, Task 5: and its own DETECT frames count as locked, which the definition now says.
+        expect(detectionOutcomes(detectionOnly)).toMatchObject({ used: 3, locked: 2 });
+        expect(DEFINITIONS.detectionOutcomes).toMatch(/detection-only run's own DETECT frames count as locked/);
     });
 
     it("measures first-step latency by one rule in both modes", () => {
