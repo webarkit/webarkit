@@ -70,6 +70,7 @@ import {
     timeRepeated,
     trackabilityError,
     trackFramesWithDetectionInFlight,
+    TRACK_TIME_BIN_MS,
     trackTimeShare,
     transferPlan,
     TUNABLE_TRACKER_OPTIONS,
@@ -791,6 +792,23 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
         expect(() => countedLoopFrames(run, { clipDurationS: D, firstLoop: -1 })).toThrow(
             /firstLoop/,
         );
+    });
+
+    // #95, Task 4: called without options, both threw a bare TypeError from destructuring
+    // `undefined`, where a missing clip duration is refused by name.
+    it("refuses a call without options as one without a clip duration, by name", () => {
+        const named = /^clipDurationS must be a positive number of seconds, got undefined$/;
+        for (const read of [() => trackTimeShare(run), () => countedLoopFrames(run)]) {
+            expect(read).toThrow(RangeError);
+            expect(read).toThrow(named);
+        }
+    });
+
+    // #95, Task 4: the 10 ms bin was a literal twice, in the default and in the definition.
+    it("bins at TRACK_TIME_BIN_MS unless told otherwise, the size its definition names", () => {
+        expect(TRACK_TIME_BIN_MS).toBe(10);
+        expect(trackTimeShare(run, { clipDurationS: D }).binMs).toBe(TRACK_TIME_BIN_MS);
+        expect(DEFINITIONS.trackTimeShare).toContain(`(binMs ${TRACK_TIME_BIN_MS})`);
     });
 
     // A duration shorter than the clip unwraps each loop onto the next: the run's time overlaps
