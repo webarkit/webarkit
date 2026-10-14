@@ -74,12 +74,12 @@ it found are cosmetic (A1, A2, A8). What needed correcting was interpretive
 | A1 | M3's `acquire` p50 given as "40.8 to 40.9"; one of the four, `sync-static-2`, is 40.6 | error | Fixed: "40.6 to 40.9", in the table and in the acquire finding (`7c0cc66` had repeated it) |
 | A2 | k = 3's threshold printed 7.6069 × 10⁻⁶; it is 7.6068 × 10⁻⁶, from the rounded or the exact F | error, last digit | Fixed |
 | A3 | Round 1's 0.0092 px was put in units of s₀ (7.3 s₀) and read against the k = 2 power table, under a heading that drew no verdict. The plan rules that round 1's size does not transfer, and s₀ is read with the frame-set variation in, while 0.0092 px is on common footage | overstates | Fixed: the bullet now says round 1's figure is not set against s₀, and why, with a dated correction note |
-| A4 | "What it does not change … as the clause and the brief require": an interpretive ruling written as fact, and the brief cited as a source, which the plan does not allow | overstates | Fixed: "the brief" removed. The ruling is now the maintainer's of 2026-10-14, which came with the review: the conclusion stands on the general reason alone, with one leg cut. It is recorded in the acquire finding, beside the correlation that bears on it |
+| A4 | "What it does not change … as the clause and the brief require": an interpretive ruling written as fact, and the brief cited as a source, which the plan does not allow | overstates | Fixed: "the brief" removed. The ruling is now the maintainer's of 2026-10-14, which came with the review: the exclusion stands on the general reason, as the registration already said. Its first wording, "with one leg cut", was corrected under B1. It is recorded in the acquire finding, beside the correlation that bears on it |
 | A5 | "The arms are found one population of repeats" leads, without what item 1 lets an accepted block claim. It is the registration's own wording, which item 1 bounds | overstates | Fixed: "not shown to differ" leads, with \|D\| = 1.02 s₀ and the 0.777 pass rate at 1 σ |
 | A6 | "The runs do not differ by more than sampling within a run makes them differ": a non-significant F read as proof of the null | overstates | Fixed: "are not shown to differ" |
 | A7 | The readiness condition, a quiet link, was registered in `ba29b89` (11:54:11Z) after the 27 drops (11:42:41–11:47:53Z) and the watch (11:48:26–11:53:29Z) it prescribes | omission | Fixed: disclosed in the record, which adds that the condition reads no jitter and gates no run |
 | A8 | Products printed from rounded inputs do not reproduce in the last digit (for example 3.3441 × 0.0012672 = 0.0042376, printed 0.0042375) | nit | Fixed: the record says its figures are from unrounded values, and gives s₀, s_p and s_M3 to one more digit |
-| A9 | The clip's bytes, `examples/videos/pinball-static.mp4`, are attested by no check: not in the manifest, the guarded paths or the export. It is the kind of dropped check the plan found for the target | omission, at the registration | Half fixed: the record gives the clip's SHA-256 (`978cb9f2…`, equal to its blob at `37dc6d4`) and its state. The server's `last-modified`, read before run 1 (11:43Z), gave 2026-09-26. **Adding the check to later sessions is the maintainer's to rule** |
+| A9 | The clip's bytes, `examples/videos/pinball-static.mp4`, are attested by no check: not in the manifest, the guarded paths or the export. It is the kind of dropped check the plan found for the target | omission, at the registration | Half fixed: the record gives the clip's SHA-256 (`978cb9f2…`, equal to its blob at `37dc6d4`) and its state. The server's `last-modified`, read before run 1 (11:43Z), gave 2026-09-26. How later sessions attest the clip is [#126](https://github.com/webarkit/webarkit/issues/126), opened at the maintainer's ruling, to be decided before round 1 with #124. Rule 3 is not changed for round 0 |
 | A10 | The `.link.txt` files' normalization from CRLF to LF was disclosed only in the PR body, which is not a source | omission | Fixed: one bullet in the record |
 | A11 | The drops, the watch, the "Opened" column and the 29-minute figure cannot be checked from the repository | nit | Fixed: adb's log is committed as `2026-10-14-tab9-m4-calibration-before-run-1.adb.txt`, filtered to the lines naming the device, which leaves out the PC's adb key fingerprint. The watch's output and the "Opened" times are said to come from terminal output not kept |
 | A12 | An eight-run range and a four-run range set side by side, though they are not comparable | nit | Fixed: the comparison is the F; the expected ranges (2.85 σ and 2.06 σ) are given |
@@ -151,18 +151,45 @@ premise behind the back-to-back design.
 
 | # | Finding | Kind | What became of it |
 |---|---|---|---|
-| B1 | "One of the plan's two supports … is cut" and "with one of its two legs cut": the registration rests the exclusion "on the general reason alone", and "one cost of a frame" was a factual premise cited from M3, not a load-bearing leg. At arm level the cost was balanced: mean `acquire` p50 30.37 ms in the sync arm, 31.55 ms in the worker arm | overstates the registration | **Brought to the maintainer:** the "two legs" wording is the maintainer's ruling of 2026-10-14 |
+| B1 | "One of the plan's two supports … is cut" and "with one of its two legs cut": the registration rests the exclusion "on the general reason alone", and "one cost of a frame" was a factual premise cited from M3, not a load-bearing leg. At arm level the cost was balanced: mean `acquire` p50 30.37 ms in the sync arm, 31.55 ms in the worker arm | overstates the registration | Brought to the maintainer, since the "two legs" wording was the maintainer's ruling. The maintainer ruled that framing inaccurate. Fixed in the record, the README, this record's A4 row and the PR body, with a dated note in the record |
 | B2 | "Both enter round 1 untried": the session's re-run rule was registered for that session only | misstates the registration | Fixed: item 5's redo enters round 1 untried; what replaces a failed counted run is for the stopping rules |
 | B3 | The correlation given without its test, and "does not predict beyond run 3" without "cannot exclude" (README, PR body) | overstates by omission | Fixed in both: t = 1.158, p = 0.291, not shown; eight runs cannot exclude a moderate relation |
 | B4 | "Holds each run's x as measured, which the accepted arm test supports" | overstates | Fixed: it assumes the arm test's null, which is not rejected but not shown |
 | B5 | "Each gets the same D, s_p and A" reads as the same values | nit | Fixed: "read with the same formulas" |
 | B6 | The heading "… what it did to the arm test" presumes an effect | nit | Fixed: "whether it mattered to the arm test"; the permutation p, 12 of 70 = 0.171, added beside the t test's 0.161 |
-| B7 | "About 17% of the time (Fisher's z)": the t test's power, by simulation, is about 18.5% (17.5% by Fisher's z, at r = 0.4275) | nit | **Brought to the maintainer:** the 17% is in the maintainer's ruling and in #123's comment |
+| B7 | "About 17% of the time (Fisher's z)": the t test's power, by simulation, is about 18.5% (17.5% by Fisher's z, at r = 0.4275) | nit | Brought to the maintainer, since the 17% was in the maintainer's ruling and in #123's comment. The maintainer ruled "about 18%" everywhere. Fixed in the record, with a dated note, in the README, and in #123's comment, with a dated note on the edit |
 | B8 | "What did not move: the tracker's own steps" (record and README) undoes part of A16 | nit | Fixed in both: "moved by at most 0.2 ms at p50" |
 | B9 | The clip's `last-modified` was called "during the session", but it was read at 11:43Z, before run 1, and not kept | nit | Fixed, with what it shows and what it cannot |
-| B10 | Two deferrals with no issue: the clip's check in later sessions, and `acquire` as a covariate | omission | The second is ruled: archived as a report (`549b4ba`). The first says no issue holds it yet; **whether to open one is the maintainer's** |
+| B10 | Two deferrals with no issue: the clip's check in later sessions, and `acquire` as a covariate | omission | The second is ruled: archived as a report (`549b4ba`). The first is held by [#126](https://github.com/webarkit/webarkit/issues/126), opened at the maintainer's ruling |
 | B11 | The pooled r = 0.63 "points the other way": a cross-session summary given a direction of evidence | overstates | Fixed here, with a dated note, and in #123's comment, which carried the same phrase |
 | B12 | The A5 row left out that the first wording was the registration's own | nit | Fixed |
 | B13 | "Gates no run" (it gated run 1's start); the committed excerpt attests more than the record said | nit | Fixed: it gated run 1's start and decides no run's validity; what the excerpt shows from 11:48:14Z to 11:54:43Z is stated |
 | B14 | The README result printed 3.3441 × s₀ = 0.0042375 without the unrounded s₀ | nit | Fixed |
 | B15 | The slope's 0.00137 px over 28 → 42 ms reads as an effect size | nit | Fixed: the 0.00137 is dropped; the slope is carried by run 3, and without it is 1.3 × 10⁻⁶ px per ms |
+
+## The third read, and its stopping rule
+
+Stated on 2026-10-14, before the read runs, as the maintainer ruled.
+
+- **The rule, M3's:** the correction stops when a read finds no wrong figure
+  and no overstated verdict.
+- **Where it stands:** the second read found no wrong figure. It did find
+  overstated wording (B1, B3 and B4), so by the rule the correction has not
+  stopped, and this third read runs.
+- **Its limit:** if this read finds a wrong figure again, the correction
+  stops there. Its findings go to the maintainer instead of into a fourth
+  pass. At that point the signal is about the process, not the document, and
+  a fourth pass would not fix it.
+- **The case neither covers:** an overstated verdict but no wrong figure. The
+  rule does not stop the correction then, and whether a fourth read follows
+  is the maintainer's to rule.
+- **Its scope:**
+  - `549b4ba`: the three refuted claims and the plan's dated notes;
+  - `eec47b8`: the second read's fixes;
+  - the commit that applies B1 and B7, which also states this rule;
+  - #123's comment as edited, and the PR body.
+- **Its reader:** a fresh agent, not the one that made the first two reads.
+  Several passages in scope are that agent's own suggested wordings (B1, B4,
+  B9 and B11), so it would be reading text it wrote.
+
+Its findings, and what became of each, are recorded below when it has run.

@@ -188,8 +188,10 @@ Each export is the page's file, pulled from the tablet's download folder by
   - **What that shows, with the hash:** no ordinary write to the clip between
     11:43Z and the reading after the session. A write that kept the file time
     would not show.
-  - Whether later sessions check it is the maintainer's to rule; no issue
-    holds it yet.
+  - How later sessions attest a run's clip is held by
+    [#126](https://github.com/webarkit/webarkit/issues/126). It is decided
+    before round 1, with the rest of #124. Rule 3 is not changed for round
+    0, whose clip was read before run 1.
 
 ## After the eighth
 
@@ -419,23 +421,30 @@ the plan.
   twelve runs (`trackStepMs` p50 9.2 to 9.4 ms, `alignMs` p50 8.8 to
   8.9 ms).
 
-**One of the plan's two supports for leaving the frame-set variation in is
-cut, and round 0 cut it.**
-- **The two supports.** The clause's "Where it does not" ruling excludes
-  common media times from its own readings for two reasons:
-  - the general reason: in a calibration of noise, which frames a run
-    processed is part of the noise, and removing it makes the calibrated
-    spread too small;
-  - a supporting fact: round 0's arms are one pipeline at one cost of a
-    frame, cited from M3's `total` p50, 51.2 to 51.4 ms in both arms.
-- **Round 0 refutes the supporting fact for itself.** Its cost of a frame was
-  not one value: `total` p50 was 38.1 to 38.9 ms in six runs, and 48.0 and
-  52.7 ms in two of them.
-- **The conclusion stands, on the general reason alone.** The maintainer
-  ruled this on 2026-10-14: in a calibration of noise, frame-set variation is
-  the noise. So it stands with one of its two legs cut, and round 0's own
-  `acquire` table is what cut it. s₀, the arm test and every reading above
-  keep the frame-set variation in.
+**A fact the plan quoted from M3 was false for round 0, run by run, and
+balanced between its arms.**
+- **What the registration rests the exclusion on.** The clause's "Where it
+  does not" ruling excludes common media times from its own readings, and
+  rests that "on the general reason alone". The reason: in a calibration of
+  noise, which frames a run processed is part of the noise, and removing it
+  makes the calibrated spread too small.
+- **What it also stated, from M3:** that round 0's arms are one pipeline at
+  one cost of a frame, cited from M3's `total` p50, 51.2 to 51.4 ms in both
+  arms. It was a fact quoted, not a reason counted.
+- **Round 0 shows that fact false, run by run.** Its `total` p50 was 38.1 to
+  38.9 ms in six runs, and 48.0 and 52.7 ms in two of them.
+- **The cost was balanced between the arms:** mean `acquire` p50 was
+  30.37 ms in the sync arm and 31.55 ms in the worker arm, one slow run in
+  each. So its failure does not bite on the arm test.
+- **The exclusion stands on the general reason,** as the registration
+  already said, and the maintainer confirmed on 2026-10-14. s₀, the arm test
+  and every reading above keep the frame-set variation in.
+- *Corrected on 2026-10-14, from the second read, B1. This passage first said
+  that one of the plan's "two supports" was cut. That followed the
+  maintainer's ruling that the conclusion stands "with one of its two legs
+  cut". The maintainer has since ruled that framing inaccurate: the
+  registration counted one reason, and "one cost of a frame" was a fact
+  quoted from M3.*
 
 **Does a run's `acquire` cost predict its `jitterPx`?** The Pearson
 correlation across the eight runs, with a = `acquire` p50 and x = `jitterPx`:
@@ -470,14 +479,16 @@ correlation across the eight runs, with a = `acquire` p50 and x = `jitterPx`:
     against s₀ = 0.0012672 px on all eight.
 - **The rank correlation:** Spearman's ρ = 0.467.
 - **What eight runs can see.** A true r of 0.43 would be detected, at
-  two-sided 5%, about 17% of the time (Fisher's z).
+  two-sided 5%, about 18% of the time: 18.5% by simulating the t test,
+  17.5% by Fisher's z. *Corrected on 2026-10-14, from the second read, B7:
+  this said "about 17% (Fisher's z)".*
 - **The reading:** on this block, the `acquire` cost of a run does not
   predict its `jitterPx` beyond one run, run 3. Eight runs cannot exclude a
   moderate relation.
 - *Archived as a report; ruled by the maintainer on 2026-10-14.*
   - *No rule changes on it.*
   - *The power figure stands beside it: a true r of 0.43 would be detected
-    about 17% of the time, so a moderate relation is not excluded.*
+    about 18% of the time, so a moderate relation is not excluded.*
   - *`acquire` is already recorded per run in every export
     (`summaryMs.acquire`), so the data is there if it ever matters.*
 

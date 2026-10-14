@@ -4074,8 +4074,11 @@ read.
           record,
           [`2026-10-14-tab9-m4-calibration-session.md`](./2026-10-14-tab9-m4-calibration-session.md),
           "The acquire finding").*
+        - *Balanced between the arms: mean `acquire` p50 was 30.37 ms in
+          the sync arm and 31.55 ms in the worker arm.*
         - *The exclusion stands on the general reason, the bullet above,
-          alone, as the maintainer ruled.*
+          alone, as the "A second reason" note below already said, and the
+          maintainer confirmed.*
     - *A second reason was offered on 2026-10-14, and accepted: that a
       frame set common to all eight runs would be very small. It does not
       hold. Over four loops, a run visits nearly every frame of the clip,
@@ -4662,16 +4665,19 @@ exports, is
 - **The cost of a frame moved within the block.** `acquire` p50 was about
   28 ms in six runs, 42.1 ms in run 3 and 37.3 ms in run 5, while the
   tracker's own steps moved by at most 0.2 ms at p50.
-  - That refutes, for round 0, the clause's supporting fact that round 0's
-    arms run at one cost of a frame.
-  - Its conclusion stands on the general reason alone.
+  - That refutes, for round 0, a fact the plan quoted from M3: that round
+    0's arms run at one cost of a frame.
+  - The cost was balanced between the arms: mean `acquire` p50 was 30.37 ms
+    in the sync arm and 31.55 ms in the worker arm.
+  - The exclusion of common media times stands on the general reason, as
+    the registration already said.
   - Across the eight runs, `acquire` correlates with `jitterPx` at
     r = 0.4275. As a test, that is t = 1.158 on 6 degrees of freedom,
     p = 0.291: not shown.
   - Without run 3, r = 0.004. So `acquire` does not predict `jitterPx`
     beyond run 3, and eight runs cannot exclude a moderate relation.
   - **Archived as a report, and no rule changes on it** (the maintainer's
-    ruling, 2026-10-14). A true r of 0.43 would be detected about 17% of the
+    ruling, 2026-10-14). A true r of 0.43 would be detected about 18% of the
     time, so a moderate relation is not excluded.
   - The session record has the figures.
 - **Three claims of the maintainer's review were refuted by the data:**
