@@ -72,8 +72,8 @@ operational reading rejects when |x₁ − x₂| > 3.3441 × s₀ = **0.0042375 
   opened. The drops and the five-minute watch came before that, from
   11:42:41Z to 11:53:29Z. So the condition was written after the flapping it
   guards against had been seen, and after the watch it prescribes had been
-  made. It reads no jitter and gates no run, so nothing the clause reads was
-  selected by it.
+  made. It did gate run 1's start, but it reads no jitter and decides no
+  run's validity. So nothing the clause reads was selected by it.
 - **Where these figures come from.**
   - The drops: adb's log, committed as
     [`2026-10-14-tab9-m4-calibration-before-run-1.adb.txt`](./2026-10-14-tab9-m4-calibration-before-run-1.adb.txt).
@@ -82,6 +82,13 @@ operational reading rejects when |x₁ − x₂| > 3.3441 × s₀ = **0.0042375 
   - The watch: a script's printed output, not kept. It reported no
     termination between 11:48:26Z and 11:53:29Z, and the device on
     `transport_id:28` at its end.
+  - **What the committed log shows, which is more:**
+    - no line naming the device from 11:48:14Z to the excerpt's end at
+      11:54:43Z, which attests the watch and the gap before run 1;
+    - its last line, at 11:48:14Z, reads `offline`, on transport 28, the
+      28th created, at 11:48:10Z;
+    - run 1's link log, at 11:54:43Z, shows that transport as `device`.
+    - The log records no switch to `device` in between. Why is not known.
   - The table's "Opened" column, below: the session's terminal output, not
     kept. Each URL-opening command printed its time.
 
@@ -175,9 +182,14 @@ Each export is the page's file, pulled from the tablet's download folder by
     - `git status` clean;
     - last changed by `f53aabf`;
     - file time 2026-09-26T20:58:32Z.
-  - **During the session:** the server's `last-modified` for it, in the
-    range request of step 3 at 11:43Z, read that same 2026-09-26 time.
-  - Whether later sessions check it is the maintainer's.
+  - **Before run 1:** step 3's range request, at 11:43Z, read a
+    `last-modified` of 2026-09-26T20:58:32Z, the file time read after the
+    session. Its output was not kept.
+  - **What that shows, with the hash:** no ordinary write to the clip between
+    11:43Z and the reading after the session. A write that kept the file time
+    would not show.
+  - Whether later sessions check it is the maintainer's to rule; no issue
+    holds it yet.
 
 ## After the eighth
 
@@ -403,8 +415,8 @@ the plan.
 - **It moved between consecutive runs, and in both directions,** not as a
   drift across the block.
 - **M3's four,** on 2026-10-01, read 40.6 to 40.9 ms.
-- **What did not move:** the tracker's own steps, in all twelve runs, by at
-  most 0.2 ms at p50 (`trackStepMs` p50 9.2 to 9.4 ms, `alignMs` p50 8.8 to
+- **What moved by at most 0.2 ms at p50:** the tracker's own steps, in all
+  twelve runs (`trackStepMs` p50 9.2 to 9.4 ms, `alignMs` p50 8.8 to
   8.9 ms).
 
 **One of the plan's two supports for leaving the frame-set variation in is
@@ -435,7 +447,8 @@ correlation across the eight runs, with a = `acquire` p50 and x = `jitterPx`:
 - **r = S_ax ÷ √(S_aa × S_xx) = 0.4275,** so r² = 0.1827.
   - As a test of r = 0: t = r × √6 ÷ √(1 − r²) = 1.158 on 6 degrees of
     freedom, two-sided p = 0.291.
-  - The slope is 9.76 × 10⁻⁵ px per ms, which over 28 → 42 ms is 0.00137 px.
+  - The slope is 9.76 × 10⁻⁵ px per ms. It is carried by run 3: without
+    run 3 it is 1.3 × 10⁻⁶ px per ms.
 - **Each run's product (a − ā)(x − x̄)** shows where r comes from:
 
   | # | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
@@ -468,12 +481,12 @@ correlation across the eight runs, with a = `acquire` p50 and x = `jitterPx`:
   - *`acquire` is already recorded per run in every export
     (`summaryMs.acquire`), so the data is there if it ever matters.*
 
-**Where the two slow runs fell, and what it did to the arm test.**
+**Where the two slow runs fell, and whether it mattered to the arm test.**
 - **The question:** runs 3 (worker) and 5 (sync), one in each arm. What would
   the arm test have read had both fallen in one arm?
 - **The method:** hold each run's x as measured, and relabel which four runs
-  are the worker arm. There are 70 ways; each gets the same D, s_p and A as
-  above.
+  are the worker arm. There are 70 ways; each is read with the same formulas
+  for D, s_p and A as above.
 - **What it gives:**
 
   | Labelings | Count | Rejected | \|D\| larger than the actual 0.0012953 px |
@@ -489,9 +502,13 @@ correlation across the eight runs, with a = `acquire` p50 and x = `jitterPx`:
 - **Why:** run 3's x is the block's highest, 0.142283 px, and run 5's is
   below the mean, 0.140269. In one arm they offset: their mean, 0.1412760 px,
   is 0.00085 px from the other six's 0.1404241.
+- **The relabeling as a permutation test:** 12 of the 70 labelings give an
+  |D| at least the actual one, a permutation p of 0.171, beside the t test's
+  0.161.
 - **What it does not test:** a placement that would also have changed the
-  values themselves. It holds each run's x as measured, which the accepted
-  arm test supports.
+  values themselves. It holds each run's x as measured. That assumes x does
+  not depend on the arm, which is the arm test's null: not rejected, but not
+  shown either.
 
 ## Three claims of the maintainer's review, refuted
 

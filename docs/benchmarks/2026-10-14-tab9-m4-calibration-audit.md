@@ -75,11 +75,11 @@ it found are cosmetic (A1, A2, A8). What needed correcting was interpretive
 | A2 | k = 3's threshold printed 7.6069 × 10⁻⁶; it is 7.6068 × 10⁻⁶, from the rounded or the exact F | error, last digit | Fixed |
 | A3 | Round 1's 0.0092 px was put in units of s₀ (7.3 s₀) and read against the k = 2 power table, under a heading that drew no verdict. The plan rules that round 1's size does not transfer, and s₀ is read with the frame-set variation in, while 0.0092 px is on common footage | overstates | Fixed: the bullet now says round 1's figure is not set against s₀, and why, with a dated correction note |
 | A4 | "What it does not change … as the clause and the brief require": an interpretive ruling written as fact, and the brief cited as a source, which the plan does not allow | overstates | Fixed: "the brief" removed. The ruling is now the maintainer's of 2026-10-14, which came with the review: the conclusion stands on the general reason alone, with one leg cut. It is recorded in the acquire finding, beside the correlation that bears on it |
-| A5 | "The arms are found one population of repeats" leads, without what item 1 lets an accepted block claim | overstates | Fixed: "not shown to differ" leads, with \|D\| = 1.02 s₀ and the 0.777 pass rate at 1 σ |
+| A5 | "The arms are found one population of repeats" leads, without what item 1 lets an accepted block claim. It is the registration's own wording, which item 1 bounds | overstates | Fixed: "not shown to differ" leads, with \|D\| = 1.02 s₀ and the 0.777 pass rate at 1 σ |
 | A6 | "The runs do not differ by more than sampling within a run makes them differ": a non-significant F read as proof of the null | overstates | Fixed: "are not shown to differ" |
 | A7 | The readiness condition, a quiet link, was registered in `ba29b89` (11:54:11Z) after the 27 drops (11:42:41–11:47:53Z) and the watch (11:48:26–11:53:29Z) it prescribes | omission | Fixed: disclosed in the record, which adds that the condition reads no jitter and gates no run |
 | A8 | Products printed from rounded inputs do not reproduce in the last digit (for example 3.3441 × 0.0012672 = 0.0042376, printed 0.0042375) | nit | Fixed: the record says its figures are from unrounded values, and gives s₀, s_p and s_M3 to one more digit |
-| A9 | The clip's bytes, `examples/videos/pinball-static.mp4`, are attested by no check: not in the manifest, the guarded paths or the export. It is the kind of dropped check the plan found for the target | omission, at the registration | Half fixed: the record gives the clip's SHA-256 (`978cb9f2…`, equal to its blob at `37dc6d4`) and its state. The server's `last-modified` during the session read 2026-09-26. **Adding the check to later sessions is the maintainer's to rule** |
+| A9 | The clip's bytes, `examples/videos/pinball-static.mp4`, are attested by no check: not in the manifest, the guarded paths or the export. It is the kind of dropped check the plan found for the target | omission, at the registration | Half fixed: the record gives the clip's SHA-256 (`978cb9f2…`, equal to its blob at `37dc6d4`) and its state. The server's `last-modified`, read before run 1 (11:43Z), gave 2026-09-26. **Adding the check to later sessions is the maintainer's to rule** |
 | A10 | The `.link.txt` files' normalization from CRLF to LF was disclosed only in the PR body, which is not a source | omission | Fixed: one bullet in the record |
 | A11 | The drops, the watch, the "Opened" column and the 29-minute figure cannot be checked from the repository | nit | Fixed: adb's log is committed as `2026-10-14-tab9-m4-calibration-before-run-1.adb.txt`, filtered to the lines naming the device, which leaves out the PC's adb key fingerprint. The watch's output and the "Opened" times are said to come from terminal output not kept |
 | A12 | An eight-run range and a four-run range set side by side, though they are not comparable | nit | Fixed: the comparison is the F; the expected ranges (2.85 σ and 2.06 σ) are given |
@@ -109,8 +109,13 @@ write-up. Its figures equal the record's:
   - It crosses blocks, Chrome versions and harnesses.
   - By the plan's rule against pooling across blocks, it is a labelled
     summary at most, and supports no verdict.
-  - It is recorded here because it points the other way from the within-block
-    reading.
+  - It is carried by the difference between the two sessions. M3's four
+    average 40.8 ms and 0.14192 px; round 0's eight average 30.96 ms and
+    0.14064 px. The two sessions also differ in Chrome and harness, so the
+    figure says nothing about `acquire` within a block.
+  - *Corrected on 2026-10-14, from the second read, B11. This bullet first
+    said the figure "points the other way" from the within-block reading,
+    which gave a cross-session summary a direction of evidence.*
 
 **What it raised for the maintainer.** Round 0 does not reproduce the M3
 pattern on which the argument for a state frozen within a block rests:
@@ -124,8 +129,40 @@ pattern on which the argument for a state frozen within a block rests:
 It changes no figure and not the acceptance. It bears on #123 and on the
 premise behind the back-to-back design.
 
-## The second read
+## The second read, of the changed passages
 
-The passages changed since `62b9d21` are to be re-read: `7c0cc66` and this
-fix pass. That read, and what becomes of its findings, is recorded below when
-it has run.
+- **The same agent re-read** what changed from `62b9d21` to `fcf9550`:
+  - the acquire finding and the correlation (`7c0cc66`);
+  - the fixes above, with this record and the committed adb excerpt;
+  - the updated PR body.
+- **What it confirmed:** every new figure in that range. That covers the
+  correlation's sums, the per-run products, the leave-one-out values, the
+  six-run SD, the 70-labeling table and its counts, the p-values, the
+  expected ranges, the timing of `ba29b89`, the adb excerpt's counts, the
+  clip's hash, and the storage figures.
+- **What it cannot verify:** the server's `last-modified` before run 1, the
+  "Opened" times, the watch script's output, and the hashes on the tablet.
+- **On the review's claims:** nothing in the record states the three claims
+  of the maintainer's review that the data refuted. Three passages could be
+  read toward two of them (B3, B6, B15).
+- **Its verdict:** the correction can stop after B1 to B4, which are wording
+  only. Its own read did not cover `549b4ba`, the refuted claims and the
+  plan's dated notes.
+
+| # | Finding | Kind | What became of it |
+|---|---|---|---|
+| B1 | "One of the plan's two supports … is cut" and "with one of its two legs cut": the registration rests the exclusion "on the general reason alone", and "one cost of a frame" was a factual premise cited from M3, not a load-bearing leg. At arm level the cost was balanced: mean `acquire` p50 30.37 ms in the sync arm, 31.55 ms in the worker arm | overstates the registration | **Brought to the maintainer:** the "two legs" wording is the maintainer's ruling of 2026-10-14 |
+| B2 | "Both enter round 1 untried": the session's re-run rule was registered for that session only | misstates the registration | Fixed: item 5's redo enters round 1 untried; what replaces a failed counted run is for the stopping rules |
+| B3 | The correlation given without its test, and "does not predict beyond run 3" without "cannot exclude" (README, PR body) | overstates by omission | Fixed in both: t = 1.158, p = 0.291, not shown; eight runs cannot exclude a moderate relation |
+| B4 | "Holds each run's x as measured, which the accepted arm test supports" | overstates | Fixed: it assumes the arm test's null, which is not rejected but not shown |
+| B5 | "Each gets the same D, s_p and A" reads as the same values | nit | Fixed: "read with the same formulas" |
+| B6 | The heading "… what it did to the arm test" presumes an effect | nit | Fixed: "whether it mattered to the arm test"; the permutation p, 12 of 70 = 0.171, added beside the t test's 0.161 |
+| B7 | "About 17% of the time (Fisher's z)": the t test's power, by simulation, is about 18.5% (17.5% by Fisher's z, at r = 0.4275) | nit | **Brought to the maintainer:** the 17% is in the maintainer's ruling and in #123's comment |
+| B8 | "What did not move: the tracker's own steps" (record and README) undoes part of A16 | nit | Fixed in both: "moved by at most 0.2 ms at p50" |
+| B9 | The clip's `last-modified` was called "during the session", but it was read at 11:43Z, before run 1, and not kept | nit | Fixed, with what it shows and what it cannot |
+| B10 | Two deferrals with no issue: the clip's check in later sessions, and `acquire` as a covariate | omission | The second is ruled: archived as a report (`549b4ba`). The first says no issue holds it yet; **whether to open one is the maintainer's** |
+| B11 | The pooled r = 0.63 "points the other way": a cross-session summary given a direction of evidence | overstates | Fixed here, with a dated note, and in #123's comment, which carried the same phrase |
+| B12 | The A5 row left out that the first wording was the registration's own | nit | Fixed |
+| B13 | "Gates no run" (it gated run 1's start); the committed excerpt attests more than the record said | nit | Fixed: it gated run 1's start and decides no run's validity; what the excerpt shows from 11:48:14Z to 11:54:43Z is stated |
+| B14 | The README result printed 3.3441 × s₀ = 0.0042375 without the unrounded s₀ | nit | Fixed |
+| B15 | The slope's 0.00137 px over 28 → 42 ms reads as an effect size | nit | Fixed: the 0.00137 is dropped; the slope is carried by run 3, and without it is 1.3 × 10⁻⁶ px per ms |

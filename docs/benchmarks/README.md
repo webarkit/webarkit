@@ -4642,7 +4642,8 @@ exports, is
 - **s₀ = 0.0012672 px,** on 7 degrees of freedom, with a 95% interval of
   0.0008378 to 0.0025790 px.
 - **The operational reading,** for a block with two baseline runs: reject
-  when |x₁ − x₂| > 3.3441 × s₀ = 0.0042375 px.
+  when |x₁ − x₂| > 3.3441 × s₀ = 0.0042375 px, from the unrounded
+  s₀ = 0.00126716 px.
 - **Against M3's four:** F = (s₀ ÷ s_M3)² = 14.1030, on 7 and 3 degrees of
   freedom. That is inside 0.1698 to 14.6244, so the two are not told apart; it
   is a weak comparison.
@@ -4652,17 +4653,23 @@ exports, is
     re-run once at its own position, never ran.
   - The arm test accepted the block, so item 5's rule, a rejected block
     redone once, with `<k>` 5 to 8, never ran either.
-  - A rule that has never run is a rule nobody knows works. Both enter round
-    1 untried: their file naming, their place in the order, and the stop
-    after a second failure have not yet met a real failure.
+  - A rule that has never run is a rule nobody knows works. Item 5's redo
+    enters round 1 untried: its file naming, its place in the order, and the
+    stop after a second rejection have not yet met a real rejection.
+  - The session's re-run rule was registered for that session only. What
+    replaces a failed counted run is for the campaign's stopping rules, not
+    yet written.
 - **The cost of a frame moved within the block.** `acquire` p50 was about
   28 ms in six runs, 42.1 ms in run 3 and 37.3 ms in run 5, while the
-  tracker's own steps did not move.
+  tracker's own steps moved by at most 0.2 ms at p50.
   - That refutes, for round 0, the clause's supporting fact that round 0's
     arms run at one cost of a frame.
   - Its conclusion stands on the general reason alone.
   - Across the eight runs, `acquire` correlates with `jitterPx` at
-    r = 0.4275, and at r = 0.004 without run 3.
+    r = 0.4275. As a test, that is t = 1.158 on 6 degrees of freedom,
+    p = 0.291: not shown.
+  - Without run 3, r = 0.004. So `acquire` does not predict `jitterPx`
+    beyond run 3, and eight runs cannot exclude a moderate relation.
   - **Archived as a report, and no rule changes on it** (the maintainer's
     ruling, 2026-10-14). A true r of 0.43 would be detected about 17% of the
     time, so a moderate relation is not excluded.
