@@ -4618,3 +4618,21 @@ was. The session record, with every input, is
 - **Against M3's four:** F = (s₀ ÷ s_M3)² = 14.1030, on 7 and 3 degrees of
   freedom. That is inside 0.1698 to 14.6244, so the two are not told apart; it
   is a weak comparison.
+- **Neither redo rule was exercised.** Added on 2026-10-14, at the
+  maintainer's instruction.
+  - No run failed a run-level check, so the session's rule, a failed run
+    re-run once at its own position, never ran.
+  - The arm test accepted the block, so item 5's rule, a rejected block
+    redone once, with `<k>` 5 to 8, never ran either.
+  - A rule that has never run is a rule nobody knows works. Both enter round
+    1 untried: their file naming, their place in the order, and the stop
+    after a second failure have not yet met a real failure.
+- **The cost of a frame moved within the block.** `acquire` p50 was about
+  28 ms in six runs, 42.1 ms in run 3 and 37.3 ms in run 5, while the
+  tracker's own steps did not move.
+  - That refutes, for round 0, the clause's supporting fact that round 0's
+    arms run at one cost of a frame.
+  - Its conclusion stands on the general reason alone.
+  - Across the eight runs, `acquire` correlates with `jitterPx` at
+    r = 0.4275, and at r = 0.004 without run 3.
+  - The session record has the figures, and no rule changes on them.

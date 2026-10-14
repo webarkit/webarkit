@@ -325,6 +325,112 @@ These are descriptive rows. No verdict is drawn from them.
 - #123 names this block as what decides its question; the reading is the
   maintainer's.
 
+## The acquire finding (added on 2026-10-14, after the maintainer's review)
+
+The maintainer ruled that the cost of a frame, recorded above with no verdict,
+gets one. This section gives the parts of that verdict which the data in hand
+decides, and the figures asked for with it. Nothing in it changes a rule of
+the plan.
+
+**What moved, and when.**
+- `acquire` p50, the copy of a video frame into pixels, read by run:
+
+  | # | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+  |---|---|---|---|---|---|---|---|---|
+  | `acquire` p50 (ms) | 28.3 | 28.1 | 42.1 | 27.6 | 37.3 | 27.8 | 28.2 | 28.3 |
+
+  So it moved from about 28 ms to 42.1 ms between runs 2 and 3, back to
+  27.6 ms at run 4, to 37.3 ms at run 5, and back to about 28 ms for runs 6
+  to 8.
+- **It moved within one block.** The block took 21 minutes, from run 1's
+  start at 11:55:26Z to run 8's end at 12:16:27Z.
+- **It moved between consecutive runs, and in both directions,** not as a
+  drift across the block.
+- **M3's four,** on 2026-10-01, read 40.8 to 40.9 ms in all four.
+- **What did not move:** the tracker's own steps, in all twelve runs
+  (`trackStepMs` p50 9.2 to 9.4 ms, `alignMs` p50 8.8 to 8.9 ms).
+
+**One of the plan's two supports for leaving the frame-set variation in is
+cut, and round 0 cut it.**
+- **The two supports.** The clause's "Where it does not" ruling excludes
+  common media times from its own readings for two reasons:
+  - the general reason: in a calibration of noise, which frames a run
+    processed is part of the noise, and removing it makes the calibrated
+    spread too small;
+  - a supporting fact: round 0's arms are one pipeline at one cost of a
+    frame, cited from M3's `total` p50, 51.2 to 51.4 ms in both arms.
+- **Round 0 refutes the supporting fact for itself.** Its cost of a frame was
+  not one value: `total` p50 was 38.1 to 38.9 ms in six runs, and 48.0 and
+  52.7 ms in two of them.
+- **The conclusion stands, on the general reason alone.** s₀, the arm test
+  and every reading above keep the frame-set variation in, as that reason
+  requires.
+
+**Does a run's `acquire` cost predict its `jitterPx`?** The Pearson
+correlation across the eight runs, with a = `acquire` p50 and x = `jitterPx`:
+- **The means:** ā = 30.9625 ms, and x̄ = 0.1406370 px.
+- **The sums of squares and products:**
+  - S_ax = Σ (a − ā)(x − x̄) = 2.103892 × 10⁻² ms·px;
+  - S_aa = 215.5187 ms²;
+  - S_xx = 1.123987 × 10⁻⁵ px².
+- **r = S_ax ÷ √(S_aa × S_xx) = 0.4275,** so r² = 0.1827.
+  - As a test of r = 0: t = r × √6 ÷ √(1 − r²) = 1.158 on 6 degrees of
+    freedom, two-sided p = 0.291.
+  - The slope is 9.76 × 10⁻⁵ px per ms, which over 28 → 42 ms is 0.00137 px.
+- **Each run's product (a − ā)(x − x̄)** shows where r comes from:
+
+  | # | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+  |---|---|---|---|---|---|---|---|---|
+  | Product (10⁻³) | −2.36 | 0.24 | **18.33** | 8.55 | −2.33 | −0.44 | −2.45 | 1.51 |
+
+- **r with each run left out in turn:**
+
+  | Run left out | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+  |---|---|---|---|---|---|---|---|---|
+  | r | 0.513 | 0.432 | **0.004** | 0.404 | 0.547 | 0.450 | 0.516 | 0.407 |
+
+  **Without run 3, r = 0.004.** The other slow run, run 5, has an x below the
+  block's mean, at 0.140269 px.
+- **The six runs at one `acquire` cost carry the block's spread on their
+  own.** Runs 1, 2, 4, 6, 7 and 8, at 27.6 to 28.3 ms:
+  - x spans 0.138093 to 0.141525 px, a range of 0.0034321 px;
+  - their standard deviation is **0.0012747 px** on 5 degrees of freedom,
+    against s₀ = 0.0012672 px on all eight.
+- **The rank correlation:** Spearman's ρ = 0.467.
+- **What eight runs can see.** A true r of 0.43 would be detected, at
+  two-sided 5%, about 17% of the time (Fisher's z).
+- **The reading:** on this block, the `acquire` cost of a run does not
+  predict its `jitterPx` beyond one run, run 3. Eight runs cannot exclude a
+  moderate relation.
+- *Reported, not ruled on.* Whether `acquire` becomes a covariate that round
+  1 reads per block is the maintainer's decision. It is already recorded per
+  run in every export (`summaryMs.acquire`).
+
+**Where the two slow runs fell, and what it did to the arm test.**
+- **The question:** runs 3 (worker) and 5 (sync), one in each arm. What would
+  the arm test have read had both fallen in one arm?
+- **The method:** hold each run's x as measured, and relabel which four runs
+  are the worker arm. There are 70 ways; each gets the same D, s_p and A as
+  above.
+- **What it gives:**
+
+  | Labelings | Count | Rejected | \|D\| larger than the actual 0.0012953 px |
+  |---|---|---|---|
+  | Runs 3 and 5 in the same arm | 30 | 0 | 2 |
+  | Runs 3 and 5 in different arms, as they ran | 40 | 2 | 8 |
+  | All | 70 | 2 | 10 |
+
+  - The two labelings that reject, `{1,3,6,7}` and its complement, both
+    split runs 3 and 5.
+  - In the 30 that put both in one arm, |D| runs from 0.0001891 to 0.0015267
+    px, with a median of 0.0007994.
+- **Why:** run 3's x is the block's highest, 0.142283 px, and run 5's is
+  below the mean, 0.140269. In one arm they offset: their mean, 0.1412760 px,
+  is 0.00085 px from the other six's 0.1404241.
+- **What it does not test:** a placement that would also have changed the
+  values themselves. It holds each run's x as measured, which the accepted
+  arm test supports.
+
 ## Not done
 
 - **No independent read of this record before its PR.** The session's brief
