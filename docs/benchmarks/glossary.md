@@ -47,8 +47,8 @@ the older words each is easily taken for.
   baseline arm. Two older senses: M3's bracketed blocks (below), and the
   detection arms, `sync` and `worker`, which round 0's arm test compares
   (the clause's item 3).
-- **Instrument, subject, input, what is outside all three, and the
-  toolchain.**
+- **Instrument, subject, input, what is outside all three, the role rule,
+  and the toolchain.**
   [The instrument, the subject and the inputs](./README.md#the-instrument-the-subject-and-the-inputs-2026-10-14).
   Not the section of M3's plan with a similar name,
   [The instrument](./README.md#the-instrument), whose scope includes the

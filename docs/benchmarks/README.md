@@ -3609,7 +3609,8 @@ here holds it, and step 1 was worked from #103.
    `git diff --stat 37dc6d4 HEAD -- examples/bench-nft.html examples/js scripts packages`,
    which shows nothing.
    *From round 1, the reference stays `37dc6d4`, and the diff reads each
-   round's head over the instrument and the inputs, not over `packages`:
+   round's head over the instrument and the inputs, no longer over the
+   whole of `packages`:
    [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
    below (2026-10-14).*
 3. **The transport is USB.** The page is served over `adb reverse` to
@@ -3829,10 +3830,10 @@ run.*
     nor by Start; and one cv-backend test is already flaky, failing once
     in about 25 runs during the check.
     *Noted on 2026-10-14: the tests this bullet means are the guards'
-    (#120). The packages' tests and `examples/test/` are outside the
-    instrument, the subject and the inputs, and free to change:
+    (#120). The packages' tests and `examples/test/` are free to change,
+    except the files that play an input's role:
     [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
-    below, item 4.*
+    below, items 3 and 4.*
   - Validity rules 1 and 2, below, cover the two code gaps at analysis
     time.
 
@@ -4783,7 +4784,7 @@ tracking pipeline as well as the instrument, and no round's pipeline could
 reach a counted run. Meanwhile #114's criterion and the jitter clause read
 each round against its own pipeline.
 
-**The ruling, and its correction.**
+**The ruling, and its two corrections.**
 - **The ruling.** On 2026-10-14 the maintainer ruled, in #124, that the
   freeze confused two things: the instrument, frozen for the campaign, and
   the subject, which changes every round.
@@ -4798,6 +4799,19 @@ each round against its own pipeline.
 
   So the ruling takes three categories, a place for what falls in none of
   them, and a line on the toolchain.
+- *Corrected again by the maintainer the same day; the error was the
+  maintainer's, and the second shape error in this split that day.* The
+  categories were first drawn by directory, and the directory is the wrong
+  discriminator.
+  - **The role decides the category, not the path.** A file that supplies
+    reference values to a counted measurement is an input, whatever folder
+    it lives in.
+  - So items 2 to 4 below are read by role: item 3 lists the inputs that
+    live in the subject's directory or in the packages' tests, and items 2
+    and 4 except them.
+  - [#128](https://github.com/webarkit/webarkit/issues/128) raised the case
+    that showed it, #90's sweep. What the rule catches is under "The role
+    rule's sweep", below.
 
 1. **The instrument:** `examples/bench-nft.html`; `examples/js`, the
    metrics module among its files; and `scripts`. Frozen for the whole
@@ -4816,8 +4830,9 @@ each round against its own pipeline.
      - **For this campaign, the guard diff carries it.** After the
        campaign, the manifest records its producer's SHA-256
        ([#127](https://github.com/webarkit/webarkit/issues/127)).
-2. **The subject:** `packages/*/src/`, the tracking pipeline. It changes
-   every round: the change is the treatment.
+2. **The subject:** `packages/*/src/`, the tracking pipeline, except a file
+   there that supplies reference values to a counted measurement (item 3).
+   It changes every round: the change is the treatment.
    - **Attested by the manifest's `sources` and the round's head.** The
      round's build runs at its head on a clean tree (`clean`,
      `dirtyPaths`). `sources` gives each file under `packages/*/src/` its
@@ -4853,34 +4868,85 @@ each round against its own pipeline.
      by the ruling. They are in `sources`, and they are not the subject, so
      they are inputs. Every `sources` entry outside `packages/*/src/` is an
      input.
+   - **#90's ground truth:** the files that supply the reference values of
+     M4's correctness half (#104 to #106), in the packages' tests. Frozen,
+     and hashed where they lie, by their SHA-256 at `37dc6d4`:
+
+     | Path | SHA-256 |
+     |---|---|
+     | `packages/nft-tracker/test/tracking/track_frame.test.ts` | `cc6c70bcf3d5dbe4122698bb35584f74048bee5598b10ab85075376e1f262973` |
+     | `packages/nft-tracker/test/tracker_state_machine.test.ts` | `f40e97d4d90dc863fc26c6c3efcc6fc3b09bdf79593399f3d51ef1ea356bcce3` |
+     | `packages/nft-tracker/test/fixtures/tracking_target.ts` | `9407d82ec31bb4c4510a1b230062d3ed09994de69c4101f4f0f98bca1348209a` |
+     | `packages/nft-tracker/test/fixtures/warped_frames.ts` | `0afb9e6dc0bbe7ebf1d9cf264926e837e6ad2bd8b94a4bee9d725afb3d886e97` |
+     | `packages/nft-tracker/test/fixtures/pgm.ts` | `523c80d9e4f6a1beec41e4fda9f289da1f2badc0fe83a2be9d5364ce5ca7befc` |
+     | `packages/nft-tracker/test/fixtures/seeded_rng.ts` | `fb7883c55c47ec31140fc7fc75d0543f5f4b59909887872c9869da5b0d691f82` |
+     | `packages/nft-tracker/test/fixtures/pinball-target-640.pgm` | `1c82be7f22b00e04a9d878912955330e6f6a212f07da668f4ec7c94e760487e3` |
+
+     - **Why these seven:** the sweep and the synthetic sequences, and the
+       five fixtures they read: the target's image and its reader, its
+       patches, the renders, and the seeded random numbers the renders and
+       the sequences draw. Both tests also read
+       `examples/targets/pinball.wnft`, the target above.
+     - **No manifest hashes them,** since `sources` holds only `src/`. The
+       hashes here and the guard diff carry them, as the guard diff carries
+       `scripts`.
+     - **They move out of `test/` after the campaign:**
+       [#130](https://github.com/webarkit/webarkit/issues/130).
+   - **#105's oracle:** `packages/cv-backend-jsfeatnext/src/`, which the
+     subject's directory holds.
+     - **Its role:** the tracker's pose comes from its
+       `poseFromHomography`, the closed form that IPPE replaces. #105 reads
+       IPPE's pose against it twice: as the closed form, render by render,
+       and as the oracle, where the two should agree. So by role it is an
+       input.
+     - #105 already requires that no backend be modified. Its files are in
+       `sources`, so the manifest hashes them.
 4. **Outside all three: the packages' tests.** Not served, not built into
-   the bundle, and already absent from `sources`. Free to change
-   mid-campaign.
+   the bundle, and already absent from `sources`. The packages' tests are
+   free to change, except any file that supplies reference values to a
+   counted measurement: those are inputs (item 3).
    - **The consequence.** A test-only change moves `dev`, so the next
      build's `head` changes while the served bytes are identical. `head`
      differing across rounds is by design. What a round ran is carried by
      the served files and by the subject's declared sources, `sources`, not
      by `head`.
    - **The same three conditions hold for more files,** which are outside
-     all three for the same reason: `examples/test/`, and what `packages/`
-     holds outside `src/` and outside `sources` (the packages' READMEs and
-     agent files, `packages/nft-tracker/bin/` and
-     `packages/nft-tracker/scripts/`).
-   - **Not settled here: #90's sweep.** M4's correctness half reads its
-     ground truth from #90's sweep and from the tracker's synthetic
-     sequences (#104 to #106). Both live in the packages' tests.
-     - For that half they are the instrument, and under this item they are
-       free to change. The ruling was drawn for the device runs.
-     - How that half's instrument is held across rounds is decided before
-       the half is registered:
-       [#128](https://github.com/webarkit/webarkit/issues/128).
+     all three for the same reason, but only where nothing in them plays an
+     input's role: `examples/test/`, and what `packages/` holds outside
+     `src/` and outside `sources` (the packages' READMEs and agent files,
+     `packages/nft-tracker/bin/` and `packages/nft-tracker/scripts/`).
+   - **#90's sweep is settled by the role rule** (#128): its ground truth is
+     an input, listed in item 3.
 5. **The toolchain,** the manifest's `toolchain` (`node`, `esbuild`), is
    identical across all rounds. A change invalidates the campaign unless it
    is re-baselined with a new round 0.
    - *Round 0's is node `v24.21.0` and esbuild `0.28.2`, in its exports'
-     manifests (#124's comment of 2026-10-14). `.nvmrc` pins `v24.18.0`
-     (`AGENTS.md`), so a round built under `.nvmrc` would change the
-     toolchain.*
+     manifests (#124's comment of 2026-10-14). It was built outside the pin
+     that `.nvmrc` then held. The pin was aligned to it on 2026-10-14, and
+     what CI ran until then is recorded beside the pin (`AGENTS.md`,
+     "Environment & commands").*
+
+**The role rule's sweep.** The rule was applied on 2026-10-14 to
+`examples/test/` and to what `packages/` holds outside `src/`, against the
+counted measurements registered so far and those #104 to #106 name.
+- **It catches #90's ground truth, and nothing else there:** the seven files
+  of item 3.
+- **What it does not catch:**
+  - **Generators.** `packages/nft-tracker/test/fixtures/make-fixtures.mjs`
+    and `packages/nft-tracker/bin/compile-target.mjs` made two of the
+    inputs, the image and the target. They supply nothing to a
+    measurement, and what they made is hashed.
+  - **A test that reads frozen fixtures.**
+    `examples/test/detection-worker-core.test.mjs` imports `pgm.ts` and
+    `warped_frames.ts`. It supplies nothing to a counted measurement, so it
+    stays free.
+  - **Everything else there:** the other tests and fixtures, the READMEs
+    and agent files, `bin/` and `scripts/`. None supplies a reference value
+    to a counted measurement.
+- **Beyond those directories, it catches #105's oracle** under
+  `packages/*/src/` (item 3).
+- **When the correctness half is registered,** any file it names as a
+  source of reference values is an input by the same rule.
 
 **The clip joins validity rule 3 from round 1, read beside the export
 rather than from it.** [#126](https://github.com/webarkit/webarkit/issues/126)
@@ -4920,16 +4986,18 @@ exports of any two counted runs, of one round or of two:
 - **One instrument.** The two manifests' `served` give each of the nine
   paths the same SHA-256.
 - **One set of inputs, on one toolchain.** The two manifests' `toolchain`
-  and `dependencies` are equal, as is every `sources` entry outside
-  `packages/*/src/`; and the two exports' `target.sha256` are equal.
+  and `dependencies` are equal, as is every `sources` entry that is an
+  input: those outside `packages/*/src/`, and those under
+  `packages/cv-backend-jsfeatnext/src/` (item 3). The two exports'
+  `target.sha256` are equal too.
 - **What may differ.** `head` and `builtAt`; `bundle`, its hash and its
-  size; the `bundledInputs` built from the packages' `dist/`; and the
-  `sources` entries under `packages/*/src/`, which say what each round's
-  subject was.
+  size; and the subject's `sources` entries, with the `bundledInputs` built
+  from them. Those say what each round's subject was.
 
-Two exports cannot show `scripts` or the root `package.json`. For those, the
-reader runs `git diff --stat <one head> <the other head> -- scripts package.json`,
-which shows nothing. And each run's clip is in its `.clip.txt`.
+Two exports cannot show `scripts`, the root `package.json` or #90's ground
+truth. For those, the reader runs the guard diff's command (below) with the
+two exports' heads in place of its two commits, and it shows nothing. And
+each run's clip is in its `.clip.txt`.
 
 **What this changes above, from round 1.** Each place carries a dated note
 that points here.
@@ -4946,7 +5014,7 @@ that points here.
   the subject and not what is outside all three. It reads the round's head,
   because `scripts` and the root `package.json` act when the build runs:
   ```bash
-  git diff --stat 37dc6d4 <the round's head> -- examples/bench-nft.html examples/js scripts package.json package-lock.json 'packages/*/package.json' 'packages/*/tsconfig*.json' examples/targets/pinball.wnft examples/videos
+  git diff --stat 37dc6d4 <the round's head> -- examples/bench-nft.html examples/js scripts package.json package-lock.json 'packages/*/package.json' 'packages/*/tsconfig*.json' packages/cv-backend-jsfeatnext/src examples/targets/pinball.wnft examples/videos packages/nft-tracker/test/tracking/track_frame.test.ts packages/nft-tracker/test/tracker_state_machine.test.ts packages/nft-tracker/test/fixtures/tracking_target.ts packages/nft-tracker/test/fixtures/warped_frames.ts packages/nft-tracker/test/fixtures/pgm.ts packages/nft-tracker/test/fixtures/seeded_rng.ts packages/nft-tracker/test/fixtures/pinball-target-640.pgm
   ```
   shows nothing. When the checkout's HEAD has moved past the round's head,
   the same diff from `37dc6d4` to `HEAD` shows nothing too.
@@ -4978,6 +5046,7 @@ that points here.
   - #120 also records that BB3's text check, the next guard, covers it.
 - **"What it leaves."** Its "No test is added before then" means the
   guards' tests (#120). Item 4 leaves the packages' tests and
-  `examples/test/` free to change. The glossary's staleness check,
-  `examples/test/glossary.test.mjs`, was added there on 2026-10-14.
+  `examples/test/` free to change, except the inputs item 3 lists. The
+  glossary's staleness check, `examples/test/glossary.test.mjs`, was added
+  there on 2026-10-14.
 - **The jitter clause's pointer to #124** now points here.
