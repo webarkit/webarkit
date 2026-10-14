@@ -4605,6 +4605,9 @@ computations with their inputs.
 Added after the block ran, below its registered procedure, which stays as it
 was. The session record, with every input, is
 [`2026-10-14-tab9-m4-calibration-session.md`](./2026-10-14-tab9-m4-calibration-session.md).
+The independent read of the write-up, which recomputed every figure from the
+exports, is
+[`2026-10-14-tab9-m4-calibration-audit.md`](./2026-10-14-tab9-m4-calibration-audit.md).
 
 - **The runs:** eight runs in the order S W W S S W W S, on Chrome
   154.0.8037.126. Every one passed its run-level checks at its first attempt,

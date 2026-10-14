@@ -66,6 +66,24 @@ operational reading rejects when |x₁ − x₂| > 3.3441 × s₀ = **0.0042375 
   on `transport_id:28`. There was no further drop until the last link monitor
   ended, at 12:17:41Z. That is 29 minutes 47 seconds after the last drop,
   which covers the whole block.
+- **When the readiness condition was registered** (added on 2026-10-14, from
+  the independent read, A7). The procedure, readiness condition included,
+  was committed in `ba29b89` at 11:54:11Z, 32 seconds before run 1's URL was
+  opened. The drops and the five-minute watch came before that, from
+  11:42:41Z to 11:53:29Z. So the condition was written after the flapping it
+  guards against had been seen, and after the watch it prescribes had been
+  made. It reads no jitter and gates no run, so nothing the clause reads was
+  selected by it.
+- **Where these figures come from.**
+  - The drops: adb's log, committed as
+    [`2026-10-14-tab9-m4-calibration-before-run-1.adb.txt`](./2026-10-14-tab9-m4-calibration-before-run-1.adb.txt).
+    It is filtered to the lines naming the device, which hold the 27
+    `connection terminated` lines.
+  - The watch: a script's printed output, not kept. It reported no
+    termination between 11:48:26Z and 11:53:29Z, and the device on
+    `transport_id:28` at its end.
+  - The table's "Opened" column, below: the session's terminal output, not
+    kept. Each URL-opening command printed its time.
 
 ## The runs
 
@@ -119,6 +137,9 @@ Each export is the page's file, pulled from the tablet's download folder by
   | At frame | 2 | 7 | 7 | 1 | 1 | 90 | 6 | 1 |
 
   Run 1's 366.7 ms, at frame 2, is in the warm-up loop.
+- **The loop-wrap rule refused nothing.** Every run ended `done` (rule 1).
+  Recomputing x unwraps each run's media times, which throws on any step back
+  that is not a wrap; none threw.
 - **Reported, not gating:** `run.lostVisibility` is `false` in all eight.
 - **The environment:** `userAgent` Android with `Chrome/154.0.0.0`, and
   `deviceLabel` `Tab_9_WiFi`.
@@ -138,6 +159,25 @@ Each export is the page's file, pulled from the tablet's download folder by
 - **The `.url.txt` and `.link.txt` names drop `.json`.** They are
   `<export's stem>.url.txt` and `.link.txt`, so that no `*.json` glob takes
   them in.
+- **The `.link.txt` files are stored with LF line endings.**
+  - The monitor wrote adb's output with its CRLF line endings, and git
+    normalized them to LF on commit.
+  - Stripping the CRs from the files as written gives the committed bytes.
+  - The JSON exports are byte-identical to the files pulled from the tablet.
+- **The clip's bytes were not checked by any registered step** (added on
+  2026-10-14, from the independent read, A9).
+  - `examples/videos/pinball-static.mp4` is not in the manifest, nor in the
+    guarded paths, nor in the export. It is the same kind of dropped check the
+    plan found for the target.
+  - **Its state, read after the session:**
+    - SHA-256 `978cb9f26c465d49b8714eb050eccb6b5bdd494883af6606c3d6293d31b276b6`,
+      equal to its blob at `37dc6d4`;
+    - `git status` clean;
+    - last changed by `f53aabf`;
+    - file time 2026-09-26T20:58:32Z.
+  - **During the session:** the server's `last-modified` for it, in the
+    range request of step 3 at 11:43Z, read that same 2026-09-26 time.
+  - Whether later sessions check it is the maintainer's.
 
 ## After the eighth
 
@@ -156,6 +196,13 @@ Each export is the page's file, pulled from the tablet's download folder by
 No `jitterPx` was read until here.
 
 ## Item 3's computations
+
+Every figure here is computed from unrounded values. Products printed from
+rounded inputs can differ in the last digit, so the three standard
+deviations everything rests on are given to one more digit:
+- s₀ = 0.00126716 px;
+- s_p = 0.00114633 px;
+- s_M3 = 0.00033742 px.
 
 **Each run's x, `runSummary.jitterPx` over counted loops 1 to 4.**
 - It was recomputed from the export's frames with `cornerJitter` over
@@ -192,8 +239,12 @@ partition).
 - **|D| = 0.0012953 ≤ A = 0.0019834: accepted.**
   - The margin is A − |D| = **0.0006881 px**.
   - As a t statistic, t = 1.598 on 6 degrees of freedom, two-sided p = 0.161.
-  - The arms are found one population of repeats; the worker arm is not shown
-    to differ from the sync arm.
+  - **The arms are not shown to differ.** That is what the registration means
+    by an accepted round 0 finding "the two paths one population of repeats",
+    and item 1 bounds what it can claim:
+    - |D| is 1.02 s₀;
+    - an arm difference of 1 σ passes the test 0.777 of the time (the table
+      below).
 - **The power table, in px,** with σ taken as s₀:
 
   | The arms' true difference δ | 0.5 σ | 1 σ | 1.5 σ | 2 σ | 2.5 σ | 3 σ |
@@ -219,7 +270,7 @@ partition).
   - F(0.95; 1, 7) = t(0.975; 7)² = 2.3646² = 5.5914, so the factor is
     √(2 × 5.5914) = 3.3441.
   - **Reject when |x₁ − x₂| > 3.3441 × 0.0012672 = 0.0042375 px.**
-- **k = 3:** reject when v_b > 4.7374 × s₀² = 7.6069 × 10⁻⁶ px², a
+- **k = 3:** reject when v_b > 4.7374 × s₀² = 7.6068 × 10⁻⁶ px², a
   baseline-arm SD above 0.0027581 px.
 - **k = 4:** reject when v_b > 4.3468 × s₀² = 6.9797 × 10⁻⁶ px², a
   baseline-arm SD above 0.0026419 px.
@@ -243,8 +294,8 @@ partition).
 
 - F = 6.5719 ÷ 4.4745 = **1.4688** on 7 and 21 degrees of freedom, against
   its 95% point, 2.4876 (p = 0.232).
-- So the runs do not differ by more than sampling within a run makes them
-  differ. It gates nothing.
+- So the runs are not shown to differ by more than sampling within a run
+  makes them differ. It gates nothing.
 
 **M3's four:** an independent estimate, and a weak comparison, gating
 nothing. They are Chrome 153, `0304390`, 2026-10-01, from
@@ -259,11 +310,11 @@ equals its recorded one.
   0.0001911 to 0.0012581 px.
 - **Their within-run check:** F = 5.2361 × 10⁻⁷ ÷ 3.9712 × 10⁻⁶ = 0.1318, on
   3 and 9 degrees of freedom, against a 95% point of 3.8625 (p = 0.939).
-- **s₀ against s_M3:** F = (s₀ ÷ s_M3)² = **14.1030**, on 7 and 3 degrees of
-  freedom.
+- **s₀ against s_M3:** F = (s₀ ÷ s_M3)² = (0.00126716 ÷ 0.00033742)² =
+  **14.1030**, on 7 and 3 degrees of freedom.
   - It lies inside 0.1698 to 14.6244, so **the two are not told apart**.
-  - It is a weak comparison, with 3 degrees of freedom on one side, and it
-    lies near the upper bound.
+  - It is a weak comparison, with 3 degrees of freedom on one side. It lies
+    near the upper bound: two-sided p = 0.053.
   - A difference between the two estimates cannot be attributed to Chrome:
     the page and its harness changed between `0304390` and `37dc6d4` too
     (item 3).
@@ -281,11 +332,13 @@ Each equals the plan's registered value to its four decimals. F(0.95; 3, 9)
 
 ## Recorded beside, not part of any reading
 
-These are descriptive rows. No verdict is drawn from them.
+These are descriptive rows. The verdict the maintainer ruled on the cost of a
+frame is in the next section, "The acquire finding".
 
 **The cost of a frame was not one value within the block.**
-- The tracker's own steps were the same in all eight runs and in M3's four:
-  `trackStepMs` p50 9.2 to 9.4 ms, `alignMs` p50 8.8 to 8.9 ms.
+- The tracker's own steps moved by at most 0.2 ms at p50 across all eight
+  runs and M3's four: `trackStepMs` p50 9.2 to 9.4 ms, `alignMs` p50 8.8 to
+  8.9 ms.
 - `acquire` was not, and with it the frames each run processed:
 
 | # | Path | `acquire` p50 (ms) | `total` p50 (ms) | Counted frames | Frames a second |
@@ -298,7 +351,7 @@ These are descriptive rows. No verdict is drawn from them.
 | 6 | worker | 27.8 | 38.3 | 994 | 20.42 |
 | 7 | worker | 28.2 | 38.7 | 996 | 20.47 |
 | 8 | sync | 28.3 | 38.8 | 1003 | 20.61 |
-| M3, four | both | 40.8 to 40.9 | 51.2 to 51.4 | 815 to 822 | 16.75 to 16.89 |
+| M3, four | both | 40.6 to 40.9 | 51.2 to 51.4 | 815 to 822 | 16.75 to 16.89 |
 
 - **What the plan said.** For "round 0's arms are one pipeline at one cost of
   a frame", the plan cited M3's `total` p50, 51.2 to 51.4 ms in both arms. In
@@ -306,9 +359,8 @@ These are descriptive rows. No verdict is drawn from them.
   - every counted frame is TRACK, as there;
   - but `total` p50 is 38.1 to 38.9 ms in six runs, and 48.0 and 52.7 ms in
     runs 5 (sync) and 3 (worker), one in each arm.
-- **What it does not change.** The exclusion of common media times from the
-  clause's own readings rests on the general reason, which this does not
-  touch. The frame-set variation is in, as the clause and the brief require.
+- **What it changes:** the next section records the maintainer's ruling on
+  it (2026-10-14).
 - **Why it is recorded.** Which frames a run processes is the quantity #123
   and the common-media-times ruling turn on, and here it moved between runs
   of one block.
@@ -316,12 +368,16 @@ These are descriptive rows. No verdict is drawn from them.
 **Beside #123's figures.**
 - **The two spreads:** round 0's s₀, 0.0012672 px, against the 0.0013 to
   0.0015 px by which M3's record found a 10% resample moves one run's
-  `jitterPx`. Round 0's eight-run range, 0.0041898 px, against M3's four-run
-  range, 0.00077 px.
-- **The within-run checks:** round 0's F is 1.4688 on 7 and 21; M3's is
-  0.1318 on 3 and 9.
-- **Round 1's baselines:** their 0.0092 px apart on common footage (#123) is
-  7.3 × s₀. Against the power table for k = 2, that lies beyond 5 σ.
+  `jitterPx`. The two estimates, s₀ and s_M3, are compared by the F above,
+  not by their ranges. A range of eight runs and one of four are not
+  comparable: from one σ, they are expected to be about 2.85 σ and 2.06 σ.
+- **The within-run checks:** round 0's F is 1.4688 on 7 and 21 (p = 0.232);
+  M3's is 0.1318 on 3 and 9, whose lower-tail probability is 0.061.
+- **Round 1's baselines are not set against s₀.** Their 0.0092 px (#123) was
+  read on common footage, with 64 patches, under the window procedure, on
+  Chrome 153. The plan rules that the size does not transfer as a figure.
+  *Corrected on 2026-10-14 from the independent read, A3: this bullet first
+  expressed it in units of s₀ and read it against the power table.*
 - #123 names this block as what decides its question; the reading is the
   maintainer's.
 
@@ -346,9 +402,10 @@ the plan.
   start at 11:55:26Z to run 8's end at 12:16:27Z.
 - **It moved between consecutive runs, and in both directions,** not as a
   drift across the block.
-- **M3's four,** on 2026-10-01, read 40.8 to 40.9 ms in all four.
-- **What did not move:** the tracker's own steps, in all twelve runs
-  (`trackStepMs` p50 9.2 to 9.4 ms, `alignMs` p50 8.8 to 8.9 ms).
+- **M3's four,** on 2026-10-01, read 40.6 to 40.9 ms.
+- **What did not move:** the tracker's own steps, in all twelve runs, by at
+  most 0.2 ms at p50 (`trackStepMs` p50 9.2 to 9.4 ms, `alignMs` p50 8.8 to
+  8.9 ms).
 
 **One of the plan's two supports for leaving the frame-set variation in is
 cut, and round 0 cut it.**
@@ -362,9 +419,11 @@ cut, and round 0 cut it.**
 - **Round 0 refutes the supporting fact for itself.** Its cost of a frame was
   not one value: `total` p50 was 38.1 to 38.9 ms in six runs, and 48.0 and
   52.7 ms in two of them.
-- **The conclusion stands, on the general reason alone.** s₀, the arm test
-  and every reading above keep the frame-set variation in, as that reason
-  requires.
+- **The conclusion stands, on the general reason alone.** The maintainer
+  ruled this on 2026-10-14: in a calibration of noise, frame-set variation is
+  the noise. So it stands with one of its two legs cut, and round 0's own
+  `acquire` table is what cut it. s₀, the arm test and every reading above
+  keep the frame-set variation in.
 
 **Does a run's `acquire` cost predict its `jitterPx`?** The Pearson
 correlation across the eight runs, with a = `acquire` p50 and x = `jitterPx`:
@@ -433,8 +492,11 @@ correlation across the eight runs, with a = `acquire` p50 and x = `jitterPx`:
 
 ## Not done
 
-- **No independent read of this record before its PR.** The session's brief
-  excluded subagents.
+- **The independent read came after the PR was opened, not before it.** The
+  session's brief excluded subagents for the device session. The maintainer
+  then asked for the read as desk work, before the merge. Its findings, and
+  what became of each, are in
+  [`2026-10-14-tab9-m4-calibration-audit.md`](./2026-10-14-tab9-m4-calibration-audit.md).
 - **#114's figures:** its criterion is read before the first counted run of
   each round, against that round's pipeline. Round 0 has no counted run, so
   the figures are not read here. Each run's largest gap is in the stall check
