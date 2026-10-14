@@ -43,7 +43,16 @@
   therefore a change to that test's expectations, not a refresh: update the
   asserted counts in the same commit, or don't recompile. It is deliberately
   **not** in `fixtures/nft-target/`, which may only hold what the corpus
-  generator produces.
+  generator produces. **It is not recompiled while a measurement campaign
+  is open**, since every run of a campaign must read the same target: a
+  campaign's exports record it as `target.sha256`, and its plan checks that
+  hash. A campaign is open from its first device run until its last device
+  exports are committed; M4's opened with its pre-flight run of 2026-10-13.
+  The rule has held since 2026-09-30, when the maintainer set it for M3's
+  campaign. It was written here on 2026-10-14, because M4's plan holds
+  that no document outside this repository and its issues is a source for
+  any session, so an unwritten rule does not bind
+  (`docs/benchmarks/README.md`, M4's validity rule 3).
 - **`fixtures/nft-target/` is generated, shared, and read-only for Rust.** The TypeScript generator produces it; `crates/wnft-format` consumes it and MUST NEVER regenerate it. A second implementation that rebuilt the corpus from its own writer would be checking itself against itself, and §8.2 item 4 would prove nothing. See [`fixtures/nft-target/README.md`](./fixtures/nft-target/README.md).
 
 ## Test assets

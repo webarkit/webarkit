@@ -3856,6 +3856,19 @@ not counted.
      - `window=2000`, the one value the export does not record:
        `windowSize` is the number of frames held, not the cap. Its effect
        is read instead: `ticks` equals `windowSize`, so no frame was lost.
+     - the target's bytes: `target.sha256` equal to
+       `9e8eb4863b58b635ad7fc2bd9f937d924b369a9002580e52a35ef0db7b0d5282`,
+       compared in full. That is the hash of `examples/targets/pinball.wnft`
+       at `37dc6d4`, and the one the pre-flight run's export records.
+       *Added on 2026-10-14, before any counted run and before the
+       calibration block, which it binds too. It is a dropped check: M3's
+       step 7 verified the target's bytes (`target.sha256` `9e8eb486…`),
+       M4's checks did not, and nobody decided that. `target.file` names
+       the file, not its bytes; step 7 checks the head, the clip, the path,
+       the loops and the order; and `examples/targets` is neither a guarded
+       path nor in the manifest. So nothing saw the target's bytes. The
+       file stays the same because it is not recompiled while a campaign
+       is open (`AGENTS.md`); this check is what shows that it did.*
 
      So the comparison is exact for everything the export records. The
      string itself is not in the export.
@@ -3990,20 +4003,41 @@ read.
   applied correctly, it says back to back, not spread. The plan's first
   wording of it, which allowed the calibration to spread "across a
   session, or across days", is replaced by the bullet above.
-- **What the argument rests on, and what it does not show.**
-  - It takes the resampling figure as the sampling noise of one run. A
-    random 10% drop is not the perturbation a run's own frame scheduling
-    makes: if the scheduling picks much the same frames in every run of
-    one state, the runs share that too. The conclusion holds either way:
-    the runs of one block are not independent, and what they share is
-    fixed within it.
-  - It does not show what the state is. If it acts through timing, through
-    which frames each run processes, then a treatment that changes the
-    cost of a frame changes which frames its arm processes, and the state
-    does not cancel exactly between the arms of one block. Reading the two
-    arms on their common media times (`compareExports`) removes that part.
-    Whether the predictions read them so is theirs to register. #123 holds
-    the question of what the state is.
+- **What the argument rests on.** It takes the resampling figure as the
+  sampling noise of one run. A random 10% drop is not the perturbation a
+  run's own frame scheduling makes: if the scheduling picks much the same
+  frames in every run of one state, the runs share that too. The
+  conclusion holds either way: the runs of one block are not independent,
+  and what they share is fixed within it. It does not show what the state
+  is; #123 holds that question.
+- **Every jitter comparison between arms of different pipelines is read on
+  their common media times, with `compareExports`.** Ruled on 2026-10-14
+  as a constraint, not left to the predictions.
+  - **Why, and its size.** Jitter depends on which frames a run
+    processed: dropping 10% of them at random moves one run's `jitterPx`
+    by 0.0013–0.0015 px (above). A treatment that changes the cost of a
+    frame changes which frames its arm processes. At 10%, that effect
+    alone exceeds the whole four-run range of M3's static block,
+    0.00077 px. Read on each arm's own frames, a comparison would fold
+    "which frames each arm saw" into its result, with no way to separate
+    it from the pose's quality.
+  - **Its cost.** The common set is at most what the slower arm covered,
+    so the sample shrinks and the interval widens.
+  - **Why it is paid.** The selection is symmetric: both arms are judged on
+    the same frames, and that symmetry is what removes the confound.
+  - **Where it binds.** Every comparison of `jitterPx` between arms that
+    run different pipelines: a treatment against its baseline. Which of an
+    arm's exports are paired is registered with the block's shape, in the
+    run order. That each comparison is read on common media times is not
+    open.
+  - **Where it does not.** The clause's own readings compare runs of one
+    pipeline at one cost of a frame, and read each run's
+    `runSummary.jitterPx` over all its counted frames (items 2 and 3).
+    Round 0's two detection arms run the same tracking step on every
+    counted frame: in M3's four static runs, every counted frame is TRACK
+    (item 2), and `total` p50 is 51.2–51.4 ms in both arms (M3's record).
+    There, which frames a run saw is the within-block noise the clause is
+    calibrated on, not a confound, and s₀ and v_b are computed alike.
 
 1. **What it rejects.** A static block whose baseline arm disagrees with
    itself: its baseline runs, which carry no treatment, differ in jitter by
@@ -4071,13 +4105,23 @@ read.
      of its loops' `jitterPx`², each weighted by its loop's Σ(n − 2).
 3. **The threshold: two readings of one statistic, stated once.** The two
    readings were the maintainer's proposal on 2026-10-14, offered as a
-   proposal rather than a verified rule; the two changes made to it here
-   are marked below.
+   proposal rather than a verified rule. The two changes made to it here
+   are marked below: the maintainer accepted the first, and ruled on the
+   second.
    - **The statistic:** a block's baseline arm has k runs, k ≥ 2, with k
      set by the run order, not written yet. v_b is the sample variance of
      their x, as item 2 reads them, with k − 1 degrees of freedom. Too much
      disagreement is abnormal and too little is not, so each reading is
      one-sided, at 5%.
+   - **Whose statistic it is, and why it changed.** The decision that
+     counted runs come in back-to-back blocks (above) was the maintainer's.
+     It made the clause's first statistic impossible: an eight-run block
+     testing its four synchronous runs against its four worker runs cannot
+     be a counted block's baseline arm. The maintainer did not trace that
+     consequence when making the decision. The agent writing this clause
+     inherited it, and formulated the per-block statistic above in its
+     place; the maintainer confirmed it on 2026-10-14. The first statistic
+     survives as round 0's acceptance (below).
    - **The operational reading, at the block's end:** against s₀, round
      0's within-block standard deviation (7 degrees of freedom, below). The
      block is rejected when v_b ÷ s₀² > F(0.95; k − 1, 7). It is read as
@@ -4101,14 +4145,21 @@ read.
    - **The first change: leave one out.** As proposed, the pool of record
      included the block it judges, so a gross block would widen the
      threshold that judges it, most of all in a round of few blocks. The
-     reading of record pools the round's other blocks instead.
-   - **The second change: its degrees of freedom are an open question.**
-     d₋b is Σ (k − 1) over the other blocks. With two baseline runs a
-     block, that is one per block, so a round needs eight blocks before its
-     reading of record carries round 0's 7 degrees of freedom. Below that,
-     the reading of record is the less certain of the two. How many blocks
-     a round has is the run order's to set; what the reading of record
-     does below 7 degrees of freedom is not decided yet.
+     reading of record pools the round's other blocks instead. Accepted by
+     the maintainer on 2026-10-14, as a real defect of the proposal.
+   - **The second change: below 7 degrees of freedom, the larger
+     estimate.** d₋b is Σ (k − 1) over the other blocks. With two baseline
+     runs a block, that is one per block, so a round needs eight blocks
+     before its reading of record carries round 0's 7 degrees of freedom.
+     Ruled on 2026-10-14: while d₋b is below 7, the reading of record uses
+     the larger of s₀ and s₋b, each in the F test with its own degrees of
+     freedom, and the record says which one bound.
+     - **What that is:** not a better estimate of σ, but a decision rule
+       chosen for the direction in which it errs, towards acceptance.
+     - **Why that direction:** a filter whose power is 0.449 at 3 σ (k = 2,
+       the table below) was never catching much, so erring towards
+       acceptance costs little. Rejecting a good block on a thin estimate
+       loses data and protects against nothing.
    - **For a block bracketed by two baseline runs, as M3's were (k = 2):**
      F(0.95; 1, 7) = t(0.975; 7)² = 2.3646² = 5.5914, so the operational
      reading rejects when |x₁ − x₂| > s₀ × √(2 × 5.5914) =
@@ -4376,9 +4427,10 @@ read.
      read per block, the ordering question the plan had named, a baseline
      block spread across a session that could not all come before its
      first counted run, no longer arises.*
-   - **Only the operational reading carries a figure from round to
-     round,** round 0's s₀, and only as provisional. The reading of record
-     is each round's own (item 3).
+   - **The one figure carried from round to round is round 0's s₀:**
+     always in the operational reading, which is provisional, and in the
+     reading of record only when it binds there, below 7 degrees of
+     freedom (item 3). Otherwise the reading of record is each round's own.
    - **Read at each round's end:**
      - each block's two readings (item 5);
      - the round's within-block spread against round 0's: F = (s_r ÷ s₀)²,
