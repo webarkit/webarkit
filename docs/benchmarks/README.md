@@ -4899,8 +4899,15 @@ each round against its own pipeline.
        IPPE's pose against it twice: as the closed form, render by render,
        and as the oracle, where the two should agree. So by role it is an
        input.
-     - #105 already requires that no backend be modified. Its files are in
-       `sources`, so the manifest hashes them.
+     - **The oracle and the subject overlap,** and that is why this package
+       sits outside the subject. While #105's comparison stands, no
+       treatment inside `packages/cv-backend-jsfeatnext/src/` is within
+       M4's reach, because it would move its own reference.
+     - **It costs nothing today:** #105 already requires that no backend be
+       modified. Its files are in `sources`, so the manifest hashes them.
+     - *The agent writing this section applied the role rule here, beyond
+       the directories the ruling named; the maintainer confirmed it on
+       2026-10-14.*
 4. **Outside all three: the packages' tests.** Not served, not built into
    the bundle, and already absent from `sources`. The packages' tests are
    free to change, except any file that supplies reference values to a
