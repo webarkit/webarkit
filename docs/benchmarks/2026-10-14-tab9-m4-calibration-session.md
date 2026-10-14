@@ -84,7 +84,8 @@ operational reading rejects when |x₁ − x₂| > 3.3441 × s₀ = **0.0042375 
     `transport_id:28` at its end.
   - **What the committed log shows, which is more:**
     - no line naming the device from 11:48:14Z to the excerpt's end at
-      11:54:43Z, which attests the watch and the gap before run 1;
+      11:54:43Z, which attests the watch's no-termination finding and the
+      gap before run 1;
     - its last line, at 11:48:14Z, reads `offline`, on transport 28, the
       28th created, at 11:48:10Z;
     - run 1's link log, at 11:54:43Z, shows that transport as `device`.
@@ -435,7 +436,13 @@ balanced between its arms.**
   38.9 ms in six runs, and 48.0 and 52.7 ms in two of them.
 - **The cost was balanced between the arms:** mean `acquire` p50 was
   30.37 ms in the sync arm and 31.55 ms in the worker arm, one slow run in
-  each. So its failure does not bite on the arm test.
+  each.
+- **Adjusted for it:** regressing x on the arm and on `acquire` p50 (least
+  squares) gives an arm effect of 0.001196 px, against the raw D of
+  0.0012953 px.
+- *Corrected on 2026-10-14, from the third read, C3: this said "so its
+  failure does not bite on the arm test", which asserted a consequence
+  without computing it.*
 - **The exclusion stands on the general reason,** as the registration
   already said, and the maintainer confirmed on 2026-10-14. s₀, the arm test
   and every reading above keep the frame-set variation in.
@@ -479,8 +486,8 @@ correlation across the eight runs, with a = `acquire` p50 and x = `jitterPx`:
     against s₀ = 0.0012672 px on all eight.
 - **The rank correlation:** Spearman's ρ = 0.467.
 - **What eight runs can see.** A true r of 0.43 would be detected, at
-  two-sided 5%, about 18% of the time: 18.5% by simulating the t test,
-  17.5% by Fisher's z. *Corrected on 2026-10-14, from the second read, B7:
+  two-sided 5%, about 18% of the time: at the observed r = 0.4275, 18.5% by
+  simulating the t test and 17.5% by Fisher's z. *Corrected on 2026-10-14, from the second read, B7:
   this said "about 17% (Fisher's z)".*
 - **The reading:** on this block, the `acquire` cost of a run does not
   predict its `jitterPx` beyond one run, run 3. Eight runs cannot exclude a
@@ -525,9 +532,10 @@ correlation across the eight runs, with a = `acquire` p50 and x = `jitterPx`:
 
 The maintainer's review of round 0, on 2026-10-14, made three claims, and
 the data refuted all three. They are recorded here as refuted, with what
-refuted each, as the maintainer ruled. They are the first instances of the
-rule that #102's Part 4 gained the same day: a claim of a mechanism or a
-cause is labelled a conjecture until it is measured.
+refuted each, as the maintainer ruled. The first two are the first
+instances of the rule that #102's Part 4 gained the same day: a claim of a
+mechanism or a cause is labelled a conjecture until it is measured. The
+third, a figure, came with them.
 
 1. **"The acquire shift names a mechanism for the slow state we had only
    inferred from the SD arithmetic."** Refuted by two things.
@@ -535,9 +543,13 @@ cause is labelled a conjecture until it is measured.
      came back: 28.1 → 42.1 → 27.6 ms over runs 2 to 4, and 27.6 → 37.3 →
      27.8 ms over runs 4 to 6 ("The acquire finding", above). A quantity that
      switches between adjacent runs and returns is not a slow state.
-   - **It does not carry jitter.** Without run 3, r(`acquire`, x) = 0.004.
-     The six runs at one `acquire` cost carry the block's spread on their
-     own: SD 0.0012747 px, against s₀ = 0.0012672 px.
+   - **It does not carry the block's spread.** The six runs at one
+     `acquire` cost carry it on their own: SD 0.0012747 px, against
+     s₀ = 0.0012672 px. Without run 3, r(`acquire`, x) = 0.004. A moderate
+     relation is not excluded: eight runs would detect a true r of 0.43
+     about 18% of the time.
+   - *Corrected on 2026-10-14, from the third read, C2: this said "it does
+     not carry jitter", which read a non-rejection as proof.*
 2. **"The block's acceptance is partly luck: the two anomalous runs fell one
    in each arm; had both fallen in one arm, D would have been larger and the
    test might have rejected. The 0.00069 px margin is less comfortable than
@@ -555,9 +567,30 @@ cause is labelled a conjecture until it is measured.
      anyway.
    - **The two that reject** separate runs 3 and 5, as the split that ran
      does.
-   - The margin itself, A − |D| = 0.0006881 px (t = 1.598, p = 0.161),
-     stands as computed. What is refuted is that the placement of the slow
-     runs made it smaller than it would otherwise be.
+   - **What is refuted** is that the placement kept |D| smaller, and the
+     margin larger, than it would otherwise be.
+     - Had both slow runs fallen in one arm, 28 of those 30 splits give a
+       larger margin, A − |D|, than the 0.0006881 px of the split that ran.
+     - Over all 70, 58 give a larger margin, 2 the same and 10 a smaller
+       one.
+     - *Corrected on 2026-10-14, from the third read, C1. This said that
+       the placement had not "made [the margin] smaller than it would
+       otherwise be", which reversed the enumeration. The sentence was the
+       agent's, not the maintainer's.*
+   - **What that does to the result.** The split that ran made the margin
+     smaller, and the block passed the arm test from among the least
+     favourable configurations of its eight values.
+     - That strengthens the acceptance against the luck reading: the
+       acceptance did not depend on a favourable placement.
+     - It adds no evidence beyond the test's own: t = 1.598, p = 0.161, and
+       the permutation p, 0.171.
+     - Across three reads and their corrections, the result has not
+       eroded. The eight values, the arm test, s₀, its interval and the
+       k = 2 threshold are unchanged since `e9396df`.
+     - The figures the reads corrected are none of those. In this record
+       they are M3's `acquire` range, k = 3's threshold in its last digit,
+       and the power, from about 17% to about 18%. The PR body's storage
+       figure was corrected too.
 3. **"One ten-minute block."** The block took 21 minutes, from 11:55:26Z
    (run 1's start) to 12:16:27Z (run 8's end). "Ten minutes" was M3's static
    block's (07:35:46 to 07:46:07, four runs), carried over without being

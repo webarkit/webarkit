@@ -3991,11 +3991,11 @@ read.
   stays inside one block.
   - *Added on 2026-10-14, after round 0 ran; ruled by the maintainer.*
     - *Round 0 did not reproduce the anomaly that motivated this decision.
-      Its spread, s₀ = 0.00127 px, matches one run's resampling noise,
+      Its spread, s₀ = 0.00127 px, is about one run's resampling noise,
       0.0013–0.0015 px. Its eight runs show no sign of agreeing more
       closely than sampling allows: the within-run F is 1.47 on 7 and 21.
-      M3's four did: their F is 0.13 on 3 and 9 (the round-0 session
-      record).*
+      M3's four did: their F is 0.13 on 3 and 9, with a lower-tail
+      probability of 0.061 (the round-0 session record).*
     - *So the design is retained because it costs no extra run and follows
       M3's precedent, not because the evidence that motivated it still
       stands.*
@@ -4686,3 +4686,10 @@ exports, is
   - that the block took ten minutes.
 
   The session record says what refuted each.
+- **The corrections did not erode the result.** The eight values, the arm
+  test, s₀, its interval and the k = 2 threshold are unchanged by three
+  independent reads.
+  - The split that ran made the arm test's margin smaller than 58 of the 70
+    splits of its eight values would, and the block passed anyway.
+  - That is the record's correction of the "partly luck" claim, in the
+    session record.

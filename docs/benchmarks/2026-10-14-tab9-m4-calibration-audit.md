@@ -109,9 +109,10 @@ write-up. Its figures equal the record's:
   - It crosses blocks, Chrome versions and harnesses.
   - By the plan's rule against pooling across blocks, it is a labelled
     summary at most, and supports no verdict.
-  - It is carried by the difference between the two sessions. M3's four
-    average 40.8 ms and 0.14192 px; round 0's eight average 30.96 ms and
-    0.14064 px. The two sessions also differ in Chrome and harness, so the
+  - It is mostly carried by the difference between the two sessions:
+    61.5% of the pooled cross-product (3.38 × 10⁻² of 5.49 × 10⁻² ms·px).
+    With each session centred, r = 0.42. M3's four average 40.8 ms and
+    0.14192 px; round 0's eight average 30.96 ms and 0.14064 px. The two sessions also differ in Chrome and harness, so the
     figure says nothing about `acquire` within a block.
   - *Corrected on 2026-10-14, from the second read, B11. This bullet first
     said the figure "points the other way" from the within-block reading,
@@ -174,7 +175,8 @@ Stated on 2026-10-14, before the read runs, as the maintainer ruled.
 - **The rule, M3's:** the correction stops when a read finds no wrong figure
   and no overstated verdict.
 - **Where it stands:** the second read found no wrong figure. It did find
-  overstated wording (B1, B3 and B4), so by the rule the correction has not
+  overstated wording (B1 to B4, and B11; corrected after the third read,
+  C4), so by the rule the correction has not
   stopped, and this third read runs.
 - **Its limit:** if this read finds a wrong figure again, the correction
   stops there. Its findings go to the maintainer instead of into a fourth
@@ -192,4 +194,79 @@ Stated on 2026-10-14, before the read runs, as the maintainer ruled.
   Several passages in scope are that agent's own suggested wordings (B1, B4,
   B9 and B11), so it would be reading text it wrote.
 
-Its findings, and what became of each, are recorded below when it has run.
+## The third read's findings
+
+- **The reader:** a fresh agent, which had made neither earlier read.
+- **What it read:** `fcf9550` to `a906345`, #123's comment as edited, and the
+  PR body.
+- **What it recomputed:** every figure in that scope, from the exports, the
+  adb excerpt, the link logs and git.
+- **The result: no wrong figure, and three overstated verdicts (C1, C2,
+  C3).** So by the rule the correction continued.
+- **What it could not check:** the 11:43Z `last-modified`, the watch's
+  output, the "Opened" times, the hashes on the tablet, and who wrote which
+  passage.
+
+| # | Finding | Kind | Wording whose | What became of it |
+|---|---|---|---|---|
+| C1 | "What is refuted is that the placement of the slow runs made [the margin] smaller than it would otherwise be" reverses the enumeration: the split that ran did make the margin smaller | overstated verdict | the agent's | Fixed: the claim refuted is that the placement kept \|D\| smaller and the margin larger. Of the 30 one-arm splits, 28 give a larger margin; of all 70, 58. The record now says what that does to the result |
+| C2 | "It does not carry jitter", where the evidence is a leave-one-out beside p = 0.291 and about 18% power | overstated verdict | the maintainer's | Fixed: "it does not carry the block's spread", with the six-run SD and "a moderate relation is not excluded" |
+| C3 | "So its failure does not bite on the arm test": a consequence asserted, not computed | overstated verdict | the maintainer's | Fixed: the computation replaces it. Regressing x on the arm and on `acquire` gives an arm effect of 0.001196 px, against the raw D of 0.0012953 px |
+| C4 | The stopping rule's list of the second read's overstatements, "B1, B3 and B4", left out B2 and B11 | nit | the agent's | Fixed |
+| C5 | "They are the first instances" against item 3's "rather than the new rule's" | nit | the maintainer's | Fixed: the first two are the rule's first instances, and the third, a figure, came with them |
+| C6 | The 18.5% and 17.5% are for r = 0.4275, not 0.43 | nit | the agent's | Fixed: "at the observed r = 0.4275", in the record and in #123's comment |
+| C7 | s₀ "matches one run's resampling noise", though 0.00127 sits just below 0.0013–0.0015 and is not tested against it | nit | the maintainer's | Fixed in the plan's note and in #123's comment: "is about"; M3's lower tail, 0.061, added to the note |
+| C8 | The excerpt "attests the watch", but it attests only its no-termination finding | nit | the agent's | Fixed |
+| C9 | The pooled r is "carried by" the gap between the sessions; that gap carries 61.5% of the cross-product, and r is 0.42 with each session centred | nit | the agent's | Fixed here and in #123's comment: "mostly carried", with those figures |
+| C10 | #123's heading, "no evidence that it moves `jitterPx`"; the registered phrasing is "not shown" | nit | the maintainer's | Fixed: "not shown to move" |
+| C11 | #123, "the device's state changes within a block", names a cause | nit | the agent's | Fixed: "something in the device or browser, not measured, changes within a block" |
+| C12 | #123's opening named "the anomaly that opened this issue", where #123 was opened on the twelvefold ratio and round 0 bears on its M3 side | nit | the agent's | Fixed: the maintainer's own wording, "the anomaly that motivated the shared-state hypothesis" |
+| C13 | #123's links were pinned to `549b4ba`, which shows superseded text | nit | the agent's | Fixed: re-pinned to the commit that applies these fixes |
+| C14 | The PR body still called the second read pending, stopped its contents at `fcf9550`, and gave storage at `fcf9550` | nit | the agent's | Fixed |
+
+**Whose wording each overstated verdict was in.** The agent computed this
+from the commits, as the maintainer's rule on attribution requires.
+- **The first read's:** A3 to A7, all in the agent's wording. A5 was the
+  registration's phrase, which the agent led with.
+- **The second read's:**
+  - B1, the maintainer's "two legs" framing;
+  - B2, B3, B4 and B11, the agent's.
+- **The third read's:**
+  - C1, the agent's;
+  - C2 and C3, the maintainer's.
+- **The total:** of the overstated verdicts the second and third reads found,
+  three are in the maintainer's wording and five in the agent's.
+- **A correction:** the maintainer's ruling on the third read called all six
+  of C1, C2, C3, C5, C7 and C10 the maintainer's phrases, and every
+  overstated verdict of the second and third reads the maintainer's wording.
+  Both statements are corrected here. C1 was the agent's sentence, and C5,
+  C7 and C10 were rated nits, not overstated verdicts.
+
+## The fourth read, and its stopping rule
+
+Stated on 2026-10-14, before the read runs, as the maintainer ruled.
+
+- **The rule:** the same as the third read's. The correction stops when a
+  read finds no wrong figure and no overstated verdict.
+- **Its limit:** a wrong figure stops the correction there, and goes to the
+  maintainer.
+- **This is the last read of this record.** When it reports and CI is green
+  on the final head, the maintainer says when to merge. Any wording
+  improvement after that goes into round 1's record, not back into this one:
+  a record corrected without end stops being a record.
+- **What it is asked to report besides,** at the maintainer's request: whose
+  wording each finding is in.
+  - The maintainer's question was whether the looseness was the
+    maintainer's, or the document is hard to state precisely.
+  - The attribution above changes the question. Overstated verdicts have
+    been found in both authors' wording, and every figure has reproduced
+    each time.
+  - The fixes it reads are the agent's text. Several of them are wordings
+    the third reader proposed, and the maintainer ruled on them.
+  - So the reader is asked to name which diagnosis its findings support, if
+    any.
+- **Its scope:** the commit that applies the third read's fixes, #123's
+  comment as edited, and the PR body.
+- **Its reader:** a fresh agent, which has made none of the earlier reads.
+- **Its findings** are recorded below as found, with no further fix applied
+  to this record.
