@@ -7,7 +7,7 @@ See the [root README](../README.md) for how this fits into the wider webarkit ec
 
 ## 🚀 Running
 
-Prerequisites: Node.js as pinned in [`.nvmrc`](../.nvmrc) (currently v24.18.0), npm 9+.
+Prerequisites: Node.js as pinned in [`.nvmrc`](../.nvmrc) (currently v24.21.0), npm 9+.
 
 ```bash
 npm install
