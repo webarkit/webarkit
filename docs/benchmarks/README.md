@@ -3979,6 +3979,8 @@ read.
   ([#123](https://github.com/webarkit/webarkit/issues/123)). Both ran 64
   patches under the window procedure, so the size does not transfer as a
   figure. The order of magnitude is the point.
+  - *Open since round 0 (noted on 2026-10-14): see the note under the next
+    bullet.*
 - **So counted runs come in back-to-back blocks,** baseline and treatment
   arms adjacent, and no comparison ever spans two blocks. Within a block
   the slow state cancels, which is what bracketing is for. Spread across
@@ -3987,6 +3989,18 @@ read.
   within-block comparison is built to resolve. Blocks are repeated across
   sessions to see whether an effect holds across states; each comparison
   stays inside one block.
+  - *Added on 2026-10-14, after round 0 ran; ruled by the maintainer.*
+    - *Round 0 did not reproduce the anomaly that motivated this decision.
+      Its spread, s₀ = 0.00127 px, is about one run's resampling noise,
+      0.0013–0.0015 px. Its eight runs show no sign of agreeing more
+      closely than sampling allows: the within-run F is 1.47 on 7 and 21.
+      M3's four did: their F is 0.13 on 3 and 9, with a lower-tail
+      probability of 0.061 (the round-0 session record).*
+    - *So the design is retained because it costs no extra run and follows
+      M3's precedent, not because the evidence that motivated it still
+      stands.*
+    - *The between-block spread of the bullet above, 0.007–0.009 px over
+      rounds 1 and 2, is open: unexplained, and not reproduced (#123).*
 - **The calibration's spread must match the campaign's, and so the
   calibration block's eight runs run consecutively,** like the campaign's
   blocks. Calibrating within one block and judging across blocks would
@@ -4054,6 +4068,17 @@ read.
     - **Round 0's arms are one pipeline at one cost of a frame:** in M3's
       four static runs every counted frame is TRACK (item 2), and `total`
       p50 is 51.2–51.4 ms in both arms (M3's record).
+      - *Refuted for round 0, noted on 2026-10-14 after it ran.*
+        - *Its `total` p50 was 38.1–38.9 ms in six runs, and 48.0 and
+          52.7 ms in two. The difference is in `acquire` (the session
+          record,
+          [`2026-10-14-tab9-m4-calibration-session.md`](./2026-10-14-tab9-m4-calibration-session.md),
+          "The acquire finding").*
+        - *Balanced between the arms: mean `acquire` p50 was 30.37 ms in
+          the sync arm and 31.55 ms in the worker arm.*
+        - *The exclusion stands on the general reason, the bullet above,
+          alone, as the "A second reason" note below already said, and the
+          maintainer confirmed.*
     - *A second reason was offered on 2026-10-14, and accepted: that a
       frame set common to all eight runs would be very small. It does not
       hold. Over four loops, a run visits nearly every frame of the clip,
@@ -4242,6 +4267,9 @@ read.
        - **The reason:** grouped, any drift across the block's ten minutes
          projects onto the arm difference, which is the confound the arm
          test must be free of.
+         - *Noted on 2026-10-14: round 0's block took 21 minutes, from
+           11:55:26Z to 12:16:27Z. "Ten minutes" was M3's static block's,
+           carried over without being checked.*
        - **What it cancels: a drift linear in time, exactly.** Both arms sit
          at mean position 4.5 in the order: sync at (1 + 4 + 5 + 8) ÷ 4,
          worker at (2 + 3 + 6 + 7) ÷ 4. Grouped, four of one and then four
@@ -4500,3 +4528,202 @@ read.
 **The scaled-step schedule stays descriptive.** It changes its own sample
 between runs on the same machine (#107, "What it must show"), so it never
 enters a paired comparison, and no figure of it reaches this clause.
+
+### Round 0, the calibration block: the session's procedure (2026-10-14)
+
+Registered on 2026-10-14, before the session runs, as item 3's round-0
+bullet requires ("the rest of its procedure is registered when the session
+is prepared, before it runs"). The session's brief was the maintainer's,
+given in a chat; by "What the plan rests on", above, it binds only as it is
+written here. One point of it was settled against the plan before this text
+was written: the brief gave each run its own `?run=<n>`, while the round-0
+bullet reads rule 3 on the pinned string's first form without `&run=`. The
+maintainer ruled for the plan, so `run.order` is `null` in all eight.
+
+**Who does what.** The session's PC runs the server, the tunnel, the link
+monitor, the command that opens each run, the pull of each export and the
+checks. The maintainer, at the tablet, types the device label, presses
+Start and then Download JSON, keeps the page in the foreground, and closes
+the run's tab.
+
+**Before the first run,** once, each result in the session record:
+- the provenance runbook's steps 1 to 4: the guard diff against `37dc6d4`
+  and the clean tree print nothing; `curl -sI` reads `Cache-Control:
+  no-cache, no-store, must-revalidate`; `examples/dist/provenance.json`
+  names head `37dc6d4…`, `clean: true`, an empty `dirtyPaths` and the
+  bundle `3a2567c15d59…`, and the files on disk hash as it says;
+- the target's SHA-256, `9e8eb486…` (rule 3), and `stall-check.mjs`'s,
+  `cccb475b…`, equal to the copy embedded in M3's record (the setup's item
+  6);
+- on the tablet: Chrome's cached files cleared, no `bench-nft-*.json` in
+  the download folder (step 7), and the full build read from
+  `chrome://version` (the setup's item 5);
+- **the link quiet:** no `connection terminated` line naming the device in
+  adb's log for five minutes before run 1. This is a readiness condition,
+  not a validity rule: a drop during a run invalidates that run anyway (the
+  setup's item 4), and this keeps a flapping link from spending the
+  session's re-runs.
+
+**The order and its names.** `<date>` is the session's.
+
+| Position | Path | Export |
+|---|---|---|
+| 1 | sync | `<date>-tab9-m4-calibration-sync-static-1.json` |
+| 2 | worker | `<date>-tab9-m4-calibration-worker-static-1.json` |
+| 3 | worker | `<date>-tab9-m4-calibration-worker-static-2.json` |
+| 4 | sync | `<date>-tab9-m4-calibration-sync-static-2.json` |
+| 5 | sync | `<date>-tab9-m4-calibration-sync-static-3.json` |
+| 6 | worker | `<date>-tab9-m4-calibration-worker-static-3.json` |
+| 7 | worker | `<date>-tab9-m4-calibration-worker-static-4.json` |
+| 8 | sync | `<date>-tab9-m4-calibration-sync-static-4.json` |
+
+Each position's URL is
+`http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=<path>&clip=pinball-static.mp4&loops=4&window=2000`.
+
+**Each run, in order:**
+1. `adb -s Tab9WEEA0001504 reverse --list` shows `tcp:8093 tcp:8093`. If
+   it does not, the run does not start: the tunnel is restored, and the
+   record says so.
+2. The link monitor begins.
+3. The URL is opened with rule 3's one command, and written to
+   `<the export's name>.url.txt`.
+4. At the tablet: the device label `Tab_9_WiFi`, Start, the page in the
+   foreground until the status reads `done`, then Download JSON. A refused
+   Start is not a run: its remedy is applied, the URL is opened again by
+   the same command, and Start is pressed again.
+5. The export is pulled from the tablet's download folder with `adb pull`,
+   unchanged, and renamed to its position's name. The link monitor ends
+   after the pull, and its log is `<the export's name>.link.txt`.
+6. The run-level checks, before the next run: validity rules 1 to 3, the
+   link's verdict and the stall check. They read no jitter value. No
+   `jitterPx` is read, by anyone, until the eighth run's checks have passed.
+7. The run's tab is closed, so that every run starts with the same tabs
+   open.
+
+**A run that fails a run-level check** is not one of the eight: one ended
+by Stop, one with `run.failure` set, one the loop-wrap rule refuses, a
+drop, or a failure of rule 2, rule 3 or the stall check.
+- **It is re-run once, at once, at its own position,** so the order stays
+  S W W S S W W S.
+- **Its export and logs are not copied into `docs/benchmarks/`.** The
+  record names the run, its time and the check it failed.
+- **If the re-run fails too, the session stops,** and the maintainer rules
+  before anything else runs. This rule is this session's only; the
+  campaign's stopping rules are still to be written.
+
+**After the eighth:**
+- step 6, the clean tree, again;
+- step 7's count and identity, read for round 0: eight exports, each with
+  its `.url.txt` and `.link.txt`; `run.order` `null`; `loops.loopCount` 4;
+  `bundledClip` `pinball-static.mp4`; `detection.path` its name's; and
+  `provenance.manifest.head` `37dc6d4…`;
+- then, and only then, item 3's computations: the eight values by arm; the
+  arm test; if it accepts, s₀ with its interval and the operational
+  thresholds; the within-run check; and M3's four beside them;
+- if the arm test rejects, item 5's redo: once, in the same order, with
+  `<k>` 5 to 8.
+
+**What is committed:** the eight exports, their `.url.txt` and `.link.txt`,
+and the session record, `<date>-tab9-m4-calibration-session.md`, which
+holds the Chrome build, each run's checks, any re-run, and item 3's
+computations with their inputs.
+
+### Round 0's result (2026-10-14)
+
+Added after the block ran, below its registered procedure, which stays as it
+was. The session record, with every input, is
+[`2026-10-14-tab9-m4-calibration-session.md`](./2026-10-14-tab9-m4-calibration-session.md).
+The independent read of the write-up, which recomputed every figure from the
+exports, is
+[`2026-10-14-tab9-m4-calibration-audit.md`](./2026-10-14-tab9-m4-calibration-audit.md).
+
+- **The runs:** eight runs in the order S W W S S W W S, on Chrome
+  154.0.8037.126. Every one passed its run-level checks at its first attempt,
+  so none was re-run.
+- **The arm test accepts the block:** |D| = 0.0012953 px ≤ A = 1.7302 × s_p =
+  0.0019834 px.
+- **s₀ = 0.0012672 px,** on 7 degrees of freedom, with a 95% interval of
+  0.0008378 to 0.0025790 px.
+- **The operational reading,** for a block with two baseline runs: reject
+  when |x₁ − x₂| > 3.3441 × s₀ = 0.0042375 px, from the unrounded
+  s₀ = 0.00126716 px.
+- **Against M3's four:** F = (s₀ ÷ s_M3)² = 14.1030, on 7 and 3 degrees of
+  freedom. That is inside 0.1698 to 14.6244, so the two are not told apart; it
+  is a weak comparison.
+- **Neither redo rule was exercised.** Added on 2026-10-14, at the
+  maintainer's instruction.
+  - No run failed a run-level check, so the session's rule, a failed run
+    re-run once at its own position, never ran.
+  - The arm test accepted the block, so item 5's rule, a rejected block
+    redone once, with `<k>` 5 to 8, never ran either.
+  - A rule that has never run is a rule nobody knows works. Item 5's redo
+    enters round 1 untried: its file naming, its place in the order, and the
+    stop after a second rejection have not yet met a real rejection.
+  - The session's re-run rule was registered for that session only. What
+    replaces a failed counted run is for the campaign's stopping rules, not
+    yet written.
+- **The cost of a frame moved within the block.** `acquire` p50 was about
+  28 ms in six runs, 42.1 ms in run 3 and 37.3 ms in run 5, while the
+  tracker's own steps moved by at most 0.2 ms at p50.
+  - That refutes, for round 0, a fact the plan quoted from M3: that round
+    0's arms run at one cost of a frame.
+  - The cost was balanced between the arms: mean `acquire` p50 was 30.37 ms
+    in the sync arm and 31.55 ms in the worker arm.
+  - The exclusion of common media times stands on the general reason, as
+    the registration already said.
+  - Across the eight runs, `acquire` correlates with `jitterPx` at
+    r = 0.4275. As a test, that is t = 1.158 on 6 degrees of freedom,
+    p = 0.291: not shown.
+  - Without run 3, r = 0.004. So `acquire` does not predict `jitterPx`
+    beyond run 3, and eight runs cannot exclude a moderate relation.
+  - **Archived as a report, and no rule changes on it** (the maintainer's
+    ruling, 2026-10-14). A true r of 0.43 would be detected about 18% of the
+    time, so a moderate relation is not excluded.
+  - The session record has the figures.
+- **Three claims of the maintainer's review were refuted by the data:**
+  - that the `acquire` shift is a mechanism for the slow state;
+  - that the block's acceptance was partly luck;
+  - that the block took ten minutes.
+
+  The session record says what refuted each.
+- **The corrections did not erode the result.** The eight values, the arm
+  test, s₀, its interval and the k = 2 threshold are unchanged by three
+  independent reads.
+  - The split that ran made the arm test's margin smaller than 58 of the 70
+    splits of its eight values would, and the block passed anyway.
+  - That is the record's correction of the "partly luck" claim, in the
+    session record.
+
+### A correction's account is not part of the record it corrects (2026-10-14)
+
+A rule for round 1 onward. The maintainer ruled it on 2026-10-14, after round
+0's record closed and before round 1.
+
+- **The session record** holds the measurement and its verdicts.
+- **The audit record** holds who found what, and what became of each
+  finding. It is signed, naming who wrote each entry, and it is not re-read.
+- **Reads check the session record.** The audit record is outside every
+  read's scope.
+
+**Why.** Round 0 had four independent reads
+([`2026-10-14-tab9-m4-calibration-audit.md`](./2026-10-14-tab9-m4-calibration-audit.md)).
+- **What they found:** after the first, none found a wrong figure, and every
+  one found an overstated verdict.
+- **Where the overstated verdicts sat:** the last read placed them all in
+  sentences saying what a computation or the record means. In that read
+  they were in the record's account of its own correction.
+- **The structural argument:**
+  - A read that checks the account checks text the previous correction
+    wrote.
+  - So every read produces a fresh unread layer.
+  - So the process cannot end by construction, whatever stopping rule sits
+    in front of it.
+
+  The rule rests on this argument.
+- **What it does not rest on:** the fourth read's diagnosis, that the
+  looseness comes from newly written summary sentences rather than from one
+  author. The maintainer took it over his own two, but it is a conjecture,
+  not measured (#102 Part 4's fourth rule).
+- **Round 0 is not changed by it.** Its record closed under the rule
+  committed before its last read: that read's findings, D1 and D2 among
+  them, stay recorded as found and not fixed.
