@@ -47,7 +47,7 @@ None of the three is published to npm yet — see [Getting started](#-getting-st
 
 ### Prerequisites
 
-- Node.js — version pinned in [`.nvmrc`](./.nvmrc) (currently v24.18.0); `package.json` sets a floor of `>=18`.
+- Node.js — version pinned in [`.nvmrc`](./.nvmrc) (currently v24.21.0); `package.json` sets a floor of `>=18`.
 - npm 9+ (for [workspaces](https://docs.npmjs.com/cli/v9/using-npm/workspaces) support).
 
 ### Install
