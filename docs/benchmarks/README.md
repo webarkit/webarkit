@@ -3461,6 +3461,10 @@ they check.
    guard check (named when that check runs, #107):
    `git diff --stat <guard commit> HEAD -- examples/bench-nft.html examples/js scripts packages`
    shows nothing.
+   *From round 1, its paths are the instrument's and the inputs', and it
+   reads each round's head:
+   [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+   below (2026-10-14).*
 2. **The clean working tree**, directly after it. Step 1 compares commits,
    so an uncommitted edit is invisible to it, while the page serves
    `examples/js` from the working tree:
@@ -3469,6 +3473,9 @@ they check.
    ```
    prints nothing. It cannot see git-ignored build output (`dist/`); step 4
    covers that.
+   *From round 1, its paths gain the target and the clips:
+   [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+   below (2026-10-14).*
 3. **The server sends `Cache-Control: no-store`** on every response, beside
    range requests and module MIME types. A server that lets the browser
    cache (http-server's default is `max-age=3600`; `npx http-server -c-1`
@@ -3494,6 +3501,10 @@ they check.
    without `no-store`, a full resource timeline.
    A refused Start is not a run: apply the remedy it names, reload, and
    start again. Each export records what was checked under `provenance`.
+   *From round 1, the session's commit is its round's head, and each round's
+   build is made once:
+   [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+   below (2026-10-14).*
 
 **During the session.**
 
@@ -3552,6 +3563,9 @@ instead.*
      plan's, its `bundledClip` and `detection.path` its file name's, and
      its `provenance.manifest.head` the commit of step 4. A mismatch stops
      the commit until the record explains it.
+     *From round 1, the commit of step 4 is the round's head:
+     [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+     below (2026-10-14).*
 
 ## 2026-10-13 — M4: the plan's first entries, the setup and the pre-flight run
 
@@ -3586,10 +3600,18 @@ here holds it, and step 1 was worked from #103.
    Every counted run's export carries that head (step 7) and that bundle.
    A commit outside the frozen paths, such as this one, moves the
    checkout's HEAD past `37dc6d4` and leaves the build as it is.
+   *This item is round 0's. From round 1, each round has its own build, at
+   its own head:
+   [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+   below (2026-10-14).*
 2. **The guard check's reference commit is `37dc6d4`**, not M3's
    `c261b77`. Step 1 is
    `git diff --stat 37dc6d4 HEAD -- examples/bench-nft.html examples/js scripts packages`,
    which shows nothing.
+   *From round 1, the reference stays `37dc6d4`, and the diff reads each
+   round's head over the instrument and the inputs, not over `packages`:
+   [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+   below (2026-10-14).*
 3. **The transport is USB.** The page is served over `adb reverse` to
    `localhost`, because a direct LAN address has no secure context. On
    `http://192.168.1.4:8093`, `crypto.subtle` is undefined (checked in
@@ -3758,6 +3780,10 @@ run.*
     built, and the campaign's build is never redone. That the campaign
     never builds the bundle is true because of the freeze: here the freeze
     works as a proof, not only as a constraint.
+    *Its reason is round 0's alone. From round 1 the build is redone once
+    per round, and the verdict rests on another reason:
+    [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+    below (2026-10-14).*
 - **PG23, produced on the unmutated build (2026-10-13, before any counted
   run).** Desktop headless Chrome 155 ran the pinned string's worker form,
   with `run=1`. It used the campaign tree, served with `no-store`, and
@@ -3802,6 +3828,11 @@ run.*
     would gain nothing; `examples/test/` is covered neither by the manifest
     nor by Start; and one cv-backend test is already flaky, failing once
     in about 25 runs during the check.
+    *Noted on 2026-10-14: the tests this bullet means are the guards'
+    (#120). The packages' tests and `examples/test/` are outside the
+    instrument, the subject and the inputs, and free to change:
+    [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+    below, item 4.*
   - Validity rules 1 and 2, below, cover the two code gaps at analysis
     time.
 
@@ -3825,6 +3856,9 @@ not counted.
      the page does not (#119). The flag is not trusted: the flag and the
      list must agree.
    - **The head is compared in full,** so a `head` of `""` fails the rule.
+   - *From round 1, the head is the one of the run's own round:
+     [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+     below (2026-10-14).*
 3. **The parameters are the pinned string's, exactly.** Every counted
    run's parameter string is one of these two, character for character,
    with nothing else on it:
@@ -3913,6 +3947,11 @@ not counted.
        - If one is ever wanted, `camera` must first be made visible to a
          check. On a webcam run it would become live and stay invisible in
          the same moment.
+   - *From round 1, the package's defaults are those of the run's own
+     round, and the clip's bytes join the rule, read beside the export
+     rather than from it:
+     [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+     below (2026-10-14).*
 
 ### The null control's jitter clause (2026-10-14)
 
@@ -3944,6 +3983,9 @@ bound for the next, so the reading of record is each round's own.
   M3's pipeline at `37dc6d4` and fits the current freeze. The clause does
   not depend on the answer, only on each static block having a baseline
   arm of its own.
+  *Settled on 2026-10-14, before round 1:
+  [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+  below.*
 
 **What was seen before it was written:**
 - the `jitterPx` of M3's four static runs (M3's record) and their span,
@@ -4727,3 +4769,215 @@ A rule for round 1 onward. The maintainer ruled it on 2026-10-14, after round
 - **Round 0 is not changed by it.** Its record closed under the rule
   committed before its last read: that read's findings, D1 and D2 among
   them, stay recorded as found and not fixed.
+
+### The instrument, the subject and the inputs (2026-10-14)
+
+[#124](https://github.com/webarkit/webarkit/issues/124)'s resolution,
+registered on 2026-10-14, before round 1 and before any counted run. It
+binds from round 1. Round 0 ran under the setup as first written, at
+`37dc6d4`, and nothing here changes it.
+
+**The problem, #124's.** The setup held every counted run at one commit,
+`37dc6d4`, and its guard diff covered `packages`. So the freeze held the
+tracking pipeline as well as the instrument, and no round's pipeline could
+reach a counted run. Meanwhile #114's criterion and the jitter clause read
+each round against its own pipeline.
+
+**The ruling, and its correction.**
+- **The ruling.** On 2026-10-14 the maintainer ruled, in #124, that the
+  freeze confused two things: the instrument, frozen for the campaign, and
+  the subject, which changes every round.
+- *Corrected by the maintainer the same day; the error was the
+  maintainer's.* That two-way split had the wrong shape. Of the four
+  details #124 left open, only one, `scripts`, falls on either side, as
+  instrument. The other three fall on neither:
+  - the packages' `package.json` files, the lockfile and the packages'
+    tests, which #124 asked about together;
+  - the toolchain;
+  - the target.
+
+  So the ruling takes three categories, a place for what falls in none of
+  them, and a line on the toolchain.
+
+1. **The instrument:** `examples/bench-nft.html`; `examples/js`, the
+   metrics module among its files; and `scripts`. Frozen for the whole
+   campaign: if it changes, what is measured changes.
+   - **Attested by the served files' hashes in the manifest, byte-identical
+     across every round.** `provenance.manifest.served` holds the page and
+     its `examples/js` modules, nine files, each with its SHA-256. Start
+     compares them with the bytes the server serves (the runbook's step 4).
+   - **Except `scripts`, which is never served.** The manifest cannot see
+     it; only the guard diff can (below). Among its files is
+     `scripts/build-provenance.mjs`, which writes the manifest. So the
+     manifest cannot attest its own producer.
+     - **It is the blind-check family, one level up.** Start refuses a run
+       whenever its check is blind, unable to see what ran (the runbook's
+       step 4). The manifest cannot see what made it, and nothing refuses.
+     - **For this campaign, the guard diff carries it.** After the
+       campaign, the manifest records its producer's SHA-256
+       ([#127](https://github.com/webarkit/webarkit/issues/127)).
+2. **The subject:** `packages/*/src/`, the tracking pipeline. It changes
+   every round: the change is the treatment.
+   - **Attested by the manifest's `sources` and the round's head.** The
+     round's build runs at its head on a clean tree (`clean`,
+     `dirtyPaths`). `sources` gives each file under `packages/*/src/` its
+     SHA-256 and git blob id, which a reader compares with that head's
+     tree.
+   - **So the bundle's hash differs from round to round, and the served
+     files' hashes do not.**
+     - The bundle, `examples/dist/webarkit-packages.mjs`, is built from the
+       packages, so `3a2567c15d59…` is round 0's only.
+     - The nine served files are instrument, and keep their hashes at
+       `37dc6d4` in every round's manifest.
+     - That a change to the subject reaches the bundle was produced on the
+       unmutated build by the independent check: a name exported from a
+       package's source changed the bundle's hash
+       ([#120](https://github.com/webarkit/webarkit/issues/120), BB8).
+3. **The inputs:** what the build and the runs read, and no round changes.
+   Frozen like the instrument, but each attested by a content hash recorded
+   for it, rather than by Start's check of what is served. The root
+   `package.json`, which has none, is the exception (below).
+   - **The target, `examples/targets/pinball.wnft`:** validity rule 3
+     already reads `target.sha256`.
+   - **The clip:** decided below. It did not bind round 0.
+   - **`package-lock.json`:** frozen. A dependency change is not a
+     treatment, and it would confound every round: the bundle embeds
+     jsfeat-next. `sources` hashes the lockfile. The manifest's
+     `dependencies["@webarkit/jsfeat-next"]` records the lockfile's entry,
+     with its `integrity`, the version installed, and the SHA-256 of the
+     file the bundle embeds.
+   - **The `package.json` files:** frozen, for the same reason. The
+     packages' own are in `sources`. The root's is not, so, like `scripts`,
+     only the guard diff carries it, and #127 holds it too.
+   - **The packages' `tsconfig.json` and `tsconfig.test.json`:** not named
+     by the ruling. They are in `sources`, and they are not the subject, so
+     they are inputs. Every `sources` entry outside `packages/*/src/` is an
+     input.
+4. **Outside all three: the packages' tests.** Not served, not built into
+   the bundle, and already absent from `sources`. Free to change
+   mid-campaign.
+   - **The consequence.** A test-only change moves `dev`, so the next
+     build's `head` changes while the served bytes are identical. `head`
+     differing across rounds is by design. What a round ran is carried by
+     the served files and by the subject's declared sources, `sources`, not
+     by `head`.
+   - **The same three conditions hold for more files,** which are outside
+     all three for the same reason: `examples/test/`, and what `packages/`
+     holds outside `src/` and outside `sources` (the packages' READMEs and
+     agent files, `packages/nft-tracker/bin/` and
+     `packages/nft-tracker/scripts/`).
+   - **Not settled here: #90's sweep.** M4's correctness half reads its
+     ground truth from #90's sweep and from the tracker's synthetic
+     sequences (#104 to #106). Both live in the packages' tests.
+     - For that half they are the instrument, and under this item they are
+       free to change. The ruling was drawn for the device runs.
+     - How that half's instrument is held across rounds is decided before
+       the half is registered:
+       [#128](https://github.com/webarkit/webarkit/issues/128).
+5. **The toolchain,** the manifest's `toolchain` (`node`, `esbuild`), is
+   identical across all rounds. A change invalidates the campaign unless it
+   is re-baselined with a new round 0.
+   - *Round 0's is node `v24.21.0` and esbuild `0.28.2`, in its exports'
+     manifests (#124's comment of 2026-10-14). `.nvmrc` pins `v24.18.0`
+     (`AGENTS.md`), so a round built under `.nvmrc` would change the
+     toolchain.*
+
+**The clip joins validity rule 3 from round 1, read beside the export
+rather than from it.** [#126](https://github.com/webarkit/webarkit/issues/126)
+holds the question, from findings A9 and B10 of
+[round 0's audit record](./2026-10-14-tab9-m4-calibration-audit.md). The
+maintainer asked that it be decided in this registration; the agent writing
+it decided as follows.
+- **Why not from the export.** The export does not record the clip's bytes,
+  and making it do so would change the page, which is the instrument
+  (#126's first fact).
+- **What is read instead.** On the session's PC, the SHA-256 of
+  `examples/videos/<clip>`, the run's `bundledClip`, when the run's URL is
+  opened and again after its export is pulled. Both readings, each with its
+  UTC time, are kept beside the export as `<the export's name>.clip.txt`,
+  and committed with it, as the recorded URL is.
+- **When it passes.** Both readings equal the SHA-256 of that clip's blob
+  at `37dc6d4`, compared in full. #126 lists the three clips' hashes.
+- **What it attests.** The file the server reads from, at each end of the
+  run. Not the bytes the browser decoded, and not a change made and undone
+  between the two readings. The recorded URL has the same kind of limit: it
+  attests what was asked, not what the browser received.
+- **Why per run.** A check before the session alone would attest the
+  session, not each run (#126's second fact). The link is attested at both
+  ends of every counted run for the same reason (the setup's item 4).
+
+**The campaign's identity** is not a commit, but a sequence of attested
+commits, one per round, under the condition that the instrument's served
+files are byte-identical across all of them. The inputs and the toolchain
+are held with it (items 3 and 5). A reader checks all of it from the
+exports of any two counted runs, of one round or of two:
+- **Each run fetched what its build attested.** In each export,
+  `provenance.refusal` is `null`; for each of the nine paths,
+  `provenance.observed.served[path]` equals
+  `provenance.manifest.served[path].sha256`; and
+  `provenance.observed.bundleSha256` equals
+  `provenance.manifest.bundle.sha256`.
+- **One instrument.** The two manifests' `served` give each of the nine
+  paths the same SHA-256.
+- **One set of inputs, on one toolchain.** The two manifests' `toolchain`
+  and `dependencies` are equal, as is every `sources` entry outside
+  `packages/*/src/`; and the two exports' `target.sha256` are equal.
+- **What may differ.** `head` and `builtAt`; `bundle`, its hash and its
+  size; the `bundledInputs` built from the packages' `dist/`; and the
+  `sources` entries under `packages/*/src/`, which say what each round's
+  subject was.
+
+Two exports cannot show `scripts` or the root `package.json`. For those, the
+reader runs `git diff --stat <one head> <the other head> -- scripts package.json`,
+which shows nothing. And each run's clip is in its `.clip.txt`.
+
+**What this changes above, from round 1.** Each place carries a dated note
+that points here.
+- **The setup's item 1, the build.** Each round has its own build, made
+  once, at the round's head, on a clean tree, before the round's first
+  counted run, and never redone within the round.
+  - The record of the round's first session names the head.
+  - Every counted run of the round carries that head and that build's
+    bundle.
+  - A commit after the build moves the checkout's HEAD, and leaves the
+    build as it is.
+- **The setup's item 2 and the runbook's step 1, the guard diff.** Its
+  reference stays `37dc6d4`. It covers the instrument and the inputs, not
+  the subject and not what is outside all three. It reads the round's head,
+  because `scripts` and the root `package.json` act when the build runs:
+  ```bash
+  git diff --stat 37dc6d4 <the round's head> -- examples/bench-nft.html examples/js scripts package.json package-lock.json 'packages/*/package.json' 'packages/*/tsconfig*.json' examples/targets/pinball.wnft examples/videos
+  ```
+  shows nothing. When the checkout's HEAD has moved past the round's head,
+  the same diff from `37dc6d4` to `HEAD` shows nothing too.
+- **The runbook's step 2, the clean tree.** Its paths gain the inputs the
+  server reads from the working tree, the target and the clips:
+  ```bash
+  git status --porcelain --untracked-files=all -- examples/bench-nft.html examples/js scripts packages package.json package-lock.json examples/targets/pinball.wnft examples/videos
+  ```
+  prints nothing.
+- **The runbook's steps 4 and 7.** The session's commit is the round's
+  head. Step 4's build is the round's, made once (this list's first
+  bullet); a later session of the round reads that build's manifest, and
+  builds nothing.
+  Step 7 checks each export's `provenance.manifest.head` against the
+  round's head.
+- **Validity rule 2.** The head is the one of the run's own round, compared
+  in full. `37dc6d4…` is round 0's.
+- **Validity rule 3.** "Equal to the package's default" reads the defaults
+  of the run's own round, at its head: the defaults belong to the subject,
+  and may change with it. The rule also reads the clip's two readings
+  (above).
+- **The independent check's BB2 note.** The build is now redone once per
+  round: the case that note describes as never arising.
+  - So BB2's guard runs at each round's build. Its condition still cannot
+    arise there: #120 records that this esbuild configuration cannot leave
+    an import in the metafile's outputs. The configuration is in
+    `scripts`, and esbuild's version in the toolchain, and both are held
+    across rounds.
+  - #120 also records that BB3's text check, the next guard, covers it.
+- **"What it leaves."** Its "No test is added before then" means the
+  guards' tests (#120). Item 4 leaves the packages' tests and
+  `examples/test/` free to change. The glossary's staleness check,
+  `examples/test/glossary.test.mjs`, was added there on 2026-10-14.
+- **The jitter clause's pointer to #124** now points here.
