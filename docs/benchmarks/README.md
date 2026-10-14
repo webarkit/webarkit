@@ -4599,3 +4599,22 @@ drop, or a failure of rule 2, rule 3 or the stall check.
 and the session record, `<date>-tab9-m4-calibration-session.md`, which
 holds the Chrome build, each run's checks, any re-run, and item 3's
 computations with their inputs.
+
+### Round 0's result (2026-10-14)
+
+Added after the block ran, below its registered procedure, which stays as it
+was. The session record, with every input, is
+[`2026-10-14-tab9-m4-calibration-session.md`](./2026-10-14-tab9-m4-calibration-session.md).
+
+- **The runs:** eight runs in the order S W W S S W W S, on Chrome
+  154.0.8037.126. Every one passed its run-level checks at its first attempt,
+  so none was re-run.
+- **The arm test accepts the block:** |D| = 0.0012953 px ≤ A = 1.7302 × s_p =
+  0.0019834 px.
+- **s₀ = 0.0012672 px,** on 7 degrees of freedom, with a 95% interval of
+  0.0008378 to 0.0025790 px.
+- **The operational reading,** for a block with two baseline runs: reject
+  when |x₁ − x₂| > 3.3441 × s₀ = 0.0042375 px.
+- **Against M3's four:** F = (s₀ ÷ s_M3)² = 14.1030, on 7 and 3 degrees of
+  freedom. That is inside 0.1698 to 14.6244, so the two are not told apart; it
+  is a weak comparison.
