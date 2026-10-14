@@ -4693,3 +4693,37 @@ exports, is
     splits of its eight values would, and the block passed anyway.
   - That is the record's correction of the "partly luck" claim, in the
     session record.
+
+### A correction's account is not part of the record it corrects (2026-10-14)
+
+A rule for round 1 onward. The maintainer ruled it on 2026-10-14, after round
+0's record closed and before round 1.
+
+- **The session record** holds the measurement and its verdicts.
+- **The audit record** holds who found what, and what became of each
+  finding. It is signed, naming who wrote each entry, and it is not re-read.
+- **Reads check the session record.** The audit record is outside every
+  read's scope.
+
+**Why.** Round 0 had four independent reads
+([`2026-10-14-tab9-m4-calibration-audit.md`](./2026-10-14-tab9-m4-calibration-audit.md)).
+- **What they found:** after the first, none found a wrong figure, and every
+  one found an overstated verdict.
+- **Where the overstated verdicts sat:** the last read placed them all in
+  sentences saying what a computation or the record means. In that read
+  they were in the record's account of its own correction.
+- **The structural argument:**
+  - A read that checks the account checks text the previous correction
+    wrote.
+  - So every read produces a fresh unread layer.
+  - So the process cannot end by construction, whatever stopping rule sits
+    in front of it.
+
+  The rule rests on this argument.
+- **What it does not rest on:** the fourth read's diagnosis, that the
+  looseness comes from newly written summary sentences rather than from one
+  author. The maintainer took it over his own two, but it is a conjecture,
+  not measured (#102 Part 4's fourth rule).
+- **Round 0 is not changed by it.** Its record closed under the rule
+  committed before its last read: that read's findings, D1 and D2 among
+  them, stay recorded as found and not fixed.
