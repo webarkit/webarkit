@@ -4022,8 +4022,18 @@ read.
     0.00077 px. Read on each arm's own frames, a comparison would fold
     "which frames each arm saw" into its result, with no way to separate
     it from the pose's quality.
-  - **Its cost.** The common set is at most what the slower arm covered,
-    so the sample shrinks and the interval widens.
+  - **Its cost, measured.** The common set is at most what the slower arm
+    covered. Measured within one pipeline, over counted loops, on M3's
+    four static runs: the static clip has 363 frames (ffprobe, 30 fps),
+    each run covers 344 to 354 of them, and 314 are common to all four.
+    - **Pairwise, as `compareExports` reads two exports:** each run keeps
+      94.5% to 98.2% of its counted frames, a loss of 1.8% to 5.5%, and
+      3.3% on average over the six pairs.
+    - **On the set common to all four:** each run keeps 723 to 763 of its
+      815 to 822 counted frames, a loss of 7.2% to 11.3%, and 9.2% over
+      the four.
+    - Arms whose cost of a frame differs may share fewer frames than
+      these. Each comparison's record gives its own count.
   - **Why it is paid.** The selection is symmetric: both arms are judged on
     the same frames, and that symmetry is what removes the confound.
   - **Where it binds.** Every comparison of `jitterPx` between arms that
@@ -4046,12 +4056,10 @@ read.
       p50 is 51.2–51.4 ms in both arms (M3's record).
     - *A second reason was offered on 2026-10-14, and accepted: that a
       frame set common to all eight runs would be very small. It does not
-      hold. The static clip has 363 frames (ffprobe, 30 fps). Over their
-      four counted loops, M3's four static runs each cover 344 to 354 of
-      them, and 314 are common to all four; restricted to those, each run
-      keeps 723 to 763 of its 815 to 822 counted frames. Over four loops, a
-      run visits nearly every frame of the clip. The exclusion rests on the
-      general reason alone.*
+      hold. Over four loops, a run visits nearly every frame of the clip,
+      and the set common to M3's four static runs keeps most of each run's
+      frames (the measured cost, above). The exclusion rests on the general
+      reason alone.*
 
 1. **What it rejects.** A static block whose baseline arm disagrees with
    itself: its baseline runs, which carry no treatment, differ in jitter by
@@ -4229,17 +4237,28 @@ read.
        `preflight`, and with the repeat `-<k>` that a block of repeats
        needs. So no count of a session's exports takes them in (step 7),
        and no session name matches them.
-     - **Its order alternates the arms, run by run:** sync, worker, sync,
-       worker, and so on, not four of one and then four of the other. Ruled
-       on 2026-10-14.
+     - **Its order is counterbalanced: S W W S S W W S** (S synchronous,
+       W worker), M3's bracket pattern twice. Ruled on 2026-10-14.
        - **The reason:** grouped, any drift across the block's ten minutes
          projects onto the arm difference, which is the confound the arm
-         test must be free of. Alternating spreads it across both arms.
-       - **What alternating leaves:** the arms' mean positions in the order
-         are one run apart (sync at 1, 3, 5, 7, mean 4; worker at 2, 4, 6,
-         8, mean 5). So a drift linear in time still projects one run's
-         worth onto the difference, against four runs' worth grouped (sync
-         1 to 4, mean 2.5; worker 5 to 8, mean 6.5).
+         test must be free of.
+       - **What it cancels: a drift linear in time, exactly.** Both arms sit
+         at mean position 4.5 in the order: sync at (1 + 4 + 5 + 8) ÷ 4,
+         worker at (2 + 3 + 6 + 7) ÷ 4. Grouped, four of one and then four
+         of the other, they would sit at 2.5 and 6.5, four runs' worth
+         apart.
+       - **What it does not cancel: curvature.** Sync's positions sit
+         further from the block's centre than worker's. Their squared
+         deviations from 4.5 sum to 3.5² + 0.5² + 0.5² + 3.5² = 25, against
+         2.5² + 1.5² + 1.5² + 2.5² = 17 for worker. So a quadratic drift,
+         c × (position − 4.5)², leaves (25 − 17) ÷ 4 = 2c between the arms'
+         means.
+       - *Corrected on 2026-10-14. The ruling before this one set a strict
+         alternation, S W S W S W S W, whose arms sit at mean positions 4
+         (1, 3, 5, 7) and 5 (2, 4, 6, 8): one run's worth of a linear drift
+         stayed on the difference. The maintainer had been correcting the
+         grouped order, four runs' worth, and stopped at the first
+         improvement rather than at the exact cancellation.*
        - The rest of its procedure is registered when the session is
          prepared, before it runs.
      - **A run that fails a run-level check** is not one of the eight. What
