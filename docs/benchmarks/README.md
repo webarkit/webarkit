@@ -3867,8 +3867,9 @@ not counted.
        the file, not its bytes; step 7 checks the head, the clip, the path,
        the loops and the order; and `examples/targets` is neither a guarded
        path nor in the manifest. So nothing saw the target's bytes. The
-       file stays the same because it is not recompiled while a campaign
-       is open (`AGENTS.md`); this check is what shows that it did.*
+       rule this check reads is on the file's state: while a campaign is
+       open, the target's SHA-256 stays the one recorded at its start
+       (`AGENTS.md`).*
 
      So the comparison is exact for everything the export records. The
      string itself is not in the export.
@@ -4030,14 +4031,27 @@ read.
     arm's exports are paired is registered with the block's shape, in the
     run order. That each comparison is read on common media times is not
     open.
-  - **Where it does not.** The clause's own readings compare runs of one
-    pipeline at one cost of a frame, and read each run's
+  - **Where it does not: the clause's own readings,** round 0's arm test
+    and every block's baseline variance. They read each run's
     `runSummary.jitterPx` over all its counted frames (items 2 and 3).
-    Round 0's two detection arms run the same tracking step on every
-    counted frame: in M3's four static runs, every counted frame is TRACK
-    (item 2), and `total` p50 is 51.2–51.4 ms in both arms (M3's record).
-    There, which frames a run saw is the within-block noise the clause is
-    calibrated on, not a confound, and s₀ and v_b are computed alike.
+    Ruled on 2026-10-14, in its general form:
+    - **The same variation does two opposite jobs.** In a comparison
+      between different pipelines, which frames each arm saw is a confound,
+      and the common media times remove it. In a calibration of noise, it
+      is part of the noise and must stay in: removed, the calibrated spread
+      comes out too small, and the clause rejects normal blocks. s₀ and v_b
+      are computed alike, both with it in.
+    - **Round 0's arms are one pipeline at one cost of a frame:** in M3's
+      four static runs every counted frame is TRACK (item 2), and `total`
+      p50 is 51.2–51.4 ms in both arms (M3's record).
+    - *A second reason was offered on 2026-10-14, and accepted: that a
+      frame set common to all eight runs would be very small. It does not
+      hold. The static clip has 363 frames (ffprobe, 30 fps). Over their
+      four counted loops, M3's four static runs each cover 344 to 354 of
+      them, and 314 are common to all four; restricted to those, each run
+      keeps 723 to 763 of its 815 to 822 counted frames. Over four loops, a
+      run visits nearly every frame of the clip. The exclusion rests on the
+      general reason alone.*
 
 1. **What it rejects.** A static block whose baseline arm disagrees with
    itself: its baseline runs, which carry no treatment, differ in jitter by
@@ -4148,14 +4162,22 @@ read.
      reading of record pools the round's other blocks instead. Accepted by
      the maintainer on 2026-10-14, as a real defect of the proposal.
    - **The second change: below 7 degrees of freedom, the larger
-     estimate.** d₋b is Σ (k − 1) over the other blocks. With two baseline
+     threshold.** d₋b is Σ (k − 1) over the other blocks. With two baseline
      runs a block, that is one per block, so a round needs eight blocks
      before its reading of record carries round 0's 7 degrees of freedom.
      Ruled on 2026-10-14: while d₋b is below 7, the reading of record uses
-     the larger of s₀ and s₋b, each in the F test with its own degrees of
-     freedom, and the record says which one bound.
+     the larger of the two thresholds on v_b, s₀² × F(0.95; k − 1, 7) and
+     s₋b² × F(0.95; k − 1, d₋b), and the record says which one bound.
      - **What that is:** not a better estimate of σ, but a decision rule
-       chosen for the direction in which it errs, towards acceptance.
+       chosen for the direction in which it errs, towards acceptance. It
+       compares thresholds, because the threshold is what the decision
+       uses.
+     - *Corrected on 2026-10-14; the error was the maintainer's. The ruling
+       first said "the larger of round 0's estimate and the round's", the
+       larger σ, while meaning the more permissive gate. With fewer degrees
+       of freedom the F cut-off is higher, so a smaller estimate can give
+       the higher threshold: the two invert precisely where the rule
+       matters.*
      - **Why that direction:** a filter whose power is 0.449 at 3 σ (k = 2,
        the table below) was never catching much, so erring towards
        acceptance costs little. Rejecting a good block on a thin estimate
@@ -4207,9 +4229,19 @@ read.
        `preflight`, and with the repeat `-<k>` that a block of repeats
        needs. So no count of a session's exports takes them in (step 7),
        and no session name matches them.
-     - **Its order** is registered when the session is prepared, before it
-       runs. It interleaves the arms, so that drift across the block cannot
-       load onto the difference the arm test reads.
+     - **Its order alternates the arms, run by run:** sync, worker, sync,
+       worker, and so on, not four of one and then four of the other. Ruled
+       on 2026-10-14.
+       - **The reason:** grouped, any drift across the block's ten minutes
+         projects onto the arm difference, which is the confound the arm
+         test must be free of. Alternating spreads it across both arms.
+       - **What alternating leaves:** the arms' mean positions in the order
+         are one run apart (sync at 1, 3, 5, 7, mean 4; worker at 2, 4, 6,
+         8, mean 5). So a drift linear in time still projects one run's
+         worth onto the difference, against four runs' worth grouped (sync
+         1 to 4, mean 2.5; worker 5 to 8, mean 6.5).
+       - The rest of its procedure is registered when the session is
+         prepared, before it runs.
      - **A run that fails a run-level check** is not one of the eight. What
        replaces it is for the stopping rules, not written yet, as for a
        counted run.
