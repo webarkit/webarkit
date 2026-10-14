@@ -461,9 +461,12 @@ correlation across the eight runs, with a = `acquire` p50 and x = `jitterPx`:
 - **The reading:** on this block, the `acquire` cost of a run does not
   predict its `jitterPx` beyond one run, run 3. Eight runs cannot exclude a
   moderate relation.
-- *Reported, not ruled on.* Whether `acquire` becomes a covariate that round
-  1 reads per block is the maintainer's decision. It is already recorded per
-  run in every export (`summaryMs.acquire`).
+- *Archived as a report; ruled by the maintainer on 2026-10-14.*
+  - *No rule changes on it.*
+  - *The power figure stands beside it: a true r of 0.43 would be detected
+    about 17% of the time, so a moderate relation is not excluded.*
+  - *`acquire` is already recorded per run in every export
+    (`summaryMs.acquire`), so the data is there if it ever matters.*
 
 **Where the two slow runs fell, and what it did to the arm test.**
 - **The question:** runs 3 (worker) and 5 (sync), one in each arm. What would
@@ -489,6 +492,51 @@ correlation across the eight runs, with a = `acquire` p50 and x = `jitterPx`:
 - **What it does not test:** a placement that would also have changed the
   values themselves. It holds each run's x as measured, which the accepted
   arm test supports.
+
+## Three claims of the maintainer's review, refuted
+
+The maintainer's review of round 0, on 2026-10-14, made three claims, and
+the data refuted all three. They are recorded here as refuted, with what
+refuted each, as the maintainer ruled. They are the first instances of the
+rule that #102's Part 4 gained the same day: a claim of a mechanism or a
+cause is labelled a conjecture until it is measured.
+
+1. **"The acquire shift names a mechanism for the slow state we had only
+   inferred from the SD arithmetic."** Refuted by two things.
+   - **It is not slow.** `acquire` p50 switched between adjacent runs and
+     came back: 28.1 → 42.1 → 27.6 ms over runs 2 to 4, and 27.6 → 37.3 →
+     27.8 ms over runs 4 to 6 ("The acquire finding", above). A quantity that
+     switches between adjacent runs and returns is not a slow state.
+   - **It does not carry jitter.** Without run 3, r(`acquire`, x) = 0.004.
+     The six runs at one `acquire` cost carry the block's spread on their
+     own: SD 0.0012747 px, against s₀ = 0.0012672 px.
+2. **"The block's acceptance is partly luck: the two anomalous runs fell one
+   in each arm; had both fallen in one arm, D would have been larger and the
+   test might have rejected. The 0.00069 px margin is less comfortable than
+   it looks."** Refuted by the enumeration of all 70 splits ("Where the two
+   slow runs fell", above).
+   - **Both slow runs in one arm:** of those 30 splits, none rejects, and only
+     2 give a larger |D|.
+   - **Over all 70:**
+     - 58 give a smaller |D| than the split that ran;
+     - 2 give the same, the split itself and its mirror, with the arms'
+       labels swapped;
+     - 10 give a larger one.
+
+     So the split that ran is among the least favourable, and it passed
+     anyway.
+   - **The two that reject** separate runs 3 and 5, as the split that ran
+     does.
+   - The margin itself, A − |D| = 0.0006881 px (t = 1.598, p = 0.161),
+     stands as computed. What is refuted is that the placement of the slow
+     runs made it smaller than it would otherwise be.
+3. **"One ten-minute block."** The block took 21 minutes, from 11:55:26Z
+   (run 1's start) to 12:16:27Z (run 8's end). "Ten minutes" was M3's static
+   block's (07:35:46 to 07:46:07, four runs), carried over without being
+   checked. The plan's counterbalancing bullet carried the same figure, and
+   now has a dated note.
+   - This one is a figure, not a cause. So it is the derivation rule's own
+     case, a figure stated without its inputs, rather than the new rule's.
 
 ## Not done
 

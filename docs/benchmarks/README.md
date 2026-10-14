@@ -3979,6 +3979,8 @@ read.
   ([#123](https://github.com/webarkit/webarkit/issues/123)). Both ran 64
   patches under the window procedure, so the size does not transfer as a
   figure. The order of magnitude is the point.
+  - *Open since round 0 (noted on 2026-10-14): see the note under the next
+    bullet.*
 - **So counted runs come in back-to-back blocks,** baseline and treatment
   arms adjacent, and no comparison ever spans two blocks. Within a block
   the slow state cancels, which is what bracketing is for. Spread across
@@ -3987,6 +3989,18 @@ read.
   within-block comparison is built to resolve. Blocks are repeated across
   sessions to see whether an effect holds across states; each comparison
   stays inside one block.
+  - *Added on 2026-10-14, after round 0 ran; ruled by the maintainer.*
+    - *Round 0 did not reproduce the anomaly that motivated this decision.
+      Its spread, s₀ = 0.00127 px, matches one run's resampling noise,
+      0.0013–0.0015 px. Its eight runs show no sign of agreeing more
+      closely than sampling allows: the within-run F is 1.47 on 7 and 21.
+      M3's four did: their F is 0.13 on 3 and 9 (the round-0 session
+      record).*
+    - *So the design is retained because it costs no extra run and follows
+      M3's precedent, not because the evidence that motivated it still
+      stands.*
+    - *The between-block spread of the bullet above, 0.007–0.009 px over
+      rounds 1 and 2, is open: unexplained, and not reproduced (#123).*
 - **The calibration's spread must match the campaign's, and so the
   calibration block's eight runs run consecutively,** like the campaign's
   blocks. Calibrating within one block and judging across blocks would
@@ -4054,6 +4068,14 @@ read.
     - **Round 0's arms are one pipeline at one cost of a frame:** in M3's
       four static runs every counted frame is TRACK (item 2), and `total`
       p50 is 51.2–51.4 ms in both arms (M3's record).
+      - *Refuted for round 0, noted on 2026-10-14 after it ran.*
+        - *Its `total` p50 was 38.1–38.9 ms in six runs, and 48.0 and
+          52.7 ms in two. The difference is in `acquire` (the session
+          record,
+          [`2026-10-14-tab9-m4-calibration-session.md`](./2026-10-14-tab9-m4-calibration-session.md),
+          "The acquire finding").*
+        - *The exclusion stands on the general reason, the bullet above,
+          alone, as the maintainer ruled.*
     - *A second reason was offered on 2026-10-14, and accepted: that a
       frame set common to all eight runs would be very small. It does not
       hold. Over four loops, a run visits nearly every frame of the clip,
@@ -4242,6 +4264,9 @@ read.
        - **The reason:** grouped, any drift across the block's ten minutes
          projects onto the arm difference, which is the confound the arm
          test must be free of.
+         - *Noted on 2026-10-14: round 0's block took 21 minutes, from
+           11:55:26Z to 12:16:27Z. "Ten minutes" was M3's static block's,
+           carried over without being checked.*
        - **What it cancels: a drift linear in time, exactly.** Both arms sit
          at mean position 4.5 in the order: sync at (1 + 4 + 5 + 8) ÷ 4,
          worker at (2 + 3 + 6 + 7) ÷ 4. Grouped, four of one and then four
@@ -4638,4 +4663,13 @@ exports, is
   - Its conclusion stands on the general reason alone.
   - Across the eight runs, `acquire` correlates with `jitterPx` at
     r = 0.4275, and at r = 0.004 without run 3.
-  - The session record has the figures, and no rule changes on them.
+  - **Archived as a report, and no rule changes on it** (the maintainer's
+    ruling, 2026-10-14). A true r of 0.43 would be detected about 17% of the
+    time, so a moderate relation is not excluded.
+  - The session record has the figures.
+- **Three claims of the maintainer's review were refuted by the data:**
+  - that the `acquire` shift is a mechanism for the slow state;
+  - that the block's acceptance was partly luck;
+  - that the block took ten minutes.
+
+  The session record says what refuted each.
