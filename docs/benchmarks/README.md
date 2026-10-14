@@ -4500,3 +4500,102 @@ read.
 **The scaled-step schedule stays descriptive.** It changes its own sample
 between runs on the same machine (#107, "What it must show"), so it never
 enters a paired comparison, and no figure of it reaches this clause.
+
+### Round 0, the calibration block: the session's procedure (2026-10-14)
+
+Registered on 2026-10-14, before the session runs, as item 3's round-0
+bullet requires ("the rest of its procedure is registered when the session
+is prepared, before it runs"). The session's brief was the maintainer's,
+given in a chat; by "What the plan rests on", above, it binds only as it is
+written here. One point of it was settled against the plan before this text
+was written: the brief gave each run its own `?run=<n>`, while the round-0
+bullet reads rule 3 on the pinned string's first form without `&run=`. The
+maintainer ruled for the plan, so `run.order` is `null` in all eight.
+
+**Who does what.** The session's PC runs the server, the tunnel, the link
+monitor, the command that opens each run, the pull of each export and the
+checks. The maintainer, at the tablet, types the device label, presses
+Start and then Download JSON, keeps the page in the foreground, and closes
+the run's tab.
+
+**Before the first run,** once, each result in the session record:
+- the provenance runbook's steps 1 to 4: the guard diff against `37dc6d4`
+  and the clean tree print nothing; `curl -sI` reads `Cache-Control:
+  no-cache, no-store, must-revalidate`; `examples/dist/provenance.json`
+  names head `37dc6d4…`, `clean: true`, an empty `dirtyPaths` and the
+  bundle `3a2567c15d59…`, and the files on disk hash as it says;
+- the target's SHA-256, `9e8eb486…` (rule 3), and `stall-check.mjs`'s,
+  `cccb475b…`, equal to the copy embedded in M3's record (the setup's item
+  6);
+- on the tablet: Chrome's cached files cleared, no `bench-nft-*.json` in
+  the download folder (step 7), and the full build read from
+  `chrome://version` (the setup's item 5);
+- **the link quiet:** no `connection terminated` line naming the device in
+  adb's log for five minutes before run 1. This is a readiness condition,
+  not a validity rule: a drop during a run invalidates that run anyway (the
+  setup's item 4), and this keeps a flapping link from spending the
+  session's re-runs.
+
+**The order and its names.** `<date>` is the session's.
+
+| Position | Path | Export |
+|---|---|---|
+| 1 | sync | `<date>-tab9-m4-calibration-sync-static-1.json` |
+| 2 | worker | `<date>-tab9-m4-calibration-worker-static-1.json` |
+| 3 | worker | `<date>-tab9-m4-calibration-worker-static-2.json` |
+| 4 | sync | `<date>-tab9-m4-calibration-sync-static-2.json` |
+| 5 | sync | `<date>-tab9-m4-calibration-sync-static-3.json` |
+| 6 | worker | `<date>-tab9-m4-calibration-worker-static-3.json` |
+| 7 | worker | `<date>-tab9-m4-calibration-worker-static-4.json` |
+| 8 | sync | `<date>-tab9-m4-calibration-sync-static-4.json` |
+
+Each position's URL is
+`http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=<path>&clip=pinball-static.mp4&loops=4&window=2000`.
+
+**Each run, in order:**
+1. `adb -s Tab9WEEA0001504 reverse --list` shows `tcp:8093 tcp:8093`. If
+   it does not, the run does not start: the tunnel is restored, and the
+   record says so.
+2. The link monitor begins.
+3. The URL is opened with rule 3's one command, and written to
+   `<the export's name>.url.txt`.
+4. At the tablet: the device label `Tab_9_WiFi`, Start, the page in the
+   foreground until the status reads `done`, then Download JSON. A refused
+   Start is not a run: its remedy is applied, the URL is opened again by
+   the same command, and Start is pressed again.
+5. The export is pulled from the tablet's download folder with `adb pull`,
+   unchanged, and renamed to its position's name. The link monitor ends
+   after the pull, and its log is `<the export's name>.link.txt`.
+6. The run-level checks, before the next run: validity rules 1 to 3, the
+   link's verdict and the stall check. They read no jitter value. No
+   `jitterPx` is read, by anyone, until the eighth run's checks have passed.
+7. The run's tab is closed, so that every run starts with the same tabs
+   open.
+
+**A run that fails a run-level check** is not one of the eight: one ended
+by Stop, one with `run.failure` set, one the loop-wrap rule refuses, a
+drop, or a failure of rule 2, rule 3 or the stall check.
+- **It is re-run once, at once, at its own position,** so the order stays
+  S W W S S W W S.
+- **Its export and logs are not copied into `docs/benchmarks/`.** The
+  record names the run, its time and the check it failed.
+- **If the re-run fails too, the session stops,** and the maintainer rules
+  before anything else runs. This rule is this session's only; the
+  campaign's stopping rules are still to be written.
+
+**After the eighth:**
+- step 6, the clean tree, again;
+- step 7's count and identity, read for round 0: eight exports, each with
+  its `.url.txt` and `.link.txt`; `run.order` `null`; `loops.loopCount` 4;
+  `bundledClip` `pinball-static.mp4`; `detection.path` its name's; and
+  `provenance.manifest.head` `37dc6d4…`;
+- then, and only then, item 3's computations: the eight values by arm; the
+  arm test; if it accepts, s₀ with its interval and the operational
+  thresholds; the within-run check; and M3's four beside them;
+- if the arm test rejects, item 5's redo: once, in the same order, with
+  `<k>` 5 to 8.
+
+**What is committed:** the eight exports, their `.url.txt` and `.link.txt`,
+and the session record, `<date>-tab9-m4-calibration-session.md`, which
+holds the Chrome build, each run's checks, any re-run, and item 3's
+computations with their inputs.
