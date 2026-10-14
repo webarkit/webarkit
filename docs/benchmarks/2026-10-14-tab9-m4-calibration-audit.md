@@ -270,3 +270,54 @@ Stated on 2026-10-14, before the read runs, as the maintainer ruled.
 - **Its reader:** a fresh agent, which has made none of the earlier reads.
 - **Its findings** are recorded below as found, with no further fix applied
   to this record.
+
+## The fourth read's findings, recorded as found
+
+- **The reader:** a fresh agent, which had made none of the earlier reads.
+- **What it read:** `a906345` to `c6a8566`, #123's comment as edited at
+  14:12:57Z, and the PR body as edited at 14:13:27Z.
+- **What it recomputed:** every figure in scope, and all twelve x values
+  again, bit for bit.
+- **The result: no wrong figure, and two overstated verdicts (D1, D2).** Both
+  are in the agent's own new text about the correction process. It also
+  found four nits.
+- **Under the rule:** the correction would continue. This was the last read
+  of this record, as stated before it ran, so its findings are recorded here
+  as found. No fix is applied to this record, and wording improvements go
+  into round 1's record.
+
+| # | Finding | Kind | Wording whose | What became of it |
+|---|---|---|---|---|
+| D1 | "Every figure has reproduced each time", in the fourth read's stopping rule above, is false. The first read found two figures that did not reproduce: A1 (M3's `acquire` range) and A2 (k = 3's threshold in its last digit). What is true is that every figure the result rests on has reproduced each time | overstated verdict | the agent's | Recorded as found, not fixed |
+| D2 | "The agent computed this from the commits", above "Whose wording each overstated verdict was in". The commits cannot separate C1 from C2: both entered in `549b4ba`. The split was assigned from the maintainer's rulings in the session, which are not in the repository. The reader found no attribution false, only that its stated basis cannot produce it | overstated verdict | the agent's | Recorded as found, not fixed. What is true: each phrase's commit was located from the history, and the phrase was assigned from the maintainer's rulings in the session |
+| D3 | The PR body says the second and third reads' fixes were "made by" the readers, who were read-only; the text is the agent's | nit | the agent's | Recorded as found |
+| D4 | "That strengthens the acceptance against the luck reading": the enumeration rebuts the luck reading but cannot add support to the acceptance, as the next bullet says | nit | the maintainer's "strengthens", kept, with the agent's scope | Recorded as found |
+| D5 | "The result has not eroded … the arm test … unchanged since `e9396df`": the figures and the decision are unchanged, but A5 changed the arm test's lead reading from "one population of repeats" to "not shown to differ" | nit | the agent's | Recorded as found |
+| D6 | "The first read's: A3 to A7": A7 was rated an omission, not an overstated verdict | nit | the agent's | Recorded as found. No count is affected |
+
+**The third reader's fixes, as applied, drew no finding:** C1, C2, C3, C5,
+C7, C10, C11 and C12.
+
+**Its answer to the maintainer's question on authorship: neither diagnosis
+as stated.**
+- **Not "the maintainer's wording":** this read's two overstated verdicts are
+  the agent's own sentences, written without a ruling or a reader's proposal.
+- **Not plainly "the document is hard to state":** the measurement statements
+  now read cleanly, and every figure reproduces.
+- **What the findings are consistent with:** across the four reads, every
+  overstatement sits in a sentence saying what a computation or the record
+  means, never in the computation beside it. Both authors wrote such
+  sentences, and each new layer of them carried new ones. In this read, that
+  layer was the record's account of its own correction (D1, D2, D5).
+- **Its conjecture, labelled as such and not measured (#102's fourth rule):**
+  the looseness comes from newly written summary sentences, which go
+  unchecked until the next independent read, rather than from one author.
+- **What the counts cannot do:** they are small, and not normalised by how
+  much each author wrote, so they cannot rank whose wording is looser.
+
+**Outside this record, raised for the maintainer.** #102 Part 4's fourth
+rule still carries the two forms C5 and C2 corrected here:
+- "its first instances: all three are the maintainer's";
+- "Without one run, it does not correlate with jitter: r = 0.004".
+
+It also pins the session record at `549b4ba`.
