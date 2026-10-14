@@ -3920,12 +3920,15 @@ that round's own static baseline block, by the one rule in item 3. This is
 [#114](https://github.com/webarkit/webarkit/issues/114)'s lesson applied to
 the clause: a bound calibrated on one pipeline is not a bound for the next,
 so it is read against each round's own.
-- **Not written yet: how a round's pipeline reaches a counted run.** The
-  setup's item 1 and validity rule 2 hold every counted run at `37dc6d4`,
-  which contains none of M4's pipeline. #114 reads its criterion against
-  each round's pipeline too. The plan does not yet say how the two
-  reconcile. The clause does not depend on the answer, only on each round
-  having a static baseline block of its own.
+- **How a round's pipeline reaches a counted run is
+  [#124](https://github.com/webarkit/webarkit/issues/124)'s.** The setup's
+  item 1 and validity rule 2 hold every counted run at `37dc6d4`, which
+  contains none of M4's pipeline, while #114 and this clause read each
+  round against its own. #124 holds the resolution, which is settled before
+  round 1, the first treatment round. Round 0, the calibration block, runs
+  M3's pipeline at `37dc6d4` and fits the current freeze. The clause does
+  not depend on the answer, only on each round having a static baseline
+  block of its own.
 
 **What was seen before it was written:**
 - the `jitterPx` of M3's four static runs (M3's record) and their span,
@@ -3951,6 +3954,11 @@ rests on the M3 values: they set no threshold, and they gate nothing
    other than the pipeline: the device's state, the frame schedule, a fault
    no run-level check sees. A block like that can neither calibrate its
    round nor anchor its comparisons.
+   - **What the clause is: a check on the conditions of measurement, not
+     on its results,** read on an arm that carries no treatment.
+   - **It is a gross-abnormality filter, not a precision instrument.**
+     Item 3's power table shows what eight runs buy, and no reading of a
+     block that passes it may claim more.
    - **It rejects a block, never a run, and the reason is not continuity
      with M3.** Jitter is an outcome measure for M4: steadiness is what its
      rounds measure ([#107](https://github.com/webarkit/webarkit/issues/107)).
@@ -3962,6 +3970,12 @@ rests on the M3 values: they set no threshold, and they gate nothing
      treatment, so no outcome of M4's enters the clause. A block criterion
      that read a treatment's jitter, and was redone until it passed, would
      select on the outcome one level up.
+   - **What it still selects, recorded as such.** Redoing a block until
+     its baseline passes still selects, indirectly, for quiet conditions.
+     Within a block, the baseline's conditions and the treatment's are
+     correlated, so a block kept for its quiet baseline tends to keep
+     quiet treatment runs with it. The one-redo cap bounds that selection
+     (item 5).
    - **It cannot overlap validity rule 1.** Rule 1 decides whether a run
      counts, on `run.failure` and `run.endedBy`, and every run-level check
      the plan registers is read before the clause: rules 1 to 3, the link
@@ -4036,8 +4050,10 @@ rests on the M3 values: they set no threshold, and they gate nothing
 
      The first column is the false-rejection rate, by construction. In px
      the row depends on σ, so each round's record restates it with that
-     round's s. Eight runs buy little at one σ: an arm difference of one
-     run-to-run standard deviation is rejected about one time in five.
+     round's s. **This is a gross-abnormality filter (item 1).** An arm
+     difference of one σ passes 1 − 0.223 = 0.777 of the time, about four
+     times in five; the clause catches arms two or three σ apart, and is
+     not a precision instrument below that.
    - **The calibration block: the rule's first instance, and round 0's
      baseline block** (the rounds are named with the run order, not
      written yet).
@@ -4061,6 +4077,31 @@ rests on the M3 values: they set no threshold, and they gate nothing
        `preflight`, and with the repeat `-<k>` that a block of repeats
        needs. So no count of a session's exports takes them in (step 7),
        and no session name matches them.
+     - **The calibration's spread must match the campaign's.** Its eight
+       runs are distributed in time the way counted runs will be: back to
+       back if counted runs come in back-to-back blocks, and across a
+       session, or across days, if they spread that way.
+       - **The same reason holds for every round's baseline block.** How
+         that sits with item 6, which reads a round's block before its
+         first counted run, is for the run order to settle: a block spread
+         across a session cannot all come before the session's first
+         counted run.
+       - **The reason:** calibrating within one block and judging across
+         blocks would reject every run measured in a different state. A
+         spread taken in one thermal state contains no change of state, so
+         against it every such change reads as an abnormality.
+       - **Why it cannot be assumed away:** round 1's two baselines, 19
+         minutes apart in one session, differ on the same footage by about
+         twelve times the range of M3's four runs, which ran back to back
+         in about ten minutes (item 4 has the figures). M3's tight spread
+         may be the anomaly, four runs in one thermal state, rather than
+         the norm.
+         [#123](https://github.com/webarkit/webarkit/issues/123) holds
+         that question, and the calibration block is where it is answered
+         for the campaign's configuration.
+       - **The run order is not written yet**, so how counted runs are
+         distributed in time is decided before the calibration session is
+         prepared, and the two follow the same distribution.
      - **Its order** is registered when the session is prepared, before it
        runs. It interleaves the arms, so that drift across the block cannot
        load onto the difference the clause tests.
@@ -4080,26 +4121,29 @@ rests on the M3 values: they set no threshold, and they gate nothing
      - **What it is for:** when a round's s moves (item 6), it says whether
        the movement is between runs, the device's state from run to run, or
        within them, loop to loop.
-   - **M3's four: an independent estimate, gating nothing.** They are put
-     through the same rule with two runs an arm, and reported beside round
-     0's: s_p with 2 degrees of freedom, and A = t(0.975; 2) × s_p ×
-     √(1/2 + 1/2) = 4.3027 × s_p; s with 3; and the within-run check with
-     (4 − 1) × (4 − 1) = 9 residual degrees of freedom.
+   - **M3's four: an independent estimate, and a weak comparison, gating
+     nothing.** They are put through the same rule with two runs an arm,
+     and reported beside round 0's: s_p with 2 degrees of freedom, and
+     A = t(0.975; 2) × s_p × √(1/2 + 1/2) = 4.3027 × s_p; s with 3; and the
+     within-run check with (4 − 1) × (4 − 1) = 9 residual degrees of
+     freedom.
      - **They are useful because they differ:** Chrome 153, against round
-       0's 154. They differ in more than the browser. Between M3's
-       `0304390` and `37dc6d4` the harness changed (the page, its guards,
-       and the one bundle both arms now load:
+       0's 154. But they differ in more than the browser. Between M3's
+       `0304390` and `37dc6d4` the page and its harness changed (its
+       guards, and the one bundle both arms now load:
        [#111](https://github.com/webarkit/webarkit/pull/111),
        [#113](https://github.com/webarkit/webarkit/pull/113)), while the
        tracker's source did not (`packages/nft-tracker/src` changed in
        comments only). So a difference between the two estimates cannot be
-       put on Chrome alone.
+       attributed to Chrome. And they ran back to back in one block of
+       about ten minutes, which the calibration may not (above).
      - **How the two are compared:** F = (s₀ ÷ s_M3)², on 7 and 3 degrees
        of freedom, two-sided 5%. Between 0.1698 and 14.6244 the two are not
-       told apart, and with 3 degrees of freedom on one side that is a weak
-       comparison, which the record says beside it. Outside, the spread
-       moved across the change, and every comparison with M3's figures
-       carries it.
+       told apart. With 3 degrees of freedom on one side, that is a weak
+       comparison, and the record labels it so beside its result. Outside
+       that range, the spread moved between M3's session and round 0's,
+       for a reason this comparison cannot name, and every comparison with
+       M3's figures carries it.
 4. **The margin, and the set it is taken over.**
    - **Per round, from the round's own block:** the margin is A − |D|, and
      the nearest real value is |D|, the block's own arm difference. The
@@ -4146,7 +4190,8 @@ rests on the M3 values: they set no threshold, and they gate nothing
          - What the tenfold difference comes from is not shown. Two
            candidates are the time between the runs, 19 minutes against
            about 10 for M3's whole static block (07:35:46 to 07:46:07),
-           and the target.
+           and the target. On common footage it is 0.0092 ÷ 0.00077 =
+           11.9, twelvefold, and #123 holds the question.
          - *The ruling of 2026-10-14 kept this bullet's first wording:
            that the tenfold difference was consistent with the window
            explanation, without proving it. The independent check of this
@@ -4201,6 +4246,10 @@ rests on the M3 values: they set no threshold, and they gate nothing
      that round, and the maintainer rules on what follows: no third block
      runs without that ruling. The stopping rules, when they are written,
      take this in.
+   - **The cap is what bounds the clause's residual selection** (item 1):
+     every redo keeps a block for its quiet conditions, so the number of
+     redos is the number of chances the campaign gives itself to keep only
+     quiet ones. That is the cap's job, not procedural convenience.
 6. **When it is revisited.** On the campaign device, Tab_9_WiFi, only:
    desktop values and other devices are not read by it. It is read before
    the first counted run of each round, on that round's baseline block,
