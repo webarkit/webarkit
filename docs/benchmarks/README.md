@@ -3563,7 +3563,19 @@ independent check of the evidence guards and three validity rules. The rest
 of what #107 asks of the plan is not written yet: predictions with what
 would refuse each, the adoption rule, the run order, the validity checks
 beyond those three, and the stopping rules. No counted run is made before
-it is.
+it is. *Added on 2026-10-14, before any counted run and before the
+calibration block, with the pre-flight run the only M4 device run so far:
+what the plan rests on, next, the full Chrome build in the setup's item 5,
+and the null control's jitter clause, after the validity rules.*
+
+**What the plan rests on.** The authority for M4's steps is their issues,
+[#103](https://github.com/webarkit/webarkit/issues/103) to
+[#107](https://github.com/webarkit/webarkit/issues/107), the issues they
+cite for their parts (such as #114, for the loop-wrap bound), and this
+plan. No document outside this repository and its issues is a source for
+any session. The brief for step 1 cited a "Passo 1" section of the
+maintainer's own notes, which are kept outside the repository; nothing
+here holds it, and step 1 was worked from #103.
 
 **The setup, the same for every counted run.**
 
@@ -3632,6 +3644,15 @@ it is.
    pre-flight run's `userAgent`). M3's session ran on Chrome 153, in all 17
    of its exports. Any comparison with M3's figures carries that caveat,
    and is not treated as paired.
+
+   **The full build is recorded for every session,** read from
+   `chrome://version` on the tablet before the session's first run, in the
+   session record. An export carries only the reduced user agent,
+   `Chrome/154.0.0.0`, which names the major version and nothing finer.
+   M3's full build, 153.0.8010.36, is in its record's prose; round 1's is
+   recorded nowhere, and the pre-flight run's was not recorded. Jitter is
+   exactly the quantity a patch release can move, and a reduced user agent
+   is a lossy record of it.
 6. **Forward gaps within a loop are not checked by the page.** `isLoopWrap`
    reads step backs only. Forward gaps belong to the validity checks,
    through the stall check that M3's step 7 used.
@@ -3658,6 +3679,9 @@ it is.
 first called the LAN address "preferred"; it is not usable, which is why
 the transport is USB. Its last sentence left a drop's reading to the
 validity checks; item 4 now decides it.*
+
+*Item 5's second paragraph was added on 2026-10-14, before any counted
+run.*
 
 **The pre-flight run.**
 
@@ -3832,6 +3856,20 @@ not counted.
      - `window=2000`, the one value the export does not record:
        `windowSize` is the number of frames held, not the cap. Its effect
        is read instead: `ticks` equals `windowSize`, so no frame was lost.
+     - the target's bytes: `target.sha256` equal to
+       `9e8eb4863b58b635ad7fc2bd9f937d924b369a9002580e52a35ef0db7b0d5282`,
+       compared in full. That is the hash of `examples/targets/pinball.wnft`
+       at `37dc6d4`, and the one the pre-flight run's export records.
+       *Added on 2026-10-14, before any counted run and before the
+       calibration block, which it binds too. It is a dropped check: M3's
+       step 7 verified the target's bytes (`target.sha256` `9e8eb486…`),
+       M4's checks did not, and nobody decided that. `target.file` names
+       the file, not its bytes; step 7 checks the head, the clip, the path,
+       the loops and the order; and `examples/targets` is neither a guarded
+       path nor in the manifest. So nothing saw the target's bytes. The
+       rule this check reads is on the file's state: while a campaign is
+       open, the target's SHA-256 stays the one recorded at its start
+       (`AGENTS.md`).*
 
      So the comparison is exact for everything the export records. The
      string itself is not in the export.
@@ -3875,3 +3913,590 @@ not counted.
        - If one is ever wanted, `camera` must first be made visible to a
          check. On a webcam run it would become live and stay invisible in
          the same moment.
+
+### The null control's jitter clause (2026-10-14)
+
+M4's step 1, [#103](https://github.com/webarkit/webarkit/issues/103).
+Registered on 2026-10-14, before any counted run and before the
+calibration block (item 3). The one M4 device run before it is the
+pre-flight run of 2026-10-13, on the wall clip, which is not an input
+(item 4). It replaces what #103 first named, one allowance taken from M3's
+four static runs together with round 1's static baselines. Item 4 says why
+round 1 is not an input, and #103's comment of 2026-10-14 records it there.
+
+**It is a form and a derivation rule, not a number.** The calibration block
+(item 3) runs M3's pipeline at `37dc6d4`, and the campaign's rounds run
+M4's, which `37dc6d4` does not contain. A threshold fixed now would be wrong
+for M4's pipeline from its first round. So what is fixed now is what the
+clause rejects, the quantity it reads, the loops it reads it over, and that
+it rejects a block, not a run. Its threshold has two readings (item 3): an
+operational one against round 0's calibration, read as each block ends, and
+one of record, derived at each round's end from that round's own baseline
+arms. This is [#114](https://github.com/webarkit/webarkit/issues/114)'s
+lesson applied to the clause: a bound calibrated on one pipeline is not a
+bound for the next, so the reading of record is each round's own.
+- **How a round's pipeline reaches a counted run is
+  [#124](https://github.com/webarkit/webarkit/issues/124)'s.** The setup's
+  item 1 and validity rule 2 hold every counted run at `37dc6d4`, which
+  contains none of M4's pipeline, while #114 and this clause read each
+  round against its own. #124 holds the resolution, which is settled before
+  round 1, the first treatment round. Round 0, the calibration block, runs
+  M3's pipeline at `37dc6d4` and fits the current freeze. The clause does
+  not depend on the answer, only on each static block having a baseline
+  arm of its own.
+
+**What was seen before it was written:**
+- the `jitterPx` of M3's four static runs (M3's record) and their span,
+  and of round 1's two baselines, over their windows and on their common
+  media times (item 4);
+- M3's record's resampling figure, and round 2's three static baselines
+  over their windows (the argument below);
+- round 2's aligned figures (round 2's results, above);
+- the inventory of every committed export on the static clip (item 4).
+
+On M3's four, the per-loop split was run only to check that it computes.
+Its window counts were read (item 2); its per-loop `jitterPx` values were
+not. The M3 values' standard deviation was not computed before the clause's
+first form was written; it was computed, by hand, while the per-block form
+below was, and nothing in that form depends on it. Nothing below rests on
+the M3 values: they set no threshold, and they gate nothing (item 3).
+
+**Why a comparison stays inside one block.** Ruled on 2026-10-14; this
+argument decides both how counted runs are grouped and when the clause is
+read.
+- **The fact.** M3's record reports that keeping each processed frame with
+  probability 0.9 moves one run's `jitterPx` with a standard deviation of
+  0.0013–0.0015 px ("What was looked at before the decision"). M3's four
+  consecutive static runs all fall within 0.00077 px (item 4). Four
+  independent measurements cannot agree more closely than the sampling
+  noise of one, so they are not independent: they share a slowly moving
+  state.
+- **Between blocks, that state moves; within a block, it is frozen.** In
+  the committed record it moved by 0.007–0.009 px: round 1's two
+  baselines, 19 minutes apart in one session, are 0.0092 px apart on the
+  same footage (item 4), and round 2's three static baselines span
+  0.00692 px over their windows
+  ([#123](https://github.com/webarkit/webarkit/issues/123)). Both ran 64
+  patches under the window procedure, so the size does not transfer as a
+  figure. The order of magnitude is the point.
+- **So counted runs come in back-to-back blocks,** baseline and treatment
+  arms adjacent, and no comparison ever spans two blocks. Within a block
+  the slow state cancels, which is what bracketing is for. Spread across
+  sessions, it would enter the comparison as noise an order of magnitude
+  larger than the within-block spread, and so than any effect a
+  within-block comparison is built to resolve. Blocks are repeated across
+  sessions to see whether an effect holds across states; each comparison
+  stays inside one block.
+- **The calibration's spread must match the campaign's, and so the
+  calibration block's eight runs run consecutively,** like the campaign's
+  blocks. Calibrating within one block and judging across blocks would
+  reject every run measured in a different state; calibrating across
+  blocks and judging within one would pass what a block should refuse. The
+  campaign measures a difference within a block, so the within-block
+  spread is the one the clause needs.
+- *A correction by the maintainer, 2026-10-14.* The ruling earlier that
+  day warned that M3's tight spread might be the anomaly. As a diagnosis
+  that was right: it is, against the device's behaviour between blocks. As
+  a design implication it was wrong. The campaign measures a difference
+  within a block, so the within-block spread is the one the clause needs,
+  and M3's four consecutive runs are the right population. The rule it
+  gave stands, that the calibration's spread must match the campaign's;
+  applied correctly, it says back to back, not spread. The plan's first
+  wording of it, which allowed the calibration to spread "across a
+  session, or across days", is replaced by the bullet above.
+- **What the argument rests on.** It takes the resampling figure as the
+  sampling noise of one run. A random 10% drop is not the perturbation a
+  run's own frame scheduling makes: if the scheduling picks much the same
+  frames in every run of one state, the runs share that too. The
+  conclusion holds either way: the runs of one block are not independent,
+  and what they share is fixed within it. It does not show what the state
+  is; #123 holds that question.
+- **Every jitter comparison between arms of different pipelines is read on
+  their common media times, with `compareExports`.** Ruled on 2026-10-14
+  as a constraint, not left to the predictions.
+  - **Why, and its size.** Jitter depends on which frames a run
+    processed: dropping 10% of them at random moves one run's `jitterPx`
+    by 0.0013–0.0015 px (above). A treatment that changes the cost of a
+    frame changes which frames its arm processes. At 10%, that effect
+    alone exceeds the whole four-run range of M3's static block,
+    0.00077 px. Read on each arm's own frames, a comparison would fold
+    "which frames each arm saw" into its result, with no way to separate
+    it from the pose's quality.
+  - **Its cost, measured.** The common set is at most what the slower arm
+    covered. Measured within one pipeline, over counted loops, on M3's
+    four static runs: the static clip has 363 frames (ffprobe, 30 fps),
+    each run covers 344 to 354 of them, and 314 are common to all four.
+    - **Pairwise, as `compareExports` reads two exports:** each run keeps
+      94.5% to 98.2% of its counted frames, a loss of 1.8% to 5.5%, and
+      3.3% on average over the six pairs.
+    - **On the set common to all four:** each run keeps 723 to 763 of its
+      815 to 822 counted frames, a loss of 7.2% to 11.3%, and 9.2% over
+      the four.
+    - Arms whose cost of a frame differs may share fewer frames than
+      these. Each comparison's record gives its own count.
+  - **Why it is paid.** The selection is symmetric: both arms are judged on
+    the same frames, and that symmetry is what removes the confound.
+  - **Where it binds.** Every comparison of `jitterPx` between arms that
+    run different pipelines: a treatment against its baseline. Which of an
+    arm's exports are paired is registered with the block's shape, in the
+    run order. That each comparison is read on common media times is not
+    open.
+  - **Where it does not: the clause's own readings,** round 0's arm test
+    and every block's baseline variance. They read each run's
+    `runSummary.jitterPx` over all its counted frames (items 2 and 3).
+    Ruled on 2026-10-14, in its general form:
+    - **The same variation does two opposite jobs.** In a comparison
+      between different pipelines, which frames each arm saw is a confound,
+      and the common media times remove it. In a calibration of noise, it
+      is part of the noise and must stay in: removed, the calibrated spread
+      comes out too small, and the clause rejects normal blocks. s₀ and v_b
+      are computed alike, both with it in.
+    - **Round 0's arms are one pipeline at one cost of a frame:** in M3's
+      four static runs every counted frame is TRACK (item 2), and `total`
+      p50 is 51.2–51.4 ms in both arms (M3's record).
+    - *A second reason was offered on 2026-10-14, and accepted: that a
+      frame set common to all eight runs would be very small. It does not
+      hold. Over four loops, a run visits nearly every frame of the clip,
+      and the set common to M3's four static runs keeps most of each run's
+      frames (the measured cost, above). The exclusion rests on the general
+      reason alone.*
+
+1. **What it rejects.** A static block whose baseline arm disagrees with
+   itself: its baseline runs, which carry no treatment, differ in jitter by
+   more than consecutive repeats of that pipeline on this device do. Within
+   a block the slow state should be frozen (above), and the clause checks
+   that it was. A baseline arm that disagrees with itself says the state
+   moved inside the block, or that something else happened that no
+   run-level check sees, and the block's comparison cannot rest on it.
+   - **It is read per block, on that block's own baseline arm, as part of
+     the block.** Only static blocks: `jitterPx` measures steadiness only
+     on a clip where the target stays in view and every pose is right
+     (`DEFINITIONS.jitterPx`). In round 0, which has no treatment, all
+     eight runs are baseline, and its check is the arm test (item 3).
+   - **What the clause is: a check on the conditions of measurement, not
+     on its results,** read on an arm that carries no treatment.
+   - **It is a gross-abnormality filter, not a precision instrument.**
+     Item 3's power tables show what its runs buy, and no reading of a
+     block that passes it may claim more.
+   - **It rejects a block, never a run, and the reason is not continuity
+     with M3.** Jitter is an outcome measure for M4: steadiness is what its
+     rounds measure ([#107](https://github.com/webarkit/webarkit/issues/107)).
+     Rejecting individual runs on a jitter threshold would select on the
+     dependent variable, and bias the mean of the runs that survive.
+     Rejecting the block selects nothing: its comparison is discarded and
+     redone whole.
+   - **It reads the baseline arm only.** That arm carries no treatment, so
+     no outcome of M4's enters the clause. A block criterion that read a
+     treatment's jitter, and was redone until it passed, would select on
+     the outcome one level up.
+   - **What it still selects, recorded as such.** Redoing a block until
+     its baseline passes still selects, indirectly, for quiet conditions.
+     Within a block, the baseline's conditions and the treatment's are
+     correlated, so a block kept for its quiet baseline tends to keep
+     quiet treatment runs with it. The one-redo cap bounds that selection
+     (item 5).
+   - **It cannot overlap validity rule 1.** Rule 1 decides whether a run
+     counts, on `run.failure` and `run.endedBy`, and every run-level check
+     the plan registers is read before the clause: rules 1 to 3, the link
+     check (the setup's item 4), the loop-wrap refusal and the stall check
+     (the setup's item 6). The clause reads the block those leave, runs
+     that passed them all, and it removes no run. So nothing rule 1 refuses
+     reaches it, and the two can never remove the same run.
+2. **What it reads: `runSummary.jitterPx`,** each run's, as the export
+   records it, over the run's four counted loops (`loops`
+   `{firstLoop: 1, loopCount: 4}`), never over its warm-up loop.
+   - **It is computable after the run, from the committed export alone.**
+     It is `cornerJitter` (`examples/js/bench-metrics.mjs`) over
+     `countedLoopFrames` of the export's `frames`, from each frame's
+     `corners` and `mediaTimeSeconds`, with the run's `clipDurationS` and
+     `loops`. The analysis recomputes it, and requires it to equal the
+     recorded value. On 2026-10-14 the two were equal, to the last digit,
+     in M3's four static exports and in the pre-flight run's. The clause
+     needs no field the frozen page does not already export.
+   - **The warm-up loop is not read, because the detection arms differ
+     there by construction:** a worker run's first lock arrives later. M3's
+     two worker static runs have 6 and 5 frames without `corners`, all in
+     their warm-up loops, and its two synchronous runs have none; every
+     frame of every counted loop of the four is TRACK. As #114's criterion
+     does, the clause reads the counted loops only.
+   - **One loop at a time, for item 3's within-run check:**
+     `countedLoopFrames` with `firstLoop` k and `loopCount` 1, for k from 1
+     to 4. The windows `jitterPx` pools never span a wrap, so the four loops
+     partition a run's windows exactly (12 + 12 + 12 + 13 = 49 in M3's
+     first synchronous static run), and the run's `jitterPx`² is the mean
+     of its loops' `jitterPx`², each weighted by its loop's Σ(n − 2).
+3. **The threshold: two readings of one statistic, stated once.** The two
+   readings were the maintainer's proposal on 2026-10-14, offered as a
+   proposal rather than a verified rule. The two changes made to it here
+   are marked below: the maintainer accepted the first, and ruled on the
+   second.
+   - **The statistic:** a block's baseline arm has k runs, k ≥ 2, with k
+     set by the run order, not written yet. v_b is the sample variance of
+     their x, as item 2 reads them, with k − 1 degrees of freedom. Too much
+     disagreement is abnormal and too little is not, so each reading is
+     one-sided, at 5%.
+   - **Whose statistic it is, and why it changed.** The decision that
+     counted runs come in back-to-back blocks (above) was the maintainer's.
+     It made the clause's first statistic impossible: an eight-run block
+     testing its four synchronous runs against its four worker runs cannot
+     be a counted block's baseline arm. The maintainer did not trace that
+     consequence when making the decision. The agent writing this clause
+     inherited it, and formulated the per-block statistic above in its
+     place; the maintainer confirmed it on 2026-10-14. The first statistic
+     survives as round 0's acceptance (below).
+   - **The operational reading, at the block's end:** against s₀, round
+     0's within-block standard deviation (7 degrees of freedom, below). The
+     block is rejected when v_b ÷ s₀² > F(0.95; k − 1, 7). It is read as
+     soon as the block finishes, so that a bad block is redone at once
+     instead of wasting the session.
+   - **The reading of record, at the round's end:** against the pooled
+     within-block standard deviation of that round's own baseline arms,
+     leaving out the block it judges. Over the round's other blocks,
+     s₋b² = Σ (x − that block's baseline mean)² ÷ d₋b, with
+     d₋b = Σ (k − 1). The block is rejected when
+     v_b ÷ s₋b² > F(0.95; k − 1, d₋b). It decides, retrospectively, which
+     blocks enter the analysis. The same pool over the blocks admitted is
+     the round's within-block spread, s_r, which the round's jitter
+     readings are set against; how the predictions use it is theirs to
+     register.
+   - **Why two.** One reading alone forces a choice between not wasting
+     the session and being right: s₀ is known at once but comes from M3's
+     pipeline, while the round's own spread is the right population and is
+     known only at its end. Both read baselines only, so neither selects on
+     the outcome.
+   - **The first change: leave one out.** As proposed, the pool of record
+     included the block it judges, so a gross block would widen the
+     threshold that judges it, most of all in a round of few blocks. The
+     reading of record pools the round's other blocks instead. Accepted by
+     the maintainer on 2026-10-14, as a real defect of the proposal.
+   - **The second change: below 7 degrees of freedom, the larger
+     threshold.** d₋b is Σ (k − 1) over the other blocks. With two baseline
+     runs a block, that is one per block, so a round needs eight blocks
+     before its reading of record carries round 0's 7 degrees of freedom.
+     Ruled on 2026-10-14: while d₋b is below 7, the reading of record uses
+     the larger of the two thresholds on v_b, s₀² × F(0.95; k − 1, 7) and
+     s₋b² × F(0.95; k − 1, d₋b), and the record says which one bound.
+     - **What that is:** not a better estimate of σ, but a decision rule
+       chosen for the direction in which it errs, towards acceptance. It
+       compares thresholds, because the threshold is what the decision
+       uses.
+     - *Corrected on 2026-10-14; the error was the maintainer's. The ruling
+       first said "the larger of round 0's estimate and the round's", the
+       larger σ, while meaning the more permissive gate. With fewer degrees
+       of freedom the F cut-off is higher, so a smaller estimate can give
+       the higher threshold: the two invert precisely where the rule
+       matters.*
+     - **Why that direction:** a filter whose power is 0.449 at 3 σ (k = 2,
+       the table below) was never catching much, so erring towards
+       acceptance costs little. Rejecting a good block on a thin estimate
+       loses data and protects against nothing.
+   - **For a block bracketed by two baseline runs, as M3's were (k = 2):**
+     F(0.95; 1, 7) = t(0.975; 7)² = 2.3646² = 5.5914, so the operational
+     reading rejects when |x₁ − x₂| > s₀ × √(2 × 5.5914) =
+     **3.3441 × s₀**: a two-sided 5% t test of the bracket difference, on 7
+     degrees of freedom. For k = 3 and 4, F(0.95; 2, 7) = 4.7374 and
+     F(0.95; 3, 7) = 4.3468.
+   - **The power it keeps, k = 2:** the probability that the operational
+     reading rejects a block whose two baseline runs differ by a true shift
+     Δ, the state moving inside the block, σ being the true within-block
+     standard deviation. It is the probability that a noncentral t with 7
+     degrees of freedom and noncentrality Δ ÷ (σ × √2) lies beyond ±2.3646,
+     integrated over the χ² distribution with 7 degrees of freedom;
+     simulating 10⁶ blocks at 2, 3 and 4 σ agreed within 0.001.
+
+     | the shift Δ inside the block | 0 | 1 σ | 2 σ | 3 σ | 4 σ | 5 σ |
+     |---|---|---|---|---|---|---|
+     | blocks rejected | 0.050 | 0.094 | 0.232 | 0.449 | 0.681 | 0.856 |
+
+     **A gross-abnormality filter (item 1):** a shift of 3 σ inside a block
+     passes more often than not. What it is built to catch is the state
+     moving inside a block by as much as it moves between blocks, about
+     ten times the whole range of M3's four consecutive runs (above). If
+     round 0's spread is of that order, such a move lies far past where
+     this table is weak.
+   - **Round 0, the calibration block: both readings' first instance** (the
+     rounds are named with the run order, not written yet).
+     - **What runs:** eight static runs on Tab_9_WiFi, Chrome 154, at
+       `37dc6d4`, four synchronous and four worker: M3's pipeline. They run
+       consecutively, back to back, like the campaign's blocks (above). It
+       is device work, in a session of its own, before the first counted
+       run.
+     - **They are not counted runs, and run under the pre-flight run's
+       discipline:** every item of the setup above, the manifest check at
+       Start, the link monitor and its log, and the URL kept beside each
+       export among them; validity rules 1 to 3, with rule 3 read on the
+       pinned string's first form without `&run=`, which the pre-flight run
+       left out too, so that `run.order` is `null` and
+       `protocol.sessionRun` is `false` with its one gap `run.order none`;
+       and the stall check (the setup's item 6). The clip slot is
+       `pinball-static.mp4`.
+     - **They are named apart from counted runs:**
+       `<date>-tab9-m4-calibration-<path>-static-<k>.json`, `<path>` `sync`
+       or `worker` and `<k>` the run's repeat within its path, 1 to 4. It
+       is the pre-flight run's pattern with `calibration` in place of
+       `preflight`, and with the repeat `-<k>` that a block of repeats
+       needs. So no count of a session's exports takes them in (step 7),
+       and no session name matches them.
+     - **Its order is counterbalanced: S W W S S W W S** (S synchronous,
+       W worker), M3's bracket pattern twice. Ruled on 2026-10-14.
+       - **The reason:** grouped, any drift across the block's ten minutes
+         projects onto the arm difference, which is the confound the arm
+         test must be free of.
+       - **What it cancels: a drift linear in time, exactly.** Both arms sit
+         at mean position 4.5 in the order: sync at (1 + 4 + 5 + 8) ÷ 4,
+         worker at (2 + 3 + 6 + 7) ÷ 4. Grouped, four of one and then four
+         of the other, they would sit at 2.5 and 6.5, four runs' worth
+         apart.
+       - **What it does not cancel: curvature.** Sync's positions sit
+         further from the block's centre than worker's. Their squared
+         deviations from 4.5 sum to 3.5² + 0.5² + 0.5² + 3.5² = 25, against
+         2.5² + 1.5² + 1.5² + 2.5² = 17 for worker. So a quadratic drift,
+         c × (position − 4.5)², leaves (25 − 17) ÷ 4 = 2c between the arms'
+         means.
+       - *Corrected on 2026-10-14. The ruling before this one set a strict
+         alternation, S W S W S W S W, whose arms sit at mean positions 4
+         (1, 3, 5, 7) and 5 (2, 4, 6, 8): one run's worth of a linear drift
+         stayed on the difference. The maintainer had been correcting the
+         grouped order, four runs' worth, and stopped at the first
+         improvement rather than at the exact cancellation.*
+       - The rest of its procedure is registered when the session is
+         prepared, before it runs.
+     - **A run that fails a run-level check** is not one of the eight. What
+       replaces it is for the stopping rules, not written yet, as for a
+       counted run.
+     - **Its acceptance is the arm test,** which plays the operational
+       reading's part for round 0. Round 0 is one block, so it has no
+       reading of record.
+       - **The arms' difference:** D = (the worker runs' mean x) − (the
+         synchronous runs' mean x).
+       - **The pooled within-arm standard deviation:**
+         s_p = √(Σ (x − its arm's mean)² ÷ 6), summed over the eight runs,
+         each about its own arm's mean, so that the arms are not assumed
+         equal. 6 = (4 − 1) + (4 − 1) degrees of freedom.
+       - **The threshold:** A = t(0.975; 6) × s_p × √(1/4 + 1/4) = 2.4469 ×
+         0.70711 × s_p = **1.7302 × s_p**: the two-sided 5% critical
+         difference of Student's two-sample t test with four runs an arm.
+       - **The block is rejected when |D| > A.** Two-sided, because neither
+         arm is a treatment, so neither direction is the benign one. M3's
+         clause (its runbook's step 8) was one-sided because its worker arm
+         was the treatment, and a steadier worker was no defect.
+       - **Why the arm test matters past round 0:** on the static clip,
+         detection is the only part of a frame that differs between the
+         arms, and it runs to one lock, in the warm-up loop. An accepted
+         round 0 finds the two paths one population of repeats rather than
+         assuming it, which is what lets a block's baseline arm hold either
+         path.
+       - **Its power:** the probability that the arm test rejects a block
+         whose arms truly differ by δ, σ being the true run-to-run standard
+         deviation. It is the probability that a noncentral t with 6
+         degrees of freedom and noncentrality δ ÷ (σ × √(1/4 + 1/4)) =
+         √2 × δ ÷ σ lies beyond ±2.4469, integrated over the χ²
+         distribution with 6 degrees of freedom; simulating 10⁶ blocks at
+         1, 2, 2.5 and 3 σ agreed within 0.001.
+
+         | the arms' true difference δ | 0 | 0.5 σ | 1 σ | 1.5 σ | 2 σ | 2.5 σ | 3 σ |
+         |---|---|---|---|---|---|---|---|
+         | blocks rejected | 0.050 | 0.092 | 0.223 | 0.430 | 0.657 | 0.836 | 0.939 |
+
+         The first column is the false-rejection rate, by construction. In
+         px the row depends on σ, so round 0's record restates it with s₀.
+         **A gross-abnormality filter (item 1):** an arm difference of one σ
+         passes 1 − 0.223 = 0.777 of the time, about four times in five.
+     - **If it is accepted, s₀** is the standard deviation of all eight
+       values, with 7 degrees of freedom, the arms' equality now tested
+       rather than assumed. Its 95% interval runs from s₀ × √(7 ÷ 16.0128)
+       to s₀ × √(7 ÷ 1.6899), that is from **0.6612 s₀ to 2.0353 s₀**, a
+       factor of 2.0353 ÷ 0.6612 = 3.08; 16.0128 and 1.6899 are the χ²
+       distribution's 97.5% and 2.5% points with 7 degrees of freedom. s₀
+       is the operational reading's reference for every round.
+     - **Why not M3's four alone.** Four runs give 3 degrees of freedom: an
+       interval for the standard deviation from √(3 ÷ 9.3484) = 0.5665 to
+       √(3 ÷ 0.2158) = 3.7285 times the estimate, a factor of 3.7285 ÷
+       0.5665 = 6.58. A threshold derived from them could sit anywhere
+       across that factor, which the maintainer ruled wider than any effect
+       M4 hopes to detect (2026-10-14).
+   - **The within-run check.** Each run's four counted loops are read one
+     at a time (item 2): for round 0, 32 per-loop values, in a layout of
+     eight runs by four loops, read unweighted. Its residual mean square,
+     with (8 − 1) × (4 − 1) = 21 degrees of freedom, is the within-run
+     term. F = (the runs' mean square) ÷ (the residual mean square), on 7
+     and 21 degrees of freedom, against its 95% point, 2.4876, says whether
+     the runs differ by more than sampling within a run makes them differ.
+     - **It gates nothing.** The clause compares runs, so its error term
+       must be the run-to-run spread, which the within-run term cannot
+       replace.
+     - **What it is for:** when a round's spread moves (item 6), it says
+       whether the movement is between runs, the device's state from run to
+       run, or within them, loop to loop.
+   - **M3's four: an independent estimate, and a weak comparison, gating
+     nothing.** They are four consecutive runs in one block, the population
+     the clause needs (above), from another Chrome and another harness.
+     They are put through round 0's rule with two runs an arm, and reported
+     beside round 0's: s_p with 2 degrees of freedom, and A = t(0.975; 2) ×
+     s_p × √(1/2 + 1/2) = 4.3027 × s_p; their standard deviation, s_M3,
+     with 3; and the within-run check with (4 − 1) × (4 − 1) = 9 residual
+     degrees of freedom.
+     - **They are useful because they differ:** Chrome 153, against round
+       0's 154. But they differ in more than the browser. Between M3's
+       `0304390` and `37dc6d4` the page and its harness changed (its
+       guards, and the one bundle both arms now load:
+       [#111](https://github.com/webarkit/webarkit/pull/111),
+       [#113](https://github.com/webarkit/webarkit/pull/113)), while the
+       tracker's source did not (`packages/nft-tracker/src` changed in
+       comments only). So a difference between the two estimates cannot be
+       attributed to Chrome.
+     - **How the two are compared:** F = (s₀ ÷ s_M3)², on 7 and 3 degrees
+       of freedom, two-sided 5%. Between 0.1698 and 14.6244 the two are not
+       told apart. With 3 degrees of freedom on one side, that is a weak
+       comparison, and the record labels it so beside its result. Outside
+       that range, the spread moved between M3's session and round 0's,
+       for a reason this comparison cannot name, and every comparison with
+       M3's figures carries it.
+4. **The margin, and the set it is taken over.**
+   - **Per block, for each reading:** the threshold less the block's own
+     value, both with their inputs (for k = 2, operationally,
+     3.3441 × s₀ − |x₁ − x₂|), and for round 0, A − |D|. The nearest real
+     value is the block's own. The block's record gives both readings with
+     their inputs. No margin is given here: no block of M4's has run.
+   - **The set is a subset of the committed data; this is what is missing,
+     and why.** The candidates were every committed export on
+     `pinball-static.mp4`, tracking or stateless, and the one export on
+     Chrome 154, inventoried on 2026-10-14.
+     - **Round 1's static baselines**
+       (`2026-09-28-tab9-tuning-r1-baseline-static.json` and
+       `-baseline-static-repeat.json`), which #103 named as inputs, are
+       out.
+       - **They ended by Stop.** `?loops=` did not exist yet, so no run
+         could end by itself. Rounds 1 and 2 were run as 2026-09-26's
+         runs were, by a script that "pressed Stop and saved the page's
+         export unchanged" ("A device session", and 2026-09-26's "How the
+         runs were made", above). Their exports record no `run`, so
+         validity rule 1 cannot be read on them, and by the procedure they
+         would fail it.
+         A clause calibrated on runs that the rule beside it would not
+         count is incoherent. This reason alone excludes them.
+       - **The target.** Round 1 ran the 64-patch target (`4af6a7fb…`);
+         M3's runs and the campaign's read the 48-patch one (`9e8eb486…`).
+         Round 2's 48-patch candidate read `jitterPx` 0.144 against its
+         64-patch brackets' 0.160 and 0.167, aligned against the stateless
+         run: 10.0% and 13.8% lower. That is one run, and a window itself,
+         but a difference of that size is more than the spread being
+         measured.
+       - **The window.** 300 frames, the last before Stop, starting
+         wherever Stop left them: at 7.700 s with 2 wraps in the baseline,
+         at 6.433 s with 1 in its repeat. Two such runs do not cover the
+         same footage; a `?loops=4` run covers exactly four loops.
+       - **No loops.** A window has neither a warm-up loop nor counted
+         loops, so item 2's reading does not exist on it.
+       - **What the window does not explain.** Over their windows, round
+         1's two baselines moved 0.1476 → 0.1552 px, by 0.0076 px (M3's
+         record). M3's four counted-loop runs span 0.14163 to 0.14240 px,
+         0.00077 px, a tenth of it.
+         - The window does not account for that. On their 168 common
+           media times (`compareExports`, which reads the same footage in
+           both), the two baselines read 0.1476 and 0.1568 px, 0.0092 px
+           apart: more than over their windows.
+         - What the tenfold difference comes from is not shown. Two
+           candidates are the time between the runs, 19 minutes against
+           about 10 for M3's whole static block (07:35:46 to 07:46:07),
+           and the target. On common footage it is 0.0092 ÷ 0.00077 =
+           11.9, twelvefold, and #123 holds the question. One pair's
+           difference over about 210 frames against four runs' range over
+           about 820 each gives the size of the question, not a ratio of
+           two spreads.
+         - *The ruling of 2026-10-14 kept this bullet's first wording:
+           that the tenfold difference was consistent with the window
+           explanation, without proving it. The independent check of this
+           text, before it was committed, found the common-footage
+           comparison above, which goes against it.*
+       - **Excluding it as an input is not discarding it.** Round 1 stays
+         in the record as what it showed: movement between the first and
+         last runs of one session, 19 minutes apart, which the plan read as
+         drift's signature, and which bracketing exists to cancel (round
+         1's results, and "A device session", above).
+     - **Every other static `tracking` run from before M3 is out for the
+       first reason, and all but one for the second:** M2's
+       `2026-09-26-tab9-ondevice-tracking-static.json` and
+       `-static-repeat.json`; round 1's `iter20-static`, also a treatment,
+       a cap of 20; and round 2's `baseline-static-1` to `-3` (64 patches),
+       `p32-s16-static` (32) and `p48-s16-static` (48, `9e8eb486…`, before
+       its adoption). Each ended by Stop, with no `run` record and no
+       loops.
+     - **The Oppo A72's**
+       (`2026-09-26-oppo-a72-ondevice-tracking-static.json`): another
+       device. Devices are not pooled: jitter is more device-specific than
+       anything else measured here.
+     - **The pre-flight run**
+       (`2026-10-13-tab9-m4-preflight-sync-wall.json`): the one Chrome 154
+       export, but on the wall clip.
+     - **The static `stateless` runs,** sixteen on Tab_9_WiFi on
+       `pinball-static.mp4`, from 2026-09-24 to 2026-10-01, and the Oppo
+       A72's one: another pipeline.
+     - **What remains:** M3's four, an independent estimate (item 3), and
+       the calibration block, not yet run, round 0's input.
+   - **The Chrome caveat.** Every static export read so far is Chrome 153,
+     by the exports' reduced user agent; every run the clause will judge is
+     Chrome 154. That is why round 0's input is a block on 154, not M3's
+     four. Every comparison with M3's four carries the caveat, and none is
+     paired.
+5. **What happens to a rejected block, and who decides.**
+   - **The rules decide, without discretion:** a reading that rejects a
+     block rejects it, and nobody overrides either reading, either way.
+   - **The operational reading decides a redo; the reading of record
+     decides entry.** A block the operational reading rejects is redone at
+     once. Whether a block enters the analysis, including one the
+     operational reading rejected, is decided by the reading of record at
+     the round's end.
+   - **Every block is recorded.** Its exports are committed under their
+     names, and both readings, with their inputs, are in the session
+     record. A block the reading of record rejects enters no derivation and
+     no comparison. It is recorded because a rejection is the null control
+     firing on real data, and how often it fires is part of what item 6
+     reads. A run the loop-wrap rule refuses is the opposite case, a
+     rejected sample that is not recorded: that rule judges a run, and this
+     clause a block.
+   - **Its comparison goes with it.** The block's treatment runs are
+     recorded, and enter or stay out with the block.
+   - **It is redone once.** The redone block's files continue the repeat
+     index (`<k>` 5 to 8, for the calibration block), as M3's re-run wall
+     block did. If the redo is rejected too, the round stops, and the
+     maintainer rules on what follows: no third block runs without that
+     ruling. The stopping rules, when they are written, take this in. For
+     round 0, the arm test's rejection is the one that counts here.
+   - **The cap is what bounds the clause's residual selection** (item 1):
+     every redo keeps a block for its quiet conditions, so the number of
+     redos is the number of chances the campaign gives itself to keep only
+     quiet ones. That is the cap's job, not procedural convenience.
+6. **When it is read, and revisited.** On the campaign device, Tab_9_WiFi,
+   only: desktop values and other devices are not read by it.
+   - **It is read per block, as part of the block:** operationally at the
+     block's end, and of record at the round's end. No separate baseline
+     block has to come before a round's counted runs. *Corrected on
+     2026-10-14 by the maintainer: this item said the clause is read
+     "before the first counted run of each round, on that round's baseline
+     block", written with one baseline per round in mind. With the clause
+     read per block, the ordering question the plan had named, a baseline
+     block spread across a session that could not all come before its
+     first counted run, no longer arises.*
+   - **The one figure carried from round to round is round 0's s₀:**
+     always in the operational reading, which is provisional, and in the
+     reading of record only when it binds there, below 7 degrees of
+     freedom (item 3). Otherwise the reading of record is each round's own.
+   - **Read at each round's end:**
+     - each block's two readings (item 5);
+     - the round's within-block spread against round 0's: F = (s_r ÷ s₀)²,
+       on the round's degrees of freedom and 7, two-sided 5%, its bounds
+       computed per round. Outside them, the movement is recorded with the
+       within-run check's reading of it, and the round goes on. Its jitter
+       figures are not compared with round 0's as if both had one spread;
+     - the Chrome build of each of the round's sessions (the setup's item
+       5) against round 0's. A change is recorded; the reading of record,
+       on the round's own blocks, covers it.
+   - **What revisits the form itself:** a block and its redo both rejected
+     (item 5). The premise of the back-to-back design, a state frozen
+     within a block, has then failed twice running on that round's
+     pipeline, and the maintainer rules before the round goes on.
+
+**The scaled-step schedule stays descriptive.** It changes its own sample
+between runs on the same machine (#107, "What it must show"), so it never
+enters a paired comparison, and no figure of it reaches this clause.
