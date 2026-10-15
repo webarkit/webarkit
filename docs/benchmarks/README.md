@@ -4864,6 +4864,13 @@ each round against its own pipeline.
    - **The `package.json` files:** frozen, for the same reason. The
      packages' own are in `sources`. The root's is not, so, like `scripts`,
      only the guard diff carries it, and #127 holds it too.
+   - **`@webarkit/jsfeat-next` stays at `^0.17.0` for the campaign**
+     (2026-10-15): the consequence of the two freezes above for the one
+     dependency the bundle embeds, and it expires with them. jsfeatNext
+     1.0.0 (published 2026-09-30) and 1.1.0 (2026-10-15) both exist. This
+     deferral covers both, and any later 1.x. What changed between 1.0.0
+     and 1.1.0 is unreviewed; review it when the upgrade is taken up, not
+     before. The upgrade is #94.
    - **The packages' `tsconfig.json` and `tsconfig.test.json`:** not named
      by the ruling. They are in `sources`, and they are not the subject, so
      they are inputs. Every `sources` entry outside `packages/*/src/` is an
