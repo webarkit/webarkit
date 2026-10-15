@@ -5119,3 +5119,79 @@ are to be stated from, is in the criteria file (§5, §7 and the addendum).
 The whole rule is part of the treatment's definition: if it changes after
 round 1's first counted run, the rounds before and after are not the same
 experiment.
+
+### What M4's device half measures, and which steps reach it (2026-10-15)
+
+Registered on 2026-10-15, before round 1 and before any counted run of a
+treatment, from the maintainer's rulings of that day on #105's
+characterisation
+([`2026-10-15-m4-step3-ippe-c4-characterisation.md`](./2026-10-15-m4-step3-ippe-c4-characterisation.md),
+its third addendum and the correction to it). It binds #107's registration.
+The milestone's title is not changed here.
+
+**The finding.** Every value a counted run exports is built by `frameRecord`
+in the metrics module, which copies a result's `ok`, `reason`, `state`,
+`quality`, `trackLoss`, the step's counts, the timings and the detection
+fields, and computes the corners from `result.H` (line 165). No exported
+value is a function of the pose. So M4's device half measures **homography
+stability** (`jitterPx`, `spreadPx`), **lock behaviour** (`trackTimeShare`,
+`detectionLocks`, `firstStepLatency`, the states) and **cost** (the stages,
+frame total, `trackStepMs`). Of the milestone's pose work, only #104 reaches
+those metrics, and only through which frames are posed.
+
+**#105 and #106: device claims withdrawn as unmeasurable on this
+instrument, not refuted.** For each, the treatment is confined to the pose:
+#105 replaces the decomposition of `H`, #106 filters `R` and `t`. No exported
+value is a function of the pose, so the registered device metric cannot
+respond to either, by construction. On #105 this was measured as well: both
+arms over every clip of the corpus gave byte-identical corners on all 2,012
+common frames and a `jitterPx` difference of exactly 0, which is no
+measurement, not no effect. **No round 1 is run for step 3**, and none is to
+be registered for step 4's `jitterPx` claim. Their synthetic halves stand and
+are where their results live: #105's accuracy result on the rigid sets,
+already measured (criteria C1 to C11, their verdicts, the crossover as the
+measured interval 7°–10°); #106's lag measurement on synthetic sequences,
+when it is written.
+
+**#104: a joint claim, or none.** A refusal of a fit flips `result.ok`, and
+line 165 then nulls that frame's corners, so `jitterPx` and `trackTimeShare`
+move, but because a frame stopped being posed, not because any frame got
+better. `jitterPx` can be improved arbitrarily by refusing more frames, and a
+metric improvable by declining to measure is not an improvement metric on its
+own: the same family as the four checks of 2026-10-15 that could not
+distinguish the condition they claim to detect (round 0's session record), a
+number that moves for a reason unrelated to the quality it is read as. So
+#104's device claim is registered as **jitter and coverage together**, or
+not at all:
+- the claim: `jitterPx` on the treatment arm against its baseline arm, on
+  their common media times, read **beside** the treatment arm's coverage,
+  its posed frames over the clip's frames on the same media times;
+- **a pre-stated bound on coverage loss,** with its derivation, to be stated
+  here before round 1's first counted run of #104. Its derivation is #104's
+  own: the share of right fits the signal refuses on #90's sweep (the step's
+  "refuses none of today's right fits" condition), measured on the shipped
+  target and on M2's 64 patches, is the refusal the device may show without
+  the gain being bought by dropping frames. The number does not exist today,
+  because the signal does not: no commit implements it (below);
+- **what refuses it:** a jitter gain accompanied by a coverage loss beyond
+  the bound is refused, not reported. A jitter gain within the bound is
+  reported as a joint result, never as a jitter result alone.
+
+**#104's state, settled (report, 2026-10-15).** Two commits reference #104,
+`136f143` and `d92a203` of 2026-10-13, both documentation of #113: the first
+makes each tracking default's comment in `src/tracker.ts` say what M3's pass
+did to it, and names #104 as where #92's question goes; the second corrects
+three lines of the package README the same way. Neither adds code. No part of
+the conditioning signal, `d_scale` or `d_orth`, exists in the tree: the only
+occurrence of the word is a comment in `src/tracker.ts` (line 274) pointing
+at the issue. #104 is specified and unimplemented. One fact from #105's
+characterisation bears on its specification: the sweep's second view is not a
+plane homography for the camera, and the signal reads `d_scale` 0.0084 and
+`d_orth` 0.031 on its exact `H`, so a threshold derived on that view would be
+inflated; the separation has to be shown per view.
+
+**The instrument does not change, and no pose metric is proposed here.**
+Round 0's calibration is valid only while the served files stay
+byte-identical, and #104 may still be measurable under this instrument. Any
+pose metric ends this campaign; that sequencing decision is the maintainer's,
+and it is not taken in a PR.
