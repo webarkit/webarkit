@@ -254,7 +254,13 @@ describe("the depth rule (C7)", () => {
 
 describe("the selector draws nothing (C6, the seed half)", () => {
     it("never reads Math.random: the same H and K give the same answer whatever any seed is", () => {
-        const v = rigidView(K, TARGET, { tiltDeg: 25, azimuthDeg: 45, rollDeg: 10, shift: [10, -5], Z });
+        const v = rigidView(K, TARGET, {
+            tiltDeg: 25,
+            azimuthDeg: 45,
+            rollDeg: 10,
+            shift: [10, -5],
+            Z,
+        });
         const src = lattice();
         const dst = exactCorrespondences(v.H, src);
         const original = Math.random;
