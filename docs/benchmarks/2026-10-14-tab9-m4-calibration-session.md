@@ -630,3 +630,14 @@ third, a figure, came with them.
   and in every tilt band, since the treatment changes the pose and `jitterPx`
   reads `H`. A Stage 1 feasibility probe, not a round:
   [the characterisation's third addendum](./2026-10-15-m4-step3-ippe-c4-characterisation.md).
+- **Four checks that could not distinguish the condition they claim to
+  detect, found in one day (2026-10-15), recorded as a finding of its own.**
+  The pose stage reading zero on tracker arms while counting every frame
+  (#132); the provenance test red by construction on every developer's
+  checkout (#136); `jitterPx` blind to a treatment of the pose, since it
+  reads `H` (the characterisation's third addendum); and #90's sweep signal
+  for step 2, `d_scale` and `d_orth`, nonzero on correct fits of a view that
+  is not a plane homography for the camera (0.0084 and 0.031 on its exact
+  `H`). The common cause: none was ever run against a case where it must
+  fire and a case where it must not. The remedy, stated as a rule: a check
+  is trusted only after both runs, recorded beside its definition.

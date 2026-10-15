@@ -417,3 +417,79 @@ PC, because its `examples/dist` is the branch build the review agent made at
 `6ea5183` and the branch's sources moved after it; its message now says so
 (head, clean, dirty paths, remedy). It is green in CI, which builds before it
 tests (PR #134: 6 checks passing).
+
+## Correction to the third addendum, 2026-10-15: a zero from a metric that cannot respond is no measurement, not no effect
+
+The maintainer's ruling on the third addendum, the same day. Nothing above
+is edited; this says how its last section is to be read, and puts the
+structural claim on quoted code.
+
+**The wording withdrawn.** The third addendum says the conjecture is
+"settled in the only way it could be" and that the inference is "withdrawn by
+this measurement, in the direction of 'no effect'". That is wrong, and the
+difference matters: an attested null reads to a later reader like evidence of
+no effect, and that is not what a zero from a blind metric is. The right
+statement: **the registered metric does not respond to this treatment by
+construction; the split prediction, read as a jitter prediction, is void, not
+refuted; no statement about the treatment's effect follows from the zero.**
+The zero is no measurement. Wherever the third addendum says "no effect",
+read "no measurement".
+
+**The structural claim, on the module's own lines.** The load-bearing fact is
+that `jitterPx` is a function of `H` alone. In `examples/js/bench-metrics.mjs`
+(frozen; quoted, not changed):
+
+- the frame record's corners are computed from `result.H`, line 165 of
+  `frameRecord`:
+
+  ```js
+  corners: result.ok ? reprojectCorners(result.H, targetPoints) : null,
+  ```
+
+- `reprojectCorners` reads nothing but `H` and the target's four corners
+  (lines 79–93):
+
+  ```js
+  export function reprojectCorners(H, points) {
+      const out = [];
+      let side = 0;
+      for (const [x, y] of points) {
+          const w = H[6] * x + H[7] * y + H[8];
+          const u = (H[0] * x + H[1] * y + H[2]) / w;
+          const v = (H[3] * x + H[4] * y + H[5]) / w;
+          …
+          out.push([u, v]);
+      }
+      return out;
+  }
+  ```
+
+- `cornerJitter` reads only `f.corners` and `f.mediaTimeSeconds` (its window
+  loop, lines 973–981): `mean += f.corners[c][axis]`,
+  `slope += (f.mediaTimeSeconds - tMean) * (f.corners[c][axis] - mean)`, and
+  the residual `f.corners[c][axis] - mean - slope * (…)`;
+
+- no function of the module reads a result's `pose` (`grep "\.pose"` over
+  the module finds only prose in `DEFINITIONS`).
+
+So the cause is a fact of the frozen source, and the 2,012 byte-identical
+frames of the dry run are its consequence measured. Had the quoted lines read
+the pose, the zero would have been a defect of the dry run instead; they do
+not.
+
+**No round 1 for step 3 (ruled).** A campaign run on a blind metric would
+attest a zero and place it in the record as a result. Nothing is gained by
+measuring it on the device.
+
+**What #105 claims, exactly (ruled).** IPPE is implemented; it is
+deterministic under 60 random correspondence orders and 0 reads of
+`Math.random`; and on the rigid synthetic sets it is more accurate than the
+closed form above the crossover, which is the measured interval 7°–10°, and
+less accurate below it. That is an accuracy result on the rigid sets. No
+jitter claim and no campaign claim are made for it.
+
+**One line on where the ambiguity lands (ruled, point 7).** Every ambiguous
+frame on every clip was a DETECT frame, where the pose is established from
+scratch from RANSAC's inliers. That is precisely where a continuity tie-break
+would have propagated a wrong branch into the frames that follow, so the
+measurement supports the ruling that kept history out of the selector.
