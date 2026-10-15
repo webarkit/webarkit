@@ -274,7 +274,8 @@ export type Detection =
           /** Target level-0 → frame level-0, row-major 3×3. */
           readonly H: Mat3;
           /**
-           * RANSAC's inlier correspondences, `numInliers` of them: `src` the
+           * RANSAC's inlier correspondences, one per set bit of the estimate's
+           * inlier mask (equal to `numInliers` for a backend whose two agree): `src` the
            * target's keypoints (level-0 px), `dst` the frame's, each
            * `[x0, y0, x1, y1, …]`. What the pose selection reads (#105's rule
            * (b)). Typed arrays, so `structuredClone` carries them.

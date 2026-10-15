@@ -100,7 +100,7 @@ export type IppeFailure =
 export type IppeResult =
     | {
           readonly ok: true;
-          /** The two candidates: index 0 with `b ≥ 0`, index 1 with `−b`. */
+          /** The two candidates: index 0 with `b₀ ≥ 0` (`b₁`'s sign fixed by orthogonality), index 1 with `−b`. */
           readonly candidates: readonly [PoseCandidate, PoseCandidate];
       }
     | { readonly ok: false; readonly reason: IppeFailure };
@@ -334,6 +334,11 @@ export function ippe(H: Mat3, K: Mat3, src: PointArray, dst: PointArray): IppeRe
     const t01 = a01 / gamma;
     const t10 = a10 / gamma;
     const t11 = a11 / gamma;
+    // b from I − TᵀT: its magnitudes from the two column norms, the relative
+    // sign from the columns' orthogonality. Exact under noise too, not only
+    // on exact data, because T = A / γ has largest singular value 1 by
+    // construction, so I − TᵀT is rank-1 positive semidefinite and equals
+    // b bᵀ for the b below; the rotation is orthonormal whatever the noise.
     const b0 = Math.sqrt(Math.max(0, 1 - t00 * t00 - t10 * t10));
     let b1 = Math.sqrt(Math.max(0, 1 - t01 * t01 - t11 * t11));
     if (-(t00 * t01 + t10 * t11) < 0) b1 = -b1;

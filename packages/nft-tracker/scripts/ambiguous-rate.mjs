@@ -61,7 +61,12 @@
  *   the tracker's defaults, the shipped `examples/targets/pinball.wnft`,
  *   processes every frame;
  * - reported: frames, frames with a pose, ambiguous frames among them, split
- *   DETECT and TRACK, every selection outcome's count, and the rate.
+ *   DETECT and TRACK, every selection outcome's count, the rate, the frames on
+ *   the closed form for any reason (the one per-run counter), and the tilt of
+ *   the oracle's pose per posed frame (the angle between the plane's normal and
+ *   the optical axis), in bands: where IPPE loses to the closed form is near
+ *   fronto-parallel, so how much of a clip sits in that band is what predicts
+ *   round 1 (the C4 characterisation the maintainer asked for on 2026-10-15).
  *
  * Imports the built `dist/`: `npm run build -w @webarkit/nft-tracker` first.
  * Needs `ffmpeg` and `ffprobe` on the PATH.
@@ -159,7 +164,9 @@ async function main() {
         const native = probe(clip);
         const size = fitSize(native.width, native.height, BOX.width, BOX.height);
         const { rgb, frames, bytesPerFrame } = decodeFrames(clip, size);
-        const tracker = new NftTracker(cv, decoded.target, intrinsics(size.width, size.height));
+        const K = intrinsics(size.width, size.height);
+        const tracker = new NftTracker(cv, decoded.target, K);
+        const tilts = [];
         const counts = {
             frames,
             posed: 0,
@@ -176,9 +183,27 @@ async function main() {
             counts.rejected += s.rejected;
             counts.byState[result.state].posed++;
             if (s.ambiguous) counts.byState[result.state].ambiguous++;
+            // The oracle's tilt on this frame: the angle between the plane's
+            // normal and the optical axis, from the closed form's R[2][2].
+            const oracle = cv.poseFromHomography(result.H, K);
+            if (oracle.good) {
+                const tilt = (Math.acos(Math.min(1, Math.max(-1, oracle.R[8]))) * 180) / Math.PI;
+                tilts.push(tilt);
+            }
         }
-        const ambiguous = tracker.ambiguousFrames;
+        const ambiguous = counts.outcomes.ambiguous ?? 0;
         const fallbacks = tracker.fallbackFrames;
+        const band = (lo, hi) => tilts.filter((t) => t >= lo && t < hi).length;
+        const tiltBands = {
+            "0-2": band(0, 2),
+            "2-5": band(2, 5),
+            "5-10": band(5, 10),
+            "10-20": band(10, 20),
+            "20-40": band(20, 40),
+            "40+": band(40, 1e9),
+        };
+        const sorted = [...tilts].sort((a, b) => a - b);
+        const q = (f) => (sorted.length ? Number(sorted[Math.min(sorted.length - 1, Math.floor(f * sorted.length))].toFixed(1)) : null);
         const rate = counts.posed === 0 ? null : ambiguous / counts.posed;
         console.log(
             JSON.stringify(
@@ -193,6 +218,7 @@ async function main() {
                     fallbacks,
                     fallbackRate:
                         counts.posed === 0 ? null : Number((fallbacks / counts.posed).toFixed(4)),
+                    oracleTiltDeg: { p10: q(0.1), p50: q(0.5), p90: q(0.9), bands: tiltBands },
                     byState: counts.byState,
                     outcomes: counts.outcomes,
                     depthRejections: counts.rejected,

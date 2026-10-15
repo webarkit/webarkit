@@ -526,25 +526,17 @@ export class NftTracker {
     private lock: { readonly previous: Mat3 | null; readonly current: Mat3 } | null = null;
     /** The target's 5 × 5 grid, level-0 px: the pose selection's depth rule reads it. */
     private readonly grid: Float64Array;
-    private ambiguous = 0;
     private fallbacks = 0;
 
     /**
-     * Frames so far whose pose selection was ambiguous (#105's rule (c)):
-     * both IPPE candidates in front of the camera and within the margin, so
-     * the frame fell back to the closed form. Reported per run; a run in which
-     * it is large is a mixture of the two decompositions, not a measurement
-     * of IPPE.
-     */
-    get ambiguousFrames(): number {
-        return this.ambiguous;
-    }
-
-    /**
-     * Frames so far whose pose is the closed form for any reason: the
-     * ambiguous ones, those where both candidates put the plane behind the
-     * camera, and those where IPPE was degenerate. At least
-     * {@link ambiguousFrames}; the whole of the mixture a run carries.
+     * Frames so far whose pose is not IPPE's own estimate but the closed form,
+     * for any reason: an ambiguous selection (#105's rule (c)), both
+     * candidates putting the plane behind the camera, or a degenerate
+     * homography. One counter, by the maintainer's ruling of 2026-10-15:
+     * whenever the arm does not use IPPE's estimate it is a mixture of the two
+     * decompositions, and the count bounds the mixture; a run in which it is
+     * large is not a measurement of IPPE. Each result's `poseSelection.outcome`
+     * says which reason fired on its frame.
      */
     get fallbackFrames(): number {
         return this.fallbacks;
@@ -591,39 +583,14 @@ export class NftTracker {
 
     /**
      * The frame's pose from `H` over the correspondences the estimate used,
-     * by #105's selection rule, counting an ambiguous frame. `sigma` is the
+     * by #105's selection rule, counting a fallback frame. `sigma` is the
      * correspondences' noise, frame px: the alignment's on a tracking step,
      * the RANSAC threshold on a detection.
      */
     private selected(H: Mat3, src: Float64Array, dst: Float64Array, sigma: number): PoseSelection {
         const s = selectPose(H, this.K, src, dst, sigma, this.grid);
-        if (s.ambiguous) this.ambiguous++;
         if (s.chosen === "fallback") this.fallbacks++;
         return s;
-    }
-
-    /**
-     * A detection's inlier correspondences, or, for one produced without
-     * them (a `Detection` of an earlier shape handed to `process`), the
-     * target's grid and its image under `H`: the fit itself, which can only
-     * choose by geometry.
-     */
-    private detectionCorrespondences(d: Extract<Detection, { ok: true }>): {
-        src: Float64Array;
-        dst: Float64Array;
-    } {
-        const c = (d as { correspondences?: { src: Float64Array; dst: Float64Array } })
-            .correspondences;
-        if (c && c.src.length >= 6 && c.src.length === c.dst.length) return c;
-        const src = this.grid;
-        const dst = new Float64Array(src.length);
-        const H = d.H;
-        for (let i = 0; i < src.length; i += 2) {
-            const w = H[6] * src[i] + H[7] * src[i + 1] + H[8];
-            dst[i] = (H[0] * src[i] + H[1] * src[i + 1] + H[2]) / w;
-            dst[i + 1] = (H[3] * src[i] + H[4] * src[i + 1] + H[5]) / w;
-        }
-        return { src, dst };
     }
 
     /**
@@ -848,7 +815,9 @@ export class NftTracker {
                 sceneKeypoints: d.sceneKeypoints,
             };
         }
-        const c = this.detectionCorrespondences(d);
+        // A handed-in detection is trusted as `detectTarget` produced it, its
+        // inlier correspondences included (the type carries that contract).
+        const c = d.correspondences;
         const selection = this.selected(d.H, c.src, c.dst, this.setup.ransacThreshold);
         return {
             ok: true,

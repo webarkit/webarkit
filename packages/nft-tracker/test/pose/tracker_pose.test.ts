@@ -178,10 +178,9 @@ describe("NftTracker's pose comes from IPPE", () => {
         );
     });
 
-    it("C11: the per-run counter equals the number of frames reported ambiguous, and the fallback count every frame on the closed form", () => {
+    it("C11: the one per-run counter equals the number of frames whose pose is the closed form, for any reason (the ruling of 2026-10-15: one counter)", () => {
         const { tracker, results } = run(40);
         const ambiguous = results.filter((r) => r.ok && r.poseSelection.ambiguous).length;
-        expect(tracker.ambiguousFrames).toBe(ambiguous);
         const fallbacks = results.filter(
             (r) => r.ok && r.poseSelection.chosen === "fallback",
         ).length;
@@ -201,7 +200,6 @@ describe("NftTracker's pose comes from IPPE", () => {
 
     it("a fresh tracker starts its counter at 0", () => {
         const tracker = new NftTracker(backend, target, K);
-        expect(tracker.ambiguousFrames).toBe(0);
         expect(tracker.fallbackFrames).toBe(0);
     });
 });

@@ -144,7 +144,8 @@ export function selectPose(
     grid: PointArray,
 ): PoseSelection {
     const n = src.length >> 1;
-    const margin = ambiguityMargin(sigma, n);
+    // Finite even without correspondences (then IPPE is degenerate below).
+    const margin = n > 0 ? ambiguityMargin(sigma, n) : 0;
     const r = ippe(H, K, src, dst);
     if (!r.ok) {
         return {
@@ -158,8 +159,10 @@ export function selectPose(
         };
     }
     const [c0, c1] = r.candidates;
-    const front0 = inFront(c0.R, c0.t, grid);
-    const front1 = inFront(c1.R, c1.t, grid);
+    // A candidate that puts a correspondence at zero depth has a non-finite
+    // RMS; the depth rule reads it as the plane crossing the camera.
+    const front0 = inFront(c0.R, c0.t, grid) && Number.isFinite(c0.rms);
+    const front1 = inFront(c1.R, c1.t, grid) && Number.isFinite(c1.rms);
     const rejected = (front0 ? 0 : 1) + (front1 ? 0 : 1);
     let chosen: 0 | 1 | null = null;
     let outcome: PoseSelectionOutcome;
