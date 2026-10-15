@@ -337,3 +337,24 @@ error is the reviewer's, corrected by the implementer's arithmetic. The
 criteria and the description are untouched; the arithmetic stays beside the
 description, labelled not registered, with the defect named
 ([the characterisation](./2026-10-15-m4-step3-ippe-c4-characterisation.md)).
+
+## A reviewer error, recorded 2026-10-15: the ambiguity fallback imports the defect IPPE avoids
+
+On 2026-10-15 the maintainer ruled that an ambiguous IPPE frame (#105's rule
+(c)) falls back to the frame's own homography-derived pose, the closed form,
+calling it the control's path and therefore safe. A seeded headless
+measurement over the corpus (#137) shows what that imports: on every frame
+where IPPE's selected pose puts the target plane behind the camera, the pose
+is the closed form's, reached by fallback, and on no frame where IPPE's own
+candidate was selected is the plane behind. Per hand-held clip the closed
+form puts the plane behind on 28 of 257, 41 of 265, 50 of 329 and 46 of 275
+posed frames; IPPE's selected pose on 14, 14, 24 and 19, all of them fallback
+frames. The error is the reviewer's: the fallback is the leak. Its dominant
+trigger is not ambiguity: of those 71 frames, 50 are "both candidates
+behind the camera", a degenerate `H` with no admissible pose at all, where
+the fallback copies a pose already known to be behind and the honest action
+is to refuse; the ambiguous case the ruling reasoned about is 21 frames
+across four clips. The same count establishes what the morning's ruling left
+unverified: rule (a), the depth test, works as written and roughly halves
+the behind-camera poses. Not changed yet: the remedy is upstream, at the
+detection gate (#137), and patching the fallback first would hide the cause.

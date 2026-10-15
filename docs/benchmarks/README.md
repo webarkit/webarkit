@@ -5190,6 +5190,13 @@ plane homography for the camera, and the signal reads `d_scale` 0.0084 and
 `d_orth` 0.031 on its exact `H`, so a threshold derived on that view would be
 inflated; the separation has to be shown per view.
 
+**The common-media-times rule is more load-bearing than it was, not less
+(2026-10-15).** The resample it exists to neutralise, two runs processing
+different frames of the same clip, is now known to be partly RNG-driven:
+RANSAC draws from an unseeded `Math.random` through the contract (#24), so
+which frames re-detect moves between runs (#137, its seeded measurement).
+The rule is unchanged; the source is named.
+
 **The instrument does not change, and no pose metric is proposed here.**
 Round 0's calibration is valid only while the served files stay
 byte-identical, and #104 may still be measurable under this instrument. Any
