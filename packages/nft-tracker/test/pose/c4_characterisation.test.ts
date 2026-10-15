@@ -202,6 +202,7 @@ describe("C4 characterisation (development measurement)", () => {
             mSel: number;
             mOr: number;
             closer: number;
+            ratios: number[];
         }[] = [];
         for (const tiltDeg of tilts) {
             const fits: Fit[] = [];
