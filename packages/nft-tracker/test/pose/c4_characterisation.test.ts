@@ -226,6 +226,7 @@ describe("C4 characterisation (development measurement)", () => {
                 mSel: median(fits.map((f) => f.eSelected)),
                 mOr: median(fits.map((f) => f.eOracle)),
                 closer: fits.filter((f) => f.eSelected <= f.eOracle).length,
+                ratios: fits.map((f) => f.eSelected / f.eOracle).sort((x, y) => x - y),
             });
         }
         console.log(
@@ -235,6 +236,18 @@ describe("C4 characterisation (development measurement)", () => {
                         `  tilt ${String(r.tilt).padStart(2)}°: ${r.n} fits, ${r.over} over C4's bound, median e(selected) ${r.mSel.toFixed(3)} px, median e(closed form) ${r.mOr.toFixed(3)} px, selected closer on ${r.closer} of ${r.n}, ratio of medians ${(r.mSel / r.mOr).toFixed(2)}`,
                 )
                 .join("\n")}`,
+        );
+        // The per-fit ratio e(selected) / e(closed form), its quartiles and range per
+        // step: the dispersion the prediction's band is to be set from (2026-10-15).
+        const q = (s: number[], p: number) => s[Math.min(s.length - 1, Math.floor(p * s.length))];
+        console.log(
+            `per-fit ratio e(selected)/e(closed form), per tilt step:
+${rows
+    .map(
+        (r) =>
+            `  tilt ${String(r.tilt).padStart(2)}°: n ${r.n}, min ${r.ratios[0].toFixed(3)}, q25 ${q(r.ratios, 0.25).toFixed(3)}, median ${q(r.ratios, 0.5).toFixed(3)}, q75 ${q(r.ratios, 0.75).toFixed(3)}, max ${r.ratios[r.ratios.length - 1].toFixed(3)}`,
+    )
+    .join("\n")}`,
         );
         expect(rows.map((r) => r.n)).toEqual([12, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48]);
     }, 300_000);

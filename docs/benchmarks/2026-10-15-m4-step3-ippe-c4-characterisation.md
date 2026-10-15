@@ -493,3 +493,54 @@ frame on every clip was a DETECT frame, where the pose is established from
 scratch from RANSAC's inliers. That is precisely where a continuity tie-break
 would have propagated a wrong branch into the frames that follow, so the
 measurement supports the ruling that kept history out of the selector.
+
+## Correction, 2026-10-15: the lower refutation bound withdrawn, and the dispersion the band is to be set from
+
+Found by an outside reviewer (Copilot, on PR #134): the second addendum's
+lower bound of 0.25 is stated as "half the smallest measured ratio", and the
+smallest ratio in its table is 0.31, whose half is 0.155. The maintainer's
+ruling: **neither number.** 0.25 has no derivation; 0.155 is arithmetically
+consistent with a rule that is itself arbitrary, which would replace an
+underived figure with a derived-looking one. The band is to come from the
+measurement's own dispersion, and the maintainer sets it from the figures
+below, with the derivation written beside it. Until then the lower edge of
+the prediction is **unset**, not 0.25 and not 0.155. Nothing above is edited.
+
+**The per-fit ratio `e(selected) / e(closed form)`, per tilt step**, over the
+same 588 fits as the extended table (3 seeds × 2 rolls × 2 shifts, × 4
+azimuths above 0°), from `test/pose/c4_characterisation.test.ts`, item 2:
+
+| tilt | fits | min | q25 | median | q75 | max |
+|---|---|---|---|---|---|---|
+| 0° | 12 | 1.940 | 2.342 | 2.957 | 3.368 | 4.141 |
+| 1° | 48 | 0.768 | 2.582 | 2.979 | 3.457 | 5.721 |
+| 2° | 48 | 0.757 | 2.478 | 2.910 | 4.249 | 8.816 |
+| 3° | 48 | 0.955 | 2.009 | 2.831 | 4.681 | 10.844 |
+| 4° | 48 | 0.399 | 1.582 | 2.434 | 5.373 | 15.442 |
+| 5° | 48 | 0.283 | 1.093 | 2.218 | 5.871 | 14.507 |
+| 7° | 48 | 0.196 | 0.946 | 1.623 | 2.211 | 6.346 |
+| 10° | 48 | 0.123 | 0.559 | 0.968 | 1.516 | 2.326 |
+| 15° | 48 | 0.075 | 0.329 | 0.420 | 0.726 | 1.343 |
+| 20° | 48 | 0.101 | 0.232 | 0.325 | 0.465 | 0.914 |
+| 30° | 48 | 0.162 | 0.256 | 0.317 | 0.430 | 0.650 |
+| 40° | 48 | 0.128 | 0.239 | 0.287 | 0.362 | 1.336 |
+| 50° | 48 | 0.161 | 0.225 | 0.291 | 0.432 | 0.821 |
+
+The quartiles are of the per-fit ratios, not of the medians; the earlier
+table's "ratio of medians" is a different statistic (3.21 at 0° against the
+per-fit median of 2.957 here, since a ratio of medians is not the median of
+ratios). Across the steps **below the crossover (0° to 5°)**: the per-fit
+medians run from 2.218 to 2.979, the quartile ranges from 1.09 to 5.87, the
+extremes from 0.283 to 15.442. **Above it (15° to 50°)**: the medians run
+from 0.287 to 0.420, the quartile ranges from 0.225 to 0.726, the extremes
+from 0.075 to 1.343. The step of 7° (median 1.623, quartiles 0.946 to 2.211)
+and of 10° (0.968, 0.559 to 1.516) are the crossover interval, where the
+quartile range straddles 1.
+
+**Why the condition is two-sided, for the registration.** A prediction of a
+specific effect size is refuted by an effect much larger as well as much
+smaller: an effect far outside the predicted band means the reasoning behind
+the prediction was wrong, whichever side it lands on. The lower edge of the
+"better above the crossover" prediction is therefore not pointless; it is
+where the band's derivation is tested from below, and it is set from the
+dispersion above, not from a rule about halves.

@@ -260,7 +260,13 @@ describe("S2: fitted views (252 renders, the well-conditioned subset)", () => {
                     r: r.stats.rmsError!,
                     ambiguous: s.ambiguous,
                     chosen: s.chosen,
-                    betterAmong: better <= eSel + TAU_EXACT,
+                    // The selected candidate is the better of the two: its error is within
+                    // τ_exact of the minimum over both. (The first form of this line,
+                    // `better <= eSel + TAU_EXACT`, was true whatever was selected:
+                    // the minimum is never above one of the values it was taken over.
+                    // Caught by an outside reviewer on 2026-10-15; see the acceptance
+                    // file's correction of that date, with the run both ways.)
+                    betterAmong: eSel <= better + TAU_EXACT,
                     rejected: s.rejected,
                 });
                 // C8 on the fitted H as well.
@@ -317,7 +323,7 @@ describe("S2: fitted views (252 renders, the well-conditioned subset)", () => {
         for (const row of overTolerance) expect(overC4).toContain(row);
     });
 
-    it("reports §6's figures", () => {
+    it("§6's figures, and the selection: on every distinguishable fit the selected candidate is the better of the two", () => {
         const byTilt = new Map<
             number,
             { n: number; ambiguous: number; picked: number; among: number }
@@ -339,6 +345,13 @@ describe("S2: fitted views (252 renders, the well-conditioned subset)", () => {
         const rejected = rows.reduce((n, r) => n + r.rejected, 0);
         console.log(`S2 by tilt:\n${lines.join("\n")}\n  depth-rule rejections: ${rejected}`);
         expect(lines.length).toBeGreaterThan(0);
+        // Run both ways on 2026-10-15 (the acceptance file's correction of that
+        // date): with the selector as it is, 252 of 252 and this passes; with
+        // the selector mutated to take the candidate of higher RMS, 0 of 252
+        // and this fails on every tilt step, as do C4's pin and C5.
+        for (const [tilt, b] of byTilt) {
+            expect(b.picked, `tilt ${tilt}°`).toBe(b.n - b.ambiguous);
+        }
     });
 });
 

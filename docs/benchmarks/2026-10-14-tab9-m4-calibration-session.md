@@ -641,3 +641,13 @@ third, a figure, came with them.
   `H`). The common cause: none was ever run against a case where it must
   fire and a case where it must not. The remedy, stated as a rule: a check
   is trusted only after both runs, recorded beside its definition.
+- **A fifth check that could not fail, beside the four above (2026-10-15).**
+  In #105's acceptance test, an assertion compared the minimum of two
+  candidates' errors against the error of the candidate selected, one of the
+  two values the minimum was taken over: true whatever the selector chose.
+  Its counts reached two sentences of the record before an outside reviewer
+  caught it. Reversed, it was run both ways: it passes with the selector as
+  it is (the better candidate on 252 of 252) and fails on every tilt step
+  with the selector mutated to the worse candidate (0 of 252). The rule it
+  produces: **every figure in the record is traceable to a check that can
+  fail.**

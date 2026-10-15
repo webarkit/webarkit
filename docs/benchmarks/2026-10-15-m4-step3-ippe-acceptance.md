@@ -379,3 +379,56 @@ call, and so is any change to the selection rule, which is part of the
 treatment's definition and must be registered in #107 before round 1's first
 counted run. A rule that reached the fronto-parallel case would not be rule
 (c) as declared here, since the two candidates are distinguishable there.
+
+## Correction, 2026-10-15: a vacuous check behind two sentences of the addendum, and "240 of 240"
+
+Found by an outside reviewer (Copilot, on PR #134) after the addendum above
+was written; confirmed by the maintainer and by this session the same day.
+Nothing above is edited; this says what was wrong, what was run to settle
+it, and what the figures are.
+
+**The vacuous check.** The addendum's §6 counts, "the better candidate
+selected on 12 of the 12 distinguishable … 48 of the 48", and its sentence
+"on every one of the 12 the selection picked the better of the two
+candidates", came from a flag in `test/pose/acceptance.test.ts` that compared
+the minimum error over IPPE's two candidates with the selected candidate's
+error as `better <= eSel + τ_exact`. The selected error is one of the two the
+minimum was taken over, so the comparison held whatever the selector chose.
+The flag is reversed to `eSel <= better + τ_exact`, which asserts the thing
+meant, and the §6 test now asserts it per tilt step instead of printing it.
+
+**Run both ways, as the rule of 2026-10-15 requires** (round 0's session
+record: a check is trusted only after it has been shown to fire and shown
+not to):
+- *Run A, the selector as it is:* the selected candidate is the better of the
+  two on 12 of 12 fits at 0° and 48 of 48 at each of 10°, 20°, 30°, 40° and
+  50°: **252 of 252**, with 0 ambiguous. The §6 test passes.
+- *Run B, the selector mutated to take the candidate of higher RMS* (one
+  line of `select_pose.ts`, reverted after the run): the better candidate is
+  selected on **0 of 252**, the §6 test fails on every tilt step ("tilt 0°:
+  expected +0 to be 12"), and with it C4's pin (the selected error 6.3 to
+  25.2 px on every render) and C5 (median 52.6 px against 0.176). The mutation
+  was reverted; the tree holds the selector as it was.
+
+So the counts the addendum printed stand, and are now established by a check
+that fails when they are false. On the 7 renders over C4's bound the
+characterisation's item 1 had already established the same thing by
+computing the rejected candidate's error (6.4 to 9.8 px); for the other 245
+fits it is established here for the first time.
+
+**"240 of 240" withdrawn.** The addendum says that from 10° on "IPPE's
+selected pose is the closer of the two on 240 of 240 fits". The figure came
+from the vacuous flag, and the sentence reads as a claim against the closed
+form, which it is not. The measured claim, from the characterisation's
+extended table (`test/pose/c4_characterisation.test.ts`, item 2): IPPE's
+selected pose is closer to the truth than the closed form's on **217 of the
+240 fits at S2's tilts of 10° to 50°** (27, 48, 48, 46 and 48 of 48), and on
+260 of 288 when 15° is counted. C4 passing bounds a regression by the fit
+residual and establishes nothing about IPPE being closer; **C5 and the
+table's medians carry that claim**: medians over the 252 of 0.0845 px against
+0.1757 px, and per step a ratio of medians of 0.86 at 10° and 0.31 to 0.43
+from 15° to 50°. 217 of 240 is the result, and it stands on its own.
+
+**What this correction does not change.** C1 to C3 and C6 to C11 as recorded;
+C4's verdict, failed on 7 renders, all fronto-parallel; the mechanism; the
+headless rates.
