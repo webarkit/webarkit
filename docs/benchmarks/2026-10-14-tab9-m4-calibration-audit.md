@@ -358,3 +358,21 @@ across four clips. The same count establishes what the morning's ruling left
 unverified: rule (a), the depth test, works as written and roughly halves
 the behind-camera poses. Not changed yet: the remedy is upstream, at the
 detection gate (#137), and patching the fallback first would hide the cause.
+
+## Two entries from the audit of the standing constraints, 2026-10-15
+
+- **A scoped rule recited as a general one (a reviewer error).** "The ZNCC
+  gate is never lowered" was recited in the step prompts as a standing
+  constraint. The record scopes it to M3's tuning pass: the plan's
+  "`minPatchZncc` is not a knob here" (its tuning pass, the rounds), which
+  is correct as written and is not changed. The general form was the
+  reviewer's, and is withdrawn as a general rule.
+- **A constraint recited without ever having been decided or configured,
+  withdrawn.** "Auto-fix off on evidence PRs" was recited in the step
+  prompts. Checked on 2026-10-15: `.github/` holds one workflow, `CI.yml`,
+  which builds and tests on push and pull request and commits nothing, plus
+  issue templates and the Copilot instructions; there is no dependabot,
+  renovate, pre-commit or auto-commit configuration in the repository, and
+  the only bots on pull requests are reviewers that comment. Nothing in this
+  repository fixes or commits to a branch, so there was nothing to turn off.
+  The constraint is withdrawn; it does not simply disappear.
