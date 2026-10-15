@@ -241,12 +241,22 @@ describe("C4 characterisation (development measurement)", () => {
         // The per-fit ratio e(selected) / e(closed form), its quartiles and range per
         // step: the dispersion the prediction's band is to be set from (2026-10-15).
         const q = (s: number[], p: number) => s[Math.min(s.length - 1, Math.floor(p * s.length))];
+        // Standard error of the median per step, two reproducible estimates: from the
+        // sample standard deviation, 1.2533 · s / √n (the normal-theory factor √(π/2)),
+        // and from the quartiles, 1.2533 · (q75 − q25) / (1.349 · √n), the robust one.
+        const sd = (s: number[]) => {
+            const m = s.reduce((a, b) => a + b, 0) / s.length;
+            return Math.sqrt(s.reduce((a, b) => a + (b - m) ** 2, 0) / (s.length - 1));
+        };
+        const seSd = (s: number[]) => (1.2533 * sd(s)) / Math.sqrt(s.length);
+        const seIqr = (s: number[]) =>
+            (1.2533 * (q(s, 0.75) - q(s, 0.25))) / (1.349 * Math.sqrt(s.length));
         console.log(
             `per-fit ratio e(selected)/e(closed form), per tilt step:
 ${rows
     .map(
         (r) =>
-            `  tilt ${String(r.tilt).padStart(2)}°: n ${r.n}, min ${r.ratios[0].toFixed(3)}, q25 ${q(r.ratios, 0.25).toFixed(3)}, median ${q(r.ratios, 0.5).toFixed(3)}, q75 ${q(r.ratios, 0.75).toFixed(3)}, max ${r.ratios[r.ratios.length - 1].toFixed(3)}`,
+            `  tilt ${String(r.tilt).padStart(2)}°: n ${r.n}, min ${r.ratios[0].toFixed(3)}, q25 ${q(r.ratios, 0.25).toFixed(3)}, median ${q(r.ratios, 0.5).toFixed(3)}, q75 ${q(r.ratios, 0.75).toFixed(3)}, max ${r.ratios[r.ratios.length - 1].toFixed(3)}, sd ${sd(r.ratios).toFixed(3)}, se(median) by sd ${seSd(r.ratios).toFixed(3)}, by iqr ${seIqr(r.ratios).toFixed(3)}`,
     )
     .join("\n")}`,
         );

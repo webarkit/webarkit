@@ -544,3 +544,69 @@ the prediction was wrong, whichever side it lands on. The lower edge of the
 "better above the crossover" prediction is therefore not pointless; it is
 where the band's derivation is tested from below, and it is set from the
 dispersion above, not from a rule about halves.
+
+## Correction, 2026-10-15: the split prediction withdrawn, there being nothing scheduled to test it; the measured range recorded as a description
+
+The maintainer's prior question, before any band: what measurement, not yet
+taken, would the above-crossover prediction be checked against? **Nothing is
+scheduled.** The prediction is about the ratio of IPPE's pose error to the
+closed form's on rigid synthetic sets; the only measurements of that ratio
+are the 588 fits of the extended table, which the band would be derived from.
+The campaign cannot test it, since no exported value is a function of the
+pose (the third addendum's correction). #106's synthetic half measures lag,
+not this ratio. No new sweep, no second target, no further tilt step and no
+further seed is planned. A refutation condition over data already in hand is
+not a refutation condition, so by the maintainer's ruling **the split
+prediction of the second addendum is withdrawn, on both sides**, and what
+was observed is recorded as a description with no refutation condition at
+all. That is the accurate outcome, not a weaker one.
+
+**The description.** On rendered rigid views of the shipped target at the
+frozen tests' scale (3 seeds × 2 rolls × 2 shifts, × 4 azimuths above 0°),
+the per-fit ratio `e(selected) / e(closed form)` over the target's 5 × 5 grid:
+below the crossover interval, at 0° to 5°, its per-step medians ran from
+2.218 to 2.979 (IPPE worse); at 7° and 10°, the interval, 1.623 and 0.968
+with quartile ranges straddling 1; from 15° to 50°, 0.287 to 0.420 (IPPE
+better). The quartiles and extremes per step are in the table of the previous
+correction. If a measurement of this ratio on data not yet taken is ever
+scheduled, a prediction can be registered against it then, by the rule below.
+
+**The rule the maintainer stated, before seeing the table, for the case a test
+exists** (recorded so that the number follows from the rule and not the rule
+from the number): only steps strictly above the crossover interval enter,
+from 10° upward (7° excluded); upper edge, the largest per-step median plus
+twice the largest per-step standard error of the median across those steps;
+lower edge, the smallest per-step median minus the same quantity; the
+multiplier 2 chosen for the direction it errs in, not as a better estimate
+of anything: a wider band refuses a correct prediction less often, the
+conservative direction for a first registration.
+
+**Its arithmetic on the table, reproducible by a reader, not registered**
+(there is no test). The standard error of the median per step is given two
+ways, both from the per-fit ratios of `test/pose/c4_characterisation.test.ts`,
+item 2: by the sample standard deviation, `1.2533 · s / √n`; and by the
+quartiles, `1.2533 · (q75 − q25) / (1.349 · √n)`.
+
+| tilt | n | median | sd | se(median), by sd | se(median), by quartiles |
+|---|---|---|---|---|---|
+| 10° | 48 | 0.968 | 0.612 | 0.111 | 0.128 |
+| 15° | 48 | 0.420 | 0.323 | 0.058 | 0.053 |
+| 20° | 48 | 0.325 | 0.188 | 0.034 | 0.031 |
+| 30° | 48 | 0.317 | 0.121 | 0.022 | 0.023 |
+| 40° | 48 | 0.287 | 0.263 | 0.048 | 0.017 |
+| 50° | 48 | 0.291 | 0.172 | 0.031 | 0.028 |
+
+Largest median 0.968 (10°); smallest 0.287 (40°); largest standard error
+0.111 by sd and 0.128 by quartiles, both at 10°.
+- By sd: upper `0.968 + 2 × 0.111 = 1.190`; lower `0.287 − 2 × 0.111 = 0.065`.
+- By quartiles: upper `0.968 + 2 × 0.128 = 1.224`; lower `0.287 − 2 × 0.128 = 0.031`.
+
+Two things a reader should see in that arithmetic. The upper edge is above 1
+either way, because the rule admits the 10° step, whose median is 0.968, so
+the band as the rule gives it would not even assert that IPPE is better; and
+the 10° step also supplies the largest standard error, so it sets the width
+on both sides. Whether 10° belongs inside the crossover interval (which the
+earlier text states as 7°–10°, the two grid points that straddle 1) or above
+it is a question the rule's first bullet decides by saying "from 10°
+upward"; the arithmetic is given as the rule reads, and the choice is the
+maintainer's if a test is ever scheduled.
