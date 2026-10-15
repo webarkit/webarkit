@@ -195,6 +195,8 @@ async function main() {
         const fallbacks = tracker.fallbackFrames;
         const band = (lo, hi) => tilts.filter((t) => t >= lo && t < hi).length;
         const below8 = tilts.filter((t) => t < 8).length;
+        const atOrAbove15 = tilts.filter((t) => t >= 15).length;
+        const maxTilt = tilts.length ? Number(Math.max(...tilts).toFixed(1)) : null;
         const tiltBands = {
             "0-2": band(0, 2),
             "2-5": band(2, 5),
@@ -225,6 +227,9 @@ async function main() {
                         p90: q(0.9),
                         below8: below8,
                         below8Share: tilts.length ? Number((below8 / tilts.length).toFixed(3)) : null,
+                        atOrAbove15,
+                        atOrAbove15Share: tilts.length ? Number((atOrAbove15 / tilts.length).toFixed(3)) : null,
+                        max: maxTilt,
                         bands: tiltBands,
                     },
                     byState: counts.byState,

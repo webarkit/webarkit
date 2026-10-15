@@ -669,3 +669,28 @@ implementer's arithmetic; it is recorded in round 0's audit record as a
 reviewer error. The arithmetic stays where it is, labelled not registered, so
 that a reader who later needs a band sees both the arithmetic and why it was
 not used.
+
+## Correction, 2026-10-15: the factors quoted with their uncertainty
+
+The maintainer's last documentary point on the figures above: the factors
+were quoted to three significant figures while the per-step standard errors
+of the medians run 0.022 to 0.058, so 3.48 at 40° and 3.44 at 50° read as
+different values and are not distinguishable. **Convention adopted here:
+each factor is given with its propagated uncertainty**, the per-step table
+carrying the detail. The factor is `f = 1 / r`, `r` the per-step median of
+the per-fit ratio; its uncertainty is the standard error of that median (the
+sd-based estimate of the table above) propagated through the reciprocal,
+`δf = se / r²`. Verified here rather than taken: 15°, `0.058 / 0.420² =
+0.329`; 20°, `0.034 / 0.325² = 0.322`; 30°, `0.022 / 0.317² = 0.219`; 40°,
+`0.048 / 0.287² = 0.583`; 50°, `0.031 / 0.291² = 0.366`.
+
+| tilt | factor, IPPE closer by |
+|---|---|
+| 15° | 2.38 ± 0.33 |
+| 20° | 3.08 ± 0.32 |
+| 30° | 3.15 ± 0.22 |
+| 40° | 3.48 ± 0.58 |
+| 50° | 3.44 ± 0.37 |
+
+The summary range stays **about 2.4× to 3.5×**; the 40° and 50° figures are
+the same value within their uncertainty, as are 20° and 30°.
