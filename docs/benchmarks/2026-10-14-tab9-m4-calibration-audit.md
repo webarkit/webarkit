@@ -321,3 +321,19 @@ rule still carries the two forms C5 and C2 corrected here:
 - "Without one run, it does not correlate with jitter: r = 0.004".
 
 It also pins the session record at `549b4ba`.
+
+## A reviewer error, recorded 2026-10-15: a band rule spanning a heterogeneous regime
+
+On #105's characterisation the maintainer stated, before seeing the table, a
+rule for the refutation band of an above-crossover prediction: one band over
+every tilt step from 10° upward, its edges the largest and smallest per-step
+median plus and minus twice the largest per-step standard error of the
+median. The implementer applied it as written and showed what it gives: an
+upper edge above 1 (1.190 by sd, 1.224 by quartiles), because the rule
+admits the 10° step, whose median is 0.968 against 0.29 to 0.42 from 15° on.
+The rule treated the ratio as homogeneous across a regime the table shows is
+not, and the single worst step set an edge that swallowed the claim. The
+error is the reviewer's, corrected by the implementer's arithmetic. The
+criteria and the description are untouched; the arithmetic stays beside the
+description, labelled not registered, with the defect named
+([the characterisation](./2026-10-15-m4-step3-ippe-c4-characterisation.md)).

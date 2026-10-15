@@ -432,3 +432,22 @@ from 15° to 50°. 217 of 240 is the result, and it stands on its own.
 **What this correction does not change.** C1 to C3 and C6 to C11 as recorded;
 C4's verdict, failed on 7 renders, all fronto-parallel; the mechanism; the
 headless rates.
+
+## Correction, 2026-10-15: the headline sentence of the first addendum
+
+The addendum's "C4's failure, read" says that "from 10° on IPPE's selected
+pose is the closer of the two on 240 of 240 fits, often by 2 to 5×". The
+count was corrected above (217 of 240 at S2's tilts). Two further defects in
+the same sentence, found by the maintainer on the characterisation's
+dispersion table and corrected there
+([the characterisation](./2026-10-15-m4-step3-ippe-c4-characterisation.md),
+its correction of the same date on three regimes):
+- the regime where IPPE is clearly better begins at **15°**, not 10°: the 10°
+  step is a tie (per-fit ratio median 0.968, quartiles 0.559 to 1.516), and
+  the crossover lies between 7° and 10° with 10° measured as a tie;
+- the factor is **2.4× to 3.5×** on the per-step medians of the per-fit ratio
+  (1/0.420 at 15° through 1/0.287 at 40°), not "2 to 5×", which compared the
+  extremes of two per-fit ranges at 10° and 20° and is withdrawn.
+
+The verdicts above are unchanged; C5 and the characterisation's medians carry
+the closeness claim.

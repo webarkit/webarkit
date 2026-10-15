@@ -27,8 +27,10 @@ release pull request's body and the GitHub Release's notes.
   for it, and no more: an **accuracy result on rigid synthetic ground truth**, from criteria
   registered before the implementation (`docs/benchmarks/2026-10-15-m4-step3-ippe-acceptance.md`):
   deterministic (bit-identical on repeat, unchanged under 60 random correspondence orders, 0 reads
-  of `Math.random`), more accurate than the closed form above the crossover and less accurate
-  below it, the crossover being the measured interval 7°–10° of tilt. No steadiness (`jitterPx`)
+  of `Math.random`), less accurate than the closed form below 7° of tilt (per-step medians of the
+  error ratio 2.2 to 3.0), a tie at 10° (median 0.968, quartiles straddling 1), and clearly more
+  accurate from 15° to 50° (2.4× to 3.5× on the per-step medians), the crossover lying between 7°
+  and 10°. No steadiness (`jitterPx`)
   claim: that metric reads `H`, which the change does not touch, and so cannot respond to it. No
   campaign claim.
 - **`examples/bench-nft.html` attests the code a session run executes**

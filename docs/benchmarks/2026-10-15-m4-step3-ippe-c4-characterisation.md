@@ -610,3 +610,62 @@ earlier text states as 7°–10°, the two grid points that straddle 1) or above
 it is a question the rule's first bullet decides by saying "from 10°
 upward"; the arithmetic is given as the rule reads, and the choice is the
 maintainer's if a test is ever scheduled.
+
+## Correction, 2026-10-15: three regimes, the 10° step a tie, the headline re-derived, the band rule found defective
+
+The maintainer's rulings on the arithmetic above, the same day. The
+arithmetic reproduced (1.190 and 0.065 by sd, 1.224 and 0.031 by quartiles).
+Nothing above is edited.
+
+**The 10° step is a tie, and the crossover's upper end is resolved by it.**
+At 10° the per-fit ratio's median is 0.968 with quartiles 0.559 to 1.516,
+straddling 1: neither decomposition is the closer there. So **the crossover
+lies between 7° and 10°, the 10° step itself measured as a tie,** and the
+regime where IPPE is clearly better begins at 15°. Where the text above says
+"from 10° on" for IPPE's advantage, read "from 15° on, with 10° a tie".
+
+**The headline re-derived from the table.** Earlier text says IPPE is the
+closer "from 10° on", "often by 2 to 5×". Two defects: the regime begins at
+15°, and the factor is 2.4× to 3.5×, not 2 to 5. The factor is the reciprocal
+of the per-step median of the per-fit ratio: 1/0.420 = 2.38 at 15°, 1/0.325
+= 3.08 at 20°, 1/0.317 = 3.15 at 30°, 1/0.287 = 3.48 at 40°, 1/0.291 = 3.44
+at 50°. Taking the reciprocal of the median is legitimate because the median
+is preserved under a monotone transformation; checked here rather than taken
+on trust, with one caveat: the test's median is the single element at index
+⌊n/2⌋ of the sorted sample, so on even n it is the upper middle value, and
+after inversion the same index picks what was the lower middle, so
+`1/median(x)` and `median(1/x)` can differ by one element's worth (on a
+smooth 48-point sample, 1.724 against 1.786). The figures quoted are
+`1/median(x)`. Where "2 to 5×" came from: the first addendum's per-fit
+ranges at 10° and 20° (`e(selected)` 0.01 to 0.2 px against `e(oracle)` 0.07
+to 0.26 px), a comparison of the extremes of two ranges, not a statistic of
+the ratio; it is withdrawn. The "ratio of medians" column of the extended
+table, a different statistic, gives 2.3× to 3.2× for the same steps.
+
+**The description, as it should read: three regimes, figures beside each, no
+refutation condition anywhere** (nothing is scheduled to test it):
+- **below 7°: IPPE worse.** Per-step medians of the per-fit ratio 2.22 to
+  2.98 at 0° to 5°, so roughly 2.2× to 3.0× worse;
+- **7°: worse but closing**, median 1.62 (quartiles 0.95 to 2.21);
+- **10°: a tie**, median 0.968, quartiles 0.559 to 1.516;
+- **15° to 50°: IPPE clearly better**, medians 0.29 to 0.42, that is 2.4× to
+  3.5× better on the per-step medians.
+
+**The corpus, restated with per-step numbers behind it.** The clips' oracle
+tilt runs from 2.9° (the static clips) through 5.6° and a p50 of 9.5° (the
+table clip) to a p50 of about 18° (the wall clips). So the corpus lies almost
+entirely in the worse-or-tied region, with only its upper end, the wall
+clips' frames above 15°, reaching the region where IPPE wins. This is now a
+statement with the per-step figures above behind it, not an inference from a
+crossover point.
+
+**The band rule was wrongly shaped, and is recorded as such beside its
+arithmetic.** One band over the whole above-crossover regime treats the ratio
+as homogeneous across it, and the table shows it is not: 0.968 at 10°
+against 0.29 to 0.42 from 15° on. The single worst step then sets an edge
+that swallows the claim, which is what the arithmetic above shows (an upper
+edge above 1). The rule's error is the reviewer's, corrected by the
+implementer's arithmetic; it is recorded in round 0's audit record as a
+reviewer error. The arithmetic stays where it is, labelled not registered, so
+that a reader who later needs a band sees both the arithmetic and why it was
+not used.
