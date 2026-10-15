@@ -38,7 +38,7 @@ Releases are cut by @kalwalt, from `dev` into `master`: the release pull request
    rustup target add thumbv7em-none-eabihf   # once
    cargo build -p wnft-format --no-default-features --target thumbv7em-none-eabihf
    ```
-2. **Close the changelog entry**: In [`CHANGELOG.md`](CHANGELOG.md), rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, add its compare link at the foot of the file, and open a fresh, empty `## [Unreleased]` above it. The section should already be complete: every pull request that changed behaviour added its own line to `[Unreleased]` when it landed (see [Commit Message Conventions](#commit-message-conventions)), so this step edits a heading, not a history.
+2. **Close the changelog entry**: In [`CHANGELOG.md`](CHANGELOG.md), rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, add its compare link at the foot of the file, and open a fresh, empty `## [Unreleased]` above it. The section should already be complete: every pull request that changed behaviour added its own line to `[Unreleased]` when it landed (see [Commit Message Conventions](#commit-message-conventions)), so this step edits a heading, not a history. **A shipped changelog entry is never amended:** a released note records what was claimed at the time, as an accepted ADR's decision is never edited in place (`AGENTS.md`, "Design records"); a later qualification goes in the next version's entry.
 3. **Open the release pull request**:
    * It goes from `dev` into `master`.
    * It is titled `chore(release): vX.Y.Z — <milestone>`, for example [`chore(release): v0.3.0 — M2 complete`](https://github.com/webarkit/webarkit/pull/74). `release` is the one scope that names no part of the repository.
