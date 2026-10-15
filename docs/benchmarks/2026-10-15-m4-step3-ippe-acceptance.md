@@ -277,3 +277,102 @@ an export.
   does not reach the export unless it sits in an object the page spreads
   whole (`tracking`, the step's `TrackStats`, and `timings`). Reported to
   the maintainer with the PR; not changed here.
+
+## Addendum, 2026-10-15: the first run, read against the criteria above
+
+Written after the implementation's first complete run (branch `feat/105-ippe`,
+the criteria at commit `6ea5183`, the implementation after it). Nothing
+above was edited. What follows discloses what was seen, names the one
+expectation that was wrong and the direction of its correction, and records
+the verdicts as the criteria give them. Every figure is from
+`packages/nft-tracker/test/pose/acceptance.test.ts`, which prints them, and
+from `packages/nft-tracker/scripts/ambiguous-rate.mjs`.
+
+**Verdicts.**
+
+| Criterion | Verdict | What was found |
+|---|---|---|
+| C1 | held | On all 84 exact views one candidate is within τ_exact of the truth, and so is the oracle. |
+| C2 | held, with one wrong sub-expectation | The selected pose is within τ_exact on all 84. **No view was ambiguous**, where the text expected the 4 fronto-parallel ones to be. |
+| C3 | held | `d(selected, oracle) ≤ 2 · τ_exact` on all 84. |
+| C4 | **failed** | 7 of 252 renders over `e(oracle) + r`, all 7 at tilt 0°: `e(selected)` 0.365 to 0.460 px against `e(oracle)` 0.107 to 0.141 px, `r` 0.200 to 0.238 px. |
+| C5 | held | Medians over the 252: selected 0.0845 px, oracle 0.1757 px. |
+| the oracle tolerance | failed where C4 failed | 2 of 252 renders over `2 · e(oracle) + r`, both among C4's 7, as the triangle inequality requires. |
+| C6 | held | Bit-identical on repeat; 60 random orders of the correspondences change neither the selection nor the candidates beyond τ_exact. |
+| C7 | held | Constructed cases rejected; 0 depth rejections on S1 and S2. |
+| C8 | held | `d(local closed form, oracle) ≤ τ_exact` on every H of S1 and S2 (measured 0). |
+| C9 | held | The seven files unchanged (hashes re-verified); `track_frame.test.ts` and `tracker_state_machine.test.ts` pass unmodified, 28 tests. |
+| C10 | held | 0 calls of `poseFromHomography` over 40 frames with a counting backend, DETECT and TRACK; 0 in detection-only mode. |
+| C11 | held | The counter equals the frames reported ambiguous. |
+
+**C2's wrong sub-expectation, and its correction.** §5 said the two
+candidates coincide on a fronto-parallel view. They coincide when the plane's
+normal lies along the ray to the *correspondences' centroid*, which is the
+point IPPE expands about. The 48 patch centres' centroid is off the target's
+centre, so on an exact fronto-parallel view the second candidate is a plane
+tilted by twice the angle between that ray and the optical axis: 5.0° with
+the target centred, 12.6° with the shift of (30, −20) px. Its RMS over the
+correspondences is 3.1 and 7.8 px against 10⁻¹³ for the true one, so the
+two are distinguished and the exact one is selected. The correction is in
+the strict direction: the criterion's substance, exactness of the selected
+pose, held on all 84 with no fallback anywhere; the expectation of 4
+fallbacks is withdrawn. The test asserts 0 ambiguous views.
+
+**C4's failure, read.** The 7 renders are 7 of the 12 fronto-parallel fits
+(tilt 0°, both rolls, both shifts, three seeds); no render at 10° or more is
+over the bound, and from 10° on IPPE's selected pose is the closer of the two
+on 240 of 240 fits, often by 2 to 5× (`e(selected)` 0.01 to 0.2 px against
+`e(oracle)` 0.07 to 0.26 px at 10° and 20°). The mechanism, read from the
+per-fit detail: IPPE's rotation comes from the Jacobian of the homography at
+one point, and a plane's tilt enters that Jacobian only at second order
+(`cos θ ≈ 1 − θ² / 2`), so at tilt 0 the fit's noise becomes tilt through a
+square root: the selected candidate carried 0.22° to 0.51° of tilt against
+the closed form's 0.10° to 0.14°, which reads the tilt at first order from
+the perspective row of the whole `H`. This is a property of the method, not
+a wrong branch: on every one of the 12 the selection picked the better of
+the two candidates. The verdict stands as C4 defines it: the registered
+hypothesis, that IPPE is never worse than the closed form by more than the
+data's noise, is false at fronto-parallel views. The margin rule (c) does not
+reach it: the two candidates are 3 px apart in RMS there, so the frame is
+not ambiguous, and the fallback never fires. The test pins the 7, labelled
+as a pin and not as the criterion.
+
+**§6, reported.**
+- S2, by tilt: 12 fits at 0°, 48 at each of 10° to 50°; 0 ambiguous at
+  every tilt; the better candidate selected on all 252; 0 depth rejections.
+- S3, #90's sweep, 1,370 steps, 788 right fits as the frozen test counts
+  them: view 1 (fronto-parallel, rigid), 391 right fits, median
+  `e(selected)` 0.290 px against `e(oracle)` 0.117 px, the selected pose at
+  least as close on 36, 0 ambiguous; view 2 (roll 15°, perspective terms,
+  not rigid), 397 right fits, median `e(selected)` 12.93 px against
+  `e(oracle)` 3.79 px, at least as close on 1, 1 ambiguous. View 2's figure
+  is the same mechanism in the extreme: its `H` is a pure perspective term
+  composed with a similarity, whose Jacobian at the centroid is that
+  similarity, so IPPE reads a fronto-parallel plane while the closed form
+  reads the perspective row. No rigid pose reproduces that `H`, which is why
+  S3 was registered as descriptive. The camera-path sequence of
+  `tracker_pose.test.ts`, of the same non-rigid kind, shows it too: medians
+  15.9 px against 5.5 px over 40 posed frames, 0 ambiguous.
+- §7, the headless development run (two runs, since RANSAC is unseeded
+  through the contract; the figures move by a frame or two):
+
+  | Clip | processing | frames | posed | ambiguous | rate | no candidate in front | fallbacks in all |
+  |---|---|---|---|---|---|---|---|
+  | `pinball-bench-table.mp4` | 203 × 360 | 267 | 260, 261 | 6, 5 | 2.3%, 1.9% | 18, 18 | 24, 23 |
+  | `pinball-bench.mp4` | 480 × 270 | 298 | 266, 270 | 15, 12 | 5.6%, 4.4% | 4, 6 | 19, 18 |
+  | `pinball-static.mp4` | 203 × 360 | 366 | 366, 366 | 0, 0 | 0 | 0, 0 | 0, 0 |
+
+  Every ambiguous frame was a DETECT frame, where the margin is read with
+  `σ = 4 px` over RANSAC's inliers; no TRACK frame was ambiguous on any
+  clip. The frames where both candidates put the plane behind the camera
+  (rule (a) rejecting both) fall back to the closed form too, and are not
+  counted by the ambiguous counter: the tracker's `fallbackFrames` counts
+  every frame on the closed form, for #107 to read beside `ambiguousFrames`.
+
+**What this run does not decide.** Whether a treatment that is the more
+accurate decomposition from 10° of tilt on and the less accurate one at
+fronto-parallel views is the treatment round 1 measures, is the maintainer's
+call, and so is any change to the selection rule, which is part of the
+treatment's definition and must be registered in #107 before round 1's first
+counted run. A rule that reached the fronto-parallel case would not be rule
+(c) as declared here, since the two candidates are distinguishable there.

@@ -16,6 +16,18 @@ release pull request's body and the GitHub Release's notes.
 
 ### Changed
 
+- **`NftTracker` takes its pose from IPPE, above the contract** (M4's step 3,
+  [#105](https://github.com/webarkit/webarkit/issues/105)). The two poses a planar homography
+  allows are computed in `packages/nft-tracker/src/pose/`; one is chosen per frame by depth,
+  by reprojection error over the frame's correspondences, and by a declared margin under which
+  the frame is ambiguous and takes a tracker-local copy of the closed form. The backend's
+  `poseFromHomography` is no longer called by the tracker; the contract is unchanged. Results
+  carry `poseSelection`, and the tracker counts `ambiguousFrames` and `fallbackFrames` per
+  run. A `Detection` and a tracking step's result now carry their `correspondences`. The
+  acceptance criteria, registered before the implementation and read against its first run,
+  are in `docs/benchmarks/2026-10-15-m4-step3-ippe-acceptance.md`: IPPE is the more accurate
+  decomposition from 10° of tilt on and the less accurate one on fronto-parallel views (its
+  criterion C4 failed there, as recorded).
 - **`examples/bench-nft.html` attests the code a session run executes**
   ([#111](https://github.com/webarkit/webarkit/pull/111), designed in
   [#110](https://github.com/webarkit/webarkit/issues/110)).

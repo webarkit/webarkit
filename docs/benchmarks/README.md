@@ -5057,3 +5057,63 @@ that points here.
   glossary's staleness check, `examples/test/glossary.test.mjs`, was added
   there on 2026-10-14.
 - **The jitter clause's pointer to #124** now points here.
+
+### #105's criteria, and the pose stage on tracker arms from round 1 (2026-10-15)
+
+Registered on 2026-10-15, before round 1 and before any counted run; it
+binds from round 1. Three things, each decided by the maintainer that day
+while placing M4's step 3, [#105](https://github.com/webarkit/webarkit/issues/105).
+
+**#105's acceptance criteria are in their own file,**
+[`2026-10-15-m4-step3-ippe-acceptance.md`](./2026-10-15-m4-step3-ippe-acceptance.md),
+committed before the implementation existed (its commit is the registration)
+and read against the first run in a dated addendum at its end. IPPE lives in
+`packages/nft-tracker/src/`, the subject; the comparison with the oracle in
+`packages/nft-tracker/test/`, which is in none of the three categories (not
+served, and it supplies no reference value to a counted measurement), so it
+is ordinary code. The oracle, `packages/cv-backend-jsfeatnext/src/`, is
+untouched for the whole of #105. The brief for the step cited ADR-0001's
+point 7 for the no-import rule; the rule is point 2, and the brief's author
+corrected it.
+
+**The `pose` stage is not a measurement on arms that compute the pose in the
+tracker.** [#132](https://github.com/webarkit/webarkit/issues/132) holds the
+finding with the frozen lines quoted: the page times the stage through the
+instrumented backend's `poseFromHomography`, which a tracker on IPPE never
+calls, so on the tracking and detection-only arms every `ok` frame's sample
+is 0 and `framesForStage` still counts every `ok` frame. IPPE's cost lands in
+frame total, and only there. The maintainer's ruling, option A of #132:
+- **the zero is a check.** On tracker arms, every `ok` frame's `pose` sample
+  is exactly 0. A non-zero sample means the arm still routes through the
+  backend's decomposition, so the treatment was not applied, and that run is
+  refused as a measurement of the treatment. Registered for #107's validity
+  checks before round 1's first counted run;
+- **`poseMs` and its percentiles are not reported for tracker arms,** not as
+  0 and not as "n/a": the entry states that the stage is not measured on
+  arms that compute the pose in the tracker, and points at the check above.
+  The stateless arm, which calls the backend's decomposition itself
+  (`bench-nft.html:805`), keeps the stage: it is the control;
+- **#105's cost claim is read on frame total,** one measured quantity, not on
+  total minus the stages;
+- **`trackStepMs` keeps its frozen definition** (METRICS_VERSION 1); IPPE is
+  not folded into it;
+- **a timing the tracker takes of itself** (#132's option B) is never a
+  counted metric: it would be produced by the code that changes every round.
+  Admissible later as a labelled diagnostic only;
+- **re-baselining the instrument is excluded:** it would end this campaign.
+
+**The selection rule has no memory.** IPPE's two candidates are chosen
+between per frame, by depth, then by reprojection error over the frame's
+correspondences, then by a declared margin under which the frame is
+ambiguous and takes the frame's own closed-form pose, counted per run
+(`NftTracker.ambiguousFrames`; `fallbackFrames` counts every frame on the
+closed form, for whatever reason). No earlier frame enters: the jitter
+clause's threshold was calibrated on arms whose per-frame pose does not
+depend on the previous frame, a selector with memory would make a wrong
+branch self-sustaining and read as lower jitter, and the control's pose has
+no history. The rule in full, with the margin's derivation and the headless
+ambiguous-frame rates per clip that #107's prediction and refusal threshold
+are to be stated from, is in the criteria file (§5, §7 and the addendum).
+The whole rule is part of the treatment's definition: if it changes after
+round 1's first counted run, the rounds before and after are not the same
+experiment.
