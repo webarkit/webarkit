@@ -143,6 +143,8 @@
  */
 
 import type { CvBackend, GrayImage, Keypoint, Mat3, Pose } from "@webarkit/cv-backend-spec";
+import { POSE_AMBIGUITY_SIGMA_TRACK_PX, selectPose, targetGrid } from "./pose/select_pose.js";
+import type { PoseSelection } from "./pose/select_pose.js";
 import {
     DEFAULT_MAX_SCENE_KEYPOINTS,
     DEFAULT_RANSAC_THRESHOLD,
@@ -467,6 +469,14 @@ export type TrackResult =
            */
           readonly pose: Pose;
           /**
+           * How {@link pose} was chosen: IPPE's two candidates and the
+           * selection rule's outcome (#105; M4's step 3). `pose` is
+           * `poseSelection.pose`. The tracker makes no `poseFromHomography`
+           * call: the pose is computed here, above the contract, from `H`
+           * and the frame's correspondences.
+           */
+          readonly poseSelection: PoseSelection;
+          /**
            * The frame's keypoints, as detected. For overlays. Empty on a
            * `"TRACK"` frame, where nothing is detected — except one that
            * consumed a detection, which carries the DETECTED frame's
@@ -514,6 +524,31 @@ export class NftTracker {
     private readonly clock: (() => number) | null;
     /** The last two homographies while locked: `previous` is `null` right after a detection. */
     private lock: { readonly previous: Mat3 | null; readonly current: Mat3 } | null = null;
+    /** The target's 5 × 5 grid, level-0 px: the pose selection's depth rule reads it. */
+    private readonly grid: Float64Array;
+    private ambiguous = 0;
+    private fallbacks = 0;
+
+    /**
+     * Frames so far whose pose selection was ambiguous (#105's rule (c)):
+     * both IPPE candidates in front of the camera and within the margin, so
+     * the frame fell back to the closed form. Reported per run; a run in which
+     * it is large is a mixture of the two decompositions, not a measurement
+     * of IPPE.
+     */
+    get ambiguousFrames(): number {
+        return this.ambiguous;
+    }
+
+    /**
+     * Frames so far whose pose is the closed form for any reason: the
+     * ambiguous ones, those where both candidates put the plane behind the
+     * camera, and those where IPPE was degenerate. At least
+     * {@link ambiguousFrames}; the whole of the mixture a run carries.
+     */
+    get fallbackFrames(): number {
+        return this.fallbacks;
+    }
 
     /**
      * @param cv      The backend. Injected, never imported: the tracker runs on
@@ -550,6 +585,45 @@ export class NftTracker {
                 : null;
         this.detectionOnly = this.track === null;
         this.externalDetection = tracking.externalDetection;
+        const [width, height] = target.pyramid.levelSizes[0];
+        this.grid = targetGrid(width, height);
+    }
+
+    /**
+     * The frame's pose from `H` over the correspondences the estimate used,
+     * by #105's selection rule, counting an ambiguous frame. `sigma` is the
+     * correspondences' noise, frame px: the alignment's on a tracking step,
+     * the RANSAC threshold on a detection.
+     */
+    private selected(H: Mat3, src: Float64Array, dst: Float64Array, sigma: number): PoseSelection {
+        const s = selectPose(H, this.K, src, dst, sigma, this.grid);
+        if (s.ambiguous) this.ambiguous++;
+        if (s.chosen === "fallback") this.fallbacks++;
+        return s;
+    }
+
+    /**
+     * A detection's inlier correspondences, or, for one produced without
+     * them (a `Detection` of an earlier shape handed to `process`), the
+     * target's grid and its image under `H`: the fit itself, which can only
+     * choose by geometry.
+     */
+    private detectionCorrespondences(d: Extract<Detection, { ok: true }>): {
+        src: Float64Array;
+        dst: Float64Array;
+    } {
+        const c = (d as { correspondences?: { src: Float64Array; dst: Float64Array } })
+            .correspondences;
+        if (c && c.src.length >= 6 && c.src.length === c.dst.length) return c;
+        const src = this.grid;
+        const dst = new Float64Array(src.length);
+        const H = d.H;
+        for (let i = 0; i < src.length; i += 2) {
+            const w = H[6] * src[i] + H[7] * src[i + 1] + H[8];
+            dst[i] = (H[0] * src[i] + H[1] * src[i + 1] + H[2]) / w;
+            dst[i + 1] = (H[3] * src[i] + H[4] * src[i + 1] + H[5]) / w;
+        }
+        return { src, dst };
     }
 
     /**
@@ -718,6 +792,19 @@ export class NftTracker {
         steps: readonly (TrackStepTimings | null)[],
         use: Pick<TrackingFields, "detectionUse" | "detectionLatencyMs">,
     ): TrackResult {
+        // The correspondences the fit weighed above 0, in the fit's order.
+        const n = r.stats.inliers;
+        const src = new Float64Array(2 * n);
+        const dst = new Float64Array(2 * n);
+        for (let i = 0, k = 0; i < r.weights.length; i++) {
+            if (!(r.weights[i] > 0)) continue;
+            src[2 * k] = r.correspondences.src[2 * i];
+            src[2 * k + 1] = r.correspondences.src[2 * i + 1];
+            dst[2 * k] = r.correspondences.dst[2 * i];
+            dst[2 * k + 1] = r.correspondences.dst[2 * i + 1];
+            k++;
+        }
+        const selection = this.selected(r.H, src, dst, POSE_AMBIGUITY_SIGMA_TRACK_PX);
         return {
             ok: true,
             state: "TRACK",
@@ -726,7 +813,8 @@ export class NftTracker {
             numMatches: r.stats.observed,
             numInliers: r.stats.inliers,
             H: r.H,
-            pose: this.cv.poseFromHomography(r.H, this.K),
+            pose: selection.pose,
+            poseSelection: selection,
             sceneKeypoints,
             trackLoss: null,
             tracking: r.stats,
@@ -760,6 +848,8 @@ export class NftTracker {
                 sceneKeypoints: d.sceneKeypoints,
             };
         }
+        const c = this.detectionCorrespondences(d);
+        const selection = this.selected(d.H, c.src, c.dst, this.setup.ransacThreshold);
         return {
             ok: true,
             state: "DETECT",
@@ -769,7 +859,8 @@ export class NftTracker {
             numMatches: d.numMatches,
             numInliers: d.numInliers,
             H: d.H,
-            pose: this.cv.poseFromHomography(d.H, this.K),
+            pose: selection.pose,
+            poseSelection: selection,
             sceneKeypoints: d.sceneKeypoints,
         };
     }
