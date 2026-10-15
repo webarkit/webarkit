@@ -194,7 +194,7 @@ describe("C4 characterisation (development measurement)", () => {
     }, 120_000);
 
     it("item 2: the tilt from which IPPE's selected pose beats the closed form, on a finer grid than S2's", () => {
-        const tilts = [0, 1, 2, 3, 4, 5, 7, 10, 15];
+        const tilts = [0, 1, 2, 3, 4, 5, 7, 10, 15, 20, 30, 40, 50];
         const rows: {
             tilt: number;
             n: number;
@@ -232,10 +232,10 @@ describe("C4 characterisation (development measurement)", () => {
             `item 2 (3 seeds × 2 rolls × 2 shifts, × 4 azimuths above 0°):\n${rows
                 .map(
                     (r) =>
-                        `  tilt ${String(r.tilt).padStart(2)}°: ${r.n} fits, ${r.over} over C4's bound, median e(selected) ${r.mSel.toFixed(3)} px, median e(closed form) ${r.mOr.toFixed(3)} px, selected closer on ${r.closer} of ${r.n}`,
+                        `  tilt ${String(r.tilt).padStart(2)}°: ${r.n} fits, ${r.over} over C4's bound, median e(selected) ${r.mSel.toFixed(3)} px, median e(closed form) ${r.mOr.toFixed(3)} px, selected closer on ${r.closer} of ${r.n}, ratio of medians ${(r.mSel / r.mOr).toFixed(2)}`,
                 )
                 .join("\n")}`,
         );
-        expect(rows.map((r) => r.n)).toEqual([12, 48, 48, 48, 48, 48, 48, 48, 48]);
+        expect(rows.map((r) => r.n)).toEqual([12, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48]);
     }, 300_000);
 });

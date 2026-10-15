@@ -194,6 +194,7 @@ async function main() {
         const ambiguous = counts.outcomes.ambiguous ?? 0;
         const fallbacks = tracker.fallbackFrames;
         const band = (lo, hi) => tilts.filter((t) => t >= lo && t < hi).length;
+        const below8 = tilts.filter((t) => t < 8).length;
         const tiltBands = {
             "0-2": band(0, 2),
             "2-5": band(2, 5),
@@ -208,7 +209,7 @@ async function main() {
         console.log(
             JSON.stringify(
                 {
-                    clip: clip.slice(VIDEOS.length) || clip,
+                    clip: clip.startsWith(VIDEOS) ? clip.slice(VIDEOS.length) : clip,
                     native,
                     processing: size,
                     frames,
@@ -218,7 +219,14 @@ async function main() {
                     fallbacks,
                     fallbackRate:
                         counts.posed === 0 ? null : Number((fallbacks / counts.posed).toFixed(4)),
-                    oracleTiltDeg: { p10: q(0.1), p50: q(0.5), p90: q(0.9), bands: tiltBands },
+                    oracleTiltDeg: {
+                        p10: q(0.1),
+                        p50: q(0.5),
+                        p90: q(0.9),
+                        below8: below8,
+                        below8Share: tilts.length ? Number((below8 / tilts.length).toFixed(3)) : null,
+                        bands: tiltBands,
+                    },
                     byState: counts.byState,
                     outcomes: counts.outcomes,
                     depthRejections: counts.rejected,

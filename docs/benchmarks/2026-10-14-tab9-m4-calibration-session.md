@@ -612,3 +612,13 @@ third, a figure, came with them.
   above.
 - **No comment on #114, #123 or #124** was posted from this session.
 - **No treatment round was started.** Round 1 waits on #124.
+- **The desktop's copy of this build was overwritten and the build re-tested
+  (2026-10-15).** A review agent working on #105 ran the root build on the
+  desktop, which replaced `examples/dist/` with a build of that branch. The
+  tablet's build was untouched, and no counted run reads a desktop directory.
+  By the maintainer's ruling the claim was re-tested rather than restored: a
+  clean worktree at `37dc6d4`, `npm ci`, the root build on node v24.21.0 and
+  esbuild 0.28.2, gave `clean: true` and bundle
+  `3a2567c15d59b1fb669a82a52d9f1eedcd1586664936250ff2fbf21e87513876`, byte for
+  byte this block's. Nothing was lost; the build at a fixed commit reproduces.
+  The event is [#135](https://github.com/webarkit/webarkit/issues/135).

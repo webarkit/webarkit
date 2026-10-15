@@ -166,3 +166,128 @@ clip, 0 on the static clip: the run-to-run movement is a few frames.
 
 The selector in this PR is unchanged by this measurement. The degeneracy and
 its guard are tracked in their own issue, named in the PR.
+
+## Addendum, 2026-10-15: the maintainer's rulings on this report, and what they asked for next
+
+Written after the maintainer read the report above and ruled, the same day.
+Nothing above is edited.
+
+**Round 1 measures unguarded IPPE.** No tilt guard in the measured
+configuration: one treatment, no estimator mixture, tilt reported as a
+covariate per clip. A guard that falls back to the closed form below a tilt
+threshold is an adoption choice for #107's adoption rule after round 1, and
+if ever adopted it reads the closed form's own per-frame tilt, never the
+previous frame's. The per-run counter therefore counts the fallbacks the
+current rule produces and nothing else; as the rule stands those are the
+ambiguous frames and the frames on which both candidates fail the depth rule
+(item 4 gives both), and there is no guard for it to count.
+
+**The crossover is stated as the measured interval, 7°–10°,** not as "about
+8°": the point estimate lies between grid points, and a bound stated more
+tightly than it was measured is a derivation-free figure. Where the text
+above says "about 8°", read "between 7° and 10°".
+
+**Item 2, extended to the campaign's tilt range.** The same construction, 13
+tilt steps, 588 fits; the ratio is median `e(selected)` over median
+`e(closed form)`:
+
+| tilt | fits | over C4's bound | median e(selected) | median e(closed form) | ratio | selected closer |
+|---|---|---|---|---|---|---|
+| 0° | 12 | 7 | 0.368 | 0.115 | 3.21 | 0 of 12 |
+| 1° | 48 | 26 | 0.353 | 0.114 | 3.09 | 1 of 48 |
+| 2° | 48 | 25 | 0.366 | 0.112 | 3.26 | 1 of 48 |
+| 3° | 48 | 21 | 0.315 | 0.115 | 2.74 | 1 of 48 |
+| 4° | 48 | 18 | 0.284 | 0.116 | 2.45 | 5 of 48 |
+| 5° | 48 | 18 | 0.228 | 0.111 | 2.06 | 12 of 48 |
+| 7° | 48 | 8 | 0.178 | 0.110 | 1.62 | 13 of 48 |
+| 10° | 48 | 0 | 0.101 | 0.118 | 0.86 | 27 of 48 |
+| 15° | 48 | 0 | 0.049 | 0.114 | 0.43 | 43 of 48 |
+| 20° | 48 | 0 | 0.046 | 0.126 | 0.36 | 48 of 48 |
+| 30° | 48 | 0 | 0.063 | 0.193 | 0.33 | 48 of 48 |
+| 40° | 48 | 0 | 0.087 | 0.278 | 0.31 | 46 of 48 |
+| 50° | 48 | 0 | 0.140 | 0.374 | 0.37 | 48 of 48 |
+
+The closed form's error grows with tilt (0.11 px flat to 10°, then 0.13,
+0.19, 0.28, 0.37 px); IPPE's falls to 0.05 px at 15°–20° and grows more
+slowly after. Source: `test/pose/c4_characterisation.test.ts`, item 2.
+
+**The tilt distribution of every clip in the corpus** (the oracle's pose,
+headless as in item 3; one run each), with the share of posed frames below
+8°, the figure the maintainer asked for. The crossover interval is 7°–10°, so
+"below 8°" is read as "inside or at the lower edge of the crossover":
+
+| clip | processing | posed | tilt p50 | below 8° | 2–5° | 5–10° | 10–20° | 20–40° | 40°+ | fallbacks |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `pinball-static.mp4` | 203 × 360 | 366 | 2.9° | 366 (100%) | 366 | 0 | 0 | 0 | 0 | 0 |
+| `acquire-test/static-portrait.mp4` | 203 × 360 | 366 | 2.9° | 366 (100%) | 366 | 0 | 0 | 0 | 0 | 0 |
+| `acquire-test/static-landscape.mp4` | 480 × 270 | 366 | 5.6° | 366 (100%) | 0 | 366 | 0 | 0 | 0 | 0 |
+| `pinball-bench-table.mp4` | 203 × 360 | 259 | 9.5° | 95 (36.7%) | 62 | 147 | 5 | 0 | 45 | 20 |
+| `pinball-bench.mp4` | 480 × 270 | 267 | 17.4° | 0 (0%) | 0 | 53 | 95 | 62 | 57 | 21 |
+| `acquire-test/wall-30fps.mp4` | 480 × 270 | 332 | 18.1° | 0 (0%) | 0 | 66 | 114 | 75 | 77 | 37 |
+| `acquire-test/wall-native-fps.mp4` | 480 × 270 | 274 | 18.0° | 0 (0%) | 0 | 53 | 97 | 63 | 61 | 32 |
+
+Every static clip sits entirely below the crossover; the table clip has 95 of
+259 frames below 8° and 147 more between 5° and 10°, that is inside or near
+it; the wall clips have none below 8°. The 40°+ bands are read as in item 3.
+The `acquire-test/` clips are M2's acquisition probes, not campaign media;
+they are listed because the maintainer asked for every clip in the corpus.
+
+**Which clips round 1's comparison uses, and what σ was calibrated on.** The
+null control's jitter clause runs on the static clip: round 0's eight runs
+were `pinball-static.mp4`, four per arm (the session's procedure, its runs
+table), and the clause's round-1 baselines are "static baselines", every
+block "a static block" ([the clause](./README.md#the-null-controls-jitter-clause-2026-10-14),
+item 3 and "What was seen before it was written"). So **round 0's s₀ was
+calibrated on the static clip, and round 1's registered comparison runs on
+it**: the clip whose every frame is at 2.9° of tilt, inside the regime where
+IPPE's pose is 2 to 3.3 times farther from the truth than the closed form's.
+Two consequences the registration has to carry:
+- the jitter clause reads `H`, not the pose, so it will not see the
+  regression; the correctness half will, on synthetic ground truth;
+- on the static clip, round 1 measures IPPE inside its degenerate regime by
+  construction, and that is predicted here, not discovered from the data.
+
+**The prediction for #107, split by regime, refutable on both sides.** Drafted
+here for the maintainer to register; the margins are read from the table
+above and widened to the nearest half unit of the ratio, so that a point
+estimate between grid points cannot fall outside them by rounding alone:
+- **below the crossover (tilt under 7°):** IPPE's selected pose is *worse*
+  than the closed form's, the ratio of their median errors against the truth
+  between **1.5 and 3.5** (measured 1.62 at 7°, 2.06 to 3.26 from 5° down to
+  0°). Refuted if the ratio is below 1.5 (IPPE not worse) and refuted if it
+  is above 3.5 (worse by more than the degeneracy as measured);
+- **inside the crossover (7° to 10°):** no prediction; the ratio is reported;
+- **above the crossover (tilt of 15° and more):** IPPE's selected pose is
+  *better*, the ratio at most **0.5** (measured 0.31 to 0.43 from 15° to
+  50°). Refuted if the ratio is above 0.5; and, since "better" alone is not
+  refutable on the low side, also refuted if it is below **0.25**, half the
+  smallest measured ratio, which would mean the closed form is worse than
+  anything measured here. 10° is the crossover's upper edge, ratio 0.86,
+  and belongs to the interval above.
+
+Both sides read the ratio of medians over the renders of the regime, on the
+rigid sets, against the truth; on a clip, where there is no truth, the
+covariate is the closed form's own per-frame tilt and the regime it puts the
+frame in. The static clip is wholly in the first regime.
+
+**The failing provenance test, what it asserts (ruling 2).**
+`examples/test/provenance.test.mjs`, "the manifest npm run build writes ›
+hashes the files on disk, the bundle and jsfeat-next's included (rebuild
+after an edit)", asserts that every `sources` and `served` entry of
+`examples/dist/provenance.json`, the bundle, and the embedded jsfeat-next
+file hash to the files on disk, and that the installed jsfeat-next version
+is the lockfile's. It does **not** assert that the manifest is clean or at an
+expected head; it asserts that the manifest describes the working tree, so
+it fails whenever the tree has moved since the last root build. It failed on
+the branch because the overwritten manifest was built at `6ea5183` and the
+branch's sources moved after it; its message names the first file whose hash
+differs and the two hashes, and does not say that the served build is stale
+or at another commit. It is not changed here; CI builds before it tests, so
+it passes there. The maintainer rules on the message.
+
+**The overwrite re-tested (ruling 1).** A clean worktree at `37dc6d4`,
+`npm ci`, the root build on node v24.21.0 and esbuild 0.28.2: `clean: true`,
+head `37dc6d4`, bundle `3a2567c15d59b1fb669a82a52d9f1eedcd1586664936250ff2fbf21e87513876`,
+byte for byte round 0's. Nothing was lost; the event and the match are in
+round 0's session record and in #135. The branch's own `examples/dist` is
+left as a build output of the branch: not evidence, not the campaign's build.
