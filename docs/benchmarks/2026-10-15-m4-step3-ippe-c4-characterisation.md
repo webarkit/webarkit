@@ -291,3 +291,129 @@ head `37dc6d4`, bundle `3a2567c15d59b1fb669a82a52d9f1eedcd1586664936250ff2fbf21e
 byte for byte round 0's. Nothing was lost; the event and the match are in
 round 0's session record and in #135. The branch's own `examples/dist` is
 left as a build output of the branch: not evidence, not the campaign's build.
+
+## Correction to the addendum above, 2026-10-15: the prediction infers stability from accuracy, and that is a conjecture
+
+The maintainer's reading of the addendum, the same day. Nothing above is
+edited; this says how it is to be read.
+
+**Accuracy and stability are different quantities, and only one was
+measured.** Every figure of item 2 and its extension is accuracy: the error
+of a pose against the renders' ground truth. Round 1's registered metric,
+`jitterPx`, is stability on clips that have no ground truth. The 7°–10°
+crossover is an **accuracy** crossover, and the paragraph "Two consequences
+the registration has to carry" infers what round 1 will see from it with no
+measured link between the two. By this programme's own rule that inference
+is a **conjecture**, and it is labelled one here until measured. An estimator
+can be less accurate and more stable at the same time: a bias that is the
+same on consecutive frames is exactly what `jitterPx` rewards. The split
+prediction, as drafted, is a prediction about accuracy on the rigid sets; it
+is not a prediction about `jitterPx`, and #107 is not to read it as one. The
+measured link is the subject of the third addendum below.
+
+**Tilt bands, if #107 uses one, are read from the control arm's pose,
+never from IPPE's.** Reading the band from the treatment arm selects on the
+dependent variable; the same reason the jitter clause is read on each block's
+own baseline arm only. The corpus table above already reads the oracle's
+pose, which is the control arm's.
+
+## Third addendum, 2026-10-15: the jitter dry run. Round 1's registered metric cannot see the treatment
+
+**A Stage 1 feasibility probe**, run on the desktop at the maintainer's
+request: not campaign data, no provenance, no device, never reportable as a
+round, and not to be confused with one by a later reader. Its source is
+`packages/nft-tracker/scripts/jitter-dry-run.mjs`, whose header says the same.
+
+**What was run.** Both arms over every clip of the corpus, once each, on the
+same ffmpeg-decoded frames at the page's default box, with the same backend,
+target, intrinsics and defaults, and the same seeded `Math.random`, so that
+the two runs process identical frames and draw identical RANSAC samples:
+- the **control arm**: the tracker of `dev` at `1c8cd34`, built in a
+  throwaway worktree (`npm ci`, the root build), whose pose is the backend's
+  closed form;
+- the **treatment arm**: this branch's tracker, whose pose is IPPE's.
+
+Each run's frame records were built by the frozen metrics module's own
+`frameRecord`, and the two were compared with its `compareExports`, on common
+media times, as the plan requires; the split by tilt band uses its
+`cornerJitter` with `include`, the module's own restriction. The module,
+`examples/js/bench-metrics.mjs`, was imported read-only; it has no imports and
+no browser dependency at module level, so it runs under node unchanged.
+Nothing was reimplemented and nothing served was touched. The band is read
+from the **control arm's** pose on each frame.
+
+**The result: zero, exactly, everywhere.**
+
+| clip | frames | common media times | corners differing | control jitterPx | treatment jitterPx | difference |
+|---|---|---|---|---|---|---|
+| `pinball-static.mp4` | 366 | 366 | 0 | 0.1337 | 0.1337 | 0 |
+| `acquire-test/static-portrait.mp4` | 366 | 366 | 0 | 0.1381 | 0.1381 | 0 |
+| `acquire-test/static-landscape.mp4` | 366 | 366 | 0 | 0.1902 | 0.1902 | 0 |
+| `pinball-bench-table.mp4` | 267 | 218 | 0 | 9.420 | 9.420 | 0 |
+| `pinball-bench.mp4` | 298 | 216 | 0 | 8.381 | 8.381 | 0 |
+| `acquire-test/wall-30fps.mp4` | 359 | 261 | 0 | 38.92 | 38.92 | 0 |
+| `acquire-test/wall-native-fps.mp4` | 298 | 219 | 0 | 13.74 | 13.74 | 0 |
+
+By tilt band (the control arm's pose; bands 0–7°, 7–10°, 10–20°, 20°+), the
+difference is 0 in every band of every clip that has frames in it: the static
+clips entirely in 0–7° (jitterPx 0.134, 0.138, 0.190); the table clip 77
+frames in 0–7° (2.604), 132 in 7–10° (1.905), 4 in 20°+ (76.2); the wall
+clips 54–67 frames in 7–10° (2.6–2.9), 94–113 in 10–20° (3.8–4.1), 66–79 in
+20°+ (11.9–23.6). The large figures of the 20°+ bands and of the whole
+hand-held clips are the control arm's own and identical in the treatment
+arm; they are the frames the characterisation's item 3 read as poor `H`
+(re-detections during loss), and are not interpreted here.
+
+**Why it is exactly zero, and what that settles.** On every common frame of
+every clip, the two arms' corners are byte-identical (`cornersDiffering: 0`,
+2,012 frames compared). `jitterPx` and `spreadPx` are computed from the
+target's corners under each frame's `H` (`frameRecord`: `corners:
+reprojectCorners(result.H, …)`), and the treatment changes the pose and not
+`H` (criterion C9: the frozen suites that judge `H` pass unmodified). So the
+link between the accuracy crossover and `jitterPx` is not small or
+unfavourable: **there is none.** The conjecture of the correction above is
+settled in the only way it could be: round 1's registered metric cannot see
+M4's step 3, in either direction, on any clip, in any tilt band, because the
+quantity it reads is the one quantity the treatment does not touch.
+
+**What follows, for #107 and for the maintainer.**
+- On `jitterPx`, M4 step 3 has nothing to measure on this corpus: not a
+  favourable difference in the band the clips occupy, not an unfavourable
+  one, but identity. A device campaign would discover a difference of 0 ± the
+  arms' resampling noise, which is the null control's own result. By the
+  maintainer's rule, that is the step's honest outcome on this metric: **a
+  documented null, by construction, known before the campaign** rather than
+  after it.
+- What IPPE changes is the pose the application renders with, and the
+  correctness half reads it, on synthetic ground truth: that is where the
+  split prediction of the second addendum (an accuracy prediction) belongs,
+  and where step 3 has a result at all. A steadiness measurement that could
+  see the pose would have to read the pose: for example the reprojection of
+  the target's corners through `K · [R | t]` rather than through `H`, which is
+  a new metric, outside METRICS_VERSION 1, and so outside this campaign's
+  instrument.
+- The split prediction stands as an accuracy prediction on the rigid sets;
+  the paragraph that inferred a round-1 regression from it is withdrawn by
+  this measurement, in the direction of "no effect", not "regression".
+
+**The two items the maintainer asked after (point 3 of the rulings).**
+- *The ambiguous-frame rate per clip* is item 4 above and the corpus table of
+  the second addendum (its `fallbacks` column); per clip, the ambiguous
+  frames alone, from the same runs: `pinball-static` 0 of 366,
+  `static-portrait` 0 of 366, `static-landscape` 0 of 366,
+  `pinball-bench-table` 5 of 259 (1.9%), `pinball-bench` 14 of 267 (5.2%),
+  `wall-30fps` 18 of 332 (5.4%), `wall-native-fps` 13 of 274 (4.7%). Every
+  one a DETECT frame.
+- *The determinism test* is `packages/nft-tracker/test/pose/ippe.test.ts`:
+  C6 (the same input gives bit-identical output; 60 random orders of the
+  correspondences change neither the selection nor the candidates beyond
+  τ_exact, a property test), and, added 2026-10-15, "the selector draws
+  nothing": `Math.random` is counted during two selections and read 0 times,
+  and the two answers are bit-identical, so no seed can enter.
+
+**The provenance test's status, stated on its own line (the reporting rule
+of 2026-10-15, #136):** `examples/test/provenance.test.mjs` is red on this
+PC, because its `examples/dist` is the branch build the review agent made at
+`6ea5183` and the branch's sources moved after it; its message now says so
+(head, clean, dirty paths, remedy). It is green in CI, which builds before it
+tests (PR #134: 6 checks passing).

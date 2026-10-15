@@ -251,3 +251,27 @@ describe("the depth rule (C7)", () => {
         if (t.outcome === "no-candidate-in-front") expect(t.chosen).toBe("fallback");
     });
 });
+
+describe("the selector draws nothing (C6, the seed half)", () => {
+    it("never reads Math.random: the same H and K give the same answer whatever any seed is", () => {
+        const v = rigidView(K, TARGET, { tiltDeg: 25, azimuthDeg: 45, rollDeg: 10, shift: [10, -5], Z });
+        const src = lattice();
+        const dst = exactCorrespondences(v.H, src);
+        const original = Math.random;
+        let reads = 0;
+        Math.random = () => {
+            reads++;
+            return original();
+        };
+        try {
+            const a = selectPose(v.H, K, src, dst, POSE_AMBIGUITY_SIGMA_TRACK_PX, G);
+            const b = selectPose(v.H, K, src, dst, POSE_AMBIGUITY_SIGMA_TRACK_PX, G);
+            expect(reads).toBe(0);
+            expect(Array.from(b.pose.R)).toEqual(Array.from(a.pose.R));
+            expect(Array.from(b.pose.t)).toEqual(Array.from(a.pose.t));
+            expect(b.chosen).toBe(a.chosen);
+        } finally {
+            Math.random = original;
+        }
+    });
+});

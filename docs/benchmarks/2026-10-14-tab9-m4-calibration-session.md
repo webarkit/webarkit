@@ -622,3 +622,11 @@ third, a figure, came with them.
   `3a2567c15d59b1fb669a82a52d9f1eedcd1586664936250ff2fbf21e87513876`, byte for
   byte this block's. Nothing was lost; the build at a fixed commit reproduces.
   The event is [#135](https://github.com/webarkit/webarkit/issues/135).
+- **A desktop dry run of round 1's comparison found the registered metric
+  blind to step 3 (2026-10-15).** Both arms, `dev` and #105's branch, over
+  every clip of the corpus on identical frames and RANSAC draws, compared
+  with the frozen module's `compareExports`: the corners are byte-identical
+  on all 2,012 common frames and `jitterPx` differs by exactly 0 on every clip
+  and in every tilt band, since the treatment changes the pose and `jitterPx`
+  reads `H`. A Stage 1 feasibility probe, not a round:
+  [the characterisation's third addendum](./2026-10-15-m4-step3-ippe-c4-characterisation.md).
