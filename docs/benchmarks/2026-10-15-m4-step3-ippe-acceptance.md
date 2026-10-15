@@ -365,9 +365,12 @@ as a pin and not as the criterion.
   Every ambiguous frame was a DETECT frame, where the margin is read with
   `σ = 4 px` over RANSAC's inliers; no TRACK frame was ambiguous on any
   clip. The frames where both candidates put the plane behind the camera
-  (rule (a) rejecting both) fall back to the closed form too, and are not
-  counted by the ambiguous counter: the tracker's `fallbackFrames` counts
-  every frame on the closed form, for #107 to read beside `ambiguousFrames`.
+  (rule (a) rejecting both) fall back to the closed form too. By the
+  maintainer's ruling of the same day there is one per-run counter, the
+  tracker's `fallbackFrames`: every frame whose pose is not IPPE's own estimate,
+  for any reason, since each such frame makes the arm a mixture. C11 was
+  registered as a count of ambiguous frames; the one counter contains it, and
+  the test asserts the counter against every fallback outcome.
 
 **What this run does not decide.** Whether a treatment that is the more
 accurate decomposition from 10° of tilt on and the less accurate one at

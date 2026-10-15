@@ -5105,9 +5105,11 @@ frame total, and only there. The maintainer's ruling, option A of #132:
 **The selection rule has no memory.** IPPE's two candidates are chosen
 between per frame, by depth, then by reprojection error over the frame's
 correspondences, then by a declared margin under which the frame is
-ambiguous and takes the frame's own closed-form pose, counted per run
-(`NftTracker.ambiguousFrames`; `fallbackFrames` counts every frame on the
-closed form, for whatever reason). No earlier frame enters: the jitter
+ambiguous and takes the frame's own closed-form pose. One per-run counter,
+`NftTracker.fallbackFrames`, counts every frame whose pose is not IPPE's own
+estimate, for whatever reason (the maintainer's ruling of 2026-10-15: whenever
+the arm does not use IPPE's estimate it is a mixture, and one count bounds
+it; each result's `poseSelection.outcome` says which reason fired). No earlier frame enters: the jitter
 clause's threshold was calibrated on arms whose per-frame pose does not
 depend on the previous frame, a selector with memory would make a wrong
 branch self-sustaining and read as lower jitter, and the control's pose has
