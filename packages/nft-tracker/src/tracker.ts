@@ -143,6 +143,8 @@
  */
 
 import type { CvBackend, GrayImage, Keypoint, Mat3, Pose } from "@webarkit/cv-backend-spec";
+import { POSE_AMBIGUITY_SIGMA_TRACK_PX, selectPose, targetGrid } from "./pose/select_pose.js";
+import type { PoseSelection } from "./pose/select_pose.js";
 import {
     DEFAULT_MAX_SCENE_KEYPOINTS,
     DEFAULT_RANSAC_THRESHOLD,
@@ -467,6 +469,14 @@ export type TrackResult =
            */
           readonly pose: Pose;
           /**
+           * How {@link pose} was chosen: IPPE's two candidates and the
+           * selection rule's outcome (#105; M4's step 3). `pose` is
+           * `poseSelection.pose`. The tracker makes no `poseFromHomography`
+           * call: the pose is computed here, above the contract, from `H`
+           * and the frame's correspondences.
+           */
+          readonly poseSelection: PoseSelection;
+          /**
            * The frame's keypoints, as detected. For overlays. Empty on a
            * `"TRACK"` frame, where nothing is detected — except one that
            * consumed a detection, which carries the DETECTED frame's
@@ -514,6 +524,23 @@ export class NftTracker {
     private readonly clock: (() => number) | null;
     /** The last two homographies while locked: `previous` is `null` right after a detection. */
     private lock: { readonly previous: Mat3 | null; readonly current: Mat3 } | null = null;
+    /** The target's 5 × 5 grid, level-0 px: the pose selection's depth rule reads it. */
+    private readonly grid: Float64Array;
+    private fallbacks = 0;
+
+    /**
+     * Frames so far whose pose is not IPPE's own estimate but the closed form,
+     * for any reason: an ambiguous selection (#105's rule (c)), both
+     * candidates putting the plane behind the camera, or a degenerate
+     * homography. One counter, by the maintainer's ruling of 2026-10-15:
+     * whenever the arm does not use IPPE's estimate it is a mixture of the two
+     * decompositions, and the count bounds the mixture; a run in which it is
+     * large is not a measurement of IPPE. Each result's `poseSelection.outcome`
+     * says which reason fired on its frame.
+     */
+    get fallbackFrames(): number {
+        return this.fallbacks;
+    }
 
     /**
      * @param cv      The backend. Injected, never imported: the tracker runs on
@@ -550,6 +577,20 @@ export class NftTracker {
                 : null;
         this.detectionOnly = this.track === null;
         this.externalDetection = tracking.externalDetection;
+        const [width, height] = target.pyramid.levelSizes[0];
+        this.grid = targetGrid(width, height);
+    }
+
+    /**
+     * The frame's pose from `H` over the correspondences the estimate used,
+     * by #105's selection rule, counting a fallback frame. `sigma` is the
+     * correspondences' noise, frame px: the alignment's on a tracking step,
+     * the RANSAC threshold on a detection.
+     */
+    private selected(H: Mat3, src: Float64Array, dst: Float64Array, sigma: number): PoseSelection {
+        const s = selectPose(H, this.K, src, dst, sigma, this.grid);
+        if (s.chosen === "fallback") this.fallbacks++;
+        return s;
     }
 
     /**
@@ -718,6 +759,19 @@ export class NftTracker {
         steps: readonly (TrackStepTimings | null)[],
         use: Pick<TrackingFields, "detectionUse" | "detectionLatencyMs">,
     ): TrackResult {
+        // The correspondences the fit weighed above 0, in the fit's order.
+        const n = r.stats.inliers;
+        const src = new Float64Array(2 * n);
+        const dst = new Float64Array(2 * n);
+        for (let i = 0, k = 0; i < r.weights.length; i++) {
+            if (!(r.weights[i] > 0)) continue;
+            src[2 * k] = r.correspondences.src[2 * i];
+            src[2 * k + 1] = r.correspondences.src[2 * i + 1];
+            dst[2 * k] = r.correspondences.dst[2 * i];
+            dst[2 * k + 1] = r.correspondences.dst[2 * i + 1];
+            k++;
+        }
+        const selection = this.selected(r.H, src, dst, POSE_AMBIGUITY_SIGMA_TRACK_PX);
         return {
             ok: true,
             state: "TRACK",
@@ -726,7 +780,8 @@ export class NftTracker {
             numMatches: r.stats.observed,
             numInliers: r.stats.inliers,
             H: r.H,
-            pose: this.cv.poseFromHomography(r.H, this.K),
+            pose: selection.pose,
+            poseSelection: selection,
             sceneKeypoints,
             trackLoss: null,
             tracking: r.stats,
@@ -760,6 +815,10 @@ export class NftTracker {
                 sceneKeypoints: d.sceneKeypoints,
             };
         }
+        // A handed-in detection is trusted as `detectTarget` produced it, its
+        // inlier correspondences included (the type carries that contract).
+        const c = d.correspondences;
+        const selection = this.selected(d.H, c.src, c.dst, this.setup.ransacThreshold);
         return {
             ok: true,
             state: "DETECT",
@@ -769,7 +828,8 @@ export class NftTracker {
             numMatches: d.numMatches,
             numInliers: d.numInliers,
             H: d.H,
-            pose: this.cv.poseFromHomography(d.H, this.K),
+            pose: selection.pose,
+            poseSelection: selection,
             sceneKeypoints: d.sceneKeypoints,
         };
     }

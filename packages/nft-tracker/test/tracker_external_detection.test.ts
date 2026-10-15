@@ -173,7 +173,7 @@ describe("NftTracker with a detection handed in (M3)", () => {
         expect(calls).toEqual({});
     });
 
-    it("consumes a detection of frame 0 on frame 1 and confirms it on that frame: TRACK, latency 33 ms, one backend call (the pose)", () => {
+    it("consumes a detection of frame 0 on frame 1 and confirms it on that frame: TRACK, latency 33 ms, no backend call: the pose is computed in the tracker (#105)", () => {
         const { tracker, calls } = external();
         tracker.process(f0, 0);
         const r = tracker.process(f1, 33, d0);
@@ -188,7 +188,7 @@ describe("NftTracker with a detection handed in (M3)", () => {
         expect(r.numMatches).toBe(r.tracking!.observed);
         expect(r.sceneKeypoints).toEqual(d0.sceneKeypoints);
         expect(r.timestampMs).toBe(33);
-        expect(calls).toEqual({ poseFromHomography: 1 });
+        expect(calls).toEqual({});
     });
 
     it("refuses a detection the confirming step cannot carry: LOST unconfirmed, with the step's loss and the detection's counts", () => {
@@ -313,7 +313,7 @@ describe("NftTracker with a detection handed in (M3)", () => {
         expect(r.detectionUse).toBe("consumed");
         expect(r.detectionLatencyMs).toBe(33);
         expect(r.needsDetection).toBe(false);
-        expect(counted.calls).toEqual({ poseFromHomography: 1 });
+        expect(counted.calls).toEqual({});
     });
 
     it("detection-only external mode returns a consumed detection as DETECT, unconfirmed, and always needs one", () => {
@@ -332,7 +332,7 @@ describe("NftTracker with a detection handed in (M3)", () => {
         expect(r.detectionLatencyMs).toBe(33);
         expect(r.timestampMs).toBe(33);
         expect(r.tracking).toBeNull();
-        expect(calls).toEqual({ poseFromHomography: 1 });
+        expect(calls).toEqual({});
         const next = tracker.process(f2, 66);
         expect(next.state).toBe("LOST");
         if (next.ok) return;

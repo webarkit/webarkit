@@ -34,8 +34,10 @@
  * caches, no test here can see: those are shown by a browser run.
  */
 
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { provenanceFindings, provenanceRefusal } from "../js/bench-metrics.mjs";
 import { SERVED } from "../../scripts/build-provenance.mjs";
@@ -170,13 +172,39 @@ describe("provenanceRefusal", () => {
 describe("the manifest npm run build writes", () => {
     const manifest = JSON.parse(bytes("examples/dist/provenance.json"));
 
+    /**
+     * Why a hash in the manifest differs from the file on disk, as one line per
+     * condition with both values, and the remedy. A hash that differs has one of
+     * two causes with different remedies: the manifest was built at another
+     * commit, or at this one with a dirty tree. The checkout's state comes from
+     * git; without git the lines say so. (#135: the root build overwrote an
+     * attested build without a word, and this message was the only account.)
+     */
+    const whyStale = () => {
+        const git = (...args) => {
+            try {
+                return execFileSync("git", args, { cwd: fileURLToPath(ROOT), encoding: "utf8" }).trim();
+            } catch {
+                return null;
+            }
+        };
+        const head = git("rev-parse", "HEAD");
+        const status = git("status", "--porcelain", "--untracked-files=no");
+        const dirty = status === null ? null : status.split("\n").filter(Boolean);
+        return [
+            `manifest head: ${manifest.head}; checkout HEAD: ${head ?? "unknown (git unavailable)"}${head && head !== manifest.head ? " -- built at another commit" : ""}`,
+            `manifest clean: ${manifest.clean}; tree clean now: ${dirty === null ? "unknown (git unavailable)" : dirty.length === 0}${dirty && dirty.length > 0 ? " -- dirty: " + dirty.join(", ") : ""}${manifest.dirtyPaths?.length ? "; manifest dirtyPaths: " + manifest.dirtyPaths.join(", ") : ""}`,
+            `remedy: rebuild from a clean tree at ${head ?? "the expected commit"} (npm run build)`,
+        ].join("\n");
+    };
+
     it("hashes the files on disk, the bundle and jsfeat-next's included (rebuild after an edit)", () => {
         expect(manifest.schema).toBe("webarkit-bench-provenance/1");
         expect(manifest.head).toMatch(/^[0-9a-f]{40}$/);
         for (const [path, { sha256: h }] of Object.entries({ ...manifest.sources, ...manifest.served })) {
-            expect(h, path).toBe(sha256(path));
+            expect(h, `${path}: the manifest's hash is not the file's\n${whyStale()}`).toBe(sha256(path));
         }
-        expect(manifest.bundle.sha256).toBe(sha256(manifest.bundle.path));
+        expect(manifest.bundle.sha256, `${manifest.bundle.path}: the manifest's hash is not the file's\n${whyStale()}`).toBe(sha256(manifest.bundle.path));
         const jsfeat = manifest.dependencies["@webarkit/jsfeat-next"];
         expect(jsfeat.sha256).toBe(sha256(jsfeat.file));
         expect(jsfeat.installedVersion).toBe(jsfeat.version);

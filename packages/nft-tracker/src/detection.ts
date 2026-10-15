@@ -273,6 +273,17 @@ export type Detection =
           readonly numInliers: number;
           /** Target level-0 → frame level-0, row-major 3×3. */
           readonly H: Mat3;
+          /**
+           * RANSAC's inlier correspondences, one per set bit of the estimate's
+           * inlier mask (equal to `numInliers` for a backend whose two agree): `src` the
+           * target's keypoints (level-0 px), `dst` the frame's, each
+           * `[x0, y0, x1, y1, …]`. What the pose selection reads (#105's rule
+           * (b)). Typed arrays, so `structuredClone` carries them.
+           */
+          readonly correspondences: {
+              readonly src: Float64Array;
+              readonly dst: Float64Array;
+          };
           /** The frame's keypoints, as detected. For overlays. */
           readonly sceneKeypoints: readonly Keypoint[];
       }
@@ -419,12 +430,26 @@ export function detectTarget(
             sceneKeypoints,
         };
     }
+    // The inliers, by RANSAC's own mask over the correspondences it was given.
+    let kept = 0;
+    for (let i = 0; i < matches.length; i++) if (h.inliers[i]) kept++;
+    const inSrc = new Float64Array(2 * kept);
+    const inDst = new Float64Array(2 * kept);
+    for (let i = 0, k = 0; i < matches.length; i++) {
+        if (!h.inliers[i]) continue;
+        inSrc[2 * k] = src[2 * i];
+        inSrc[2 * k + 1] = src[2 * i + 1];
+        inDst[2 * k] = dst[2 * i];
+        inDst[2 * k + 1] = dst[2 * i + 1];
+        k++;
+    }
     return {
         ok: true,
         timestampMs,
         numMatches: matches.length,
         numInliers: h.numInliers,
         H: h.H,
+        correspondences: { src: inSrc, dst: inDst },
         sceneKeypoints,
     };
 }

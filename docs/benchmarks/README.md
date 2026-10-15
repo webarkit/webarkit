@@ -5057,3 +5057,141 @@ that points here.
   glossary's staleness check, `examples/test/glossary.test.mjs`, was added
   there on 2026-10-14.
 - **The jitter clause's pointer to #124** now points here.
+
+### #105's criteria, and the pose stage on tracker arms from round 1 (2026-10-15)
+
+Registered on 2026-10-15, before round 1 and before any counted run; it
+binds from round 1. Three things, each decided by the maintainer that day
+while placing M4's step 3, [#105](https://github.com/webarkit/webarkit/issues/105).
+
+**#105's acceptance criteria are in their own file,**
+[`2026-10-15-m4-step3-ippe-acceptance.md`](./2026-10-15-m4-step3-ippe-acceptance.md),
+committed before the implementation existed (its commit is the registration)
+and read against the first run in a dated addendum at its end. IPPE lives in
+`packages/nft-tracker/src/`, the subject; the comparison with the oracle in
+`packages/nft-tracker/test/`, which is in none of the three categories (not
+served, and it supplies no reference value to a counted measurement), so it
+is ordinary code. The oracle, `packages/cv-backend-jsfeatnext/src/`, is
+untouched for the whole of #105. The brief for the step cited ADR-0001's
+point 7 for the no-import rule; the rule is point 2, and the brief's author
+corrected it.
+
+**The `pose` stage is not a measurement on arms that compute the pose in the
+tracker.** [#132](https://github.com/webarkit/webarkit/issues/132) holds the
+finding with the frozen lines quoted: the page times the stage through the
+instrumented backend's `poseFromHomography`, which a tracker on IPPE never
+calls, so on the tracking and detection-only arms every `ok` frame's sample
+is 0 and `framesForStage` still counts every `ok` frame. IPPE's cost lands in
+frame total, and only there. The maintainer's ruling, option A of #132:
+- **the zero is a check.** On tracker arms, every `ok` frame's `pose` sample
+  is exactly 0. A non-zero sample means the arm still routes through the
+  backend's decomposition, so the treatment was not applied, and that run is
+  refused as a measurement of the treatment. Registered for #107's validity
+  checks before round 1's first counted run;
+- **`poseMs` and its percentiles are not reported for tracker arms,** not as
+  0 and not as "n/a": the entry states that the stage is not measured on
+  arms that compute the pose in the tracker, and points at the check above.
+  The stateless arm, which calls the backend's decomposition itself
+  (`bench-nft.html:805`), keeps the stage: it is the control;
+- **#105's cost claim is read on frame total,** one measured quantity, not on
+  total minus the stages;
+- **`trackStepMs` keeps its frozen definition** (METRICS_VERSION 1); IPPE is
+  not folded into it;
+- **a timing the tracker takes of itself** (#132's option B) is never a
+  counted metric: it would be produced by the code that changes every round.
+  Admissible later as a labelled diagnostic only;
+- **re-baselining the instrument is excluded:** it would end this campaign.
+
+**The selection rule has no memory.** IPPE's two candidates are chosen
+between per frame, by depth, then by reprojection error over the frame's
+correspondences, then by a declared margin under which the frame is
+ambiguous and takes the frame's own closed-form pose. One per-run counter,
+`NftTracker.fallbackFrames`, counts every frame whose pose is not IPPE's own
+estimate, for whatever reason (the maintainer's ruling of 2026-10-15: whenever
+the arm does not use IPPE's estimate it is a mixture, and one count bounds
+it; each result's `poseSelection.outcome` says which reason fired). No earlier frame enters: the jitter
+clause's threshold was calibrated on arms whose per-frame pose does not
+depend on the previous frame, a selector with memory would make a wrong
+branch self-sustaining and read as lower jitter, and the control's pose has
+no history. The rule in full, with the margin's derivation and the headless
+ambiguous-frame rates per clip that #107's prediction and refusal threshold
+are to be stated from, is in the criteria file (§5, §7 and the addendum).
+The whole rule is part of the treatment's definition: if it changes after
+round 1's first counted run, the rounds before and after are not the same
+experiment.
+
+### What M4's device half measures, and which steps reach it (2026-10-15)
+
+Registered on 2026-10-15, before round 1 and before any counted run of a
+treatment, from the maintainer's rulings of that day on #105's
+characterisation
+([`2026-10-15-m4-step3-ippe-c4-characterisation.md`](./2026-10-15-m4-step3-ippe-c4-characterisation.md),
+its third addendum and the correction to it). It binds #107's registration.
+The milestone's title is not changed here.
+
+**The finding.** Every value a counted run exports is built by `frameRecord`
+in the metrics module, which copies a result's `ok`, `reason`, `state`,
+`quality`, `trackLoss`, the step's counts, the timings and the detection
+fields, and computes the corners from `result.H` (line 165). No exported
+value is a function of the pose. So M4's device half measures **homography
+stability** (`jitterPx`, `spreadPx`), **lock behaviour** (`trackTimeShare`,
+`detectionLocks`, `firstStepLatency`, the states) and **cost** (the stages,
+frame total, `trackStepMs`). Of the milestone's pose work, only #104 reaches
+those metrics, and only through which frames are posed.
+
+**#105 and #106: device claims withdrawn as unmeasurable on this
+instrument, not refuted.** For each, the treatment is confined to the pose:
+#105 replaces the decomposition of `H`, #106 filters `R` and `t`. No exported
+value is a function of the pose, so the registered device metric cannot
+respond to either, by construction. On #105 this was measured as well: both
+arms over every clip of the corpus gave byte-identical corners on all 2,012
+common frames and a `jitterPx` difference of exactly 0, which is no
+measurement, not no effect. **No round 1 is run for step 3**, and none is to
+be registered for step 4's `jitterPx` claim. Their synthetic halves stand and
+are where their results live: #105's accuracy result on the rigid sets,
+already measured (criteria C1 to C11, their verdicts, the crossover as the
+measured interval 7°–10°); #106's lag measurement on synthetic sequences,
+when it is written.
+
+**#104: a joint claim, or none.** A refusal of a fit flips `result.ok`, and
+line 165 then nulls that frame's corners, so `jitterPx` and `trackTimeShare`
+move, but because a frame stopped being posed, not because any frame got
+better. `jitterPx` can be improved arbitrarily by refusing more frames, and a
+metric improvable by declining to measure is not an improvement metric on its
+own: the same family as the four checks of 2026-10-15 that could not
+distinguish the condition they claim to detect (round 0's session record), a
+number that moves for a reason unrelated to the quality it is read as. So
+#104's device claim is registered as **jitter and coverage together**, or
+not at all:
+- the claim: `jitterPx` on the treatment arm against its baseline arm, on
+  their common media times, read **beside** the treatment arm's coverage,
+  its posed frames over the clip's frames on the same media times;
+- **a pre-stated bound on coverage loss,** with its derivation, to be stated
+  here before round 1's first counted run of #104. Its derivation is #104's
+  own: the share of right fits the signal refuses on #90's sweep (the step's
+  "refuses none of today's right fits" condition), measured on the shipped
+  target and on M2's 64 patches, is the refusal the device may show without
+  the gain being bought by dropping frames. The number does not exist today,
+  because the signal does not: no commit implements it (below);
+- **what refuses it:** a jitter gain accompanied by a coverage loss beyond
+  the bound is refused, not reported. A jitter gain within the bound is
+  reported as a joint result, never as a jitter result alone.
+
+**#104's state, settled (report, 2026-10-15).** Two commits reference #104,
+`136f143` and `d92a203` of 2026-10-13, both documentation of #113: the first
+makes each tracking default's comment in `src/tracker.ts` say what M3's pass
+did to it, and names #104 as where #92's question goes; the second corrects
+three lines of the package README the same way. Neither adds code. No part of
+the conditioning signal, `d_scale` or `d_orth`, exists in the tree: the only
+occurrence of the word is a comment in `src/tracker.ts` (line 274) pointing
+at the issue. #104 is specified and unimplemented. One fact from #105's
+characterisation bears on its specification: the sweep's second view is not a
+plane homography for the camera, and the signal reads `d_scale` 0.0084 and
+`d_orth` 0.031 on its exact `H`, so a threshold derived on that view would be
+inflated; the separation has to be shown per view.
+
+**The instrument does not change, and no pose metric is proposed here.**
+Round 0's calibration is valid only while the served files stay
+byte-identical, and #104 may still be measurable under this instrument. Any
+pose metric ends this campaign; that sequencing decision is the maintainer's,
+and it is not taken in a PR.

@@ -15,8 +15,10 @@ target, the codec for the `.wnft` files that store one, and
 `LOST → DETECT → TRACK` state machine
 ([ADR-0001](../../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md),
 [#48](https://github.com/webarkit/webarkit/issues/48)). A frame without a lock
-runs M1's `detect → describe → match → estimateHomography →
-poseFromHomography`; a frame with one tracks the target's patches instead,
+runs M1's `detect → describe → match → estimateHomography`, then takes its
+pose from `H` here, above the contract, by IPPE (M4's step 3,
+[#105](https://github.com/webarkit/webarkit/issues/105); the backend's
+`poseFromHomography` is no longer called); a frame with one tracks the target's patches instead,
 with `predictHomography`, `buildFramePyramid`, `alignPatch` and
 `robustHomography`, and runs none of detect, describe or match. A target
 without patches — anything `buildTargetFromImage` builds — keeps M1's

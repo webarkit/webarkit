@@ -97,6 +97,13 @@ the older words each is easily taken for.
   predate the rule: [its session record](./2026-10-01-m3-device-session.md)
   and [the write-up's audit](./2026-10-01-m3-write-up-audit.md).
 
+- **Pose stage on tracker arms, ambiguous frame, fallback frame.**
+  [#105's criteria, and the pose stage on tracker arms from round 1](./README.md#105s-criteria-and-the-pose-stage-on-tracker-arms-from-round-1-2026-10-15),
+  and [#132](https://github.com/webarkit/webarkit/issues/132) for the
+  finding. The selection rule, its margin and what the two counters count:
+  [the acceptance criteria](./2026-10-15-m4-step3-ippe-acceptance.md), §5.
+  Not the `pose` stage of the stateless arm, which stays a measurement.
+
 ## The earlier plans
 
 The words #102 listed on 2026-10-02, from M2's and M3's plans.
