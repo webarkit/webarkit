@@ -4932,6 +4932,11 @@ each round against its own pipeline.
      that `.nvmrc` then held. The pin was aligned to it on 2026-10-14, and
      what CI ran until then is recorded beside the pin (`AGENTS.md`,
      "Environment & commands").*
+   - **A measurement campaign stays on the machine it started on**
+     (2026-10-15): the toolchain above is attested per build, but the
+     machine's decoder, scaler and clocks are not, so a change of machine
+     is a change of instrument the manifest cannot see. Code work runs on
+     any machine. Campaign-scoped: it expires when the campaign closes.
 
 **The role rule's sweep.** The rule was applied on 2026-10-14 to
 `examples/test/` and to what `packages/` holds outside `src/`, against the
