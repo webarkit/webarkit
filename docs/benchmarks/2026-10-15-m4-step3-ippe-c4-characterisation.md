@@ -694,3 +694,31 @@ sd-based estimate of the table above) propagated through the reciprocal,
 
 The summary range stays **about 2.4× to 3.5×**; the 40° and 50° figures are
 the same value within their uncertainty, as are 20° and 30°.
+
+## Correction, 2026-10-15: the corpus line, with per-clip figures
+
+The corpus statement above ("the corpus lies almost entirely in the
+worse-or-tied region, with only its upper end, the wall clips' frames above
+15°, reaching the region where IPPE wins") is too pessimistic and is replaced
+by the per-clip figures, from the headless run with the oracle's tilt per
+posed frame (one run; RANSAC is unseeded through the contract):
+
+| clip | posed | median tilt | frames at 15°–40° | share |
+|---|---|---|---|---|
+| `pinball-static.mp4` | 366 | 2.9° | 0 | 0% |
+| `acquire-test/static-portrait.mp4` | 366 | 2.9° | 0 | 0% |
+| `acquire-test/static-landscape.mp4` | 366 | 5.6° | 0 | 0% |
+| `pinball-bench-table.mp4` | 259 | 9.5° | 1 | 0.4% |
+| `pinball-bench.mp4` | 268 | 17.3° | 78 | 29% |
+| `acquire-test/wall-30fps.mp4` | 328 | 18.1° | 103 | 31% |
+| `acquire-test/wall-native-fps.mp4` | 275 | 18.1° | 83 | 30% |
+
+So: **the three wall clips have 29% to 31% of their posed frames at 15° to
+40°, where IPPE is clearly better; the static clips have none; the table clip
+effectively none; and round 1's clip, the static clip, has none.** The "18°"
+quoted earlier is the wall clips' median tilt, not a maximum. Frames the
+closed form puts above 40° are excluded from the middle column: those above
+90° have the plane's normal pointing away from the camera, which no visible
+planar target can do, and are flipped or degenerate poses on re-detection
+frames; they are the subject of their own issue, outside this PR, with the
+split at 40° and 90° reported there.
