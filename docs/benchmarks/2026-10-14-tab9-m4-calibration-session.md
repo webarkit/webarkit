@@ -651,3 +651,21 @@ third, a figure, came with them.
   with the selector mutated to the worse candidate (0 of 252). The rule it
   produces: **every figure in the record is traceable to a check that can
   fail.**
+- **A sixth check that could not fail, and this one is in the shipped path
+  (2026-10-15).** The detection's only acceptance test is `estimateHomography`'s
+  `ok`, a point count that 4 satisfies; a homography fitted on 4
+  correspondences reproduces them exactly, so its residual on its own points
+  is zero by construction and the threshold cannot reject it. On every
+  hand-held clip, 17% to 24% of posed frames are such 4-inlier detections
+  (median 4 inliers against 33 to 43 on the rest), most with a closed-form
+  pose whose normal points away from the camera, and every exported metric
+  reads them as posed. The five checks above were in tests and in the record;
+  this one ships. [#137](https://github.com/webarkit/webarkit/issues/137).
+- **An unnamed component of this block's noise, named (2026-10-15).** RANSAC
+  draws from an unseeded `Math.random` through the contract (#24), so which
+  frames re-detect, and therefore which frames are posed, moves between runs
+  of the same clip. Part of the between-run spread the eight runs measured is
+  that movement. The runs stay what they are and σ is not restated or
+  re-derived here; the noise model's account of them has this source in it,
+  found by #137's seeded measurement. The device runs are not seeded: that
+  would change the page, which ends the campaign.
