@@ -5214,3 +5214,11 @@ Round 0's calibration is valid only while the served files stay
 byte-identical, and #104 may still be measurable under this instrument. Any
 pose metric ends this campaign; that sequencing decision is the maintainer's,
 and it is not taken in a PR.
+
+**The milestone is renamed going forward (2026-10-15):** "M4: pose
+correctness and homography steadiness", its description saying "homography
+steadiness" where it said "steadiness". The reason, in one sentence: no
+exported value is a function of the pose, measured on 2026-10-15, so the
+device half measures homography steadiness and not pose steadiness. The
+rename is not applied to the record behind it; no file, commit or
+never-amended text carried the old title.

@@ -104,6 +104,15 @@ the older words each is easily taken for.
   [the acceptance criteria](./2026-10-15-m4-step3-ippe-acceptance.md), §5.
   Not the `pose` stage of the stateless arm, which stays a measurement.
 
+- **Steadiness.** The corners' deviation under `H`, per `DEFINITIONS.jitterPx`
+  in [the metrics module](../../examples/js/bench-metrics.mjs): a property of
+  the homography, not of the pose. The plan's two defining lines are
+  `README.md:4140` and `README.md:4150`, in
+  [the null control's jitter clause](./README.md#the-null-controls-jitter-clause-2026-10-14);
+  neither is restated here. Why the milestone says "homography steadiness"
+  since 2026-10-15:
+  [What M4's device half measures](./README.md#what-m4s-device-half-measures-and-which-steps-reach-it-2026-10-15).
+
 ## The earlier plans
 
 The words #102 listed on 2026-10-02, from M2's and M3's plans.
