@@ -5210,6 +5210,47 @@ not at all:
 - **what refuses it:** a jitter gain accompanied by a coverage loss beyond
   the bound is refused, not reported. A jitter gain within the bound is
   reported as a joint result, never as a jitter result alone.
+- *Added on 2026-10-16, ruled by the maintainer from #104's Stage 1 probe
+  ([`2026-10-16-104-stage1-probe.md`](./2026-10-16-104-stage1-probe.md),
+  its items 8 and 9). Three things, in the order they bind:*
+  - *The calibration of the outcome comparison on the hand-held clips.
+    Round 0's provisional threshold under the null control's jitter clause
+    was calibrated on the static clip. The static clip holds no DETECT frame
+    in its counted loops, so no refusal reaches its `jitterPx` and it cannot
+    express #104. Round 1 of #104 must therefore run on the hand-held clips,
+    whose `jitterPx` once the low-inlier detections are refused carries a
+    residual three orders of magnitude above that threshold; the figures are
+    the probe's. The provisional threshold does not transfer to them, and
+    the outcome comparison on those clips needs its own calibration. This
+    neither replaces nor extends the clause's block gate, which reads static
+    blocks only and is unchanged. Nothing is derived here: a calibration for
+    those clips is a separate measurement with its own degrees of freedom.*
+  - *The treatment's effect on `jitterPx` is not yet decomposed. `jitterPx`
+    measures steadiness only where the target stays in view and every pose
+    is right (`DEFINITIONS.jitterPx`); on a hand-held clip it computes but
+    does not measure that. The probe measured the mechanism by which a
+    refusal moves it: frames leave the residual pool of windows that stay
+    eligible, and windows drop. Under the real treatment the movement has
+    two parts, steadiness and frame selection, and the sign of the selection
+    part is unknown; it is not guessed here. Not blindness, since the metric
+    responds, but confounding: a number that moves for two reasons where the
+    record names one. The claim above already reads the two arms on their
+    common media times, which excludes the selection part from the
+    comparison by construction; what is open is the size and sign of the
+    part a whole-set figure on these clips carries. The measurement that
+    settles it is registered, not run: on round 1's exports, read-only,
+    recompute `jitterPx` for both arms on their common media times as
+    `compareExports` builds them, scattered subsets being admissible under
+    the window rule, and set the whole-set difference beside the common-set
+    difference. Movement that survives on the common set is steadiness;
+    movement that vanishes was selection.*
+  - *No block gate is defined for a non-static block. The clause's gate
+    reads static blocks only, for the reason above, and round 1 runs
+    hand-held blocks. A gate must be defined and registered before round
+    1's first counted run; none is proposed here. It comes after the
+    decomposition: a validity gate for a metric whose reading is not yet
+    decomposed would be calibrated on a quantity that cannot be
+    interpreted.*
 
 **#104's state, settled (report, 2026-10-15).** Two commits reference #104,
 `136f143` and `d92a203` of 2026-10-13, both documentation of #113: the first
