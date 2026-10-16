@@ -1,6 +1,9 @@
 # The protocol for one milestone step
 
-Status: proposed 2026-10-15, after M4 step 3 (#105).
+Status: drafted 2026-10-15, after M4 step 3 (#105); revised 2026-10-16 with that day's
+findings (#123's seed test and frame-set decomposition, #137's gate and RNG findings, and
+#139's ratification of the box's entries). Maintained, not written once: a finding that
+settles after the draft is folded in, dated, rather than left for an amendment.
 
 Everything else in `docs/benchmarks/` governs a measurement: provenance, served-file
 hashes, block order, the jitter clause, run validity, what the record may and may not
