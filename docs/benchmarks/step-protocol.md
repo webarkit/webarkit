@@ -44,6 +44,11 @@ no device.
 
 Produces: the numbers, and a named file under `docs/benchmarks/` recording them as a
 probe — explicitly not campaign data, needing no provenance, never reportable as a round.
+**A headless count enters the record only from a seeded run, with the seed stated.** The
+shipped path draws RANSAC from an unseeded `Math.random`, so an unseeded count moves by a
+few frames between runs of the same script and two reports of one measurement disagree
+for no reason the record can name (#137: 259, 260 and 261 posed frames on three unseeded
+runs of one clip; two seeded runs byte-identical).
 
 Stops the step when: the metric cannot respond, or the corpus cannot express the effect.
 Either is a result, not a setback, and it is written down. A step whose metric cannot
@@ -111,6 +116,18 @@ Produces: a citation check at the head of the session's first report.
 > frozen instrument's pose stage not listed among the collisions. Both were caught by the
 > implementing session reading the sources. Informal, it caught them twice; required, it
 > catches them every time.
+
+A ruling in the brief is checked the same way as a citation, before it is registered. The
+third reviewer error of the same step was a ruling, not a quote: an ambiguous-frame
+fallback to the closed form was ruled in as "the control's path and therefore safe", and
+was found to import exactly the defect the new estimator's depth rule avoids. Measured
+over four hand-held clips, fifty of the seventy-one frames on which the selected pose put
+the plane behind the camera were degenerate (both candidates behind: a homography with no
+admissible pose at all), and only twenty-one were ambiguous. The fallback fired mostly on
+frames that should have had no pose, and the case the ruling reasoned about was the
+minority. Recorded as the reviewer's error in round 0's audit record (#137, #138). The
+rule: a fallback the brief rules in is exercised on the frames it will actually see before
+it is registered, like any check.
 
 ## Stage 5 — The box
 
@@ -195,10 +212,31 @@ they claimed to detect:
   test that could not fail, and the counts it produced reached two sentences of the
   record before an outside reviewer caught it.
 
+A sixth was found the same day, and it differs from the five in one way that matters:
+**it ships.** The detection gate accepts a homography fitted on four correspondences, and
+a fit on four reproduces those four exactly, so its residual on its own points is zero by
+construction and RANSAC's threshold cannot reject it. The detection path's only acceptance
+test is a point count that four satisfies; the patch minimum and the fit-RMS gate belong to
+the tracking step and never see a detection. On the hand-held clips, 17% to 24% of posed
+frames are such fits, most with a flipped pose, and their corners enter every exported
+metric as posed frames (#137). The five were instruments of the record; this one is in the
+measured pipeline, so its blindness reaches the campaign's data.
+
 The common cause is not carelessness about any one of them. It is that none was ever
 exercised against a case where it **must** fire and a case where it **must not**. So:
 before a check or a metric is trusted, it is run on both, and the two results are recorded
 beside its definition. A check that fires on both, or on neither, is not a check.
+
+The most general form of the same defect is **a requirement with no check, which is a check
+that cannot fail.** ADR-0001 point 7 requires that every random choice go through an
+injectable RNG; in the shipped path RANSAC draws from the global `Math.random`, the
+contract offers no injection point (#24, adopted on 2026-10-16, creates one; its wiring is
+post-campaign), and no test fails when a random choice bypasses an injectable RNG. The
+requirement stood accepted for weeks with nothing able to detect its breach. An accepted
+requirement is listed with the check that enforces it, or it is listed as unenforced; a
+same-input-same-result test proves determinism when the RNG is injected and does not
+catch a draw that bypasses it, so the enforcing test counts reads of the global during a
+run and asserts zero, exercised both ways (#137's usage rule).
 
 The wording rule that follows, because this is where a blind instrument does its real
 damage: **a zero produced by an instrument that cannot respond is never recorded as "no
@@ -229,6 +267,15 @@ four decide whether a step's outcome survives being read later:
   measured is not a bound: the crossover is "between 7° and 10°", not "about 8°".
 - A commit whose hash is cited in the record is not squashed.
 - A mechanism or a cause is a conjecture until measured, and is labelled as one.
+- **A figure that bounds variability never comes from the difference of two
+  observations.** Two observations give one difference, and one difference estimates no
+  dispersion; a spread, a tolerance or a threshold comes from repeats, with its degrees
+  of freedom stated, or from a prior measured movement with its derivation beside it. The
+  plan states this beside M3's step 8; it is restated here because it was applied again
+  on 2026-10-16 and the application was the implementer's, not the brief's: the seed test
+  of #123 was asked for as two runs and run as eight, with the standard deviation on seven
+  degrees of freedom and its interval, because two could not have estimated the spread
+  the test exists to bound.
 
 A step that ends in a negative result has succeeded at being a measurement. The record
 says what was measured, in which regime, and what it refuted.
