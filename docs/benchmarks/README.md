@@ -3208,7 +3208,14 @@ the two.
    dispersion — it can be arbitrarily small by luck, and when it is, the
    clause refuses whenever the worker runs' mean lands above the synchronous
    runs' mean: under the null, where the worker is no different, about half
-   the time, while a worker that happens to be steadier passes. (Corrected on
+   the time, while a worker that happens to be steadier passes. *Corrected
+   on 2026-10-16, from Copilot's review of #140: "no estimate of dispersion"
+   overstates it. Two observations do estimate a dispersion,
+   s² = (x₁ − x₂)² ÷ 2 on one degree of freedom; what makes it unfit for a
+   tolerance is its uncertainty, a 95% interval for σ from 0.45 s to 32 s, a
+   factor of about seventy, so a bound set from it bounds nothing. "Can be
+   arbitrarily small by luck" and the rule below stand as written: the rule
+   is a policy with that number as its reason, not an impossibility.* (Corrected on
    2026-10-01, after the session, in two places: here, from "fires almost
    surely", which overstated it; and below, where the sentence saying what
    had been seen when the clause was withdrawn, and which way the
