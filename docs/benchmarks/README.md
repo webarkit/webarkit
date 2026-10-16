@@ -4864,6 +4864,13 @@ each round against its own pipeline.
    - **The `package.json` files:** frozen, for the same reason. The
      packages' own are in `sources`. The root's is not, so, like `scripts`,
      only the guard diff carries it, and #127 holds it too.
+   - **`@webarkit/jsfeat-next` stays at `^0.17.0` for the campaign**
+     (2026-10-15): the consequence of the two freezes above for the one
+     dependency the bundle embeds, and it expires with them. jsfeatNext
+     1.0.0 (published 2026-09-30) and 1.1.0 (2026-10-15) both exist. This
+     deferral covers both, and any later 1.x. What changed between 1.0.0
+     and 1.1.0 is unreviewed; review it when the upgrade is taken up, not
+     before. The upgrade is #94.
    - **The packages' `tsconfig.json` and `tsconfig.test.json`:** not named
      by the ruling. They are in `sources`, and they are not the subject, so
      they are inputs. Every `sources` entry outside `packages/*/src/` is an
@@ -4932,6 +4939,11 @@ each round against its own pipeline.
      that `.nvmrc` then held. The pin was aligned to it on 2026-10-14, and
      what CI ran until then is recorded beside the pin (`AGENTS.md`,
      "Environment & commands").*
+   - **A measurement campaign stays on the machine it started on**
+     (2026-10-15): the toolchain above is attested per build, but the
+     machine's decoder, scaler and clocks are not, so a change of machine
+     is a change of instrument the manifest cannot see. Code work runs on
+     any machine. Campaign-scoped: it expires when the campaign closes.
 
 **The role rule's sweep.** The rule was applied on 2026-10-14 to
 `examples/test/` and to what `packages/` holds outside `src/`, against the
@@ -5202,3 +5214,11 @@ Round 0's calibration is valid only while the served files stay
 byte-identical, and #104 may still be measurable under this instrument. Any
 pose metric ends this campaign; that sequencing decision is the maintainer's,
 and it is not taken in a PR.
+
+**The milestone is renamed going forward (2026-10-15):** "M4: pose
+correctness and homography steadiness", its description saying "homography
+steadiness" where it said "steadiness". The reason, in one sentence: no
+exported value is a function of the pose, measured on 2026-10-15, so the
+device half measures homography steadiness and not pose steadiness. The
+rename is not applied to the record behind it; no file, commit or
+never-amended text carried the old title.

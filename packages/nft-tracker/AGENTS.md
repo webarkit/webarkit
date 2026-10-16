@@ -111,6 +111,12 @@ Also:
   `crates/wnft-format/tests/real_target.rs` asserts on its contents.
   Recompiling it is a change to that test's expectations, not a refresh: update
   both in one commit, or do not recompile.
+- **The suite's tracking fixture stays at 64 patches.** `test/fixtures/tracking_target.ts`
+  is an invariant, not a default: the frozen comparisons in
+  `test/tracking/track_frame.test.ts` and `test/tracker_state_machine.test.ts` are
+  measured against it, so changing it invalidates them. Decided in PR #90, and said
+  where the suite reads it (`test/tracking/track_frame.test.ts:635`); neither is
+  restated here.
 
 ## `known.ts` is one end of a hand-made link
 
