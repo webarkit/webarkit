@@ -4044,6 +4044,21 @@ read.
       stands.*
     - *The between-block spread of the bullet above, 0.007–0.009 px over
       rounds 1 and 2, is open: unexplained, and not reproduced (#123).*
+  - *Added on 2026-10-16, ruled by the maintainer from two results in
+    #123 (the seed test, and the frame-set decomposition recorded in the
+    round-0 session record under "How much of s₀ is frame-set variation").
+    Frame-set variation, which frames each run processed, carries most of
+    the within-block spread s₀ and little of the between-block spread: on
+    identical media times, rounds 1 and 2's blocks still differ by 0.008 to
+    0.009 px where round 0's eight runs differ by at most 0.0023 px. So the
+    within-block noise and the between-block spread do not share a
+    mechanism, and the clause, calibrated on the within-block σ, cannot
+    catch the between-block phenomenon at all. The clause gates what it was
+    calibrated on: a block whose arms disagree beyond its σ. The unexplained
+    spread is a different thing, outside its reach, and no reading of the
+    clause bears on it. What does: each comparison staying inside one block,
+    the bullet above. Nothing of the clause's form, σ or threshold changes
+    here.*
 - **The calibration's spread must match the campaign's, and so the
   calibration block's eight runs run consecutively,** like the campaign's
   blocks. Calibrating within one block and judging across blocks would
