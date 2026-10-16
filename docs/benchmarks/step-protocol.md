@@ -114,32 +114,67 @@ Produces: a citation check at the head of the session's first report.
 
 ## Stage 5 — The box
 
-The standing stop conditions, cited from here and never retyped into a prompt:
+**The box lists rules only where it cites the file that records them, and anything
+without a citation is a draft pending the maintainer's ratification.** Reconciled on
+2026-10-16 against #139, which ratified the entries the audit of 2026-10-15 had found
+recorded nowhere, and against the audit record
+(`2026-10-14-tab9-m4-calibration-audit.md`, "Two entries from the audit of the standing
+constraints"). The standing stop conditions, cited from here and never retyped into a
+prompt:
 
-- All repository artifacts are in English.
+- All repository artifacts are in English. — `AGENTS.md`, "Conventions", "Language".
 - Do not run `gh pr merge`, do not enable auto-merge, do not merge or approve anything.
-  Every merge is the maintainer's.
+  Every merge is the maintainer's. — *Recorded in no file.* `CONTRIBUTING.md`'s workflow
+  and #108 say who merges and who closes, not that a session never does. A draft pending
+  ratification, recited since 2026-10-01.
 - Do not touch a frozen INPUT. `package.json`, `package-lock.json`, the tsconfigs, the
   target `.wnft` and the clips are frozen and attested by content hash: if the work needs
-  one changed, stop and report, do not change it.
-- The target's SHA-256 stays the one recorded at the campaign's start.
-- `fixtures/nft-target/0.2/` and `0.3/` stay frozen. `tracking_target.ts` stays at 64
-  patches.
-- Committed benchmark exports are evidence: never re-edited, never deleted.
-- `packages/nft-tracker/src/` imports no backend (ADR-0001 point 2).
+  one changed, stop and report, do not change it. — `docs/benchmarks/README.md`, "The
+  instrument, the subject and the inputs (2026-10-14)", item 3.
+- The target's SHA-256 stays the one recorded at the campaign's start. — `AGENTS.md`,
+  "Architecture", the `examples/targets/pinball.wnft` bullet.
+- `fixtures/nft-target/` is frozen per released format version, and the Rust codec never
+  regenerates it. — `fixtures/nft-target/README.md`; `AGENTS.md`, "Architecture".
+- `tracking_target.ts` stays at 64 patches: an invariant, not a default. —
+  `packages/nft-tracker/AGENTS.md` (#139, A1).
+- Committed benchmark exports are evidence: never re-edited, never deleted. —
+  `AGENTS.md`, "Test assets" (#139, A2).
+- `packages/nft-tracker/src/` imports no backend. — `AGENTS.md`, "Architecture";
+  ADR-0001, point 2.
 - An accepted ADR's decision is never edited — only a ticked action item, a fixed link,
-  or a "To revisit" measurement entry.
-- A shipped CHANGELOG entry is never amended.
-- The ZNCC gate is never lowered.
-- The root `README.md` is not touched without the maintainer's say.
+  or a "To revisit" measurement entry. — `AGENTS.md`, "Design records".
+- A shipped CHANGELOG entry is never amended. — `CONTRIBUTING.md`, the release procedure
+  (#139, A3).
+- `minPatchZncc` is not lowered **within M3's tuning pass**, the scope the record gives
+  it: `docs/benchmarks/README.md:1602`, "`minPatchZncc` is not a knob here". It is not a
+  general rule; the general form the step prompts recited was a reviewer error (the audit
+  record, B).
+- The root `README.md` is not changed without the maintainer's say. — `AGENTS.md`,
+  "Test assets" (#139, A4).
 - Contract changes to `cv-backend-spec` are not merged unilaterally; the fourteen-day
-  amendment rule governs and silence consents only for additive changes.
-- Auto-fix stays off on PRs carrying committed evidence.
+  amendment rule governs and silence consents only for additive changes. —
+  `CONTRIBUTING.md`, "Amending the cv-backend-spec contract".
 - Code work runs on any machine; a measurement campaign stays on the machine it started
-  on. No subagents during a device session; subagents are fine for independent checks.
+  on, and the rule expires with the campaign. — `docs/benchmarks/README.md`, "The
+  instrument, the subject and the inputs (2026-10-14)", item 5 (#139, A5).
+- The jsfeatNext 1.x upgrade waits for the campaign's close, with the dependency freeze
+  it follows from. — the same section, item 3 (#139, A6); #94 carries the pointer.
+- No document outside this repository and its issues is a source for any session. —
+  `docs/benchmarks/README.md`, "What the plan rests on" (2026-10-13).
 - Reading a frozen file is not changing it. Running a frozen module read-only is not
   changing it. Reimplementing a frozen metric instead of importing it **is** changing it:
-  import the module or stop and report.
+  import the module or stop and report. — *Recorded in no file.* A draft pending
+  ratification; the practice is the record's (round 0's item 3 and the frame-set script
+  import the module unchanged).
+
+Not in the box:
+
+- "Auto-fix stays off on PRs carrying committed evidence" was recited in the step prompts
+  without ever having been decided or configured (nothing in this repository fixes or
+  commits to a branch), and was withdrawn on 2026-10-16; the check behind the withdrawal
+  is the audit record's entry C.
+- "No subagents during a device session" is not a standing rule. It is a per-brief
+  instruction, stated in the brief of the session it binds, and it binds no other.
 
 ---
 
