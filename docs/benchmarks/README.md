@@ -4068,18 +4068,16 @@ read.
     here.*
   - *Added on 2026-10-16, ruled by the maintainer from #104's Stage 1 probe
     ([`2026-10-16-104-stage1-probe.md`](./2026-10-16-104-stage1-probe.md),
-    its item 7). The clause was calibrated on the static clip, and the static
-    clip cannot express #104: on seeds 1 to 8 of the desktop replay its
-    counted loops hold no DETECT frame, so no refusal reaches its `jitterPx`.
-    Round 1 of #104 must therefore run on the hand-held clips, whose
-    `jitterPx` once the low-inlier detections are refused, 5.30 to 5.33 px on
-    the wall clip and 2.33 to 2.36 px on the table clip, is 42 and 19 times the
-    static clip's 0.124939 px and 2,700 and 1,200 times round 0's operational
-    threshold A = 0.0019834 px. The provisional threshold does not transfer to
-    the clips round 1 will use, and round 1 needs its own calibration on the
-    clips it uses. No new threshold is derived from the probe: that is a
-    separate measurement with its own degrees of freedom. Nothing of the
-    clause's form, σ or threshold changes here.*
+    its item 7). Round 0's provisional threshold was calibrated on the static
+    clip. The static clip holds no DETECT frame in its counted loops, so no
+    refusal reaches its `jitterPx` and it cannot express #104. Round 1 of
+    #104 must therefore run on the hand-held clips, whose `jitterPx` once the
+    low-inlier detections are refused carries a residual three orders of
+    magnitude above that threshold; the figures are the probe's. The
+    provisional threshold does not transfer to the clips round 1 will use, and
+    round 1 needs its own calibration on the clips it uses. Nothing is derived
+    here: a threshold for those clips is a separate measurement with its own
+    degrees of freedom.*
 - **The calibration's spread must match the campaign's, and so the
   calibration block's eight runs run consecutively,** like the campaign's
   blocks. Calibrating within one block and judging across blocks would

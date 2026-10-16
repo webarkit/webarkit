@@ -376,3 +376,43 @@ detection gate (#137), and patching the fallback first would hide the cause.
   the only bots on pull requests are reviewers that comment. Nothing in this
   repository fixes or commits to a branch, so there was nothing to turn off.
   The constraint is withdrawn; it does not simply disappear.
+
+## Three reviewer errors in the brief for #104's Stage 1 probe, recorded 2026-10-16
+
+The brief for [#104's Stage 1 probe](./2026-10-16-104-stage1-probe.md) was
+the maintainer's; the implementing session found each of the three against
+the sources, as [the step protocol](./step-protocol.md)'s Stage 4 requires of
+a session's first action, and the maintainer ruled them in here the same day.
+The errors are the reviewer's, found by the implementer.
+
+- **One channel named of two, and the one named carries nothing where it was
+  claimed.** The brief stated that refusing frames reaches `jitterPx` "not
+  through the values of H, but through window eligibility". The metric's code
+  has two channels: a refused frame leaves the residual pool and the line fit
+  of a window that stays eligible (`bench-metrics.mjs`, lines 933 to 934 and
+  985 to 991), and a window left with fewer than four frames leaves the pool
+  (line 963). On the wall clip the filter at five inliers keeps 36 of 36
+  windows on all eight seeds and moves seed 3 from 27.46 to 6.11 px: the
+  channel the brief named carries nothing there, and the other carries all of
+  it. On the table clip both act. The probe's item 1 records the decomposition.
+- **The treatment's signal conflated with the probe's filter.** The brief
+  stated that "#104's treatment refuses exactly those fits", the 4-to-6-inlier
+  detections. #104's treatment refuses by `d_scale` and `d_orth`; the probe's
+  filter refuses by inlier count. Whether the two coincide was the probe's
+  item 3 to measure, and they do not coincide: as gates at the thresholds that
+  work they are near-equivalent, and frame by frame on the 4-versus-5 split
+  they disagree (the probe's item 3, and the maintainer's ruling there that
+  the brief's item 3 asked the wrong question).
+- **The brief contradicted Stage 1's own requirement, one day after the
+  protocol was written, by its author.** Stage 1 of the protocol produces "the
+  numbers, and a named file under `docs/benchmarks/` recording them as a
+  probe". The brief asked for a message only and for nothing written to a
+  tracked file. The reason, recorded with it: the brief was written freehand
+  from recollection, which is exactly what Stage 4 forbids, "the brief is
+  generated, not recalled", quoting its sources by line. Stage 4 was broken in
+  the first application of the protocol, by the person who wrote Stage 4. The
+  maintainer ruled the brief wrong and the file was written. This entry is the
+  protocol's first evidence about itself, and it is worth more than the other
+  two: a rule that its own author cannot follow from memory one day on is a
+  rule that has to be enforced by the generated brief's citation check, not by
+  recollection.

@@ -42,6 +42,15 @@
  * read, over counted loops 1 to 4. The exports are desktop replays and are
  * not committed.
  *
+ * A known limitation, as the frame-set script's
+ * (2026-10-16-frame-set-overlap.mjs) and the stall check's: this script is
+ * covered by no test and by no format check (`docs/` is outside both), so a
+ * change in a dependency or in the exports' shape could break it without
+ * notice while the figures it produced stay in the record; and the tool has
+ * no tests, so a defect in it would produce a wrong result reproducibly. Its
+ * one guard is the reproduction check in step 1 below, which catches a
+ * changed `cornerJitter`, not a defect of its own.
+ *
  * The method, so that it can be redone without this file:
  *
  * 1. Per export: the counted frames (`countedLoopFrames` with the export's
