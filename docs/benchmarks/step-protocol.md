@@ -251,7 +251,8 @@ beside its definition. A check that fires on both, or on neither, is not a check
 The most general form of the same defect is **a requirement with no check, which is a check
 that cannot fail.** ADR-0001 point 7 requires that every random choice go through an
 injectable RNG; in the shipped path RANSAC draws from the global `Math.random`, the
-contract offers no injection point (#24, adopted on 2026-10-16, creates one; its wiring is
+contract offers no injection point (#24 creates one: adopted on silence on 2026-10-16, as
+its comment of that day records under `CONTRIBUTING.md`'s amendment rule; its wiring is
 post-campaign), and no test fails when a random choice bypasses an injectable RNG. The
 requirement stood accepted for weeks with nothing able to detect its breach. An accepted
 requirement is listed with the check that enforces it, or it is listed as unenforced; a
@@ -300,8 +301,8 @@ four decide whether a step's outcome survives being read later:
   brief's: the seed test of #123 was asked for as two runs and run as eight, with the
   standard deviation on seven degrees of freedom and its interval, because on one degree
   of freedom the estimate could not have bounded the spread the test exists to bound.
-  (The plan's own sentence at that place, "no estimate of dispersion", overstates it the
-  same way; it is not changed here.)
+  The plan's sentence at that place carries a dated correction of 2026-10-16 to the same
+  effect.
 
 A step that ends in a negative result has succeeded at being a measurement. The record
 says what was measured, in which regime, and what it refuted.
