@@ -79,9 +79,23 @@ Two rules on using a covariate to select frames or blocks:
   treatment arm. Reading it from the treatment arm selects on the dependent variable.
   This is the same rule the jitter clause already follows by being read on each block's
   own baseline arm.
-- A selection must yield **contiguous runs** when the metric is frame-to-frame. jitterPx
-  is computed between consecutive frames, so a scattered subset of qualifying frames
-  yields nothing. Report the distribution of contiguous-run lengths, not just the count.
+- A selection is reported in the metric's own unit of eligibility, not only as a frame
+  count. `jitterPx` is not a consecutive-frame difference: `cornerJitter` fits a line in
+  time to each corner within each one-second window of media time, keeps a window only
+  when it holds at least four selected frames with corners and a nonzero time spread, and
+  pools the residuals over the windows kept with `n − 2` degrees of freedom each
+  (`examples/js/bench-metrics.mjs`, `cornerJitter`; `DEFINITIONS.jitterPx`). So a
+  scattered subset of qualifying frames is usable, which is how `compareExports` reads
+  two runs on their common media times, and a selection is judged by the windows it
+  leaves: report the windows kept (`jitterWindows`) and the frames per window beside the
+  frame count, and say which windows the selection emptied. A metric that is a
+  consecutive-frame difference would need contiguous runs instead; name the metric's
+  eligibility rule, do not assume one.
+  - *The first draft of this bullet required contiguous runs for `jitterPx`, on the
+    belief that it is computed between consecutive frames. It is not, and the rule would
+    have refused subsets the metric reads. Caught by Copilot's review of #140, from the
+    metric's code: a rule in this document that fired where it must not, never exercised
+    the way the document requires of every check.*
 
 > Origin: #105. Tilt was the covariate that decided the step and no one named it in
 > advance.
@@ -147,10 +161,14 @@ prompt:
   Every merge is the maintainer's. — *Recorded in no file.* `CONTRIBUTING.md`'s workflow
   and #108 say who merges and who closes, not that a session never does. A draft pending
   ratification, recited since 2026-10-01.
-- Do not touch a frozen INPUT. `package.json`, `package-lock.json`, the tsconfigs, the
-  target `.wnft` and the clips are frozen and attested by content hash: if the work needs
-  one changed, stop and report, do not change it. — `docs/benchmarks/README.md`, "The
-  instrument, the subject and the inputs (2026-10-14)", item 3.
+- Do not touch a frozen INPUT. The packages' `package.json` files, `package-lock.json`,
+  the tsconfigs, the target `.wnft` and the clips are frozen and attested by a content
+  hash recorded for each (the manifest's `sources`, `target.sha256`, the clip's hash
+  file). The root `package.json` is frozen too but attested by no hash: the manifest does
+  not list it, so only the guard diff over it between `37dc6d4` and the round's head
+  shows it unchanged, and #127 holds the gap for after the campaign. If the work needs
+  any of them changed, stop and report, do not change it. — `docs/benchmarks/README.md`,
+  "The instrument, the subject and the inputs (2026-10-14)", item 3.
 - The target's SHA-256 stays the one recorded at the campaign's start. — `AGENTS.md`,
   "Architecture", the `examples/targets/pinball.wnft` bullet.
 - `fixtures/nft-target/` is frozen per released format version, and the Rust codec never
@@ -271,14 +289,19 @@ four decide whether a step's outcome survives being read later:
 - A commit whose hash is cited in the record is not squashed.
 - A mechanism or a cause is a conjecture until measured, and is labelled as one.
 - **A figure that bounds variability never comes from the difference of two
-  observations.** Two observations give one difference, and one difference estimates no
-  dispersion; a spread, a tolerance or a threshold comes from repeats, with its degrees
-  of freedom stated, or from a prior measured movement with its derivation beside it. The
-  plan states this beside M3's step 8; it is restated here because it was applied again
-  on 2026-10-16 and the application was the implementer's, not the brief's: the seed test
-  of #123 was asked for as two runs and run as eight, with the standard deviation on seven
-  degrees of freedom and its interval, because two could not have estimated the spread
-  the test exists to bound.
+  observations.** This is a policy, and its reason is a number, not an impossibility: two
+  observations do estimate a dispersion, `s² = (x₁ − x₂)² ÷ 2` on one degree of freedom,
+  but on one degree of freedom the 95% interval for σ runs from 0.45 s to 32 s, a factor
+  of about seventy, so a tolerance set from it bounds nothing. A spread, a tolerance or a
+  threshold therefore comes from repeats, with its degrees of freedom stated and its
+  interval beside it, or from a prior measured movement with its derivation beside it.
+  The plan states the rule beside M3's step 8; it is restated here because it was
+  applied again on 2026-10-16 and the application was the implementer's, not the
+  brief's: the seed test of #123 was asked for as two runs and run as eight, with the
+  standard deviation on seven degrees of freedom and its interval, because on one degree
+  of freedom the estimate could not have bounded the spread the test exists to bound.
+  (The plan's own sentence at that place, "no estimate of dispersion", overstates it the
+  same way; it is not changed here.)
 
 A step that ends in a negative result has succeeded at being a measurement. The record
 says what was measured, in which regime, and what it refuted.
