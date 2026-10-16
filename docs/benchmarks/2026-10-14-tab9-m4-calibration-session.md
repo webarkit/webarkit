@@ -399,11 +399,35 @@ frame is in the next section, "The acquire finding".
 **How much of s₀ is frame-set variation (added on 2026-10-16, from the
 maintainer's ruling of that day on #123; the computation and its tables are
 [there](https://github.com/webarkit/webarkit/issues/123#issuecomment-6210881957)).**
-Each run's x is decomposed on the media times common to all eight runs, as
-`compareExports` reads common footage: **310** media times, against each
-run's 344 to 361 posed, so each run dropped 0.099 to 0.141 of its own against
-that set. `cornerJitter` over `countedLoopFrames`, imported unchanged, as in
-item 3.
+- **Where it is re-run from:**
+  [`2026-10-16-frame-set-overlap.mjs`](./2026-10-16-frame-set-overlap.mjs),
+  beside the exports it reads, through `examples/js/bench-metrics.mjs`
+  imported unchanged (`cornerJitter`, `countedLoopFrames`, `mediaKey`). Its
+  header states the method in full, so that it can be redone from the
+  committed exports without it. It refuses if any run's whole-set x does
+  not recompute to the recorded value.
+- **The model.** Each run's x is read twice: over its whole counted set
+  (loops 1 to 4), which is the recorded value, and over the media times
+  common to all eight runs, matched as `compareExports` matches common
+  footage (`mediaKey`, so a media time counts once however many loops
+  processed it). The difference, whole minus common, is the run's frame-set
+  part: what its x owes to the frames it processed and the others did not.
+  The standard deviation of each of the three over the eight runs, and the
+  shares of s₀² (the two squares over s₀², the remainder the cross term).
+- **Over which runs:** all eight, as one group, against the **310** media
+  times common to all of them, each run having posed 344 to 361, so each
+  dropped 0.099 to 0.141 of its own against that set. The 28 pairwise
+  readings of the same decomposition (common media times per pair, overlap,
+  and the pair's whole, common and frame-set differences), and rounds 1
+  and 2's pairs, are in #123's comment.
+- **The scaled resample, for comparison only.** M3's record measured that
+  keeping each processed frame with probability 0.9 moves one run's
+  `jitterPx` by a standard deviation of 0.0013 to 0.0015 px. It is scaled as
+  the square root of the dropped fraction, `s(p) = 0.0014 × √(p ÷ 0.1)`,
+  the band from the two ends, and the prediction for the group is the root
+  mean square of `s(p)` over the eight dropped fractions. It assumes random
+  drops at the run length M3 measured; the direct decomposition needs no
+  model.
 - **On the common 310:** x reads 0.138629, 0.137194, 0.137774, 0.138569,
   0.137461, 0.137499, 0.138355 and 0.138676 px, with a standard deviation of
   **0.0006026 px**, 0.48 s₀, on 7 degrees of freedom.
@@ -413,8 +437,8 @@ item 3.
   **0.0011528 px**, 0.91 s₀. All eight are positive: the media times some run
   skipped are, on average, more jittery than the common ones, so the part is
   a selection as well as a resample.
-- **The shares of s₀²:** the frame-set part 82.7%, the same-footage spread
-  22.6%, the cross term −5.3% (correlation −0.06). So most of s₀ is which
+- **The shares of s₀²:** the frame-set part 82.8%, the same-footage spread
+  22.6%, the cross term −5.4% (correlation −0.06). So most of s₀ is which
   frames each run processed, and the spread of the eight on identical frames
   is about half of s₀.
 - **Against the scaled resample:** M3's figure (a 10% resample moves one run's
