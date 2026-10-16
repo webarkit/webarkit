@@ -396,6 +396,38 @@ frame is in the next section, "The acquire finding".
 - #123 names this block as what decides its question; the reading is the
   maintainer's.
 
+**How much of s₀ is frame-set variation (added on 2026-10-16, from the
+maintainer's ruling of that day on #123; the computation and its tables are
+[there](https://github.com/webarkit/webarkit/issues/123#issuecomment-6210881957)).**
+Each run's x is decomposed on the media times common to all eight runs, as
+`compareExports` reads common footage: **310** media times, against each
+run's 344 to 361 posed, so each run dropped 0.099 to 0.141 of its own against
+that set. `cornerJitter` over `countedLoopFrames`, imported unchanged, as in
+item 3.
+- **On the common 310:** x reads 0.138629, 0.137194, 0.137774, 0.138569,
+  0.137461, 0.137499, 0.138355 and 0.138676 px, with a standard deviation of
+  **0.0006026 px**, 0.48 s₀, on 7 degrees of freedom.
+- **The frame-set part,** each run's x over its whole counted set minus its
+  x on the common 310: +0.002896, +0.000899, +0.002495, +0.001501,
+  +0.003093, +0.004784, +0.002423 and +0.002848 px, standard deviation
+  **0.0011528 px**, 0.91 s₀. All eight are positive: the media times some run
+  skipped are, on average, more jittery than the common ones, so the part is
+  a selection as well as a resample.
+- **The shares of s₀²:** the frame-set part 82.7%, the same-footage spread
+  22.6%, the cross term −5.3% (correlation −0.06). So most of s₀ is which
+  frames each run processed, and the spread of the eight on identical frames
+  is about half of s₀.
+- **Against the scaled resample:** M3's figure (a 10% resample moves one run's
+  `jitterPx` by 0.0013 to 0.0015 px), scaled as √(dropped fraction), predicts
+  a frame-set standard deviation of 0.00158 px (0.00147 to 0.00170) for these
+  dropped fractions: of the measured part's size, and above it.
+- **What this does and does not change.** s₀, the arm test and every reading
+  above are registered with the frame-set variation in, and stay so: the
+  clause is not reinterpreted here. The number says what s₀ is made of, not
+  what causes the remainder; a residual does not identify its cause, and the
+  device's determinism on identical frames is unverified (the determinism
+  result in #123 is the desktop's).
+
 ## The acquire finding (added on 2026-10-14, after the maintainer's review)
 
 The maintainer ruled that the cost of a frame, recorded above with no verdict,
