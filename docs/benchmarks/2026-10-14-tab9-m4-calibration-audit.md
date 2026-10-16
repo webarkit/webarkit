@@ -399,9 +399,9 @@ The errors are the reviewer's, found by the implementer.
   stated that "#104's treatment refuses exactly those fits", the 4-to-6-inlier
   detections. #104's treatment refuses by `d_scale` and `d_orth`; the probe's
   filter refuses by inlier count. Whether the two coincide was the probe's
-  item 3 to measure, and they do not coincide: as gates at the thresholds that
-  work they are near-equivalent, and frame by frame on the 4-versus-5 split
-  they disagree (the probe's item 3, and the maintainer's ruling there that
+  item 3 to measure, and they do not coincide: as filters at the values under
+  which the seed sensitivity collapses they are near-equivalent, and frame by
+  frame on the 4-versus-5 split they disagree (the probe's item 3, and the maintainer's ruling there that
   the brief's item 3 asked the wrong question).
 - **The brief contradicted Stage 1's own requirement, one day after the
   protocol was written, by its author.** Stage 1 of the protocol produces "the
