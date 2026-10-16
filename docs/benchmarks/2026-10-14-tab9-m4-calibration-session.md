@@ -406,6 +406,13 @@ maintainer's ruling of that day on #123; the computation and its tables are
   header states the method in full, so that it can be redone from the
   committed exports without it. It refuses if any run's whole-set x does
   not recompute to the recorded value.
+  - **A known limitation, as the stall check's:** the script is covered by
+    no test and by no format check (`docs/` is outside both), so a change
+    in a dependency or in the exports' shape could break it without notice
+    while the figures it produced stay in this record; and the tool has no
+    tests, so a defect in it would produce a wrong result reproducibly. Its
+    one guard is the recompute check above, which catches a changed
+    `cornerJitter`, not a defect of its own.
 - **The model.** Each run's x is read twice: over its whole counted set
   (loops 1 to 4), which is the recorded value, and over the media times
   common to all eight runs, matched as `compareExports` matches common
