@@ -192,27 +192,51 @@ on the wall clip; the 66-inlier detections that start the wall clip's 32
 lasting locks sit at 1.41 to 1.56 px (section 2.4). More inliers under a 4 px
 threshold means more of the match noise in the fit. The dof form corrects for
 this with √(1 − 4/n): 0.447 at n = 5, 0.707 at n = 8, 0.866 at n = 16, 0.969
-at n = 66, relative to its asymptote. Like for like:
+at n = 66, relative to its asymptote. The correction's shape can be read only
+on right fits, and the right fits this record names are the detections that
+start the lasting locks (section 2.4). On those, like for like, median rms
+against the correction's ratio:
 
-| from, to | observed median rms | the dof correction |
+| wall clip, from, to | observed median rms | the dof correction |
 |---|---|---|
-| 5 inliers to 16 and up | × 1.46 (a 46% rise) | × 1.94 (a 94% rise) |
-| 16 and up to the 66-inlier births | × 1.32 to 1.46 | × 1.12 |
+| 8-inlier births (0.414 px) to 9-inlier births (0.569 px) | × 1.37 | × 1.05 |
+| 8-inlier births (0.414 px) to 66-inlier births (1.416 px) | × 3.42 | × 1.37 |
 
-The correction is mis-shaped in both directions: too steep between 5 and 16,
-too flat between 16 and 66. So σ̂ does not order fits by their count. Its
-medians run 1.63 at 5 inliers, 0.59 at 7 to 8, 1.55 at 9 to 15, 1.09 at 16
-and up, and the 66-inlier births' 1.45 to 1.60 sits inside the 5-inlier
-frames' span, p10 0.94 to max 2.65. The brief for this addendum put the comparison as a 45%
-rise against "the dof correction's 13% at n = 16", a threefold
-under-correction; that sets a change between two groups beside the
+The rise of all detections' medians from 5 inliers to 16 and up, × 1.46
+against the correction's × 1.94, reads nothing about the correction: its low
+end is the 5-inlier detections, which are wrong fits on this record (they
+start one-frame locks, the probe's item 7), and what it says is only that a
+wrong 5-point fit carries a residual as small as a right 8-point fit's. No
+5-inlier frame has an rms below the 8-inlier births' median, and all 72 have
+one below their maximum of 1.315 px.
+
+So the correction is too flat in n: the right fits' residual rises faster
+with the inlier count than √(1 − 4/n) says, by a factor of 2.5 between 8 and
+66 inliers. σ̂ then does not order fits by their correctness. On the births
+it runs 0.586 at 8 inliers (median), 0.763 at 9, 1.570 at 11 and 1.461 at
+66; on all detections 1.63 at 5, 0.59 at 7 to 8, 1.55 at 9 to 15, 1.09 at 16
+and up. **One cause, two faces,** both in section 3's tables. At c = 1.5 the
+dof form refuses 38 frames of 40 to 66 inliers that no other test touches,
+right fits by every other reading whose σ̂ the flat correction leaves above
+1.5. And it passes 21 of the 72 five-inlier frames, rms 0.419 to 0.629 px
+and σ̂ 0.938 to 1.406, all 21 refused by the count and by `d_scale`, 3 of
+them by `d_orth` too; it could refuse them only at c below 0.938, where it
+refuses all 32 sixty-six-inlier births (σ̂ 1.451 and up), the 11-inlier one
+and part of the 8-inlier ones, 37 to 44 of the 64 births at c = 1 and 0.75
+(section 2.3). No c orders the many-inlier right fits below the few-inlier
+wrong fits. The plain form, which corrects nothing, shows the same thing
+starkly: it refuses all 32 sixty-six-inlier births at c ≤ 1.25 (their rms
+1.41 to 1.56 px) while passing every 4-inlier frame.
+
+Two corrections to how this was first put. The brief for this addendum
+compared a 45% rise with "the dof correction's 13% at n = 16", a threefold
+under-correction: that sets a change between two groups beside the
 correction's distance from its asymptote at one n, and the like-for-like
-figures are the table's. What the brief's conclusion rests on holds without
-it: the plain form, which corrects nothing, refuses all 32 of the wall clip's
-66-inlier births at c ≤ 1.25 (their rms 1.41 to 1.56 px) while passing every
-4-inlier frame; the dof form, which corrects, still refuses 5 of those 32 at
-c = 1.5 while passing 18 of the 72 five-inlier frames, frames the count and
-`d_scale` both refuse.
+figures are the table's. And this file's first commit (`c3a5a1c`) called the
+correction mis-shaped in both directions, too steep between 5 and 16 and too
+flat above: the first direction was read off medians whose low end is wrong
+fits, it does not hold on the right fits, and it is withdrawn; the passes it
+was to explain follow from the one direction that does hold.
 
 **Separation, where the probe put the residual seed sensitivity,** 5 to 7
 inliers against 8 or more, as the probability that a low frame's value
@@ -358,8 +382,9 @@ the dof residual, by inliers:
 
 - Wall clip, Rdof ≤ 1.5: refused by none 183, by one 62, by two 56, by three
   19, by all four 129. All 71 four-inlier frames by all four; of the 72
-  five-inlier frames 51 by all four, 3 by three, 18 by two; the 16-and-up
-  frames 183 by none, 38 by one, 1 by two. The 62 refused by one test alone:
+  five-inlier frames 51 by all four, 3 by three, 18 by two, so the residual
+  passes 21 of them; the 16-and-up frames 183 by none, 38 by one, 1 by two.
+  The 62 refused by one test alone:
   **40 by the residual** (38 with 16 or more inliers, σ̂ 1.504 to 1.688, and 2
   with 8 to 15, σ̂ 2.065) and 22 by `d_scale`. The 56 refused by two: 33 by
   `d_scale` and `d_orth`, 18 by the count and `d_scale`, 3 by `d_orth` and the
@@ -398,7 +423,7 @@ addendum changes nothing there: on the wall clip A ≥ 8's refusal set is a
 subset of S ≤ 0.05's and of E's, and on the table clip A ≥ 8 and E ≤ 0.05
 agree on 247 of 253 frames and on 27 of 27 births. The residual is a third,
 partly different test. On the wall clip it refuses 40 frames no other test
-touches, passes 18 five-inlier frames that the count and `d_scale` refuse, and its refused
+touches, passes 21 five-inlier frames that the count and `d_scale` refuse, and its refused
 births overlap the signal's on 1 to 4 of its 9. Its one point of full
 agreement with the others, the 4-inlier frames, is its count rule at n = 4,
 not a residual reading. Candidate 2 is not a test at a detection.
@@ -420,17 +445,28 @@ measures the detection gate only.
 ## 5. Open, registered and not run
 
 **The 40 frames the residual alone refuses on the wall clip.** At c = 1.5 the
-dof form refuses 38 detections of 16 or more inliers with σ̂ between 1.504 and
-1.688, and 2 of 8 to 15 inliers at 2.065, that no other test touches. Given
-section 2.2, where the right fits' residual rises with the inlier count faster
-than the correction between 16 and 66, these are plausibly the uncorrected
-trend in n rather than poor fits: the 16-and-up group's σ̂ p90 is 1.543 and
-the 66-inlier births' runs to 1.604. The test that would decide it: regress
-σ̂ on n over the right fits, the detections of 8 or more inliers that start
-lasting locks, and ask whether the 40 sit above that trend or on it. It is
-not run here, since the brief did not ask for it and its answer changes no
-figure in this file; it is the measurement that would say whether a residual
-limit at the gate has any frame left to refuse once its n-trend is modelled.
+dof form refuses 40 frames that no other test touches. Their split, so that
+whoever runs the test below knows what it covers: 38 have 16 or more inliers,
+σ̂ 1.504 to 1.688; 2 have 9 inliers, the same frame at 3.452 s of media time
+in seeds 2 and 3 (rms 1.539 px, σ̂ 2.065, |`d_scale`| 0.032, |`d_orth`|
+0.049), and start no lasting lock. The hypothesis for the 38, from section
+2.2: the right fits' residual rises with the inlier count faster than the
+correction, so these are plausibly the flat correction's tail, right fits
+with many inliers whose σ̂ it leaves high, rather than poor fits. The 2
+nine-inlier frames sit outside that hypothesis either way. One observation
+bears on it and is recorded here, not read as a result: by exact count, the
+38 are 30 of the 30 detections with 42 inliers, 2 of the 2 with 40, 1 of the
+32 with 51 and 5 of the 32 with 66, and σ̂'s median by count runs 1.66 at 40
+inliers, 1.54 at 42, 1.44 at 51, 1.46 at 66, 0.99 at 73, 1.09 at 75 and
+0.97 at 78. Within the 16-and-up group it is not monotone in n, so the tail
+may be one frame's own match noise, the 42-inlier detection the clip's start
+produces on every seed and loop, rather than a trend in n. The test that
+would decide it: regress σ̂ on n over the right fits, the detections of 8 or
+more inliers that start lasting locks, and ask whether the 40 sit above that
+trend or on it, and whether the 42-inlier frame does. It is not run here,
+since the brief did not ask for it and its answer changes no figure in this
+file; it is the measurement that would say whether a residual limit at the
+gate has any frame left to refuse once its n-trend is modelled.
 
 ## What this addendum does not decide
 

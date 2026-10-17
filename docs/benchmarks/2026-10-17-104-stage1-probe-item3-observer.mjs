@@ -26,17 +26,23 @@
  */
 
 /**
- * The shadow replay's observer for item 3 of #104's Stage 1 probe
- * (2026-10-17-104-stage1-probe-item3.md). The probe's exports carry no
- * residual for a detection: a DETECT frame's `tracking.rmsError` is the failed
- * tracking step's, and `frameRecord` exports neither the fit's `H` nor its
- * correspondences. This file reads that one quantity without touching the
- * instrument. Loaded with `--import` into an otherwise unmodified run of
- * `scripts/replay-clips.mjs`, it wraps the backend's `estimateHomography` on
- * its prototype, calls the original, records what it returned, and returns
- * that result untouched. It draws no `Math.random`, so the shadow's exports
- * must equal the recorded run's frame for frame; the harness
- * (2026-10-17-104-stage1-probe-item3.mjs) checks that they do.
+ * Not part of the shipped path. This file patches the backend at runtime, and
+ * nothing in the repository imports it: no package, no example, no script, no
+ * test. It is loaded only by the shadow replay command named in
+ * 2026-10-17-104-stage1-probe-item3.md and below, as a `--import` preload on
+ * an otherwise unmodified run of `scripts/replay-clips.mjs`. What it does: it
+ * wraps the backend's `estimateHomography` on the class prototype, calls the
+ * original, records what it returned, and returns that result unchanged. It
+ * draws no random number, so the run it rides on is the probe's run to the
+ * last frame, and the harness (2026-10-17-104-stage1-probe-item3.mjs) checks
+ * that it is.
+ *
+ * Why it exists: the shadow replay's observer for item 3 of #104's Stage 1
+ * probe. The probe's exports carry no residual for a detection: a DETECT
+ * frame's `tracking.rmsError` is the failed tracking step's, and
+ * `frameRecord` exports neither the fit's `H` nor its correspondences. This
+ * file reads that one quantity without touching the instrument, and the
+ * shadow's exports must equal the recorded run's frame for frame.
  *
  *     node --import <absolute path or file URL of this file> \
  *         <worktree>/scripts/replay-clips.mjs --external 70 --seed <n> --packages bundle --out <dir>/seed-<n>
