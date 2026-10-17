@@ -3,7 +3,7 @@
 Status: drafted 2026-10-15, after M4 step 3 (#105); revised 2026-10-16 with that day's
 findings (#123's seed test and frame-set decomposition, #137's gate and RNG findings, and
 #139's ratification of the box's entries), and 2026-10-17 with the comparison rule (Stage
-2) and the two rules on checks. Maintained, not written once: a finding that
+2) and the three rules on checks. Maintained, not written once: a finding that
 settles after the draft is folded in, dated, rather than left for an amendment.
 
 Everything else in `docs/benchmarks/` governs a measurement: provenance, served-file
@@ -298,7 +298,7 @@ Two rules about the record's own numbers, which is where the fifth one did its d
   reads as a comparison against the closed form. When the two readings differ, the sentence
   is wrong, whichever one the author had in mind.
 
-Two rules on checks, added 2026-10-17:
+Three rules on checks, added 2026-10-17:
 
 - **A figure that gates a decision gets one independent attempt at refutation before it
   is recorded,** and what the attempt found is recorded beside it, including when it found
