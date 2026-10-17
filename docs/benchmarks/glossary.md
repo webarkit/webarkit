@@ -263,15 +263,28 @@ counts are transitions between consecutive frames, and every one of them
 is held to the exports by
 [`2026-10-17-glossary-state-diagram-check.mjs`](./2026-10-17-glossary-state-diagram-check.mjs),
 which exits non-zero before printing any figure when a count differs, and
-whose `--self-test` shows it failing on one flipped frame. The sequence
-rule is read only on the exports that hold their whole run
+whose `--self-test` shows it failing on three perturbations: a flipped
+frame in each arm, and a changed `detectionUse` that moves no count. The
+sequence rule is read only on the exports that hold their whole run
 (`frames.length` equal to `ticks`): the 13 sync exports of 2026-10-01 and
 later, and all 12 worker exports; the 32 older sync exports hold a 300-frame
 window that may start after the run acquired, so they enter only the counts
-that do not depend on it. Reasons in the tables are `reason` on a `LOST`
+that do not depend on it. On those runs a transition is counted three ways:
+**before** the run's first `TRACK` frame, **into** that frame, which is the
+run's first acquisition, or **after** it, into a later frame, which for a
+transition into `TRACK` is a lock set again once the run had acquired.
+Reasons in the tables are `reason` on a `LOST`
 frame and `trackLoss` on the frame whose step dropped the lock
 (`TrackFailure` in `tracker.ts`; `TrackLoss` in
-`src/tracking/track_frame.ts`). The spacing directive on each block is
+`src/tracking/track_frame.ts`). Corrected on 2026-10-17 after Qodo's review
+of [#146](https://github.com/webarkit/webarkit/pull/146) (its two findings,
+on `eb34b45`): the tables had counted the transition into a run's first
+`TRACK` frame among those after it, so S5's 192 and W11's 161 merged a run's
+first acquisition with a lock set again after it, the distinction `LOST`
+conflates, never yet acquired against lock lost, merged in the citation
+tables of the entry that introduces it; and W6 stated a `detectionUse` value
+the check did not count. Both counts are now split and the value is
+counted, each held by the check. The spacing directive on each block is
 `flowchart.nodeSpacing` and `flowchart.rankSpacing`: in mermaid 11.4.1 the
 `state` config's keys of the same names are not read by the
 `stateDiagram-v2` layout, measured on these two blocks.
@@ -310,7 +323,7 @@ Sync arm, 45 exports, 20,476 frames; the sequence rule read on 13 whole runs:
 | S2 | `process`: "A detection starts a lock with no velocity: `previous = null`" | frame 0 is `DETECT` in 9 of the 13 whole runs: the six static runs, the two table runs, the pre-flight; then frame 1 is `TRACK` in the six static runs |
 | S3 | `process`, as S1, on a frame that still has no lock | `LOST` → `LOST` before the run's first `TRACK` frame: 23 in the 13 whole runs; the never-yet-acquired `LOST` frames carry `too-few-matches` 38 times and `no-consensus` 21 times |
 | S4 | `process`, as S2 | `LOST` → `DETECT` before the first `TRACK` frame: 36 in the whole runs |
-| S5 | `process`: with a lock, `step` runs; it holds, `tracked` returns `TRACK`, `trackLoss` null | `DETECT` → `TRACK`: 522 over the 45 exports, 192 in the whole runs (after the first `TRACK` frame by definition) |
+| S5 | `process`: with a lock, `step` runs; it holds, `tracked` returns `TRACK`, `trackLoss` null | `DETECT` → `TRACK`: 522 over the 45 exports; in the 13 whole runs, 13 into the run's first `TRACK` frame, its first acquisition, and 179 into a later one, a lock set again after it. One edge for both, since `DETECT` is one node: a `DETECT` frame is neither of `LOST`'s two conditions |
 | S6 | `process`: `step` fails, "The lock goes, and this same frame gets whatever detection there is below"; `detect` succeeds, the lock is set again, the step's `trackLoss` is carried on the `DETECT` result | `DETECT` → `DETECT`: 2,085 over the 45 exports (114 before the first `TRACK` frame and 746 after, in the whole runs); every frame that follows a `DETECT` or `TRACK` frame and is not `TRACK` carries a `trackLoss`, 0 exceptions |
 | S7 | as S6, `detect` fails: `LOST` with the detection's `reason` and the step's `trackLoss` | `DETECT` → `LOST` before the first `TRACK` frame: 32 in the whole runs |
 | S8 | as S7 | `DETECT` → `LOST` after the first `TRACK` frame: 165 in the whole runs; 452 over the 45 exports, both phases |
@@ -351,11 +364,11 @@ never filtered:
 | W2 | as W1, on every later frame without a detection | `LOST` → `LOST` `no-detection` with `detectionInFlight` true, before the first `TRACK` frame: 260. Round 0's four static runs: `detectionInFlight` reads false then true on frames 0 to 5, 0 to 5, 0 to 6, 0 to 4 (`FTTTTT`, `FTTTTT`, `FTTTTTT`, `FTTTT`) |
 | W3 | `consume`: `d.ok`, lock set from `d.H`, `step` on this frame fails: `LOST`, `reason: "unconfirmed"`, the step's `trackLoss`, `detectionUse: "consumed"`, `needsDetection` true | `LOST` → `LOST` `unconfirmed`, `consumed`, with `trackLoss`, before the first `TRACK` frame: 111. `detectionInFlight` is false on every one of the 1,276 consuming frames: the detection was handed in, not in flight; the refusing frame asks again, as the policy's item 2 says |
 | W4 | `consume`: `!d.ok`, `detected(d)`: `LOST` with the worker's detection's `reason`, `detectionUse: "consumed"` | `LOST` → `LOST` `too-few-matches` or `no-consensus`, `consumed`, before the first `TRACK` frame: 32 and 17 |
-| W5 | `consume`: `d.ok`, lock set, `step` holds, `tracked` with `detectionUse: "consumed"` and `detectionLatencyMs` the frame's timestamp minus the detection's | the first `TRACK` frame of each of the 12 runs is `consumed` and follows a `LOST` frame. Round 0 (`2026-10-14-tab9-m4-calibration-worker-static-1` to `-4`): frame 6, 6, 7, 5; `detectedAt.framesAgo` 6, 6, 7, 5; `detectionLatencyMs` 316.0, 330.1, 339.6, 280.5. M3's static runs: frame 6 and 5, `framesAgo` 6 and 5, 301.5 and 275.5 ms. M3's hand-held runs: frames 34, 41, 83, 79, 84, 76, `framesAgo` 2 or 3, 134.6 to 167.6 ms |
-| W6 | `process`: lock held, `step` holds, `tracked`; `detectionUse` `"ignored"` if one was handed in, else `"none"` | `TRACK` → `TRACK`: 8,833, `detectionUse` `none` on every one (`ignored` 0) |
+| W5 | `consume`: `d.ok`, lock set, `step` holds, `tracked` with `detectionUse: "consumed"` and `detectionLatencyMs` the frame's timestamp minus the detection's | `LOST` → `TRACK` into the run's first `TRACK` frame: 12, one per run, each `consumed` and following a `LOST` frame. Round 0 (`2026-10-14-tab9-m4-calibration-worker-static-1` to `-4`): frame 6, 6, 7, 5; `detectedAt.framesAgo` 6, 6, 7, 5; `detectionLatencyMs` 316.0, 330.1, 339.6, 280.5. M3's static runs: frame 6 and 5, `framesAgo` 6 and 5, 301.5 and 275.5 ms. M3's hand-held runs: frames 34, 41, 83, 79, 84, 76, `framesAgo` 2 or 3, 134.6 to 167.6 ms |
+| W6 | `process`: lock held, `step` holds, `tracked`; `detectionUse` `"ignored"` if one was handed in, else `"none"` | `TRACK` → `TRACK`: 8,833; `detectionUse` on the frame entered, counted: `none` 8,833, no other value (`ignored` 0) |
 | W7 | `process`: `step` fails, `trackLoss` set, no detection handed in, `externalDetection`: `LOST`, `reason: "no-detection"`, `needsDetection: true` | `TRACK` → `LOST`: 155, every one `no-detection` with a `trackLoss` (`too-few-patches` 68, `poor-fit` 43, `fit-failed` 39, `too-many-outliers` 5), `detectionUse` `none`, `detectionInFlight` false, `needsDetection` true, 155 of 155 |
 | W8, W9, W10 | as W2, W3, W4 | after the first `TRACK` frame: `no-detection` in flight 1,409; `unconfirmed` 744; `too-few-matches` 135 and `no-consensus` 76 |
-| W11 | as W5 | `LOST` → `TRACK` after the first `TRACK` frame: 161, of which 12 are the runs' first acquisitions (W5) and 149 re-acquisitions |
+| W11 | as W5 | `LOST` → `TRACK` into a `TRACK` frame after the run's first: 149, a lock set again once the run had acquired. The 12 transitions into the runs' first `TRACK` frames are W5's, counted apart |
 | every consumption | `consume` is reached only once the frame holds no lock, whether it began without one or dropped it in this frame's `step` (the two-step case, not drawn) | 1,276 `consumed` frames, every one preceded by a `LOST` frame; outcomes `TRACK` 161, `unconfirmed` 855, `too-few-matches` 167, `no-consensus` 93; `framesAgo` 1 to 7; `detectionLatencyMs` 65.6 to 339.6 |
 
 **What the diagrams do not label.** No edge is a lock birth. The probe
