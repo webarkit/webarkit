@@ -80,7 +80,8 @@ probe's run with one quantity read off it, and that is checkable:
   produce a wrong result reproducibly. Their guards are the three checks
   above, which catch a changed `cornerJitter`, a wrap that did not take, a run
   that differs and a call that matches no frame, not a defect in the residual
-  arithmetic itself.
+  arithmetic itself. The harness's checks are fatal, so no figure is printed
+  after a failed check.
 
 The residual a detection gate would read is RANSAC's inlier RMS under its 4 px
 threshold (`DEFAULT_RANSAC_THRESHOLD`), on keypoint matches. #92 was written

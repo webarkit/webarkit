@@ -49,13 +49,15 @@
  * dependency or in the exports' shape could break it without notice while the
  * figures it produced stay in the record; and the tool has no tests, so a
  * defect in it would produce a wrong result reproducibly. Its guards are the
- * checks in step 1 below, which catch a changed `cornerJitter`, a shadow that
- * differs from the recorded run and a call that matches no frame, not a
- * defect of its own.
+ * checks in step 1 below, and they are fatal: a failed check exits non-zero
+ * naming the run or the frame, and no figure is printed after it. They catch
+ * a changed `cornerJitter`, a shadow that differs from the recorded run, a
+ * posed detection that matches no observed call and duplicate calls whose
+ * residuals disagree, not a defect of its own.
  *
  * The method, so that it can be redone without this file:
  *
- * 1. Per export, three checks that can fail: `cornerJitter` over the counted
+ * 1. Per export, four checks that can fail, every one fatal: `cornerJitter` over the counted
  *    frames (`countedLoopFrames` with the export's `loops` and
  *    `clipDurationS`) must equal the recorded `runSummary.jitterPx` exactly;
  *    the shadow export must equal the recorded one frame for frame on
@@ -63,9 +65,13 @@
  *    `timestampMs` and `corners`, with the same `runSummary.jitterPx`; and
  *    every posed DETECT frame must match an observed call, by projecting the
  *    call's `H` onto `targetCorners` and comparing to the frame's `corners`
- *    exactly, with the same inlier and match counts. Duplicate matches (the
- *    other arms detect the same frame under the same seed) must carry the
- *    same `rms`.
+ *    exactly, with the same inlier and match counts; and duplicate matches
+ *    (the other arms detect the same frame under the same seed) must carry
+ *    the same `rms`. A failure exits non-zero naming the run or the frame
+ *    before any figure is computed or printed. A posed detection with no
+ *    observed residual is an error, never a pass and never a refusal: a
+ *    count of refusals cannot be reported over frames the instrument failed
+ *    to observe.
  * 2. The filters, each `cornerJitter`'s own `include`; the metric is never
  *    reimplemented, and a non-DETECT frame is always kept. The probe's: A(N),
  *    refuse a DETECT frame with fewer than N inliers; S, O, E at τ, refuse a
@@ -229,7 +235,134 @@ for (const c of CS) FILTERS.set(`Rplain<=${c}`, (x) => x.rms <= c);
 for (const c of CS) FILTERS.set(`Rdof<=${c}`, (x) => x.inliers > 4 && sigmaOf(x) <= c);
 for (const c of CS) FILTERS.set(`Rlin<=${c}`, (x) => x.rms <= (c * x.inliers) / 8);
 
-// ---- per export -------------------------------------------------------------
+// ---- phase 1: load every export and run the four checks; any failure is fatal ----
+// Nothing prints a figure until every check on every export has passed: a failed
+// check exits non-zero naming the run or the frame, and the report is never reached.
+const fatal = (message) => {
+    console.error(`FATAL: ${message}`);
+    process.exit(1);
+};
+const EQUAL_FIELDS = ["state", "ok", "numInliers", "numMatches", "mediaTimeSeconds", "timestampMs"];
+const loaded = {};
+for (const clip of CLIPS) {
+    loaded[clip] = {};
+    for (const seed of SEEDS) {
+        const where = `${clip} seed ${seed}`;
+        const e = JSON.parse(
+            readFileSync(join(REPLAY, `seed-${seed}`, `replay-${clip}-${ARM}.json`), "utf8"),
+        );
+        const sh = JSON.parse(
+            readFileSync(join(SHADOW, `seed-${seed}`, `replay-${clip}-${ARM}.json`), "utf8"),
+        );
+        const calls = JSON.parse(
+            readFileSync(join(SHADOW, `seed-${seed}`, "estimateHomography-calls.json"), "utf8"),
+        );
+
+        // check 1: the shadow equals the recorded run, frame for frame
+        if (e.frames.length !== sh.frames.length) {
+            fatal(
+                `${where}: the shadow export has ${sh.frames.length} frames, the recorded one ${e.frames.length}`,
+            );
+        }
+        if (e.runSummary.jitterPx !== sh.runSummary.jitterPx) {
+            fatal(
+                `${where}: the shadow export's runSummary.jitterPx is ${sh.runSummary.jitterPx}, the recorded one's ${e.runSummary.jitterPx}`,
+            );
+        }
+        for (let i = 0; i < e.frames.length; i++) {
+            const a = e.frames[i];
+            const b = sh.frames[i];
+            for (const k of EQUAL_FIELDS) {
+                if (a[k] !== b[k]) {
+                    fatal(
+                        `${where}: frame ${i} (media time ${a.mediaTimeSeconds} s) differs between the shadow and the recorded export on ${k}: ${JSON.stringify(b[k])} against ${JSON.stringify(a[k])}`,
+                    );
+                }
+            }
+            if (JSON.stringify(a.corners) !== JSON.stringify(b.corners)) {
+                fatal(
+                    `${where}: frame ${i} (media time ${a.mediaTimeSeconds} s) differs between the shadow and the recorded export on corners`,
+                );
+            }
+        }
+
+        const D = e.clipDurationS;
+        const all = e.frames;
+        const K = intrinsics(e.processingResolution.width, e.processingResolution.height);
+        const counted = countedLoopFrames(all, { clipDurationS: D, ...e.loops });
+        const countedSet = new Set(counted);
+
+        // check 2: the recorded jitterPx reproduces through the imported cornerJitter
+        const base = cornerJitter(counted, { clipDurationS: D });
+        if (base.jitterPx !== e.runSummary.jitterPx) {
+            fatal(
+                `${where}: recorded runSummary.jitterPx ${e.runSummary.jitterPx} not reproduced; cornerJitter gives ${base.jitterPx}`,
+            );
+        }
+
+        // the observed calls, keyed by the corners their H projects
+        const byKey = new Map();
+        for (const c of calls) {
+            if (!c.ok) continue;
+            const k = JSON.stringify(reprojectCorners(c.H, TP));
+            if (!byKey.has(k)) byKey.set(k, []);
+            byKey.get(k).push(c);
+        }
+
+        // checks 3 and 4, per posed DETECT frame of the whole export: it matches an observed
+        // call, and duplicate matches carry one residual. A frame with no observed residual is
+        // an error, never a pass and never a refusal: a count of refusals cannot be reported
+        // over frames the instrument failed to observe. Then its residual, signal, counts, and
+        // the fate of the lock it starts (TRACK frames that follow it in processed order, and
+        // what ends them).
+        const unwrapped = unwrapMediaTimes(counted, D);
+        const loopOf = new Map(counted.map((f, i) => [f, Math.floor(unwrapped[i] / D)]));
+        const data = new Map();
+        let posedDetect = 0;
+        for (let i = 0; i < all.length; i++) {
+            const f = all[i];
+            if (f.state !== "DETECT" || !f.corners) continue;
+            posedDetect++;
+            const frame = `${where}: posed DETECT frame ${i} (media time ${f.mediaTimeSeconds} s, ${f.numInliers} inliers of ${f.numMatches} matches)`;
+            const cs = (byKey.get(JSON.stringify(f.corners)) ?? []).filter(
+                (c) => c.numInliers === f.numInliers && c.numMatches === f.numMatches,
+            );
+            if (cs.length === 0) fatal(`${frame} matches no observed estimateHomography call`);
+            const rmsValues = [...new Set(cs.map((c) => c.rms))];
+            if (rmsValues.length > 1) {
+                fatal(
+                    `${frame} matches ${cs.length} observed calls whose residuals disagree: ${rmsValues.join(", ")}`,
+                );
+            }
+            let j = i + 1;
+            let nextTrackCounted = 0;
+            while (j < all.length && all[j].state === "TRACK") {
+                if (countedSet.has(all[j])) nextTrackCounted++;
+                j++;
+            }
+            const H = homographyFromCorners(f.corners);
+            const cond = H ? conditioning(H, K) : { dScale: NaN, dOrth: NaN };
+            data.set(f, {
+                seed,
+                inliers: f.numInliers,
+                matches: f.numMatches,
+                rms: cs[0].rms,
+                maxErr: cs[0].maxErr,
+                ...cond,
+                loop: loopOf.get(f) ?? null,
+                nextTrack: j - i - 1,
+                nextTrackCounted,
+                afterState: j < all.length ? all[j].state : "end",
+                prevState: i > 0 ? all[i - 1].state : "none",
+                mediaTime: f.mediaTimeSeconds,
+                counted: countedSet.has(f),
+            });
+        }
+        loaded[clip][seed] = { e, all, D, counted, countedSet, base, data, posedDetect };
+    }
+}
+
+// ---- phase 2: the figures, from exports that passed every check ------------------
 const results = {};
 for (const clip of CLIPS) {
     const C = {
@@ -237,7 +370,14 @@ for (const clip of CLIPS) {
         births: [],
         oneFrameRuns: 0,
         seeds: {},
-        checks: { reproduced: 0, shadowEqual: 0, posedDetect: 0, unmatched: 0, dupInconsistent: 0 },
+        // reaching this phase means every check passed on every seed; the counts are reported as such
+        checks: {
+            reproduced: SEEDS.length,
+            shadowEqual: SEEDS.length,
+            posedDetect: 0,
+            unmatched: 0,
+            dupInconsistent: 0,
+        },
         pred: {
             det: 0,
             posed: 0,
@@ -250,104 +390,9 @@ for (const clip of CLIPS) {
     };
     results[clip] = C;
     for (const seed of SEEDS) {
-        const e = JSON.parse(
-            readFileSync(join(REPLAY, `seed-${seed}`, `replay-${clip}-${ARM}.json`), "utf8"),
-        );
-        const sh = JSON.parse(
-            readFileSync(join(SHADOW, `seed-${seed}`, `replay-${clip}-${ARM}.json`), "utf8"),
-        );
-        const calls = JSON.parse(
-            readFileSync(join(SHADOW, `seed-${seed}`, "estimateHomography-calls.json"), "utf8"),
-        );
-
-        // check: the shadow equals the recorded run, frame for frame
-        let equal =
-            e.frames.length === sh.frames.length &&
-            e.runSummary.jitterPx === sh.runSummary.jitterPx;
-        for (let i = 0; equal && i < e.frames.length; i++) {
-            const a = e.frames[i];
-            const b = sh.frames[i];
-            for (const k of [
-                "state",
-                "ok",
-                "numInliers",
-                "numMatches",
-                "mediaTimeSeconds",
-                "timestampMs",
-            ]) {
-                if (a[k] !== b[k]) equal = false;
-            }
-            if (JSON.stringify(a.corners) !== JSON.stringify(b.corners)) equal = false;
-        }
-        if (equal) C.checks.shadowEqual++;
-        else
-            console.error(
-                `!! ${clip} seed ${seed}: the shadow export differs from the recorded one`,
-            );
-
-        // the observed calls, keyed by the corners their H projects
-        const byKey = new Map();
-        for (const c of calls) {
-            if (!c.ok) continue;
-            const k = JSON.stringify(reprojectCorners(c.H, TP));
-            if (!byKey.has(k)) byKey.set(k, []);
-            byKey.get(k).push(c);
-        }
-
-        const D = e.clipDurationS;
+        const { e, all, D, counted, countedSet, base, data, posedDetect } = loaded[clip][seed];
         C.clipDurationS = D;
-        const all = e.frames;
-        const K = intrinsics(e.processingResolution.width, e.processingResolution.height);
-        const counted = countedLoopFrames(all, { clipDurationS: D, ...e.loops });
-        const countedSet = new Set(counted);
-        const base = cornerJitter(counted, { clipDurationS: D });
-        if (base.jitterPx === e.runSummary.jitterPx) C.checks.reproduced++;
-        else console.error(`!! ${clip} seed ${seed}: recorded jitterPx not reproduced`);
-
-        // per posed DETECT frame of the whole export: residual, signal, counts, and the fate of
-        // the lock it starts (TRACK frames that follow it in processed order, and what ends them)
-        const unwrapped = unwrapMediaTimes(counted, D);
-        const loopOf = new Map(counted.map((f, i) => [f, Math.floor(unwrapped[i] / D)]));
-        const data = new Map();
-        for (let i = 0; i < all.length; i++) {
-            const f = all[i];
-            if (f.state !== "DETECT" || !f.corners) continue;
-            C.checks.posedDetect++;
-            let j = i + 1;
-            let nextTrackCounted = 0;
-            while (j < all.length && all[j].state === "TRACK") {
-                if (countedSet.has(all[j])) nextTrackCounted++;
-                j++;
-            }
-            const fate = {
-                loop: loopOf.get(f) ?? null,
-                nextTrack: j - i - 1,
-                nextTrackCounted,
-                afterState: j < all.length ? all[j].state : "end",
-                prevState: i > 0 ? all[i - 1].state : "none",
-            };
-            const cs = (byKey.get(JSON.stringify(f.corners)) ?? []).filter(
-                (c) => c.numInliers === f.numInliers && c.numMatches === f.numMatches,
-            );
-            if (cs.length === 0) {
-                C.checks.unmatched++;
-                continue;
-            }
-            if (new Set(cs.map((c) => c.rms)).size > 1) C.checks.dupInconsistent++;
-            const H = homographyFromCorners(f.corners);
-            const cond = H ? conditioning(H, K) : { dScale: NaN, dOrth: NaN };
-            data.set(f, {
-                seed,
-                inliers: f.numInliers,
-                matches: f.numMatches,
-                rms: cs[0].rms,
-                maxErr: cs[0].maxErr,
-                ...cond,
-                ...fate,
-                mediaTime: f.mediaTimeSeconds,
-                counted: countedSet.has(f),
-            });
-        }
+        C.checks.posedDetect += posedDetect;
         for (const x of data.values()) if (x.counted) C.rows.push(x);
 
         // the previous frame of each posed detection in the counted loops (candidate 2's referent)
@@ -367,10 +412,19 @@ for (const clip of CLIPS) {
             }
         }
 
-        // the filters, through the imported cornerJitter
+        // the filters, through the imported cornerJitter. Every posed DETECT frame has data, by
+        // phase 1; one without is an invariant broken, not a frame to keep or to refuse.
+        const rowOf = (f) => {
+            const x = data.get(f);
+            if (!x)
+                throw new Error(
+                    `${clip} seed ${seed}: a posed DETECT frame without data reached a filter`,
+                );
+            return x;
+        };
         const r = { recorded: e.runSummary.jitterPx, base, filters: {} };
         for (const [label, keep] of FILTERS) {
-            const include = (f) => f.state !== "DETECT" || !data.has(f) || keep(data.get(f));
+            const include = (f) => f.state !== "DETECT" || !f.corners || keep(rowOf(f));
             const j = cornerJitter(counted, { include, clipDurationS: D });
             r.filters[label] = {
                 jitterPx: j.jitterPx,
