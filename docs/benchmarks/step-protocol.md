@@ -85,8 +85,9 @@ selection leaves:
   frames both posed, never on whole-set figures** (added 2026-10-17). The control-arm
   rule's sibling: that one keeps the selection off the dependent variable, this one keeps
   the comparison off the selection. Its evidence, from a read-only decomposition of
-  2026-10-16 of M3's twelve hand-held exports by the method of
-  `docs/benchmarks/2026-10-16-frame-set-overlap.mjs`: on M3's 20 sync-worker pairs the
+  2026-10-16 of M3's twelve hand-held exports
+  (`docs/benchmarks/2026-10-16-m3-handheld-frame-set.mjs`, the method of
+  `2026-10-16-frame-set-overlap.mjs`): on M3's 20 sync-worker pairs the
   whole-set differences, sync minus worker, run +0.05 to +85.5 px, while the same arms on
   shared media times differ by −1.5 to +2.8 px on the wall clip and −0.15 to +0.27 px on
   the table clip. The
@@ -302,13 +303,15 @@ Two rules on checks, added 2026-10-17:
 - **A figure that gates a decision gets one independent attempt at refutation before it
   is recorded,** and what the attempt found is recorded beside it, including when it found
   nothing. Its evidence, from 2026-10-17: three independent attempts on a window-bootstrap
-  figure found that an independent per-run resample carries no covariance between arms
-  measured on shared footage, which the reviewer had accepted; two attempts on a
-  frame-resample figure found that its 2.36% rate was a net count ratio, not the rate the
-  runs' frame sets differ by. Both findings changed what reached the record (the plan,
-  M3's runbook step 8, its note of 2026-10-17): the paired resample stands beside the
-  independent one, and the frame resample is recorded at the pair's own dropped fractions,
-  0.303 and 0.331, not at 2.36%.
+  figure (`docs/benchmarks/2026-10-17-r1-window-bootstrap.mjs`) found that an independent
+  per-run resample carries no covariance between arms measured on shared footage, which
+  the reviewer had accepted; two attempts on a frame-resample figure
+  (`docs/benchmarks/2026-10-17-r1-frame-resample.mjs`) found that its 2.36% rate was a net
+  count ratio, not the rate the runs' frame sets differ by. Both findings changed what
+  reached the record (the plan, M3's runbook step 8, its note of 2026-10-17): the paired
+  resample (`docs/benchmarks/2026-10-17-r1-paired-cluster-resample.mjs`) stands beside the
+  independent one, and the 2.36% figure was set aside for the pair's own dropped
+  fractions, 0.303 and 0.331, at which the direct resample is registered and not run.
 - **A check that fires and does not stop the figure is not a gate.** Exercising a check
   both ways shows that it responds; it does not show that its failure prevents the result
   from being reported. Both must be shown, and the second is the one that was missing. Its

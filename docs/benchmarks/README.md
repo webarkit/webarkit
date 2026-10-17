@@ -3241,38 +3241,52 @@ the two.
      (`2026-09-28-tab9-tuning-r1-baseline-static.json` and
      `-baseline-static-repeat.json`). No change to the clause, no new value.
      M4's own clause, below, is a different form with its own threshold and
-     is not read here.*
-     - *Its conditional noise on its own data. Holding the footage fixed and
-       varying which frames each run processed, at this pair's own dropped
-       fractions, 0.303 and 0.331 (defined as 1 − common ÷ own by
-       [`2026-10-16-frame-set-overlap.mjs`](./2026-10-16-frame-set-overlap.mjs),
-       which scales M3's measured 0.9-keep figure to them under its stated
-       assumption of random drops at M3's run length), the movement's SD is
-       0.00352 px (band 0.00327 to 0.00378).*
-     - *So this clause's allowance, 0.007 px, is about two sigma of that
-       noise: a false refusal in about 2% of blocks where nothing is wrong,
-       an excess of exactly 0.007 px refused about half the time, an excess
-       of 0.014 px or more caught reliably. This agrees with item 3 of the
-       second read in [the M3 write-up's audit](./2026-10-01-m3-write-up-audit.md),
-       which said the same about the bound's power.*
-     - *The clause is therefore a working gate, not a blind one. That is the
-       correction recorded here: the two readings of the data taken that
-       morning said otherwise, and both compared figures on different bases
-       (the step protocol, Stage 2, the forms the failure took).*
-     - *What stays weak: the allowance's value rests on one pair of runs.
-       Resampling the footage puts the same movement anywhere from +0.00026
-       to +0.01644 px (a paired cluster resample by footage second) or
-       −0.01241 to +0.03078 px (an independent window bootstrap). "The
-       smaller of the two movements" is not a derivation, and that holds
-       whatever the clause's power.*
+     is not read here. The figures come from three scripts committed beside
+     the record, each read-only on the committed exports:
+     [`2026-10-17-r1-frame-resample.mjs`](./2026-10-17-r1-frame-resample.mjs),
+     [`2026-10-17-r1-window-bootstrap.mjs`](./2026-10-17-r1-window-bootstrap.mjs)
+     and
+     [`2026-10-17-r1-paired-cluster-resample.mjs`](./2026-10-17-r1-paired-cluster-resample.mjs),
+     and from
+     [`2026-10-16-frame-set-overlap.mjs`](./2026-10-16-frame-set-overlap.mjs).*
+     - *Its standing is undetermined. The direct resample of this pair at
+       its own dropped fractions, 0.303 and 0.331 (defined as 1 − common ÷
+       own by the frame-set overlap script), does not exist. Two
+       extrapolations from the same model exist and disagree. The model
+       scales a measured 0.9-keep per-run SD to a dropped fraction by
+       √(p ÷ 0.1), under its stated assumption of random drops at M3's run
+       length. M3's coefficient, 0.0013 to 0.0015 px per run on its four
+       static runs, scaled to this pair gives 0.00352 px for the movement
+       (band 0.00327 to 0.00378, the overlap script's own line for this
+       pair). This pair's own coefficient, 0.0037 px per run at 0.9 keep
+       (the frame-resample script), scaled the same way gives about
+       0.0093 px. The pair's runs are 300 frames in 18 to 20 eligible
+       windows against M3's 815 to 822 in 48 to 49, so a coefficient taken
+       from M3's runs understates this pair by construction.*
+     - *Against the allowance, 0.007 px, that is about 2σ on the first
+       extrapolation and about 0.75σ on the second. The two do not agree on
+       whether the clause can discriminate at all, so its standing is
+       undetermined. The measurement that settles it, the direct resample of
+       this pair at its own dropped fractions, is registered and not run.*
+     - *What stays weak, whatever that measurement finds: the allowance's
+       value rests on one pair of runs. Resampling the footage puts the same
+       movement anywhere from +0.00026 to +0.01644 px (the paired cluster
+       resample by footage second, 10,000 resamples, seed 1) or −0.01241 to
+       +0.03078 px (the independent window bootstrap, 10,000 resamples, seed
+       1). "The smaller of the two movements" is not a derivation, and that
+       holds whatever the clause's power.*
      - *The two designs, and what each varies, so that a later reader does
        not mistake one for the other: the frame resample holds the footage
        fixed and varies which of the frames a run processed are counted; the
        cluster and window resamples hold the frames and vary the footage.*
      - *One observation: at a 10% drop, a single footage instant, 4.966667 s,
        with a residual RMS of 0.314 px against the baseline run's median of
-       0.059 px, carries about a third of the movement's variance. The noise
-       figure is not diffuse.*
+       0.059 px, carries about a third of the movement's variance (the
+       frame-resample script's last section). The noise figure is not
+       diffuse.*
+     - *Three successive readings of this clause on that day each rested on
+       figures computed on a different basis, which is why this entry
+       carries none of them.*
      - *No change is proposed here. A decision on the allowance is registered
        as due before M4's round 1's first counted run.*
 9. **After every block**, the thermal rule: if the closing synchronous run
