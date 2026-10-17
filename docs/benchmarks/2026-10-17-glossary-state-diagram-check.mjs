@@ -138,6 +138,7 @@ const EXPECTED = {
         ignoredFrames: 0,
         trackFramesWithDetectionInFlight: 0,
         consumedFramesByPreviousState: { LOST: 1276 },
+        consumedFramesWithDetectionInFlight: 0,
         consumedFramesByOutcome: {
             "TRACK": 161,
             "LOST(unconfirmed)": 855,
@@ -232,6 +233,7 @@ function compute(exports) {
         ignoredFrames: 0,
         trackFramesWithDetectionInFlight: 0,
         consumedFramesByPreviousState: {},
+        consumedFramesWithDetectionInFlight: 0,
         consumedFramesByOutcome: {},
         consumedFramesAgo: {},
         consumedLatencyMsRange: [Infinity, -Infinity],
@@ -267,6 +269,7 @@ function compute(exports) {
                 if (b.state === "TRACK" && b.detectionInFlight) o.trackFramesWithDetectionInFlight++;
                 if (b.detectionUse === "consumed") {
                     inc(o.consumedFramesByPreviousState, a ? a.state : "(none)");
+                    if (b.detectionInFlight) o.consumedFramesWithDetectionInFlight++;
                     inc(o.consumedFramesByOutcome, b.state === "TRACK" ? "TRACK" : `LOST(${b.reason})`);
                     inc(o.consumedFramesAgo, String(b.detectedAt?.framesAgo));
                     const r = o.consumedLatencyMsRange;
@@ -277,7 +280,7 @@ function compute(exports) {
                     const states = [...new Set(fr.slice(0, i).map((x) => `${x.state}/${x.reason}`))];
                     o.firstAcquisition[name] =
                         `frame ${i}, framesAgo ${b.detectedAt?.framesAgo}, ` +
-                        `${b.detectionLatencyMs.toFixed(1)} ms, before it: ${states.join(", ")}`;
+                        `${b.detectionLatencyMs?.toFixed(1) ?? "null"} ms, before it: ${states.join(", ")}`;
                     if (name.includes("-static-")) {
                         o.staticRunsInFlightBeforeFirstTrack[name] = fr
                             .slice(0, i)
@@ -363,21 +366,29 @@ function main(argv) {
     const exports = loadExports();
     if (argv.includes("--self-test")) {
         const clean = differences(compute(exports));
-        // Flip the first TRACK frame of the first synchronous whole run to LOST.
-        const flipped = exports.map(([n, j]) => [n, structuredClone(j)]);
-        const target = flipped.find(
-            ([, j]) =>
-                j.detection?.path !== "worker" && j.frames.length === j.ticks && j.frames.some((x) => x.state === "TRACK"),
-        );
-        const frame = target[1].frames.find((x) => x.state === "TRACK");
-        frame.state = "LOST";
-        frame.reason = "self-test";
-        const broken = differences(compute(flipped));
-        const ok = clean.length === 0 && broken.length > 0;
+        // Flip the first TRACK frame of one export to LOST, in memory: once in
+        // the first synchronous whole run, once in the first worker run.
+        const flip = (path) => {
+            const flipped = exports.map(([n, j]) => [n, structuredClone(j)]);
+            const target = flipped.find(
+                ([, j]) =>
+                    (j.detection?.path === "worker") === (path === "worker") &&
+                    j.frames.length === j.ticks &&
+                    j.frames.some((x) => x.state === "TRACK"),
+            );
+            const frame = target[1].frames.find((x) => x.state === "TRACK");
+            frame.state = "LOST";
+            frame.reason = "self-test";
+            return [target[0], differences(compute(flipped)).length];
+        };
+        const [syncName, syncBroken] = flip("sync");
+        const [workerName, workerBroken] = flip("worker");
+        const ok = clean.length === 0 && syncBroken > 0 && workerBroken > 0;
+        const says = (n) => (n > 0 ? `the check fails on ${n} counts` : "the check still passes: it cannot fail");
         console.log(
             `self-test: exports as committed ${clean.length === 0 ? "pass" : `FAIL (${clean.length} counts differ)`}; ` +
-                `with one TRACK frame of ${target[0]} flipped to LOST ` +
-                `${broken.length > 0 ? `the check fails on ${broken.length} counts` : "the check still passes: it cannot fail"}`,
+                `with one TRACK frame of ${syncName} flipped to LOST ${says(syncBroken)}; ` +
+                `with one TRACK frame of ${workerName} flipped to LOST ${says(workerBroken)}`,
         );
         if (!ok) for (const line of clean) console.log(`  ${line}`);
         return ok ? 0 : 1;

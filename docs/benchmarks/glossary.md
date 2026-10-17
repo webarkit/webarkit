@@ -246,8 +246,8 @@ the synchronous path and 12 on the worker path. Every state and every edge
 is cited to both, in the tables below the diagram; what neither source
 shows is not drawn, and is listed as not drawn. The two arms are drawn
 apart, because their difference is the point: the worker arm has no
-`DETECT` state on the frame timeline, and the sync arm never emits
-`no-detection` or `unconfirmed`.
+`DETECT` state on the frame timeline, and the sync arm, which is handed no
+detection, emits neither `no-detection` nor `unconfirmed` in any export.
 
 The code emits one label, `LOST` (`TrackingState`, in
 `packages/nft-tracker/src/tracking/types.ts`). Each arm draws it twice,
@@ -333,8 +333,8 @@ Sync arm, 45 exports, 20,476 frames; the sequence rule read on 13 whole runs:
 | S6 | `process`: `step` fails, "The lock goes, and this same frame gets whatever detection there is below"; `detect` succeeds, the lock is set again, the step's `trackLoss` is carried on the `DETECT` result | `DETECT` → `DETECT`: 2,085 over the 45 exports (114 before the first `TRACK` frame and 746 after, in the whole runs); every frame that follows a `DETECT` or `TRACK` frame and is not `TRACK` carries a `trackLoss`, 0 exceptions |
 | S7 | as S6, `detect` fails: `LOST` with the detection's `reason` and the step's `trackLoss` | `DETECT` → `LOST` before the first `TRACK` frame: 32 in the whole runs |
 | S8 | as S7 | `DETECT` → `LOST` after the first `TRACK` frame: 165 in the whole runs; 452 over the 45 exports, both phases |
-| S9 | `step` holds, `tracked`; `step` advances the lock to `{ previous: current, current: r.H }` | `TRACK` → `TRACK`: 16,114 |
-| S10 | as S6, from a held lock; the class comment: "A step that fails drops the lock, says why (`trackLoss`), and the same frame is detected again" | `TRACK` → `DETECT`: 520 over the 45 exports; 186 of the 186 lock deaths in the 13 whole runs. [The item-3 addendum](./2026-10-17-104-stage1-probe-item3.md), section 5, reads the same on its replays, which are not committed exports: "Every lock that dies is followed by a DETECT frame, never a LOST one", 32 of 32 occurrences on one window of the wall clip |
+| S9 | `step` holds, `tracked`; `step` advances the lock to `{ previous: lock.current, current: r.H }` | `TRACK` → `TRACK`: 16,114 |
+| S10 | as S6, from a held lock; the class comment: "A step that fails drops the lock, says why (`trackLoss`), and the same frame is detected again" | `TRACK` → `DETECT`: 520 over the 45 exports; 186 of the 186 lock deaths in the 13 whole runs. [The item-3 addendum](./2026-10-17-104-stage1-probe-item3.md), section 5, reads the same on its replays, which are not committed exports: "Every lock that dies is followed by a DETECT frame, never a LOST one", on its fate table of one window of the wall clip, where six of seven high-inlier instants start a lock that dies, each read on 31 or 32 replays |
 | S11 | as S7, from a held lock; the class comment: "a detection that fails is `"LOST"`" | `TRACK` → `LOST`: 2 over the 45 exports, both `no-consensus` with `trackLoss` `too-few-patches`: `2026-09-26-oppo-a72-ondevice-tracking-wall` frame 228 and `2026-09-29-tab9-tuning-r2-p48-s16-table` frame 32; 0 in the 13 whole runs |
 | S12 | as S3 | `LOST` → `LOST` after the first `TRACK` frame: 81 in the whole runs; 279 over the 45 exports, both phases |
 | S13 | as S4 | `LOST` → `DETECT` after the first `TRACK` frame: 165 in the whole runs; 457 over the 45 exports, both phases |
@@ -350,14 +350,14 @@ never filtered:
 | states | `process` in `externalDetection` never calls `detect`; `consume` with a trackable target returns `TRACK` (`tracked`) or `LOST` `unconfirmed`, and reaches `detected(d)` only for a failed detection, which is `LOST`. `DETECT` is reachable only with `this.track === null`, a detection-only tracker | `DETECT` frames: 0 of 11,945. `detectionUse` `ignored`: 0. `TRACK` frames with `detectionInFlight`: 0 (`DEFINITIONS.trackFramesWithDetectionInFlight`) |
 | W1 | `process`: no lock, no detection, `externalDetection`: `LOST`, `reason: "no-detection"`, `needsDetection: true`, `detectionUse: "none"` | frame 0 in 12 of 12: `LOST`, `no-detection`, `detectionUse` `none`, `detectionInFlight` false, `needsDetection` true, `trackLoss` null |
 | W2 | as W1, on every later frame without a detection | `LOST` → `LOST` `no-detection` with `detectionInFlight` true, before the first `TRACK` frame: 260. Round 0's four static runs: `detectionInFlight` reads false then true on frames 0 to 5, 0 to 5, 0 to 6, 0 to 4 (`FTTTTT`, `FTTTTT`, `FTTTTTT`, `FTTTT`) |
-| W3 | `consume`: `d.ok`, lock set from `d.H`, `step` on this frame fails: `LOST`, `reason: "unconfirmed"`, the step's `trackLoss`, `detectionUse: "consumed"`, `needsDetection` true | `LOST` → `LOST` `unconfirmed`, `consumed`, with `trackLoss`, before the first `TRACK` frame: 111. On the hand-held runs `detectionInFlight` reads `FTTF…`: the refusing frame asks again, as the policy's item 2 says |
+| W3 | `consume`: `d.ok`, lock set from `d.H`, `step` on this frame fails: `LOST`, `reason: "unconfirmed"`, the step's `trackLoss`, `detectionUse: "consumed"`, `needsDetection` true | `LOST` → `LOST` `unconfirmed`, `consumed`, with `trackLoss`, before the first `TRACK` frame: 111. `detectionInFlight` is false on every one of the 1,276 consuming frames: the detection was handed in, not in flight; the refusing frame asks again, as the policy's item 2 says |
 | W4 | `consume`: `!d.ok`, `detected(d)`: `LOST` with the worker's detection's `reason`, `detectionUse: "consumed"` | `LOST` → `LOST` `too-few-matches` or `no-consensus`, `consumed`, before the first `TRACK` frame: 32 and 17 |
 | W5 | `consume`: `d.ok`, lock set, `step` holds, `tracked` with `detectionUse: "consumed"` and `detectionLatencyMs` the frame's timestamp minus the detection's | the first `TRACK` frame of each of the 12 runs is `consumed` and follows a `LOST` frame. Round 0 (`2026-10-14-tab9-m4-calibration-worker-static-1` to `-4`): frame 6, 6, 7, 5; `detectedAt.framesAgo` 6, 6, 7, 5; `detectionLatencyMs` 316.0, 330.1, 339.6, 280.5. M3's static runs: frame 6 and 5, `framesAgo` 6 and 5, 301.5 and 275.5 ms. M3's hand-held runs: frames 34, 41, 83, 79, 84, 76, `framesAgo` 2 or 3, 134.6 to 167.6 ms |
 | W6 | `process`: lock held, `step` holds, `tracked`; `detectionUse` `"ignored"` if one was handed in, else `"none"` | `TRACK` → `TRACK`: 8,833, `detectionUse` `none` on every one (`ignored` 0) |
 | W7 | `process`: `step` fails, `trackLoss` set, no detection handed in, `externalDetection`: `LOST`, `reason: "no-detection"`, `needsDetection: true` | `TRACK` → `LOST`: 155, every one `no-detection` with a `trackLoss` (`too-few-patches` 68, `poor-fit` 43, `fit-failed` 39, `too-many-outliers` 5), `detectionUse` `none`, `detectionInFlight` false, `needsDetection` true, 155 of 155 |
 | W8, W9, W10 | as W2, W3, W4 | after the first `TRACK` frame: `no-detection` in flight 1,409; `unconfirmed` 744; `too-few-matches` 135 and `no-consensus` 76 |
 | W11 | as W5 | `LOST` → `TRACK` after the first `TRACK` frame: 161, of which 12 are the runs' first acquisitions (W5) and 149 re-acquisitions |
-| every consumption | `consume` is reached only on a frame without a lock | 1,276 `consumed` frames, every one preceded by a `LOST` frame; outcomes `TRACK` 161, `unconfirmed` 855, `too-few-matches` 167, `no-consensus` 93; `framesAgo` 1 to 7; `detectionLatencyMs` 65.6 to 339.6 |
+| every consumption | `consume` is reached only once the frame holds no lock, whether it began without one or dropped it in this frame's `step` (the two-step case, not drawn) | 1,276 `consumed` frames, every one preceded by a `LOST` frame; outcomes `TRACK` 161, `unconfirmed` 855, `too-few-matches` 167, `no-consensus` 93; `framesAgo` 1 to 7; `detectionLatencyMs` 65.6 to 339.6 |
 
 **Not drawn**, because one source shows it and the other does not, or
 neither does:
@@ -374,8 +374,8 @@ neither does:
 - The sync tracker handed a detection (`consume` without
   `externalDetection`): no export.
 - The stateless arm. It has no tracker: its `DETECT` and `LOST` labels are
-  the page's, per `DEFINITIONS.states`, and its exports carry no
-  `trackLoss`.
+  the page's, per `DEFINITIONS.states`, and its exports' `trackLoss` is
+  absent or null on every frame.
 - The `ACQUIRING` state #143 defers: not in the code.
 
 ### Every key of `DEFINITIONS`
