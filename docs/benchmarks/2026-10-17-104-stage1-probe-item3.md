@@ -482,6 +482,17 @@ Every lock that dies is followed by a DETECT frame, never a LOST one: the
 tracker re-detects at once. The count, `d_scale` and `d_orth` accept all
 seven instants.
 
+**What the table shows,** as an observation on one window of one clip and
+not a general claim. Six of the seven high-inlier detections fail before the
+seventh holds, on every occurrence, 32 or 31. Their inlier counts are 73, 73,
+78, 75, 42, 51 and 66, and the one that lasts has 66: the two highest, 78 and
+75, both die. Its σ̂, 1.451 to 1.604, is higher than that of four of the six
+that die on every occurrence but one (7.7860 s reaches 1.629 once in 31),
+higher than 8.3077 s's on 28 of 32, and lower than 8.2676 s's on 31 of 32.
+So on this window neither the inlier count nor the residual orders a
+surviving lock above a doomed one, and every one of the seven sits far above
+the gate's minimum of 4 inliers.
+
 **Does σ̂ order the doomed births below the lasting one? No.** This file's
 previous commit registered, and did not run, the question whether the
 detections at 8.27 s and 8.31 s, which the count accepts and whose locks die
@@ -503,6 +514,20 @@ the filter is post hoc, and two doomed births on one clip could have
 established nothing even had σ̂ ordered them. Why the locks born at 8.27 s
 and 8.31 s die on the next frame on every seed while the one born at 8.35 s
 lasts is not this addendum's question.
+
+**The consequence for the lock-birth constraint.** The constraint recorded
+on 2026-10-16, that a threshold must preserve the lock births with the counts
+as recorded (the probe's item 7, in the wording the reviewer gave it in #142's
+review), already counts only lasting locks, 50 or more counted frames, so none
+of the six detections that die on this window is among its 64 births, and a
+filter that refuses them costs it nothing: the dof residual at c = 1.5 refuses
+8.2676 s on all 32 occurrences and 8.3077 s on 1, and the 9 births it does
+refuse are 3 eight-inlier, 1 eleven-inlier and 5 of the 8.3478 s ones
+(section 3). It is not refuted; it rests on one cut at 50 counted frames that
+reads no fate on either side of it, a one-frame lock and a seven-frame one
+counting alike as none and a 50-frame and a 221-frame one alike as one, and
+restating it on the fate of every birth on both clips is registered and not
+run.
 
 ## What this addendum does not decide
 
