@@ -3289,6 +3289,88 @@ the two.
        carries none of them.*
      - *No change is proposed here. A decision on the allowance is registered
        as due before M4's round 1's first counted run.*
+   - *Added on 2026-10-17, later that day: the measurement the entry above
+     registers now exists, and the clause's standing is no longer
+     undetermined. Read-only on the same two exports, `cornerJitter`
+     imported unchanged; the committed file is unchanged and no clause, value
+     or verdict moves.*
+     - *What the clause reads, from the registration's own words. Its
+       operand is "their mean `jitterPx`", each run's `runSummary.jitterPx`
+       over all its frames, and its 0.007 px is the smaller of two whole-set
+       movements, 0.1476 → 0.1552 px over the two runs' windows; M3's gate
+       read it so on 2026-10-01, 0.14216 against 0.14171 px, means of
+       whole-set run values. So the clause compares two arms on whole-set
+       figures. The ruling of 2026-10-14 ("Every jitter comparison between
+       arms of different pipelines is read on their common media times",
+       M4's clause's section, item 4; README.md:4147-4148 at `5677367`)
+       binds every `jitterPx` comparison between arms running different
+       pipelines and exempts the clause's own readings ("Where it does not",
+       README.md:4177-4180 at `5677367`). What makes the
+       exemption hold is the clip: on the static clip the two arms' frame
+       sets differ little (M3's four static runs, pairwise, each keep 94.5%
+       to 98.2% of their counted frames), so the selection component the
+       hand-held clips showed, whole-set differences of +0.05 to +85.5 px
+       against −1.5 to +2.8 px on shared media times (the step protocol's
+       comparison rule, from `2026-10-16-m3-handheld-frame-set.mjs`), does
+       not arise. That is a property of the clip, not of the clause, and the
+       exemption does not transfer to a non-static block. The same pair read
+       on its 168 common media times is 0.1476 and 0.1568 px, 0.0092 px
+       apart ("What the window does not explain", under M4's clause's item
+       4; README.md:4543-4545 at `5677367`): a reading the clause never
+       performs.*
+     - *The brief for this measurement named the wrong population, the
+       common set, and the refutation pass the step protocol requires caught
+       it. Two figures were therefore measured, and only one is the
+       clause's.*
+     - *The clause's own noise, at the pair's own dropped fractions:
+       **0.00767 px**. The design of
+       [`2026-10-17-r1-frame-resample.mjs`](./2026-10-17-r1-frame-resample.mjs),
+       footage held fixed and each run's frames kept independently with a
+       fixed probability, applied to each run's whole 300 frames at the
+       baseline's keep 0.697 (drop 0.303) and the repeat's keep 0.669 (drop
+       0.331), the fractions
+       [`2026-10-16-frame-set-overlap.mjs`](./2026-10-16-frame-set-overlap.mjs)
+       defines as 1 − common ÷ own posed media times. 10,000 resamples,
+       mulberry32 seed 1: movement (repeat − baseline) mean 0.00761, SD
+       0.00767, 2.5% −0.00755, 97.5% +0.02279 px; per-run SD 0.00522 and
+       0.00562 px; kept frames 209 and 201 a resample on average, against
+       the real common set's 212 and 207, about 11 frames an eligible
+       window; eligible windows 17 to 20 of 20 and 17 to 18 of 18; no
+       resample left a run without an eligible window. Seeds 2 and 3 give
+       0.00769 and 0.00760; 100,000 resamples at seed 7 give 0.00768. The
+       committed script has no rate option and thins the common set only, so
+       these figures come from its design run with the rates and the frame
+       set substituted, in a copy that imports `cornerJitter` unchanged and
+       reproduces the committed keep-0.9 line exactly when its rates are set
+       back to 0.9; the committed file is not changed by this entry.*
+     - *A second figure, recorded so that it is not rediscovered and
+       mistaken for the first: **0.01082 px** (10,000 resamples, seed 1;
+       seed 2: 0.01093) is what the registered design produces when those
+       rates are applied on top of the common set, which the committed
+       script thins. The dropped fraction describes the step from a run's
+       whole posed set to the common set, so applying it to the common set
+       thins twice, to about eight frames an eligible window, a density no
+       real comparison has. It is not the clause's noise.*
+     - *Against the allowance: 0.007 px is 0.91σ of the clause's own noise
+       (0.65σ of the double-thinned figure). Under one sigma in both
+       readings. The clause discriminates weakly, not at the 2σ the first
+       extrapolation suggested, and its standing is no longer undetermined.*
+     - *Both extrapolations understated the noise of their own population:
+       0.00352 px, from M3's whole-run coefficient, against the measured
+       whole-set 0.00767 (a factor of 2.2); 0.0093 px, from this pair's
+       common-set coefficient at keep 0.9, against the measured common-set
+       0.01082 (a factor of 1.16). The remainder is the law: s(p) = c ·
+       √(p ÷ 0.1) under-extrapolates Bernoulli thinning by about 15% at
+       these rates, 15.8% on the whole set (per-run keep-0.9 SD 0.00258 and
+       0.00255 px predict 0.00645) and 13.6% on the common set (0.00371 and
+       0.00372 predict 0.00935).*
+     - *The footage instant 4.966667 s carries about a quarter of the
+       movement's variance at these rates, 24.3% on the common set and
+       19.7% on the whole set, read as the variance between the four groups
+       of its fate in the two runs; the "about a third" above is the same
+       frame at a 10% drop, and stands for that rate.*
+     - *The decision on the allowance stays the maintainer's, due before
+       M4's round 1's first counted run. This entry proposes nothing.*
 9. **After every block**, the thermal rule: if the closing synchronous run
    is slower than the opening one — `trackStepMs` p50 by more than 6.6%, or
    `acquire` p50 (`summaryMs`, read only from an export whose
