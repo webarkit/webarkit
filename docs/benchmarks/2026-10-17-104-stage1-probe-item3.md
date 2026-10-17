@@ -483,6 +483,25 @@ Every lock that dies is followed by a DETECT frame, never a LOST one: the
 tracker re-detects at once. The count, `d_scale` and `d_orth` accept all
 seven instants.
 
+**Addendum, 2026-10-17, from #146.** The sentence above, "Every lock that
+dies is followed by a DETECT frame, never a LOST one: the tracker
+re-detects at once", has a general reading, as a property of the tracker,
+and in that reading it is not correct. The sequence holds on this
+addendum's eight-seed replays and on all 186 lock deaths in the thirteen
+whole-run sync exports, the eight of 2026-10-01, the pre-flight of
+2026-10-13 and the four of 2026-10-14. But `tracker.ts` permits the
+same-frame re-detection to fail, and the frame is then `LOST` with the
+step's `trackLoss`; two committed 2026-09 exports show it, one frame each:
+`2026-09-26-oppo-a72-ondevice-tracking-wall.json`, `frames[228]`, and
+`2026-09-29-tab9-tuning-r2-p48-s16-table.json`, `frames[32]`, both
+`no-consensus` with `trackLoss` `too-few-patches`. The glossary's state
+diagram draws that transition as S11, with both frames cited
+([the sync arm](./glossary.md#the-sync-arm-the-tracker-detects-on-the-frame-loop)),
+and its check, `2026-10-17-glossary-state-diagram-check.mjs`, holds the
+counts. No figure or verdict in this addendum depends on the sentence. The
+counter-example was found by #146's work, which read every transition of
+every committed sync export.
+
 **What the table shows,** as an observation on one window of one clip and
 not a general claim. Six of the seven high-inlier detections fail before the
 seventh holds, on every occurrence, 32 or 31. Their inlier counts are 73, 73,
