@@ -3235,6 +3235,46 @@ the two.
    two observations**: where a bound needs a spread, it comes from repeats or
    from a prior session's measured movement, with its derivation written
    beside it.
+   - *Added on 2026-10-17, ruled by the maintainer: this clause's standing,
+     read from the measurements of that day on its own data, the two static
+     baselines of the tuning pass's round 1
+     (`2026-09-28-tab9-tuning-r1-baseline-static.json` and
+     `-baseline-static-repeat.json`). No change to the clause, no new value.
+     M4's own clause, below, is a different form with its own threshold and
+     is not read here.*
+     - *Its conditional noise on its own data. Holding the footage fixed and
+       varying which frames each run processed, at this pair's own dropped
+       fractions, 0.303 and 0.331 (defined as 1 − common ÷ own by
+       [`2026-10-16-frame-set-overlap.mjs`](./2026-10-16-frame-set-overlap.mjs),
+       which scales M3's measured 0.9-keep figure to them under its stated
+       assumption of random drops at M3's run length), the movement's SD is
+       0.00352 px (band 0.00327 to 0.00378).*
+     - *So this clause's allowance, 0.007 px, is about two sigma of that
+       noise: a false refusal in about 2% of blocks where nothing is wrong,
+       an excess of exactly 0.007 px refused about half the time, an excess
+       of 0.014 px or more caught reliably. This agrees with item 3 of the
+       second read in [the M3 write-up's audit](./2026-10-01-m3-write-up-audit.md),
+       which said the same about the bound's power.*
+     - *The clause is therefore a working gate, not a blind one. That is the
+       correction recorded here: the two readings of the data taken that
+       morning said otherwise, and both compared figures on different bases
+       (the step protocol, Stage 2, the forms the failure took).*
+     - *What stays weak: the allowance's value rests on one pair of runs.
+       Resampling the footage puts the same movement anywhere from +0.00026
+       to +0.01644 px (a paired cluster resample by footage second) or
+       −0.01241 to +0.03078 px (an independent window bootstrap). "The
+       smaller of the two movements" is not a derivation, and that holds
+       whatever the clause's power.*
+     - *The two designs, and what each varies, so that a later reader does
+       not mistake one for the other: the frame resample holds the footage
+       fixed and varies which of the frames a run processed are counted; the
+       cluster and window resamples hold the frames and vary the footage.*
+     - *One observation: at a 10% drop, a single footage instant, 4.966667 s,
+       with a residual RMS of 0.314 px against the baseline run's median of
+       0.059 px, carries about a third of the movement's variance. The noise
+       figure is not diffuse.*
+     - *No change is proposed here. A decision on the allowance is registered
+       as due before M4's round 1's first counted run.*
 9. **After every block**, the thermal rule: if the closing synchronous run
    is slower than the opening one — `trackStepMs` p50 by more than 6.6%, or
    `acquire` p50 (`summaryMs`, read only from an export whose
@@ -5265,6 +5305,14 @@ plane homography for the camera, and the signal reads `d_scale` 0.0084 and
 `d_orth` 0.031 on its exact `H`, so a threshold derived on that view would be
 inflated; the separation has to be shown per view.
 
+**#104's state, Stage 1's item 3 (2026-10-17).** Stage 1's item 3 is
+complete for #104: four candidates measured on the probe's instrument,
+`d_scale`, `d_orth`, the inlier count and the inlier-scaled residual limit,
+and the fifth, the single-step scale-change bound, settled by definition
+([`2026-10-17-104-stage1-probe-item3.md`](./2026-10-17-104-stage1-probe-item3.md),
+its §4, merged in [#144](https://github.com/webarkit/webarkit/pull/144)).
+Nothing else about #104's state changes.
+
 **The common-media-times rule is more load-bearing than it was, not less
 (2026-10-15).** The resample it exists to neutralise, two runs processing
 different frames of the same clip, is now known to be partly RNG-driven:
@@ -5285,3 +5333,19 @@ exported value is a function of the pose, measured on 2026-10-15, so the
 device half measures homography steadiness and not pose steadiness. The
 rename is not applied to the record behind it; no file, commit or
 never-amended text carried the old title.
+
+### Counts of LOST frames and of `trackLoss` declare what they count (2026-10-17)
+
+[#143](https://github.com/webarkit/webarkit/issues/143)'s two no-code
+items, implemented here and in [the glossary](./glossary.md#lost-never-acquired-or-a-lock-lost);
+the reasoning is the issue's and is not restated.
+
+- **The rule.** Every count of LOST frames or of `trackLoss` in the record
+  declares which of the two conditions it counts, a frame never yet acquired
+  or a lock lost after it was held. A count that does not declare it is not
+  a readable figure.
+- **The glossary entry** states that LOST covers both conditions and gives
+  the sequence rule that separates them from the export alone, pointing at
+  the state machine rather than restating it.
+- **The rename** to a distinct ACQUIRING state stays deferred to the
+  post-campaign window, as #143's body says.
