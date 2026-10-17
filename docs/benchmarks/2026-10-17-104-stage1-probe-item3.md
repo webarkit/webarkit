@@ -444,29 +444,47 @@ measures the detection gate only.
 
 ## 5. Open, registered and not run
 
-**The 40 frames the residual alone refuses on the wall clip.** At c = 1.5 the
-dof form refuses 40 frames that no other test touches. Their split, so that
-whoever runs the test below knows what it covers: 38 have 16 or more inliers,
-σ̂ 1.504 to 1.688; 2 have 9 inliers, the same frame at 3.452 s of media time
-in seeds 2 and 3 (rms 1.539 px, σ̂ 2.065, |`d_scale`| 0.032, |`d_orth`|
-0.049), and start no lasting lock. The hypothesis for the 38, from section
-2.2: the right fits' residual rises with the inlier count faster than the
-correction, so these are plausibly the flat correction's tail, right fits
-with many inliers whose σ̂ it leaves high, rather than poor fits. The 2
-nine-inlier frames sit outside that hypothesis either way. One observation
-bears on it and is recorded here, not read as a result: by exact count, the
-38 are 30 of the 30 detections with 42 inliers, 2 of the 2 with 40, 1 of the
-32 with 51 and 5 of the 32 with 66, and σ̂'s median by count runs 1.66 at 40
-inliers, 1.54 at 42, 1.44 at 51, 1.46 at 66, 0.99 at 73, 1.09 at 75 and
-0.97 at 78. Within the 16-and-up group it is not monotone in n, so the tail
-may be one frame's own match noise, the 42-inlier detection the clip's start
-produces on every seed and loop, rather than a trend in n. The test that
-would decide it: regress σ̂ on n over the right fits, the detections of 8 or
-more inliers that start lasting locks, and ask whether the 40 sit above that
-trend or on it, and whether the 42-inlier frame does. It is not run here,
-since the brief did not ask for it and its answer changes no figure in this
-file; it is the measurement that would say whether a residual limit at the
-gate has any frame left to refuse once its n-trend is modelled.
+**The 40 frames the residual alone refuses on the wall clip are four
+instants.** At c = 1.5 the dof form refuses 40 frames that no other test
+touches; on the table clip it refuses none alone. Their split: 38 have 16 or
+more inliers, σ̂ 1.504 to 1.688; 2 have 9 inliers, σ̂ 2.065. By media time
+they are four instants of the clip, recurring across seeds and counted loops,
+not a population of frames:
+
+| media time | frames | inliers of matches | seeds | σ̂ |
+|---|---|---|---|---|
+| 3.4515 s | 2 | 9 of 15 | 2 and 3, one loop each | 2.065 |
+| 8.2676 s | 32 | 42 of 60 on 30, 40 of 60 on 2 | all eight, all four loops | 1.534 to 1.688 |
+| 8.3077 s | 1 | 51 of 65 | 1 | 1.540 |
+| 8.3478 s | 5 | 66 of 84 | 1, 2, 3, 6 and 7, one loop each | 1.504 to 1.604 |
+
+So the 38 are three instants, 8.27 s on every seed and loop, 8.31 s once and
+8.35 s five times, and the 2 nine-inlier frames are one. For context, all
+222 detections with 16 or more inliers on the clip fall on seven instants,
+7.75, 7.79, 7.83, 8.07, 8.27, 8.31 and 8.35 s, 31 or 32 frames each: the
+clip's start, where the previous loop's lock has just failed. σ̂ per instant
+spans 0.90 to 1.09, 0.99 to 1.63, 0.97 to 0.99 and 1.09 to 1.21 on the four
+the residual never refuses alone, and 1.53 to 1.69, 1.43 to 1.54 and 1.45 to
+1.60 on the three it does. The 8.35 s
+instant is the 66-inlier detection that starts the clip's lasting locks
+(section 2.4); the 8.27 s and 8.31 s detections start locks that die on the
+next frame, on every seed, and the count, `d_scale` and `d_orth` accept all
+three.
+
+**The registered test changes form with that count.** A regression of σ̂ on
+n over the right fits would have those seven instants and the births' few
+media times as its effective sample, each replicated up to 32 times, and
+would read nothing about n. The question is about specific frames: whether
+the detections at 8.27 s and 8.31 s, which the count accepts and whose locks
+do not survive one tracking step, are poor fits, read against the lasting
+lock born at 8.35 s and its tracked frames on each seed; and, the same way,
+whether the five 66-inlier births refused at c = 1.5 and the 9-inlier instant
+at 3.45 s are. The 9-inlier instant sits outside the high-inlier hypothesis
+in either form. Registered here and not run, since the brief did not ask for
+it and its answer changes no figure in this file: it is the measurement that
+would say whether a residual limit at the gate refuses any frame the count
+wrongly accepts, or only instants the count rightly accepts and the
+correction leaves high.
 
 ## What this addendum does not decide
 

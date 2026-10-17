@@ -185,6 +185,25 @@ const sd = (xs) => {
     return Math.sqrt(xs.reduce((a, x) => a + (x - m) ** 2, 0) / (xs.length - 1));
 };
 const f3 = (v) => (v === null || v === undefined ? "null" : v.toFixed(3));
+/** Frames grouped by their media time, to the microsecond: the same instant of the clip across seeds and loops. */
+const byTime = (xs) => {
+    const m = new Map();
+    for (const x of xs) {
+        const k = x.mediaTime.toFixed(6);
+        if (!m.has(k)) m.set(k, []);
+        m.get(k).push(x);
+    }
+    return m;
+};
+const describeByTime = (m) =>
+    [...m]
+        .sort((a, b) => a[0] - b[0])
+        .map(([t, xs]) => {
+            const uniq = (vs) => [...new Set(vs)].sort((a, b) => a - b).join("/");
+            const sg = xs.map(sigmaOf).filter((v) => v !== null);
+            return `${t} s: ${xs.length} frames, inliers ${uniq(xs.map((x) => x.inliers))} of ${uniq(xs.map((x) => x.matches))} matches, seeds ${uniq(xs.map((x) => x.seed))}, sigma ${sg.length ? `${f3(Math.min(...sg))}..${f3(Math.max(...sg))}` : "undefined"}`;
+        })
+        .join("; ");
 const ci = (s) =>
     `[${(s * Math.sqrt(7 / 16.013)).toFixed(3)}, ${(s * Math.sqrt(7 / 1.69)).toFixed(3)}]`;
 const inlierGroup = (n) => (n <= 7 ? String(n) : n <= 15 ? "8-15" : "16+");
@@ -298,6 +317,7 @@ for (const clip of CLIPS) {
                 rms: cs[0].rms,
                 maxErr: cs[0].maxErr,
                 ...cond,
+                mediaTime: f.mediaTimeSeconds,
                 counted: countedSet.has(f),
             });
         }
@@ -582,13 +602,16 @@ for (const clip of CLIPS) {
         const byGroup = {};
         const who = {};
         const rOnly = {};
+        const rOnlyFrames = [];
         for (const x of C.rows) {
             const w = names.filter((_, i) => sets[i].has(x));
             hist[w.length]++;
             (byGroup[inlierGroup(x.inliers)] ??= [0, 0, 0, 0, 0])[w.length]++;
             if (w.length === 1 || w.length === 2) who[w.join("+")] = (who[w.join("+")] ?? 0) + 1;
-            if (w.length === 1 && w[0] === "R")
+            if (w.length === 1 && w[0] === "R") {
                 (rOnly[inlierGroup(x.inliers)] ??= []).push(sigmaOf(x));
+                rOnlyFrames.push(x);
+            }
         }
         console.log(
             `frames refused by k of {A>=8, S<=0.05, O<=0.05, Rdof<=${rc}}: k = 0..4: ${hist.join(" ")}`,
@@ -611,7 +634,18 @@ for (const clip of CLIPS) {
                     .join("; ") || "none"
             }`,
         );
+        // the same frames by media time: a few instants recurring across seeds and loops, or a population
+        console.log(
+            `  refused by the residual alone, by media time (${byTime(rOnlyFrames).size} distinct): ${
+                describeByTime(byTime(rOnlyFrames)) || "none"
+            }`,
+        );
     }
+    console.log(
+        `detections with 16 or more inliers, by media time (${byTime(C.rows.filter((x) => x.inliers >= 16)).size} distinct): ${
+            describeByTime(byTime(C.rows.filter((x) => x.inliers >= 16))) || "none"
+        }`,
+    );
     console.log(
         "lock births refused, side by side (pooled): filter -> births refused, by origin inliers",
     );
