@@ -54,11 +54,29 @@
  * run acquired, so the rule cannot be read from them; they enter only the
  * counts that do not depend on it.
  *
+ * The rule is read three ways, so that a run's first acquisition is never
+ * pooled with a lock set again after it, which is the distinction the LOST
+ * entry exists to separate: a transition into a frame before the run's first
+ * TRACK frame, into that frame itself, or into a frame after it (Qodo's
+ * review of #146, finding 2, which found the first two pooled under "after").
+ *
  * Exercised both ways (`step-protocol.md`, "Every check is exercised both
  * ways"): `--self-test` runs the comparison on the exports as committed,
- * which must pass, and again with one TRACK frame of one export flipped to
- * LOST in memory, which must fail; it exits non-zero unless both hold. A
+ * which must pass, and again on three perturbations in memory, each of which
+ * must fail: one TRACK frame of a synchronous export flipped to LOST, one
+ * TRACK frame of a worker export flipped to LOST, and the detectionUse of one
+ * worker TRACK->TRACK frame set to "internal", which moves no transition
+ * count and is caught only because that field is counted (Qodo's review of
+ * #146, finding 1), and one held TRACK frame of a synchronous run flipped to
+ * LOST, which must be named by the by-edge count of locks set again
+ * (Copilot's review of #148). It exits non-zero unless all five hold. A
  * check that fails is fatal: nothing but the differing counts is printed.
+ *
+ * The three phase buckets are position in the run, not event type. A lock
+ * set again is an edge, DETECT->TRACK or LOST->TRACK after the run's first
+ * TRACK frame, and is counted by edge in `wholeRunsLocksSetAgain` and
+ * `locksSetAgain`; TRACK->TRACK after that frame is a held lock continuing
+ * and is in the after bucket, not in those.
  *
  * A known limitation, as the probe scripts': this file is covered by no
  * test and by no format check (`docs/` is outside both). What it holds is
@@ -94,17 +112,25 @@ const EXPECTED = {
             "LOST->LOST": 279,
             "TRACK->LOST": 2,
         },
-        // The same, over the 13 whole runs, split by the sequence rule:
-        // "before" is a transition into a frame that precedes the run's
-        // first TRACK frame; "after" one into that frame or any later one.
+        // The same, over the 13 whole runs, split three ways by the sequence
+        // rule: "before" is a transition into a frame that precedes the run's
+        // first TRACK frame; "into" the one into that frame, the run's first
+        // acquisition; "after" one into any later frame.
         wholeRunsBeforeFirstTrack: {
             "DETECT->LOST": 32,
             "LOST->LOST": 23,
             "LOST->DETECT": 36,
             "DETECT->DETECT": 114,
         },
+        wholeRunsIntoFirstTrack: { "DETECT->TRACK": 13 },
+        // The locks set again, by edge: transitions into TRACK from a state
+        // other than TRACK, after the run's first TRACK frame. TRACK->TRACK
+        // is a held lock continuing and is not counted here; a LOST->TRACK
+        // in this arm would appear as an unexpected key (Copilot's review of
+        // #148).
+        wholeRunsLocksSetAgain: { "DETECT->TRACK": 179 },
         wholeRunsAfterFirstTrack: {
-            "DETECT->TRACK": 192,
+            "DETECT->TRACK": 179,
             "TRACK->TRACK": 9123,
             "TRACK->DETECT": 186,
             "DETECT->DETECT": 746,
@@ -153,8 +179,14 @@ const EXPECTED = {
             "LOST->LOST(too-few-matches,consumed)": 32,
             "LOST->LOST(no-consensus,consumed)": 17,
         },
+        // Split as the synchronous whole runs are: the transition into the
+        // run's first TRACK frame apart from those into later ones.
+        intoFirstTrack: { "LOST->TRACK": 12 },
+        // As the synchronous arm's wholeRunsLocksSetAgain; a DETECT->TRACK
+        // here would appear as an unexpected key.
+        locksSetAgain: { "LOST->TRACK": 149 },
         afterFirstTrack: {
-            "LOST->TRACK": 161,
+            "LOST->TRACK": 149,
             "TRACK->TRACK": 8833,
             "TRACK->LOST(no-detection,trackLoss)": 155,
             "LOST->LOST(no-detection,inFlight)": 1409,
@@ -162,6 +194,10 @@ const EXPECTED = {
             "LOST->LOST(too-few-matches,consumed)": 135,
             "LOST->LOST(no-consensus,consumed)": 76,
         },
+        // detectionUse on the frame entered by every TRACK->TRACK transition:
+        // the glossary's W6 says none on every one, so this is counted, not
+        // assumed (Qodo's review of #146, finding 1).
+        trackToTrackDetectionUse: { none: 8833 },
         trackToLostTrackLoss: { "too-few-patches": 68, "poor-fit": 43, "fit-failed": 39, "too-many-outliers": 5 },
         trackToLostWithDetectionInFlight: 0,
         trackToLostNeedsDetection: 155,
@@ -217,6 +253,8 @@ function compute(exports) {
         frame0WholeRuns: {},
         transitions: {},
         wholeRunsBeforeFirstTrack: {},
+        wholeRunsIntoFirstTrack: {},
+        wholeRunsLocksSetAgain: {},
         wholeRunsAfterFirstTrack: {},
         neverAcquiredReasons: {},
         afterLockWithoutTrackLoss: 0,
@@ -238,7 +276,10 @@ function compute(exports) {
         consumedFramesAgo: {},
         consumedLatencyMsRange: [Infinity, -Infinity],
         beforeFirstTrack: {},
+        intoFirstTrack: {},
+        locksSetAgain: {},
         afterFirstTrack: {},
+        trackToTrackDetectionUse: {},
         trackToLostTrackLoss: {},
         trackToLostWithDetectionInFlight: 0,
         trackToLostNeedsDetection: 0,
@@ -250,7 +291,11 @@ function compute(exports) {
         const fr = j.frames;
         const whole = fr.length === j.ticks;
         const firstTrack = fr.findIndex((x) => x.state === "TRACK");
-        const before = (i) => firstTrack < 0 || i < firstTrack;
+        // The sequence rule, three ways: a transition into a frame before the
+        // run's first TRACK frame, into that frame itself (the run's first
+        // acquisition), or into a frame after it.
+        const phase = (i) =>
+            firstTrack < 0 || i < firstTrack ? "before" : i === firstTrack ? "into" : "after";
         if (j.detection?.path === "worker") {
             const o = worker;
             o.files++;
@@ -294,7 +339,12 @@ function compute(exports) {
                         ? `(${b.reason}${b.detectionUse === "consumed" ? ",consumed" : ""}` +
                           `${b.trackLoss ? ",trackLoss" : ""}${b.detectionInFlight ? ",inFlight" : ""})`
                         : "";
-                inc(before(i) ? o.beforeFirstTrack : o.afterFirstTrack, `${a.state}->${b.state}${detail}`);
+                const bucket = { before: o.beforeFirstTrack, into: o.intoFirstTrack, after: o.afterFirstTrack };
+                inc(bucket[phase(i)], `${a.state}->${b.state}${detail}`);
+                if (phase(i) === "after" && b.state === "TRACK" && a.state !== "TRACK") {
+                    inc(o.locksSetAgain, `${a.state}->${b.state}`);
+                }
+                if (a.state === "TRACK" && b.state === "TRACK") inc(o.trackToTrackDetectionUse, b.detectionUse);
                 if (a.state === "TRACK" && b.state === "LOST") {
                     inc(o.trackToLostTrackLoss, b.trackLoss);
                     if (b.detectionInFlight) o.trackToLostWithDetectionInFlight++;
@@ -313,7 +363,7 @@ function compute(exports) {
                     o.frame0WholeRuns,
                     z.state === "DETECT" ? "DETECT" : `${z.state}/${z.reason}/trackLoss=${z.trackLoss}`,
                 );
-                for (let i = 0; i < fr.length && before(i); i++) {
+                for (let i = 0; i < fr.length && phase(i) === "before"; i++) {
                     if (fr[i].state === "LOST") inc(o.neverAcquiredReasons, fr[i].reason);
                 }
             }
@@ -322,7 +372,17 @@ function compute(exports) {
                 const b = fr[i];
                 const t = `${a.state}->${b.state}`;
                 inc(o.transitions, t);
-                if (whole) inc(before(i) ? o.wholeRunsBeforeFirstTrack : o.wholeRunsAfterFirstTrack, t);
+                if (whole) {
+                    const bucket = {
+                        before: o.wholeRunsBeforeFirstTrack,
+                        into: o.wholeRunsIntoFirstTrack,
+                        after: o.wholeRunsAfterFirstTrack,
+                    };
+                    inc(bucket[phase(i)], t);
+                    if (phase(i) === "after" && b.state === "TRACK" && a.state !== "TRACK") {
+                        inc(o.wholeRunsLocksSetAgain, t);
+                    }
+                }
                 if ((a.state === "DETECT" || a.state === "TRACK") && b.state !== "TRACK" && !b.trackLoss) {
                     o.afterLockWithoutTrackLoss++;
                 }
@@ -383,12 +443,44 @@ function main(argv) {
         };
         const [syncName, syncBroken] = flip("sync");
         const [workerName, workerBroken] = flip("worker");
-        const ok = clean.length === 0 && syncBroken > 0 && workerBroken > 0;
+        // Change the detectionUse of one worker TRACK->TRACK frame, the
+        // perturbation Qodo's review of #146 named: every transition count
+        // stays the same, and only the counted detectionUse can catch it.
+        const drifted = exports.map(([n, j]) => [n, structuredClone(j)]);
+        const driftTarget = drifted.find(([, j]) => j.detection?.path === "worker");
+        const driftFrames = driftTarget[1].frames;
+        const driftIndex = driftFrames.findIndex((x, i) => i > 0 && x.state === "TRACK" && driftFrames[i - 1].state === "TRACK");
+        driftFrames[driftIndex].detectionUse = "internal";
+        const driftBroken = differences(compute(drifted));
+        // Flip a held TRACK frame, one with TRACK on both sides and after the
+        // run's first TRACK frame, to LOST in a synchronous whole run: the
+        // transition out of it becomes a LOST->TRACK after the first TRACK
+        // frame, a lock set again by an edge this arm never shows, which the
+        // by-edge count must report as an unexpected key (Copilot's review
+        // of #148).
+        const held = exports.map(([n, j]) => [n, structuredClone(j)]);
+        const heldTarget = held.find(([, j]) => j.detection?.path !== "worker" && j.frames.length === j.ticks);
+        const hf = heldTarget[1].frames;
+        const heldFirst = hf.findIndex((x) => x.state === "TRACK");
+        const heldIndex = hf.findIndex(
+            (x, i) => i > heldFirst && x.state === "TRACK" && hf[i - 1].state === "TRACK" && hf[i + 1]?.state === "TRACK",
+        );
+        hf[heldIndex].state = "LOST";
+        hf[heldIndex].reason = "self-test";
+        const heldBroken = differences(compute(held));
+        const heldNamesIt = heldBroken.some((line) => line.startsWith("sync.wholeRunsLocksSetAgain."));
+        const ok =
+            clean.length === 0 && syncBroken > 0 && workerBroken > 0 && driftBroken.length > 0 && heldNamesIt;
         const says = (n) => (n > 0 ? `the check fails on ${n} counts` : "the check still passes: it cannot fail");
         console.log(
             `self-test: exports as committed ${clean.length === 0 ? "pass" : `FAIL (${clean.length} counts differ)`}; ` +
                 `with one TRACK frame of ${syncName} flipped to LOST ${says(syncBroken)}; ` +
-                `with one TRACK frame of ${workerName} flipped to LOST ${says(workerBroken)}`,
+                `with one TRACK frame of ${workerName} flipped to LOST ${says(workerBroken)}; ` +
+                `with the detectionUse of one TRACK->TRACK frame of ${driftTarget[0]} (frames[${driftIndex}]) set to internal ` +
+                `${says(driftBroken.length)}${driftBroken.length > 0 ? `: ${driftBroken.join("; ")}` : ""}; ` +
+                `with one held TRACK frame of ${heldTarget[0]} (frames[${heldIndex}]) flipped to LOST ` +
+                `${says(heldBroken.length)}${heldNamesIt ? ", among them" : ", but NOT"} the by-edge count of locks set again` +
+                `${heldBroken.length > 0 ? `: ${heldBroken.filter((l) => l.includes("LocksSetAgain")).join("; ") || "(none named)"}` : ""}`,
         );
         if (!ok) for (const line of clean) console.log(`  ${line}`);
         return ok ? 0 : 1;
