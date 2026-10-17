@@ -67,8 +67,16 @@
  * TRACK frame of a worker export flipped to LOST, and the detectionUse of one
  * worker TRACK->TRACK frame set to "internal", which moves no transition
  * count and is caught only because that field is counted (Qodo's review of
- * #146, finding 1). It exits non-zero unless all four hold. A check that
- * fails is fatal: nothing but the differing counts is printed.
+ * #146, finding 1), and one held TRACK frame of a synchronous run flipped to
+ * LOST, which must be named by the by-edge count of locks set again
+ * (Copilot's review of #148). It exits non-zero unless all five hold. A
+ * check that fails is fatal: nothing but the differing counts is printed.
+ *
+ * The three phase buckets are position in the run, not event type. A lock
+ * set again is an edge, DETECT->TRACK or LOST->TRACK after the run's first
+ * TRACK frame, and is counted by edge in `wholeRunsLocksSetAgain` and
+ * `locksSetAgain`; TRACK->TRACK after that frame is a held lock continuing
+ * and is in the after bucket, not in those.
  *
  * A known limitation, as the probe scripts': this file is covered by no
  * test and by no format check (`docs/` is outside both). What it holds is
@@ -115,6 +123,12 @@ const EXPECTED = {
             "DETECT->DETECT": 114,
         },
         wholeRunsIntoFirstTrack: { "DETECT->TRACK": 13 },
+        // The locks set again, by edge: transitions into TRACK from a state
+        // other than TRACK, after the run's first TRACK frame. TRACK->TRACK
+        // is a held lock continuing and is not counted here; a LOST->TRACK
+        // in this arm would appear as an unexpected key (Copilot's review of
+        // #148).
+        wholeRunsLocksSetAgain: { "DETECT->TRACK": 179 },
         wholeRunsAfterFirstTrack: {
             "DETECT->TRACK": 179,
             "TRACK->TRACK": 9123,
@@ -168,6 +182,9 @@ const EXPECTED = {
         // Split as the synchronous whole runs are: the transition into the
         // run's first TRACK frame apart from those into later ones.
         intoFirstTrack: { "LOST->TRACK": 12 },
+        // As the synchronous arm's wholeRunsLocksSetAgain; a DETECT->TRACK
+        // here would appear as an unexpected key.
+        locksSetAgain: { "LOST->TRACK": 149 },
         afterFirstTrack: {
             "LOST->TRACK": 149,
             "TRACK->TRACK": 8833,
@@ -237,6 +254,7 @@ function compute(exports) {
         transitions: {},
         wholeRunsBeforeFirstTrack: {},
         wholeRunsIntoFirstTrack: {},
+        wholeRunsLocksSetAgain: {},
         wholeRunsAfterFirstTrack: {},
         neverAcquiredReasons: {},
         afterLockWithoutTrackLoss: 0,
@@ -259,6 +277,7 @@ function compute(exports) {
         consumedLatencyMsRange: [Infinity, -Infinity],
         beforeFirstTrack: {},
         intoFirstTrack: {},
+        locksSetAgain: {},
         afterFirstTrack: {},
         trackToTrackDetectionUse: {},
         trackToLostTrackLoss: {},
@@ -322,6 +341,9 @@ function compute(exports) {
                         : "";
                 const bucket = { before: o.beforeFirstTrack, into: o.intoFirstTrack, after: o.afterFirstTrack };
                 inc(bucket[phase(i)], `${a.state}->${b.state}${detail}`);
+                if (phase(i) === "after" && b.state === "TRACK" && a.state !== "TRACK") {
+                    inc(o.locksSetAgain, `${a.state}->${b.state}`);
+                }
                 if (a.state === "TRACK" && b.state === "TRACK") inc(o.trackToTrackDetectionUse, b.detectionUse);
                 if (a.state === "TRACK" && b.state === "LOST") {
                     inc(o.trackToLostTrackLoss, b.trackLoss);
@@ -357,6 +379,9 @@ function compute(exports) {
                         after: o.wholeRunsAfterFirstTrack,
                     };
                     inc(bucket[phase(i)], t);
+                    if (phase(i) === "after" && b.state === "TRACK" && a.state !== "TRACK") {
+                        inc(o.wholeRunsLocksSetAgain, t);
+                    }
                 }
                 if ((a.state === "DETECT" || a.state === "TRACK") && b.state !== "TRACK" && !b.trackLoss) {
                     o.afterLockWithoutTrackLoss++;
@@ -427,14 +452,35 @@ function main(argv) {
         const driftIndex = driftFrames.findIndex((x, i) => i > 0 && x.state === "TRACK" && driftFrames[i - 1].state === "TRACK");
         driftFrames[driftIndex].detectionUse = "internal";
         const driftBroken = differences(compute(drifted));
-        const ok = clean.length === 0 && syncBroken > 0 && workerBroken > 0 && driftBroken.length > 0;
+        // Flip a held TRACK frame, one with TRACK on both sides and after the
+        // run's first TRACK frame, to LOST in a synchronous whole run: the
+        // transition out of it becomes a LOST->TRACK after the first TRACK
+        // frame, a lock set again by an edge this arm never shows, which the
+        // by-edge count must report as an unexpected key (Copilot's review
+        // of #148).
+        const held = exports.map(([n, j]) => [n, structuredClone(j)]);
+        const heldTarget = held.find(([, j]) => j.detection?.path !== "worker" && j.frames.length === j.ticks);
+        const hf = heldTarget[1].frames;
+        const heldFirst = hf.findIndex((x) => x.state === "TRACK");
+        const heldIndex = hf.findIndex(
+            (x, i) => i > heldFirst && x.state === "TRACK" && hf[i - 1].state === "TRACK" && hf[i + 1]?.state === "TRACK",
+        );
+        hf[heldIndex].state = "LOST";
+        hf[heldIndex].reason = "self-test";
+        const heldBroken = differences(compute(held));
+        const heldNamesIt = heldBroken.some((line) => line.startsWith("sync.wholeRunsLocksSetAgain."));
+        const ok =
+            clean.length === 0 && syncBroken > 0 && workerBroken > 0 && driftBroken.length > 0 && heldNamesIt;
         const says = (n) => (n > 0 ? `the check fails on ${n} counts` : "the check still passes: it cannot fail");
         console.log(
             `self-test: exports as committed ${clean.length === 0 ? "pass" : `FAIL (${clean.length} counts differ)`}; ` +
                 `with one TRACK frame of ${syncName} flipped to LOST ${says(syncBroken)}; ` +
                 `with one TRACK frame of ${workerName} flipped to LOST ${says(workerBroken)}; ` +
                 `with the detectionUse of one TRACK->TRACK frame of ${driftTarget[0]} (frames[${driftIndex}]) set to internal ` +
-                `${says(driftBroken.length)}${driftBroken.length > 0 ? `: ${driftBroken.join("; ")}` : ""}`,
+                `${says(driftBroken.length)}${driftBroken.length > 0 ? `: ${driftBroken.join("; ")}` : ""}; ` +
+                `with one held TRACK frame of ${heldTarget[0]} (frames[${heldIndex}]) flipped to LOST ` +
+                `${says(heldBroken.length)}${heldNamesIt ? ", among them" : ", but NOT"} the by-edge count of locks set again` +
+                `${heldBroken.length > 0 ? `: ${heldBroken.filter((l) => l.includes("LocksSetAgain")).join("; ") || "(none named)"}` : ""}`,
         );
         if (!ok) for (const line of clean) console.log(`  ${line}`);
         return ok ? 0 : 1;

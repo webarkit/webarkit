@@ -269,11 +269,15 @@ sequence rule is read only on the exports that hold their whole run
 (`frames.length` equal to `ticks`): the 13 sync exports of 2026-10-01 and
 later, and all 12 worker exports; the 32 older sync exports hold a 300-frame
 window that may start after the run acquired, so they enter only the counts
-that do not depend on it. On those runs a transition is counted three ways:
-**before** the run's first `TRACK` frame, **into** that frame, which is the
-run's first acquisition, or **after** it, into a later frame, which for a
-transition into `TRACK` is a lock set again once the run had acquired.
-Reasons in the tables are `reason` on a `LOST`
+that do not depend on it. On those runs a transition is counted three ways
+by its position in the run: **before** the run's first `TRACK` frame,
+**into** that frame, or **after** it, into a later frame. The position says
+where in the run; the edge says what happened. The transition into the
+first `TRACK` frame is the run's first acquisition. A lock set again is
+`DETECT` → `TRACK` or `LOST` → `TRACK` after that frame, 179 and 149 in the
+two arms, counted apart as such; `TRACK` → `TRACK` after it is a held lock
+continuing, not an acquisition of any kind, 9,123 and 8,833 in the same
+bucket. Reasons in the tables are `reason` on a `LOST`
 frame and `trackLoss` on the frame whose step dropped the lock
 (`TrackFailure` in `tracker.ts`; `TrackLoss` in
 `src/tracking/track_frame.ts`). Corrected on 2026-10-17 after Qodo's review
@@ -284,7 +288,15 @@ first acquisition with a lock set again after it, the distinction `LOST`
 conflates, never yet acquired against lock lost, merged in the citation
 tables of the entry that introduces it; and W6 stated a `detectionUse` value
 the check did not count. Both counts are now split and the value is
-counted, each held by the check. The spacing directive on each block is
+counted, each held by the check. Corrected again the same day, after
+Copilot's review of [#148](https://github.com/webarkit/webarkit/pull/148)
+(on `b82d8c8`): the explanation of the split then read the after bucket as
+a lock set again, where that bucket also holds `TRACK` → `TRACK`, a held
+lock continuing. It recurred because `LOST`'s distinction is between
+events, and it was being carried on a positional axis, which cannot hold
+it: the phase says where in the run, the edge says what happened. The
+statement is now anchored to the edges, and the check counts the locks set
+again by edge. The spacing directive on each block is
 `flowchart.nodeSpacing` and `flowchart.rankSpacing`: in mermaid 11.4.1 the
 `state` config's keys of the same names are not read by the
 `stateDiagram-v2` layout, measured on these two blocks.
