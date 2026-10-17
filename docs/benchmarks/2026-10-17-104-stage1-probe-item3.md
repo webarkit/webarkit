@@ -460,31 +460,49 @@ not a population of frames:
 
 So the 38 are three instants, 8.27 s on every seed and loop, 8.31 s once and
 8.35 s five times, and the 2 nine-inlier frames are one. For context, all
-222 detections with 16 or more inliers on the clip fall on seven instants,
-7.75, 7.79, 7.83, 8.07, 8.27, 8.31 and 8.35 s, 31 or 32 frames each: the
-clip's start, where the previous loop's lock has just failed. σ̂ per instant
-spans 0.90 to 1.09, 0.99 to 1.63, 0.97 to 0.99 and 1.09 to 1.21 on the four
-the residual never refuses alone, and 1.53 to 1.69, 1.43 to 1.54 and 1.45 to
-1.60 on the three it does. The 8.35 s
-instant is the 66-inlier detection that starts the clip's lasting locks
-(section 2.4); the 8.27 s and 8.31 s detections start locks that die on the
-next frame, on every seed, and the count, `d_scale` and `d_orth` accept all
-three.
+222 detections with 16 or more inliers on the clip fall on seven instants
+between 7.75 and 8.35 s, 31 or 32 frames each. That stretch is not the clip's
+start, as this file's previous commit (`e4ced2f`) had it: the clip runs
+11.96 s, and 7.75 s is where a running lock fails on every one of its 32
+occurrences, the frame before it being a TRACK frame on 32 of 32. **The seven
+instants, and the fate of the lock each starts,** read on every seed and
+counted loop, 32 occurrences each except the two that seed 4's loop 1 skips:
 
-**The registered test changes form with that count.** A regression of σ̂ on
-n over the right fits would have those seven instants and the births' few
-media times as its effective sample, each replicated up to 32 times, and
-would read nothing about n. The question is about specific frames: whether
-the detections at 8.27 s and 8.31 s, which the count accepts and whose locks
-do not survive one tracking step, are poor fits, read against the lasting
-lock born at 8.35 s and its tracked frames on each seed; and, the same way,
-whether the five 66-inlier births refused at c = 1.5 and the 9-inlier instant
-at 3.45 s are. The 9-inlier instant sits outside the high-inlier hypothesis
-in either form. Registered here and not run, since the brief did not ask for
-it and its answer changes no figure in this file: it is the measurement that
-would say whether a residual limit at the gate refuses any frame the count
-wrongly accepts, or only instants the count rightly accepts and the
-correction leaves high.
+| media time | inliers of matches | σ̂ | the lock it starts | frame before it |
+|---|---|---|---|---|
+| 7.7458 s | 73 of 95 | 0.896 to 1.092 | dies on the next frame on 31 of 32; on seed 4, loop 1, it holds 7 frames, to 8.067 s | TRACK, the lock from 3.5 s |
+| 7.7860 s | 73 of 85 | 0.990 to 1.629 | dies on the next frame, 31 of 31 | DETECT |
+| 7.8261 s | 78 of 98 | 0.970 to 0.985 | holds 5 frames, then dies, 31 of 31 | DETECT |
+| 8.0669 s | 75 of 95 | 1.089 to 1.210 | holds 4 frames, then dies, 32 of 32 | TRACK |
+| 8.2676 s | 42 of 60 on 30, 40 of 60 on 2 | 1.534 to 1.688 | dies on the next frame, 32 of 32 | TRACK |
+| 8.3077 s | 51 of 65 | 1.425 to 1.540 | dies on the next frame, 32 of 32 | DETECT |
+| 8.3478 s | 66 of 84 | 1.451 to 1.604 | lasts, 89 tracked frames, 32 of 32: the clip's lasting locks (section 2.4) | DETECT |
+
+Every lock that dies is followed by a DETECT frame, never a LOST one: the
+tracker re-detects at once. The count, `d_scale` and `d_orth` accept all
+seven instants.
+
+**Does σ̂ order the doomed births below the lasting one? No.** This file's
+previous commit registered, and did not run, the question whether the
+detections at 8.27 s and 8.31 s, which the count accepts and whose locks die
+on the next frame, are poor fits. On the table it reduces to one reading. A c
+that refuses both on every occurrence while passing 8.35 s on every
+occurrence would have to lie at or above the lasting instant's largest σ̂,
+1.604, and below the doomed instants' smallest, 1.425. No such c exists, for
+either instant on its own: 8.27 s needs c below 1.534, 8.31 s below 1.425,
+and the lasting instant reaches 1.604. Within a single seed and loop the
+8.27 s detection does sit above the 8.35 s one on 31 of 32, but the 8.31 s
+detection does so on 4 of 32: σ̂ places one doomed birth above the lasting
+one and the other below it. That is the answer, and it closes the registered
+question; no test on these instants stays registered here.
+
+Two things do not change with it. The addendum's verdict on candidate 1
+stands: its failure at four inliers (section 2.1) is structural, and this is
+a different matter. And no c here is a threshold: the probe's item 5 binds,
+the filter is post hoc, and two doomed births on one clip could have
+established nothing even had σ̂ ordered them. Why the locks born at 8.27 s
+and 8.31 s die on the next frame on every seed while the one born at 8.35 s
+lasts is not this addendum's question.
 
 ## What this addendum does not decide
 
@@ -496,4 +514,6 @@ correction leaves high.
 - Whether #92's two directions hold for the tracking step's `maxFitRms`, the
   defect they were written for; the detection gate is a different regime
   (section 2's preamble), and nothing here reads the tracking step.
-- The 40 frames of section 5.
+- Why the locks born at 8.27 s and 8.31 s die on the next frame on every seed
+  while the one born at 8.35 s lasts (section 5); the registered question on
+  those instants is closed there.

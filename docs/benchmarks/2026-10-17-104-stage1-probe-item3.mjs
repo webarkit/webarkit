@@ -89,6 +89,15 @@
  *    95% interval (χ² quantiles 1.690 and 16.013). Refusal sets are compared
  *    pairwise on the posed DETECT frames of the counted loops, eight seeds
  *    pooled, and on the lasting lock births.
+ * 6. The instants: posed detections grouped by media time to the microsecond,
+ *    the same frame of the clip across seeds and loops. For the detections of
+ *    16 or more inliers, the fate of the lock each starts is the number of
+ *    TRACK frames that follow it in processed order and the state of the
+ *    frame that ends them, read on every occurrence; a lock lasts when those
+ *    frames number 50 or more in the counted loops. σ̂ orders an instant whose
+ *    lock always dies on the next frame below one whose lock always lasts
+ *    when some c refuses every occurrence of the first and passes every
+ *    occurrence of the second; the interval is printed, or "none".
  */
 
 import { readFileSync } from "node:fs";
@@ -108,9 +117,8 @@ const NS = [5, 6, 7, 8, 10, 12, 16];
 const TAUS = [0.05, 0.1, 0.2];
 const CS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 
-const { cornerJitter, countedLoopFrames, targetCorners, reprojectCorners } = await import(
-    pathToFileURL(join(HERE, "../../examples/js/bench-metrics.mjs")).href
-);
+const { cornerJitter, countedLoopFrames, targetCorners, reprojectCorners, unwrapMediaTimes } =
+    await import(pathToFileURL(join(HERE, "../../examples/js/bench-metrics.mjs")).href);
 const { intrinsics, decode } = await import(
     pathToFileURL(join(HERE, "../../examples/dist/webarkit-packages.mjs")).href
 );
@@ -287,6 +295,7 @@ for (const clip of CLIPS) {
         }
 
         const D = e.clipDurationS;
+        C.clipDurationS = D;
         const all = e.frames;
         const K = intrinsics(e.processingResolution.width, e.processingResolution.height);
         const counted = countedLoopFrames(all, { clipDurationS: D, ...e.loops });
@@ -295,11 +304,28 @@ for (const clip of CLIPS) {
         if (base.jitterPx === e.runSummary.jitterPx) C.checks.reproduced++;
         else console.error(`!! ${clip} seed ${seed}: recorded jitterPx not reproduced`);
 
-        // per posed DETECT frame of the whole export: residual, signal, counts
+        // per posed DETECT frame of the whole export: residual, signal, counts, and the fate of
+        // the lock it starts (TRACK frames that follow it in processed order, and what ends them)
+        const unwrapped = unwrapMediaTimes(counted, D);
+        const loopOf = new Map(counted.map((f, i) => [f, Math.floor(unwrapped[i] / D)]));
         const data = new Map();
-        for (const f of all) {
+        for (let i = 0; i < all.length; i++) {
+            const f = all[i];
             if (f.state !== "DETECT" || !f.corners) continue;
             C.checks.posedDetect++;
+            let j = i + 1;
+            let nextTrackCounted = 0;
+            while (j < all.length && all[j].state === "TRACK") {
+                if (countedSet.has(all[j])) nextTrackCounted++;
+                j++;
+            }
+            const fate = {
+                loop: loopOf.get(f) ?? null,
+                nextTrack: j - i - 1,
+                nextTrackCounted,
+                afterState: j < all.length ? all[j].state : "end",
+                prevState: i > 0 ? all[i - 1].state : "none",
+            };
             const cs = (byKey.get(JSON.stringify(f.corners)) ?? []).filter(
                 (c) => c.numInliers === f.numInliers && c.numMatches === f.numMatches,
             );
@@ -317,6 +343,7 @@ for (const clip of CLIPS) {
                 rms: cs[0].rms,
                 maxErr: cs[0].maxErr,
                 ...cond,
+                ...fate,
                 mediaTime: f.mediaTimeSeconds,
                 counted: countedSet.has(f),
             });
@@ -407,7 +434,7 @@ for (const clip of CLIPS) {
         `checks: recorded jitterPx reproduced on ${C.checks.reproduced} of ${SEEDS.length} seeds; shadow export equals the recorded one on ${C.checks.shadowEqual} of ${SEEDS.length}; posed DETECT frames in the whole exports ${C.checks.posedDetect}, unmatched to an observed call ${C.checks.unmatched}, inconsistent duplicates ${C.checks.dupInconsistent}`,
     );
     console.log(
-        `posed DETECT frames in the counted loops, ${SEEDS.length} seeds: ${C.rows.length}; lasting lock births (>= 50 counted frames): ${C.births.length} (${C.births.filter((b) => b.noData).length} without data); one-frame runs ${C.oneFrameRuns}`,
+        `posed DETECT frames in the counted loops, ${SEEDS.length} seeds: ${C.rows.length}; lasting lock births (>= 50 counted frames): ${C.births.length} (${C.births.filter((b) => b.noData).length} without data); one-frame runs ${C.oneFrameRuns}; clip duration ${C.clipDurationS} s`,
     );
 
     console.log(
@@ -646,6 +673,63 @@ for (const clip of CLIPS) {
             describeByTime(byTime(C.rows.filter((x) => x.inliers >= 16))) || "none"
         }`,
     );
+    // the high-inlier instants and the fate of the lock each starts, read on every seed and loop;
+    // then whether sigma orders the instants whose lock dies on the next frame below those whose lock lasts
+    const hiInstants = byTime(C.rows.filter((x) => x.inliers >= 16));
+    if (hiInstants.size) {
+        console.log(
+            "high-inlier instants: media time | occurrences | inliers of matches | sigma min..max | TRACK frames that follow {count: occurrences} | lasting (>= 50 counted) | state after the run | state before | occurrences off the mode",
+        );
+        const uniq = (vs) => [...new Set(vs)].sort((a, b) => a - b).join("/");
+        const tally = (vs) => {
+            const t = {};
+            for (const v of vs) t[v] = (t[v] ?? 0) + 1;
+            return t;
+        };
+        const fate = new Map();
+        for (const [t, xs] of [...hiInstants].sort((a, b) => a[0] - b[0])) {
+            const dist = tally(xs.map((x) => x.nextTrack));
+            const mode = Number(Object.entries(dist).sort((a, b) => b[1] - a[1])[0][0]);
+            const lasting = xs.filter((x) => x.nextTrackCounted >= 50).length;
+            const odd = xs
+                .filter((x) => x.nextTrack !== mode)
+                .map((x) => `seed ${x.seed} loop ${x.loop}: ${x.nextTrack} then ${x.afterState}`);
+            const sg = xs.map(sigmaOf);
+            console.log(
+                `${t} | ${xs.length} | ${uniq(xs.map((x) => x.inliers))} of ${uniq(xs.map((x) => x.matches))} | ${f3(Math.min(...sg))}..${f3(Math.max(...sg))} | ${JSON.stringify(dist)} | ${lasting} | ${JSON.stringify(tally(xs.map((x) => x.afterState)))} | ${JSON.stringify(tally(xs.map((x) => x.prevState)))} | ${odd.join("; ") || "none"}`,
+            );
+            fate.set(t, {
+                xs,
+                doomed: xs.every((x) => x.nextTrack === 0),
+                lasts: lasting === xs.length,
+            });
+        }
+        const lastingInstants = [...fate].filter(([, v]) => v.lasts);
+        const lastingSig = lastingInstants.flatMap(([, v]) => v.xs.map(sigmaOf));
+        if (lastingSig.length) {
+            const maxL = Math.max(...lastingSig);
+            console.log(
+                `sigma ordering against the instant(s) whose lock lasts on every occurrence (${lastingInstants.map(([t]) => t).join(", ")} s; sigma max ${f3(maxL)}): for each instant whose lock dies on the next frame on every occurrence, the c refusing it on every occurrence while passing the lasting one(s) on every occurrence, and how often it sits above the lasting one within the same seed and loop`,
+            );
+            for (const [t, v] of fate) {
+                if (!v.doomed) continue;
+                const minD = Math.min(...v.xs.map(sigmaOf));
+                let above = 0;
+                let pairs = 0;
+                for (const x of v.xs) {
+                    for (const [, vl] of lastingInstants) {
+                        const y = vl.xs.find((y) => y.seed === x.seed && y.loop === x.loop);
+                        if (!y) continue;
+                        pairs++;
+                        if (sigmaOf(x) > sigmaOf(y)) above++;
+                    }
+                }
+                console.log(
+                    `  ${t} s (sigma min ${f3(minD)}): ${maxL < minD ? `c in [${f3(maxL)}, ${f3(minD)})` : "none"}; above the lasting one within the same seed and loop on ${above} of ${pairs}`,
+                );
+            }
+        }
+    }
     console.log(
         "lock births refused, side by side (pooled): filter -> births refused, by origin inliers",
     );
