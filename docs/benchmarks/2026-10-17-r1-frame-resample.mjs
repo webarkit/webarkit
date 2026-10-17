@@ -50,16 +50,22 @@
  * applies to both runs, two apply to the baseline and the repeat in that
  * order. `--population` chooses the frames a resample thins: `common`, the
  * run's frames on the pair-common media times (the default), or `whole`,
- * every frame the run posed. With either option given the run is the
- * resample alone, since the delete-one influence and the conditional
- * movement describe the default path. The command that gives the clause's
- * own noise at the pair's own dropped fractions, 0.00767 px, is
+ * every frame the run posed. With either option given, the delete-one
+ * influence reads that population and the conditional movement runs at
+ * those rates on it, in place of the default's keep 0.9 on the common set.
+ * An option is validated before any default applies: a bare `--rates` or
+ * `--population`, an empty or doubled value, an unknown or repeated option
+ * fails with the usage text and runs nothing, so that no command can appear
+ * to request one run and perform another. The command that gives the
+ * clause's own noise at the pair's own dropped fractions, 0.00767 px, is
  *
  *     node docs/benchmarks/2026-10-17-r1-frame-resample.mjs 10000 1 --rates=own --population=whole
  *
  * and the same with `--population=common` (or without it) gives 0.01082 px,
  * the figure of those rates applied on top of the common set, which no real
- * comparison has (the entry says why it is recorded).
+ * comparison has (the entry says why it is recorded). Each command's last
+ * section gives the share of the movement's variance carried by the fate of
+ * the most influential frame at those rates on that population.
  *
  * Rates: keep 207/212 (the two runs' frame counts on the common set differ
  * by that ratio, 2.36% dropped: a net count ratio, since the difference is
@@ -103,35 +109,40 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = "2026-10-17-r1-frame-resample.mjs";
 const ARGS = process.argv.slice(2);
-const FLAGS = Object.fromEntries(
-    ARGS.filter((a) => a.startsWith("--")).map((a) => a.slice(2).split(/=(.*)/s).slice(0, 2)),
-);
+const fatal = (message) => {
+    console.error(`${SCRIPT}: ${message}`);
+    process.exit(1);
+};
+const USAGE = `usage: node ${SCRIPT} [resamples ≥ 2] [seed] [--rates=own|<keep>|<keepBaseline>,<keepRepeat>] [--population=common|whole]`;
+// every option supplied is validated before any default applies: a bare option, an empty value, a
+// second "=", an unknown name or a repeated option fails here with the usage text, so that no
+// command can appear to request one run and perform another
+const FLAGS = {};
+for (const a of ARGS.filter((x) => x.startsWith("--"))) {
+    const m = /^--([a-z]+)=([^=]+)$/s.exec(a);
+    if (!m || !["population", "rates"].includes(m[1]) || m[1] in FLAGS) {
+        fatal(`${USAGE}; each option is given once, as --name=value with exactly one value; got ${ARGS.join(" ")}`);
+    }
+    FLAGS[m[1]] = m[2];
+}
 const POSITIONAL = ARGS.filter((a) => !a.startsWith("--"));
 const B = Number(POSITIONAL[0] ?? 10000);
 const SEED = Number(POSITIONAL[1] ?? 1);
 const POPULATION = FLAGS.population ?? "common";
 const RATES_FLAG = FLAGS.rates ?? null;
-// with either option given, the run is the resample alone: the delete-one influence and the
-// conditional movement describe the default path (common set, keep 207/212 and 0.9) and are not run
+// with either option given, the resample, the delete-one influence and the conditional movement all
+// run on that population at those rates; without, the run is the record's default path
 const custom = POPULATION !== "common" || RATES_FLAG !== null;
+if (!(Number.isInteger(B) && B > 1) || !Number.isInteger(SEED) || POSITIONAL.length > 2) {
+    fatal(`${USAGE}; got ${ARGS.join(" ")}`);
+}
+if (!["common", "whole"].includes(POPULATION)) {
+    fatal(`${USAGE}; --population: expected common or whole; got ${POPULATION}`);
+}
 const { cornerJitter, compareExports, mediaKey, JITTER_WINDOW_S } = await import(
     pathToFileURL(join(HERE, "../../examples/js/bench-metrics.mjs")).href
 );
 const load = (n) => JSON.parse(readFileSync(join(HERE, `2026-09-28-tab9-tuning-r1-${n}.json`), "utf8"));
-const fatal = (message) => {
-    console.error(`${SCRIPT}: ${message}`);
-    process.exit(1);
-};
-if (
-    !(Number.isInteger(B) && B > 1) ||
-    !Number.isInteger(SEED) ||
-    !["common", "whole"].includes(POPULATION) ||
-    Object.keys(FLAGS).some((k) => !["population", "rates"].includes(k))
-) {
-    fatal(
-        `usage: node ${SCRIPT} [resamples ≥ 2] [seed] [--rates=own|<keep>|<keepBaseline>,<keepRepeat>] [--population=common|whole]; got ${ARGS.join(" ")}`,
-    );
-}
 const base = load("baseline-static");
 const rep = load("baseline-static-repeat");
 function mulberry32(a) {
@@ -231,7 +242,7 @@ if (RATES_FLAG !== null) {
     } else {
         const parts = RATES_FLAG.split(",").map(Number);
         if (parts.length > 2 || parts.some((p) => !(p > 0 && p <= 1))) {
-            fatal(`--rates: expected own, one keep probability in (0, 1] or two separated by a comma; got ${RATES_FLAG}`);
+            fatal(`${USAGE}; --rates: expected own, one keep probability in (0, 1] or two separated by a comma; got ${RATES_FLAG}`);
         }
         pb = parts[0];
         pr = parts[1] ?? parts[0];
@@ -271,11 +282,11 @@ for (const rate of RATES) {
 /** Delete-one influence of every common frame on a run's jitterPx, and each frame's residual against its window's fit. */
 function influence(label, e) {
     const F = e.frames;
-    const idx = F.map((fr, i) => (inCommon(fr) ? i : -1)).filter((i) => i >= 0);
+    const idx = F.map((fr, i) => (inPopulation(fr) ? i : -1)).filter((i) => i >= 0);
     const mask = new Uint8Array(F.length);
     for (const i of idx) mask[i] = 1;
     const inc = (fr) => mask[F.indexOf(fr)] === 1;
-    const total = finite(`${label} influence, all common frames`, cornerJitter(F, { include: inc }).jitterPx);
+    const total = finite(`${label} influence, all ${POPULATION} frames`, cornerJitter(F, { include: inc }).jitterPx);
     let loop = 0;
     const loopOf = new Array(F.length);
     for (let i = 0; i < F.length; i++) {
@@ -325,17 +336,19 @@ function influence(label, e) {
     const residAll = ds.map((x) => x.resid).filter((x) => x !== null).sort((a, b) => a - b);
     return { idx, ds, sum2, median: residAll[Math.floor(residAll.length / 2)], top: ds[0] };
 }
-const IB = custom ? null : influence("baseline", base);
-const IR = custom ? null : influence("repeat", rep);
+const IB = influence("baseline", base);
+const IR = influence("repeat", rep);
 
-// the movement at keep 0.9 conditional on the top frame's fate in each run (the default path only)
+// the movement conditional on the top frame's fate in each run: at keep 0.9 on the default path, at the
+// option's rates on its population otherwise (the same draws as the resample above, same seed)
+const COND = custom ? RATES[0] : { pb: 0.9, pr: 0.9 };
 const groups = { "both kept": [], "dropped from the baseline only": [], "dropped from the repeat only": [], "dropped from both": [] };
 const all = [];
-if (!custom) {
+{
     const rnd = mulberry32(SEED);
     for (let t = 0; t < B; t++) {
-        const a = resample(`conditional, resample ${t}, baseline`, base, 0.9, rnd);
-        const b = resample(`conditional, resample ${t}, repeat`, rep, 0.9, rnd);
+        const a = resample(`conditional, resample ${t}, baseline`, base, COND.pb, rnd);
+        const b = resample(`conditional, resample ${t}, repeat`, rep, COND.pr, rnd);
         const mv = b.jitterPx - a.jitterPx;
         all.push(mv);
         const kb = a.kept.has(base.frames[IB.top.i]);
@@ -344,7 +357,7 @@ if (!custom) {
     }
 }
 const mean = (xs) => xs.reduce((a, v) => a + v, 0) / xs.length;
-const grand = custom ? NaN : finite("conditional, grand mean", mean(all));
+const grand = finite("conditional, grand mean", mean(all));
 let between = 0;
 let within = 0;
 const groupRows = [];
@@ -361,8 +374,8 @@ for (const [g, xs] of Object.entries(groups)) {
 console.log(`pair-common media times ${common.size}; frames on them: baseline ${nb}, repeat ${nr}; windows ${cmp.first.jitterWindows} / ${cmp.second.jitterWindows}; common-set jitterPx ${cmp.first.jitterPx} / ${cmp.second.jitterPx}, movement ${(cmp.second.jitterPx - cmp.first.jitterPx).toFixed(5)}`);
 console.log(`check 1, identity include (keep 1, tolerance exact): baseline ${identity.baseline} = compareExports ${cmp.first.jitterPx}; repeat ${identity.repeat} = ${cmp.second.jitterPx}; windows ${cmp.first.jitterWindows} / ${cmp.second.jitterWindows}`);
 if (custom) {
-    console.log(`options: population ${POPULATION}${RATES_FLAG !== null ? `, rates ${RATES_FLAG}` : ""}; the delete-one influence and the conditional movement, which describe the default path, are not run`);
-    console.log(`check 2: every resample's value finite`);
+    console.log(`options: population ${POPULATION}${RATES_FLAG !== null ? `, rates ${RATES_FLAG}` : ""}; the delete-one influence reads the ${POPULATION} frames, and the conditional movement runs at the same rates on them`);
+    console.log(`check 2: every resample, delete-one value and conditional mean finite`);
     if (POPULATION === "whole") {
         console.log(`check 3, whole-set include (keep 1, tolerance exact): baseline ${whole.baseline.jitterPx} = cornerJitter over all frames ${whole.baseline.ref}; repeat ${whole.repeat.jitterPx} = ${whole.repeat.ref}; windows ${whole.baseline.windows} / ${whole.repeat.windows}; the exports record ${base.runSummary.jitterPx} / ${rep.runSummary.jitterPx}`);
     }
@@ -383,11 +396,12 @@ for (const { rate, M, SB, SR, wb, wr, kfb, kfr } of rateResults) {
         console.log(`  frames kept per resample: baseline mean ${avg(kfb).toFixed(1)} of ${popB}, repeat mean ${avg(kfr).toFixed(1)} of ${popR}; per eligible window ${avg(kfb.map((k, i) => k / wb[i])).toFixed(1)} and ${avg(kfr.map((k, i) => k / wr[i])).toFixed(1)}`);
     }
 }
-if (!custom) {
-    for (const [name, I] of [["baseline", IB], ["repeat", IR]]) {
-        console.log(`\n${name}, delete-one influence over its ${I.idx.length} common frames: top frame at ${I.top.mt.toFixed(6)} s carries ${((100 * I.top.d ** 2) / I.sum2).toFixed(1)}% of Σd², residual RMS ${I.top.resid.toFixed(3)} px against the run's median ${I.median.toFixed(3)} px; top five ${((100 * I.ds.slice(0, 5).reduce((a, x) => a + x.d ** 2, 0)) / I.sum2).toFixed(1)}%`);
-    }
-    console.log(`\nmovement at keep 0.9 conditional on the fate of the top frame of each run (${B} resamples, seed ${SEED}):`);
-    for (const { g, share, m } of groupRows) console.log(`  ${g}: ${share.toFixed(1)}%, mean movement ${f(m)}`);
-    console.log(`  share of the movement's variance between those groups: ${((100 * between) / (between + within)).toFixed(1)}%`);
+for (const [name, I] of [["baseline", IB], ["repeat", IR]]) {
+    console.log(`\n${name}, delete-one influence over its ${I.idx.length} ${POPULATION} frames: top frame at ${I.top.mt.toFixed(6)} s carries ${((100 * I.top.d ** 2) / I.sum2).toFixed(1)}% of Σd², residual RMS ${I.top.resid.toFixed(3)} px against the run's median ${I.median.toFixed(3)} px; top five ${((100 * I.ds.slice(0, 5).reduce((a, x) => a + x.d ** 2, 0)) / I.sum2).toFixed(1)}%`);
 }
+const condLabel = custom
+    ? `movement at keep baseline ${COND.pb.toFixed(4)}, repeat ${COND.pr.toFixed(4)} on the ${POPULATION} frame set`
+    : "movement at keep 0.9";
+console.log(`\n${condLabel} conditional on the fate of the top frame of each run (${B} resamples, seed ${SEED}):`);
+for (const { g, share, m } of groupRows) console.log(`  ${g}: ${share.toFixed(1)}%, mean movement ${f(m)}`);
+console.log(`  share of the movement's variance between those groups: ${((100 * between) / (between + within)).toFixed(1)}%`);

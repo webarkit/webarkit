@@ -327,6 +327,15 @@ Two rules on checks, added 2026-10-17:
     that introduced this rule, and all four violated it, their checks printing a
     discrepancy and the figures after it; found by the review on #145, and fixed there by
     making every check fatal before any figure is computed or printed.*
+- **A missing or malformed input never falls back to a default that changes a figure; it
+  fails.** Written on 2026-10-17 at the third instance of one shape: the item 3 harness
+  admitting a posed detection with no observed residual as passing every filter (#144); the
+  four derivation scripts printing figures after a failed check (#145); and a bare `--rates`
+  or `--population` option on the frame-resample script running the default path while the
+  documented command appeared to request another (#147). Each was found by review before a
+  wrong figure reached the record, and in each the fix is the same: the input is checked
+  before any default applies and before any figure is computed, and a failed check exits
+  with the reason, printing nothing.
 
 The addenda written in a step's last hours get the least scrutiny and carry the most of
 its conclusions. They are read by someone who did not produce them.

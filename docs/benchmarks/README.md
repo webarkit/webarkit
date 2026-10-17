@@ -3376,8 +3376,16 @@ the two.
      - *The footage instant 4.966667 s carries about a quarter of the
        movement's variance at these rates, 24.3% on the common set and
        19.7% on the whole set, read as the variance between the four groups
-       of its fate in the two runs; the "about a third" above is the same
-       frame at a 10% drop, and stands for that rate.*
+       of its fate in the two runs. It is the most influential frame of both
+       runs on either population, by delete-one through the metric. Each
+       figure is the last section of a committed command: 24.3% from*
+       `node docs/benchmarks/2026-10-17-r1-frame-resample.mjs 10000 1 --rates=own --population=common`
+       *(the common frame set, keep 0.697 for the baseline and 0.669 for the
+       repeat), 19.7% from*
+       `node docs/benchmarks/2026-10-17-r1-frame-resample.mjs 10000 1 --rates=own --population=whole`
+       *(the whole frame set, the same two keeps). The "about a third" above
+       is the same frame at keep 0.9 on the common set, the default's own
+       output (33.7%), and stands for that rate.*
      - *The decision on the allowance stays the maintainer's, due before
        M4's round 1's first counted run. This entry proposes nothing.*
 9. **After every block**, the thermal rule: if the closing synchronous run
