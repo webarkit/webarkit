@@ -243,9 +243,9 @@ post-campaign window:
 Drawn from two sources only: `packages/nft-tracker/src/tracker.ts`, and the
 committed exports in `mode: "tracking"` dated 2026-10-14 or earlier, 45 on
 the synchronous path and 12 on the worker path. Every state and every edge
-is cited to both, in the tables below the diagram; what neither source
-shows is not drawn, and is listed as not drawn. The two arms are drawn
-apart, because their difference is the point: the worker arm has no
+is cited to both, in the table under each diagram; what neither source
+shows is not drawn, and is listed as not drawn. The two arms are two
+figures, sharing no transition, because their difference is the point: the worker arm has no
 `DETECT` state on the frame timeline, and the sync arm, which is handed no
 detection, emits neither `no-detection` nor `unconfirmed` in any export.
 
@@ -257,53 +257,6 @@ frame precedes it, and otherwise it is **a lock lost**. Neither `reason`
 nor `trackLoss` makes the split: a `DETECT` frame before any `TRACK` frame
 sets a lock, and the next frame can drop it with a `trackLoss` while the
 run is still never yet acquired (S7).
-
-```mermaid
-stateDiagram-v2
-    state "Sync arm: the tracker detects on the frame loop" as Sync {
-        direction LR
-        state "LOST, never yet acquired" as SyncLostNever
-        state "LOST, lock lost" as SyncLostLost
-        state "DETECT" as SyncDetect
-        state "TRACK" as SyncTrack
-        [*] --> SyncLostNever: S1 own detection fails
-        [*] --> SyncDetect: S2 own detection succeeds, lock set
-        SyncLostNever --> SyncLostNever: S3 own detection fails again
-        SyncLostNever --> SyncDetect: S4 own detection succeeds, lock set
-        SyncDetect --> SyncTrack: S5 the lock's first step holds
-        SyncDetect --> SyncDetect: S6 first step fails, same-frame re-detection succeeds
-        SyncDetect --> SyncLostNever: S7 first step fails, re-detection fails, no TRACK frame yet
-        SyncDetect --> SyncLostLost: S8 first step fails, re-detection fails, after a TRACK frame
-        SyncTrack --> SyncTrack: S9 step holds
-        SyncTrack --> SyncDetect: S10 step fails, same-frame re-detection succeeds
-        SyncTrack --> SyncLostLost: S11 step fails, re-detection fails
-        SyncLostLost --> SyncLostLost: S12 own detection fails again
-        SyncLostLost --> SyncDetect: S13 own detection succeeds, lock set
-    }
-    state "Worker arm: externalDetection, the page's on-demand policy" as Worker {
-        direction LR
-        state "LOST, never yet acquired" as WorkerLostNever
-        state "LOST, lock lost" as WorkerLostLost
-        state "TRACK" as WorkerTrack
-        [*] --> WorkerLostNever: W1 no lock, no detection (no-detection), needsDetection
-        WorkerLostNever --> WorkerLostNever: W2 detection in flight (no-detection) / W3 consumed, same-frame step refuses it (unconfirmed) / W4 consumed, the detection itself failed
-        WorkerLostNever --> WorkerTrack: W5 consumed, same-frame step holds
-        WorkerTrack --> WorkerTrack: W6 step holds
-        WorkerTrack --> WorkerLostLost: W7 step fails, no detection handed in (no-detection)
-        WorkerLostLost --> WorkerLostLost: W8 / W9 / W10 as W2 / W3 / W4
-        WorkerLostLost --> WorkerTrack: W11 consumed, same-frame step holds
-    }
-```
-
-**What the diagram does not label.** No edge is a lock birth. The probe
-reads a lock as a run of `TRACK` frames attributed to the `DETECT` frame
-before it, and counts as a *lasting* lock one of 50 or more counted frames
-([the probe](./2026-10-16-104-stage1-probe.md), item 7, "The detections
-that start the locks";
-[the item-3 addendum](./2026-10-17-104-stage1-probe-item3.md#24-the-lock-births),
-section 2.4). So a lasting lock birth is S5 followed by at least 49 more
-frames of S9, and S5 alone is not one: the probe counts one-frame `TRACK`
-runs on the table clip, "none lasting".
 
 **The citations.** Code anchors are the functions of `tracker.ts`; export
 counts are transitions between consecutive frames, and every one of them
@@ -318,7 +271,35 @@ window that may start after the run acquired, so they enter only the counts
 that do not depend on it. Reasons in the tables are `reason` on a `LOST`
 frame and `trackLoss` on the frame whose step dropped the lock
 (`TrackFailure` in `tracker.ts`; `TrackLoss` in
-`src/tracking/track_frame.ts`).
+`src/tracking/track_frame.ts`). The spacing directive on each block is
+`flowchart.nodeSpacing` and `flowchart.rankSpacing`: in mermaid 11.4.1 the
+`state` config's keys of the same names are not read by the
+`stateDiagram-v2` layout, measured on these two blocks.
+
+#### The sync arm: the tracker detects on the frame loop
+
+```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 60, "rankSpacing": 80}}}%%
+stateDiagram-v2
+    direction TB
+    state "LOST, never yet acquired" as SyncLostNever
+    state "LOST, lock lost" as SyncLostLost
+    state "DETECT" as SyncDetect
+    state "TRACK" as SyncTrack
+    [*] --> SyncLostNever: S1 own detection fails
+    [*] --> SyncDetect: S2 own detection succeeds, lock set
+    SyncLostNever --> SyncLostNever: S3 own detection fails again
+    SyncLostNever --> SyncDetect: S4 own detection succeeds, lock set
+    SyncDetect --> SyncTrack: S5 the lock's first step holds
+    SyncDetect --> SyncDetect: S6 first step fails, same-frame re-detection succeeds
+    SyncDetect --> SyncLostNever: S7 first step fails, re-detection fails, no TRACK frame yet
+    SyncDetect --> SyncLostLost: S8 first step fails, re-detection fails, after a TRACK frame
+    SyncTrack --> SyncTrack: S9 step holds
+    SyncTrack --> SyncDetect: S10 step fails, same-frame re-detection succeeds
+    SyncTrack --> SyncLostLost: S11 step fails, re-detection fails
+    SyncLostLost --> SyncLostLost: S12 own detection fails again
+    SyncLostLost --> SyncDetect: S13 own detection succeeds, lock set
+```
 
 Sync arm, 45 exports, 20,476 frames; the sequence rule read on 13 whole runs:
 
@@ -340,6 +321,24 @@ Sync arm, 45 exports, 20,476 frames; the sequence rule read on 13 whole runs:
 | S13 | as S4 | `LOST` → `DETECT` after the first `TRACK` frame: 165 in the whole runs; 457 over the 45 exports, both phases |
 | no `trackLoss` without a lock | `trackLoss` is set only by `step`, which runs only with a lock; the `LOST` results of `process` and `detected` set none of their own | frames that follow a `LOST` frame and carry a `trackLoss`: 0 |
 
+#### The worker arm: `externalDetection`, the page's on-demand policy
+
+```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 60, "rankSpacing": 80}}}%%
+stateDiagram-v2
+    direction TB
+    state "LOST, never yet acquired" as WorkerLostNever
+    state "LOST, lock lost" as WorkerLostLost
+    state "TRACK" as WorkerTrack
+    [*] --> WorkerLostNever: W1 no lock, no detection (no-detection), needsDetection
+    WorkerLostNever --> WorkerLostNever: W2 detection in flight (no-detection) / W3 consumed, same-frame step refuses it (unconfirmed) / W4 consumed, the detection itself failed
+    WorkerLostNever --> WorkerTrack: W5 consumed, same-frame step holds
+    WorkerTrack --> WorkerTrack: W6 step holds
+    WorkerTrack --> WorkerLostLost: W7 step fails, no detection handed in (no-detection)
+    WorkerLostLost --> WorkerLostLost: W8 / W9 / W10 as W2 / W3 / W4
+    WorkerLostLost --> WorkerTrack: W11 consumed, same-frame step holds
+```
+
 Worker arm, 12 exports, 11,945 frames, all whole runs; the policy is
 [the M3 plan's](./README.md#the-policy): a detection starts only on
 `needsDetection`, at most one in flight, a stale result handed in and
@@ -358,6 +357,16 @@ never filtered:
 | W8, W9, W10 | as W2, W3, W4 | after the first `TRACK` frame: `no-detection` in flight 1,409; `unconfirmed` 744; `too-few-matches` 135 and `no-consensus` 76 |
 | W11 | as W5 | `LOST` → `TRACK` after the first `TRACK` frame: 161, of which 12 are the runs' first acquisitions (W5) and 149 re-acquisitions |
 | every consumption | `consume` is reached only once the frame holds no lock, whether it began without one or dropped it in this frame's `step` (the two-step case, not drawn) | 1,276 `consumed` frames, every one preceded by a `LOST` frame; outcomes `TRACK` 161, `unconfirmed` 855, `too-few-matches` 167, `no-consensus` 93; `framesAgo` 1 to 7; `detectionLatencyMs` 65.6 to 339.6 |
+
+**What the diagrams do not label.** No edge is a lock birth. The probe
+reads a lock as a run of `TRACK` frames attributed to the `DETECT` frame
+before it, and counts as a *lasting* lock one of 50 or more counted frames
+([the probe](./2026-10-16-104-stage1-probe.md), item 7, "The detections
+that start the locks";
+[the item-3 addendum](./2026-10-17-104-stage1-probe-item3.md#24-the-lock-births),
+section 2.4). So a lasting lock birth is S5 followed by at least 49 more
+frames of S9, and S5 alone is not one: the probe counts one-frame `TRACK`
+runs on the table clip, "none lasting".
 
 **Not drawn**, because one source shows it and the other does not, or
 neither does:
