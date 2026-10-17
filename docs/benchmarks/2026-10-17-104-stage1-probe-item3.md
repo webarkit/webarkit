@@ -517,17 +517,16 @@ lasts is not this addendum's question.
 
 **The consequence for the lock-birth constraint.** The constraint recorded
 on 2026-10-16, that a threshold must preserve the lock births with the counts
-as recorded (the probe's item 7, in the wording the reviewer gave it in #142's
-review), already counts only lasting locks, 50 or more counted frames, so none
-of the six detections that die on this window is among its 64 births, and a
-filter that refuses them costs it nothing: the dof residual at c = 1.5 refuses
-8.2676 s on all 32 occurrences and 8.3077 s on 1, and the 9 births it does
-refuse are 3 eight-inlier, 1 eleven-inlier and 5 of the 8.3478 s ones
-(section 3). It is not refuted; it rests on one cut at 50 counted frames that
-reads no fate on either side of it, a one-frame lock and a seven-frame one
-counting alike as none and a 50-frame and a 221-frame one alike as one, and
-restating it on the fate of every birth on both clips is registered and not
-run.
+as recorded (the probe's item 7), is read as of 2026-10-17 as covering lasting
+locks only, 50 or more counted frames, and as reading no fate on either side
+of that cut: none of the six detections that die on this window is among its
+64 births, and a filter that refuses them costs it nothing, the dof residual
+at c = 1.5 refusing 8.2676 s on all 32 occurrences and 8.3077 s on 1 while the
+9 births it does refuse are 3 eight-inlier, 1 eleven-inlier and 5 of the
+8.3478 s ones (section 3). It is not refuted; a one-frame lock and a
+seven-frame one count alike as none under it and a 50-frame and a 221-frame
+one alike as one, and restating it on the fate of every birth on both clips
+is registered and not run.
 
 ## What this addendum does not decide
 
