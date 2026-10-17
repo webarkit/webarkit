@@ -322,6 +322,11 @@ Two rules on checks, added 2026-10-17:
   detection with no observed residual was admitted by every filter. Found by the review
   tool on #144, before it had produced a wrong figure, and fixed by making the checks fatal
   ahead of any computation (`71cfdac`).
+  - *A rule introduced in a PR is applied to that PR's own new files. Its instance,
+    2026-10-17: the four derivation scripts were promoted from scratch in the same commit
+    that introduced this rule, and all four violated it, their checks printing a
+    discrepancy and the figures after it; found by the review on #145, and fixed there by
+    making every check fatal before any figure is computed or printed.*
 
 The addenda written in a step's last hours get the least scrutiny and carry the most of
 its conclusions. They are read by someone who did not produce them.
