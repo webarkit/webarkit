@@ -3343,7 +3343,14 @@ the two.
        resample left a run without an eligible window. Seeds 2 and 3 give
        0.00769 and 0.00760; 100,000 resamples at seed 7 give 0.00768. The
        script's check 3 holds: at keep 1 the whole-set include reproduces
-       each export's recorded `runSummary.jitterPx` exactly.*
+       each export's recorded `runSummary.jitterPx` exactly. The 0.00767
+       equals √(0.00522² + 0.00562²), the two runs' independent per-run SDs
+       summed in quadrature, and carries no covariance between the runs,
+       correctly for this design: the footage is held fixed and what is
+       resampled is which frames each run processed, which the two runs do
+       independently; the finding of 2026-10-17 about a missing covariance
+       applies to designs that resample the footage, which is shared between
+       arms, and does not apply here.*
      - *A second figure, recorded so that it is not rediscovered and
        mistaken for the first: **0.01082 px** (the same command with
        `--population=common`, or without it; 10,000 resamples, seed 1; seed
