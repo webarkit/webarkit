@@ -39,6 +39,27 @@
  * exports beside it and the frozen metrics module, and writes nothing.
  *
  *     node docs/benchmarks/2026-10-17-r1-frame-resample.mjs [resamples] [seed]
+ *         [--rates=own|<keep>|<keepBaseline>,<keepRepeat>] [--population=common|whole]
+ *
+ * With no option the run is the one described below, and its output is the
+ * record's: the default path is unchanged by the options (added later on
+ * 2026-10-17, for the entry beside the one above in M3's runbook step 8).
+ * `--rates` replaces the two rates with one: `own` thins each run at its own
+ * dropped fraction, 1 − common ÷ own posed media times (0.303 and 0.331 for
+ * this pair, the overlap script's definition), a single keep probability
+ * applies to both runs, two apply to the baseline and the repeat in that
+ * order. `--population` chooses the frames a resample thins: `common`, the
+ * run's frames on the pair-common media times (the default), or `whole`,
+ * every frame the run posed. With either option given the run is the
+ * resample alone, since the delete-one influence and the conditional
+ * movement describe the default path. The command that gives the clause's
+ * own noise at the pair's own dropped fractions, 0.00767 px, is
+ *
+ *     node docs/benchmarks/2026-10-17-r1-frame-resample.mjs 10000 1 --rates=own --population=whole
+ *
+ * and the same with `--population=common` (or without it) gives 0.01082 px,
+ * the figure of those rates applied on top of the common set, which no real
+ * comparison has (the entry says why it is recorded).
  *
  * Rates: keep 207/212 (the two runs' frame counts on the common set differ
  * by that ratio, 2.36% dropped: a net count ratio, since the difference is
@@ -58,10 +79,13 @@
  * common-set jitterPx and window count for each run exactly. (2) Every
  * resample's value, every delete-one value and every conditional-group mean
  * is a finite number; a resample whose include leaves a run with no eligible
- * window is a failure, not a skipped draw. The tolerance on check 1 is zero,
- * a stated choice: it is the same function on the same frames in the same
- * order, and it reproduced both recorded values bit for bit, so anything but
- * equality is a changed metric or a changed export.
+ * window is a failure, not a skipped draw. (3) With `--population=whole`, at
+ * keep 1 the whole-set include reproduces cornerJitter over all the run's
+ * frames, and that value is the export's recorded runSummary.jitterPx,
+ * exactly. The tolerance on checks 1 and 3 is zero, a stated choice: it is
+ * the same function on the same frames in the same order, and it reproduced
+ * both recorded values bit for bit, so anything but equality is a changed
+ * metric or a changed export.
  *
  * A known limitation, as the frame-set script's and the stall check's: this
  * script is covered by no test and by no format check (`docs/` is outside
@@ -78,8 +102,18 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = "2026-10-17-r1-frame-resample.mjs";
-const B = Number(process.argv[2] ?? 10000);
-const SEED = Number(process.argv[3] ?? 1);
+const ARGS = process.argv.slice(2);
+const FLAGS = Object.fromEntries(
+    ARGS.filter((a) => a.startsWith("--")).map((a) => a.slice(2).split(/=(.*)/s).slice(0, 2)),
+);
+const POSITIONAL = ARGS.filter((a) => !a.startsWith("--"));
+const B = Number(POSITIONAL[0] ?? 10000);
+const SEED = Number(POSITIONAL[1] ?? 1);
+const POPULATION = FLAGS.population ?? "common";
+const RATES_FLAG = FLAGS.rates ?? null;
+// with either option given, the run is the resample alone: the delete-one influence and the
+// conditional movement describe the default path (common set, keep 207/212 and 0.9) and are not run
+const custom = POPULATION !== "common" || RATES_FLAG !== null;
 const { cornerJitter, compareExports, mediaKey, JITTER_WINDOW_S } = await import(
     pathToFileURL(join(HERE, "../../examples/js/bench-metrics.mjs")).href
 );
@@ -88,8 +122,15 @@ const fatal = (message) => {
     console.error(`${SCRIPT}: ${message}`);
     process.exit(1);
 };
-if (!(Number.isInteger(B) && B > 1) || !Number.isInteger(SEED)) {
-    fatal(`usage: node ${SCRIPT} [resamples ≥ 2] [seed]; got ${process.argv.slice(2).join(" ")}`);
+if (
+    !(Number.isInteger(B) && B > 1) ||
+    !Number.isInteger(SEED) ||
+    !["common", "whole"].includes(POPULATION) ||
+    Object.keys(FLAGS).some((k) => !["population", "rates"].includes(k))
+) {
+    fatal(
+        `usage: node ${SCRIPT} [resamples ≥ 2] [seed] [--rates=own|<keep>|<keepBaseline>,<keepRepeat>] [--population=common|whole]; got ${ARGS.join(" ")}`,
+    );
 }
 const base = load("baseline-static");
 const rep = load("baseline-static-repeat");
@@ -118,6 +159,10 @@ if (common.size !== cmp.commonMediaTimes) {
 const inCommon = (f) => !!f.corners && common.has(mediaKey(f.mediaTimeSeconds));
 const nb = base.frames.filter(inCommon).length;
 const nr = rep.frames.filter(inCommon).length;
+// the frame population a resample thins: the run's frames on the pair-common media times (the
+// default), or every frame the run posed (--population=whole)
+const inWhole = (f) => !!f.corners;
+const inPopulation = POPULATION === "whole" ? inWhole : inCommon;
 
 // check 1: the identity include reproduces compareExports exactly
 const identity = {};
@@ -133,6 +178,24 @@ for (const [label, e, ref] of [["baseline", base, cmp.first], ["repeat", rep, cm
     identity[label] = j.jitterPx;
 }
 
+// check 3 (--population=whole only): the whole-set include at keep 1 reproduces cornerJitter over all
+// the run's frames, and that value is the export's recorded runSummary.jitterPx, both exactly
+const whole = {};
+if (POPULATION === "whole") {
+    for (const [label, e] of [["baseline", base], ["repeat", rep]]) {
+        const j = cornerJitter(e.frames, { include: inWhole });
+        const ref = cornerJitter(e.frames);
+        finite(`${label} whole-set identity`, j.jitterPx);
+        if (j.jitterPx !== ref.jitterPx || j.jitterWindows !== ref.jitterWindows) {
+            fatal(`${label}: whole-set include ${j.jitterPx} on ${j.jitterWindows} windows against cornerJitter over all frames ${ref.jitterPx} on ${ref.jitterWindows}; the tolerance is exact equality`);
+        }
+        if (j.jitterPx !== e.runSummary.jitterPx) {
+            fatal(`${label}: whole-set jitterPx ${j.jitterPx} against the export's recorded runSummary.jitterPx ${e.runSummary.jitterPx}; the tolerance is exact equality`);
+        }
+        whole[label] = { jitterPx: j.jitterPx, ref: ref.jitterPx, windows: j.jitterWindows };
+    }
+}
+
 const stats = (xs) => {
     const s = [...xs].sort((a, b) => a - b);
     const mean = s.reduce((a, v) => a + v, 0) / s.length;
@@ -142,19 +205,45 @@ const stats = (xs) => {
 };
 const f = (v) => v.toFixed(5);
 
-/** One run's jitterPx with each common frame kept with probability p (its own draws); fatal unless finite. */
+/** One run's jitterPx with each population frame kept with probability p (its own draws); fatal unless finite. */
 function resample(label, e, p, rnd) {
     const kept = new Set();
-    for (const fr of e.frames) if (inCommon(fr) && rnd() < p) kept.add(fr);
+    for (const fr of e.frames) if (inPopulation(fr) && rnd() < p) kept.add(fr);
     const j = cornerJitter(e.frames, { include: (fr) => kept.has(fr) });
     finite(`${label}: jitterPx on ${j.jitterWindows} windows and ${j.posedFrames} frames`, j.jitterPx);
     return { jitterPx: j.jitterPx, windows: j.jitterWindows, frames: j.posedFrames, kept };
 }
 
 const RATES = [
-    { label: `keep ${nr}/${nb} = ${(nr / nb).toFixed(4)} (drop ${((1 - nr / nb) * 100).toFixed(2)}%)`, p: nr / nb },
-    { label: "keep 0.9 (drop 10%)", p: 0.9 },
+    { label: `keep ${nr}/${nb} = ${(nr / nb).toFixed(4)} (drop ${((1 - nr / nb) * 100).toFixed(2)}%)`, pb: nr / nb, pr: nr / nb },
+    { label: "keep 0.9 (drop 10%)", pb: 0.9, pr: 0.9 },
 ];
+if (RATES_FLAG !== null) {
+    // --rates=own: each run at its own dropped fraction, 1 − common ÷ own posed media times, as
+    // 2026-10-16-frame-set-overlap.mjs defines it; otherwise one keep probability for both runs, or two
+    let pb;
+    let pr;
+    let how;
+    if (RATES_FLAG === "own") {
+        pb = common.size / kb.size;
+        pr = common.size / keysOf(rep).size;
+        how = `the pair's own dropped fractions, 1 − common ÷ own posed media times, ${common.size} of ${kb.size} and ${keysOf(rep).size}`;
+    } else {
+        const parts = RATES_FLAG.split(",").map(Number);
+        if (parts.length > 2 || parts.some((p) => !(p > 0 && p <= 1))) {
+            fatal(`--rates: expected own, one keep probability in (0, 1] or two separated by a comma; got ${RATES_FLAG}`);
+        }
+        pb = parts[0];
+        pr = parts[1] ?? parts[0];
+        how = "keep probabilities given on the command line";
+    }
+    RATES.length = 0;
+    RATES.push({
+        label: `keep baseline ${pb.toFixed(4)} (drop ${(100 * (1 - pb)).toFixed(2)}%), repeat ${pr.toFixed(4)} (drop ${(100 * (1 - pr)).toFixed(2)}%), ${POPULATION} frame set: ${how}`,
+        pb,
+        pr,
+    });
+}
 const rateResults = [];
 for (const rate of RATES) {
     const rnd = mulberry32(SEED);
@@ -163,16 +252,20 @@ for (const rate of RATES) {
     const vr = [];
     const wb = [];
     const wr = [];
+    const kfb = [];
+    const kfr = [];
     for (let t = 0; t < B; t++) {
-        const a = resample(`${rate.label}, resample ${t}, baseline`, base, rate.p, rnd);
-        const b = resample(`${rate.label}, resample ${t}, repeat`, rep, rate.p, rnd);
+        const a = resample(`${rate.label}, resample ${t}, baseline`, base, rate.pb, rnd);
+        const b = resample(`${rate.label}, resample ${t}, repeat`, rep, rate.pr, rnd);
         vb.push(a.jitterPx);
         vr.push(b.jitterPx);
         wb.push(a.windows);
         wr.push(b.windows);
+        kfb.push(a.frames);
+        kfr.push(b.frames);
         moves.push(b.jitterPx - a.jitterPx);
     }
-    rateResults.push({ rate, M: stats(moves), SB: stats(vb), SR: stats(vr), wb, wr });
+    rateResults.push({ rate, M: stats(moves), SB: stats(vb), SR: stats(vr), wb, wr, kfb, kfr });
 }
 
 /** Delete-one influence of every common frame on a run's jitterPx, and each frame's residual against its window's fit. */
@@ -232,13 +325,13 @@ function influence(label, e) {
     const residAll = ds.map((x) => x.resid).filter((x) => x !== null).sort((a, b) => a - b);
     return { idx, ds, sum2, median: residAll[Math.floor(residAll.length / 2)], top: ds[0] };
 }
-const IB = influence("baseline", base);
-const IR = influence("repeat", rep);
+const IB = custom ? null : influence("baseline", base);
+const IR = custom ? null : influence("repeat", rep);
 
-// the movement at keep 0.9 conditional on the top frame's fate in each run
+// the movement at keep 0.9 conditional on the top frame's fate in each run (the default path only)
 const groups = { "both kept": [], "dropped from the baseline only": [], "dropped from the repeat only": [], "dropped from both": [] };
 const all = [];
-{
+if (!custom) {
     const rnd = mulberry32(SEED);
     for (let t = 0; t < B; t++) {
         const a = resample(`conditional, resample ${t}, baseline`, base, 0.9, rnd);
@@ -251,7 +344,7 @@ const all = [];
     }
 }
 const mean = (xs) => xs.reduce((a, v) => a + v, 0) / xs.length;
-const grand = finite("conditional, grand mean", mean(all));
+const grand = custom ? NaN : finite("conditional, grand mean", mean(all));
 let between = 0;
 let within = 0;
 const groupRows = [];
@@ -267,18 +360,34 @@ for (const [g, xs] of Object.entries(groups)) {
 // ---- phase 2: the checks' readings, then the figures ------------------------
 console.log(`pair-common media times ${common.size}; frames on them: baseline ${nb}, repeat ${nr}; windows ${cmp.first.jitterWindows} / ${cmp.second.jitterWindows}; common-set jitterPx ${cmp.first.jitterPx} / ${cmp.second.jitterPx}, movement ${(cmp.second.jitterPx - cmp.first.jitterPx).toFixed(5)}`);
 console.log(`check 1, identity include (keep 1, tolerance exact): baseline ${identity.baseline} = compareExports ${cmp.first.jitterPx}; repeat ${identity.repeat} = ${cmp.second.jitterPx}; windows ${cmp.first.jitterWindows} / ${cmp.second.jitterWindows}`);
-console.log(`check 2: every resample, delete-one value and conditional mean finite`);
-for (const { rate, M, SB, SR, wb, wr } of rateResults) {
+if (custom) {
+    console.log(`options: population ${POPULATION}${RATES_FLAG !== null ? `, rates ${RATES_FLAG}` : ""}; the delete-one influence and the conditional movement, which describe the default path, are not run`);
+    console.log(`check 2: every resample's value finite`);
+    if (POPULATION === "whole") {
+        console.log(`check 3, whole-set include (keep 1, tolerance exact): baseline ${whole.baseline.jitterPx} = cornerJitter over all frames ${whole.baseline.ref}; repeat ${whole.repeat.jitterPx} = ${whole.repeat.ref}; windows ${whole.baseline.windows} / ${whole.repeat.windows}; the exports record ${base.runSummary.jitterPx} / ${rep.runSummary.jitterPx}`);
+    }
+} else {
+    console.log(`check 2: every resample, delete-one value and conditional mean finite`);
+}
+for (const { rate, M, SB, SR, wb, wr, kfb, kfr } of rateResults) {
     const wmin = (w) => Math.min(...w);
     const wmax = (w) => Math.max(...w);
     console.log(`\n${rate.label}: ${B} resamples, seed ${SEED} (mulberry32), footage fixed, frames dropped independently per run`);
     console.log(`  movement (repeat − baseline): mean ${f(M.mean)}, sd ${f(M.sd)}, 2.5% ${f(M.p025)}, median ${f(M.p50)}, 97.5% ${f(M.p975)}, min ${f(M.min)}, max ${f(M.max)}`);
     console.log(`  per run: baseline mean ${f(SB.mean)} sd ${f(SB.sd)}, windows kept ${wmin(wb)}..${wmax(wb)} of ${cmp.first.jitterWindows}; repeat mean ${f(SR.mean)} sd ${f(SR.sd)}, windows kept ${wmin(wr)}..${wmax(wr)} of ${cmp.second.jitterWindows}`);
     console.log(`  sd ÷ 0.007 = ${(M.sd / 0.007).toFixed(3)}; sd ÷ 0.00411 (paired cluster design) = ${(M.sd / 0.00411).toFixed(3)}`);
+    if (custom) {
+        const avg = (xs) => xs.reduce((a, v) => a + v, 0) / xs.length;
+        const popB = base.frames.filter(inPopulation).length;
+        const popR = rep.frames.filter(inPopulation).length;
+        console.log(`  frames kept per resample: baseline mean ${avg(kfb).toFixed(1)} of ${popB}, repeat mean ${avg(kfr).toFixed(1)} of ${popR}; per eligible window ${avg(kfb.map((k, i) => k / wb[i])).toFixed(1)} and ${avg(kfr.map((k, i) => k / wr[i])).toFixed(1)}`);
+    }
 }
-for (const [name, I] of [["baseline", IB], ["repeat", IR]]) {
-    console.log(`\n${name}, delete-one influence over its ${I.idx.length} common frames: top frame at ${I.top.mt.toFixed(6)} s carries ${((100 * I.top.d ** 2) / I.sum2).toFixed(1)}% of Σd², residual RMS ${I.top.resid.toFixed(3)} px against the run's median ${I.median.toFixed(3)} px; top five ${((100 * I.ds.slice(0, 5).reduce((a, x) => a + x.d ** 2, 0)) / I.sum2).toFixed(1)}%`);
+if (!custom) {
+    for (const [name, I] of [["baseline", IB], ["repeat", IR]]) {
+        console.log(`\n${name}, delete-one influence over its ${I.idx.length} common frames: top frame at ${I.top.mt.toFixed(6)} s carries ${((100 * I.top.d ** 2) / I.sum2).toFixed(1)}% of Σd², residual RMS ${I.top.resid.toFixed(3)} px against the run's median ${I.median.toFixed(3)} px; top five ${((100 * I.ds.slice(0, 5).reduce((a, x) => a + x.d ** 2, 0)) / I.sum2).toFixed(1)}%`);
+    }
+    console.log(`\nmovement at keep 0.9 conditional on the fate of the top frame of each run (${B} resamples, seed ${SEED}):`);
+    for (const { g, share, m } of groupRows) console.log(`  ${g}: ${share.toFixed(1)}%, mean movement ${f(m)}`);
+    console.log(`  share of the movement's variance between those groups: ${((100 * between) / (between + within)).toFixed(1)}%`);
 }
-console.log(`\nmovement at keep 0.9 conditional on the fate of the top frame of each run (${B} resamples, seed ${SEED}):`);
-for (const { g, share, m } of groupRows) console.log(`  ${g}: ${share.toFixed(1)}%, mean movement ${f(m)}`);
-console.log(`  share of the movement's variance between those groups: ${((100 * between) / (between + within)).toFixed(1)}%`);

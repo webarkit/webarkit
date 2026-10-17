@@ -3292,8 +3292,10 @@ the two.
    - *Added on 2026-10-17, later that day: the measurement the entry above
      registers now exists, and the clause's standing is no longer
      undetermined. Read-only on the same two exports, `cornerJitter`
-     imported unchanged; the committed file is unchanged and no clause, value
-     or verdict moves.*
+     imported unchanged; no clause, value or verdict moves. For it the
+     frame-resample script gained a rate option and a population option,
+     documented in its header; run with no arguments its output is the
+     record's, line for line.*
      - *What the clause reads, from the registration's own words. Its
        operand is "their mean `jitterPx`", each run's `runSummary.jitterPx`
        over all its frames, and its 0.007 px is the smaller of two whole-set
@@ -3323,7 +3325,9 @@ the two.
        it. Two figures were therefore measured, and only one is the
        clause's.*
      - *The clause's own noise, at the pair's own dropped fractions:
-       **0.00767 px**. The design of
+       **0.00767 px**, from*
+       `node docs/benchmarks/2026-10-17-r1-frame-resample.mjs 10000 1 --rates=own --population=whole`*:
+       the design of
        [`2026-10-17-r1-frame-resample.mjs`](./2026-10-17-r1-frame-resample.mjs),
        footage held fixed and each run's frames kept independently with a
        fixed probability, applied to each run's whole 300 frames at the
@@ -3333,21 +3337,19 @@ the two.
        defines as 1 − common ÷ own posed media times. 10,000 resamples,
        mulberry32 seed 1: movement (repeat − baseline) mean 0.00761, SD
        0.00767, 2.5% −0.00755, 97.5% +0.02279 px; per-run SD 0.00522 and
-       0.00562 px; kept frames 209 and 201 a resample on average, against
-       the real common set's 212 and 207, about 11 frames an eligible
+       0.00562 px; kept frames 209.1 and 200.9 a resample on average,
+       against the real common set's 212 and 207, 11.2 frames an eligible
        window; eligible windows 17 to 20 of 20 and 17 to 18 of 18; no
        resample left a run without an eligible window. Seeds 2 and 3 give
        0.00769 and 0.00760; 100,000 resamples at seed 7 give 0.00768. The
-       committed script has no rate option and thins the common set only, so
-       these figures come from its design run with the rates and the frame
-       set substituted, in a copy that imports `cornerJitter` unchanged and
-       reproduces the committed keep-0.9 line exactly when its rates are set
-       back to 0.9; the committed file is not changed by this entry.*
+       script's check 3 holds: at keep 1 the whole-set include reproduces
+       each export's recorded `runSummary.jitterPx` exactly.*
      - *A second figure, recorded so that it is not rediscovered and
-       mistaken for the first: **0.01082 px** (10,000 resamples, seed 1;
-       seed 2: 0.01093) is what the registered design produces when those
-       rates are applied on top of the common set, which the committed
-       script thins. The dropped fraction describes the step from a run's
+       mistaken for the first: **0.01082 px** (the same command with
+       `--population=common`, or without it; 10,000 resamples, seed 1; seed
+       2: 0.01093) is what the registered design produces when those rates
+       are applied on top of the common set, which the script thins by
+       default. The dropped fraction describes the step from a run's
        whole posed set to the common set, so applying it to the common set
        thins twice, to about eight frames an eligible window, a density no
        real comparison has. It is not the clause's noise.*
