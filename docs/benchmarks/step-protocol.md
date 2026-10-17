@@ -3,7 +3,7 @@
 Status: drafted 2026-10-15, after M4 step 3 (#105); revised 2026-10-16 with that day's
 findings (#123's seed test and frame-set decomposition, #137's gate and RNG findings, and
 #139's ratification of the box's entries), and 2026-10-17 with the comparison rule (Stage
-2) and the two rules on checks. Maintained, not written once: a finding that
+2) and the three rules on checks. Maintained, not written once: a finding that
 settles after the draft is folded in, dated, rather than left for an amendment.
 
 Everything else in `docs/benchmarks/` governs a measurement: provenance, served-file
@@ -298,7 +298,7 @@ Two rules about the record's own numbers, which is where the fifth one did its d
   reads as a comparison against the closed form. When the two readings differ, the sentence
   is wrong, whichever one the author had in mind.
 
-Two rules on checks, added 2026-10-17:
+Three rules on checks, added 2026-10-17:
 
 - **A figure that gates a decision gets one independent attempt at refutation before it
   is recorded,** and what the attempt found is recorded beside it, including when it found
@@ -327,6 +327,18 @@ Two rules on checks, added 2026-10-17:
     that introduced this rule, and all four violated it, their checks printing a
     discrepancy and the figures after it; found by the review on #145, and fixed there by
     making every check fatal before any figure is computed or printed.*
+- **A missing or malformed input never falls back to a default that changes a figure; it
+  fails.** Written on 2026-10-17 at the third instance of one shape: the item 3 harness
+  admitting a posed detection with no observed residual as passing every filter (documented
+  in #144's review and in `71cfdac`, the commit that made its checks fatal; the defect was
+  fixed before that PR merged, so the item 3 record describes the fatal checks, not the
+  defect); the
+  four derivation scripts printing figures after a failed check (#145); and a bare `--rates`
+  or `--population` option on the frame-resample script running the default path while the
+  documented command appeared to request another (#147). Each was found by review before a
+  wrong figure reached the record, and in each the fix is the same: the input is checked
+  before any default applies and before any figure is computed, and a failed check exits
+  with the reason, printing nothing.
 
 The addenda written in a step's last hours get the least scrutiny and carry the most of
 its conclusions. They are read by someone who did not produce them.

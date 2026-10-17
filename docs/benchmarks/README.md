@@ -3289,6 +3289,124 @@ the two.
        carries none of them.*
      - *No change is proposed here. A decision on the allowance is registered
        as due before M4's round 1's first counted run.*
+   - *Added on 2026-10-17, later that day: the measurement the entry above
+     registers now exists, and the clause's standing is no longer
+     undetermined. Read-only on the same two exports, `cornerJitter`
+     imported unchanged; no clause, value or verdict moves. For it the
+     frame-resample script gained a rate option and a population option,
+     documented in its header; run with no arguments its output is the
+     record's, line for line.*
+     - *What the clause reads, from the registration's own words. Its
+       operand is "their mean `jitterPx`", each run's `runSummary.jitterPx`
+       over all its frames, and its 0.007 px is the smaller of two whole-set
+       movements, 0.1476 → 0.1552 px over the two runs' windows; M3's gate
+       read it so on 2026-10-01, 0.14216 against 0.14171 px, means of
+       whole-set run values. So the clause compares two arms on whole-set
+       figures. The ruling of 2026-10-14 ("Every jitter comparison between
+       arms of different pipelines is read on their common media times",
+       M4's clause's section, item 4; README.md:4147-4148 at `5677367`)
+       binds every `jitterPx` comparison between arms running different
+       pipelines and exempts the clause's own readings ("Where it does not",
+       README.md:4177-4180 at `5677367`). What makes the
+       exemption hold is the clip: on the static clip the two arms' frame
+       sets differ little (M3's four static runs, pairwise, each keep 94.5%
+       to 98.2% of their counted frames), so the selection component the
+       hand-held clips showed, whole-set differences of +0.05 to +85.5 px
+       against −1.5 to +2.8 px on shared media times (the step protocol's
+       comparison rule, from `2026-10-16-m3-handheld-frame-set.mjs`), does
+       not arise. That is a property of the clip, not of the clause, and the
+       exemption does not transfer to a non-static block. The same pair read
+       on its 168 common media times is 0.1476 and 0.1568 px, 0.0092 px
+       apart ("What the window does not explain", under M4's clause's item
+       4; README.md:4543-4545 at `5677367`): a reading the clause never
+       performs.*
+     - *The brief for this measurement named the wrong population, the
+       common set, and the refutation pass the step protocol requires caught
+       it. Two figures were therefore measured, and only one is the
+       clause's.*
+     - *The clause's own noise, at the pair's own dropped fractions:
+       **0.00767 px**, from*
+       `node docs/benchmarks/2026-10-17-r1-frame-resample.mjs 10000 1 --rates=own --population=whole`*:
+       the design of
+       [`2026-10-17-r1-frame-resample.mjs`](./2026-10-17-r1-frame-resample.mjs),
+       footage held fixed and each run's frames kept independently with a
+       fixed probability, applied to each run's whole 300 frames at the
+       baseline's keep 0.697 (drop 0.303) and the repeat's keep 0.669 (drop
+       0.331), the fractions
+       [`2026-10-16-frame-set-overlap.mjs`](./2026-10-16-frame-set-overlap.mjs)
+       defines as 1 − common ÷ own posed media times. 10,000 resamples,
+       mulberry32 seed 1: movement (repeat − baseline) mean 0.00761, SD
+       0.00767, 2.5% −0.00755, 97.5% +0.02279 px; per-run SD 0.00522 and
+       0.00562 px; kept frames 209.1 and 200.9 a resample on average,
+       against the real common set's 212 and 207, 11.2 frames an eligible
+       window; eligible windows 17 to 20 of 20 and 17 to 18 of 18; no
+       resample left a run without an eligible window. Seeds 2 and 3 give
+       0.00769 and 0.00760; 100,000 resamples at seed 7 give 0.00768. The
+       script's check 3 holds: at keep 1 the whole-set include reproduces
+       each export's recorded `runSummary.jitterPx` exactly. The 0.00767
+       equals √(0.00522² + 0.00562²), the two runs' independent per-run SDs
+       summed in quadrature, and carries no covariance between the runs,
+       correctly for this design: the footage is held fixed and what is
+       resampled is which frames each run processed, which the two runs do
+       independently; the finding of 2026-10-17 about a missing covariance
+       applies to designs that resample the footage, which is shared between
+       arms, and does not apply here.*
+     - *A second figure, recorded so that it is not rediscovered and
+       mistaken for the first: **0.01082 px** (the same command with
+       `--population=common`, or without it; 10,000 resamples, seed 1; seed
+       2: 0.01093) is what the registered design produces when those rates
+       are applied on top of the common set, which the script thins by
+       default. The dropped fraction describes the step from a run's
+       whole posed set to the common set, so applying it to the common set
+       thins twice, to about eight frames an eligible window, a density no
+       real comparison has. It is not the clause's noise.*
+     - *Against the allowance. 0.00767 px is one run against one run. The
+       clause's operand, quoted above, is "their mean `jitterPx`": the mean
+       of two worker runs against the mean of two synchronous runs. Under
+       this entry's own no-covariance model the SD of that difference is the
+       pair's divided by √2, 0.0054 px, so the 0.007 px allowance is about
+       1.3σ; on the double-thinned common-set reading, 0.01082 ÷ √2 =
+       0.0077 px, it is about 0.92σ. The clause discriminates weakly, not at
+       the 2σ the first extrapolation suggested, and its standing is no
+       longer undetermined. No clause changes. (Corrected on 2026-10-17 from
+       "0.91σ" and "under one sigma in both readings", which read the
+       one-run SD against the allowance, by an independent read of the
+       diff.)*
+     - *What the correction shows, recorded and not acted on. The allowance
+       is the movement of a single pair of runs, the session's first and
+       last on 2026-09-28; the statistic it gates is a difference between
+       two two-run means. The bound and the statistic have been on different
+       bases since the clause was registered on 2026-10-01: the shape the
+       step protocol names, "a per-run figure against a movement"
+       (step-protocol.md:98-101 at `f740b8b`). Nothing is proposed here; the
+       decision on the allowance stays the maintainer's, due before M4's
+       round 1's first counted run.*
+     - *Both extrapolations understated the noise of their own population:
+       0.00352 px, from M3's whole-run coefficient, against the measured
+       whole-set 0.00767 (a factor of 2.2); 0.0093 px, from this pair's
+       common-set coefficient at keep 0.9, against the measured common-set
+       0.01082 (a factor of 1.16). The remainder is the law: s(p) = c ·
+       √(p ÷ 0.1) under-extrapolates Bernoulli thinning by about 15% at
+       these rates, 15.8% on the whole set (per-run keep-0.9 SD 0.00258 and
+       0.00255 px, from*
+       `node docs/benchmarks/2026-10-17-r1-frame-resample.mjs 10000 1 --rates=0.9 --population=whole`*,
+       predict 0.00645) and 13.6% on the common set (0.00371 and 0.00372,
+       the default path's keep-0.9 line, predict 0.00935).*
+     - *The footage instant 4.966667 s carries about a quarter of the
+       movement's variance at these rates, 24.3% on the common set and
+       19.7% on the whole set, read as the variance between the four groups
+       of its fate in the two runs. It is the most influential frame of both
+       runs on either population, by delete-one through the metric. Each
+       figure is the last section of a committed command: 24.3% from*
+       `node docs/benchmarks/2026-10-17-r1-frame-resample.mjs 10000 1 --rates=own --population=common`
+       *(the common frame set, keep 0.697 for the baseline and 0.669 for the
+       repeat), 19.7% from*
+       `node docs/benchmarks/2026-10-17-r1-frame-resample.mjs 10000 1 --rates=own --population=whole`
+       *(the whole frame set, the same two keeps). The "about a third" above
+       is the same frame at keep 0.9 on the common set, the default's own
+       output (33.7%), and stands for that rate.*
+     - *The decision on the allowance stays the maintainer's, due before
+       M4's round 1's first counted run. This entry proposes nothing.*
 9. **After every block**, the thermal rule: if the closing synchronous run
    is slower than the opening one — `trackStepMs` p50 by more than 6.6%, or
    `acquire` p50 (`summaryMs`, read only from an export whose
