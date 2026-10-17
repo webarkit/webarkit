@@ -221,6 +221,21 @@ with similar names. Why M3 read its lock verdict on the second: "Per
 processed frame, and by video time", in M3's
 [What is measured, and how it is read](./README.md#what-is-measured-and-how-it-is-read).
 
+### `LOST`: never acquired, or a lock lost
+
+The `LOST` state, as `states` and `trackLoss` count it, covers two
+conditions: a frame on which the tracker has not yet acquired the target,
+and a lock lost after it was held. The export separates them with no new
+field: a frame is **never yet acquired** if and only if no TRACK frame
+precedes it in the run; otherwise it is a loss. `reason` is not relied on
+to separate them (#143: unchecked). Every count of either in the record
+declares which it counts, by
+[the plan's rule of 2026-10-17](./README.md#counts-of-lost-frames-and-of-trackloss-declare-what-they-count-2026-10-17).
+The state machine itself is `packages/nft-tracker/src/tracker.ts`, not
+restated here. The finding, and why the rename to a distinct ACQUIRING state
+waits for the post-campaign window:
+[#143](https://github.com/webarkit/webarkit/issues/143).
+
 ### Every key of `DEFINITIONS`
 
 One entry per key. [The staleness check](#the-staleness-check) holds this

@@ -2,7 +2,8 @@
 
 Status: drafted 2026-10-15, after M4 step 3 (#105); revised 2026-10-16 with that day's
 findings (#123's seed test and frame-set decomposition, #137's gate and RNG findings, and
-#139's ratification of the box's entries). Maintained, not written once: a finding that
+#139's ratification of the box's entries), and 2026-10-17 with the comparison rule (Stage
+2) and the two rules on checks. Maintained, not written once: a finding that
 settles after the draft is folded in, dated, rather than left for an amendment.
 
 Everything else in `docs/benchmarks/` governs a measurement: provenance, served-file
@@ -73,12 +74,33 @@ it measured per frame? Is it reportable per clip?
 Produces: the covariate list in the step's issue, each with how it is computed and where
 it is reported.
 
-Two rules on using a covariate to select frames or blocks:
+Three rules on using a covariate to select frames or blocks, and on comparing the arms a
+selection leaves:
 
 - A covariate read to select data is read from the **control arm only**, never from the
   treatment arm. Reading it from the treatment arm selects on the dependent variable.
   This is the same rule the jitter clause already follows by being read on each block's
   own baseline arm.
+- **When the treatment can change which frames are posed, the arms are compared on the
+  frames both posed, never on whole-set figures** (added 2026-10-17). The control-arm
+  rule's sibling: that one keeps the selection off the dependent variable, this one keeps
+  the comparison off the selection. Its evidence, from a read-only decomposition of
+  2026-10-16 of M3's twelve hand-held exports
+  (`docs/benchmarks/2026-10-16-m3-handheld-frame-set.mjs`, the method of
+  `2026-10-16-frame-set-overlap.mjs`): on M3's 20 sync-worker pairs the
+  whole-set differences, sync minus worker, run +0.05 to +85.5 px, while the same arms on
+  shared media times differ by −1.5 to +2.8 px on the wall clip and −0.15 to +0.27 px on
+  the table clip. The
+  rule is already applied in #104's registered joint claim, which reads the arms on their
+  common media times (the plan, "#104: a joint claim, or none"), and M3's hand-held rows
+  never compared jitter across arms: it is registered before it was needed, not after it
+  was broken.
+  - *The failure it guards against, in the forms it took in a single day, 2026-10-17: two
+    figures compared on incompatible bases. A bound against a noise belonging to a
+    different counterfactual. A per-run figure against a movement, on runs of different
+    window counts. A change between two groups against a correction's distance from its
+    asymptote at one point. A trend read off a population that mixed right and wrong
+    fits. Each was caught, three of them by the implementing session.*
 - A selection is reported in the metric's own unit of eligibility, not only as a frame
   count. `jitterPx` is not a consecutive-frame difference: `cornerJitter` fits a line in
   time to each corner within each one-second window of media time, keeps a window only
@@ -275,6 +297,36 @@ Two rules about the record's own numbers, which is where the fifth one did its d
   say.** "The closer of the two on 240 of 240" was written about IPPE's two candidates and
   reads as a comparison against the closed form. When the two readings differ, the sentence
   is wrong, whichever one the author had in mind.
+
+Two rules on checks, added 2026-10-17:
+
+- **A figure that gates a decision gets one independent attempt at refutation before it
+  is recorded,** and what the attempt found is recorded beside it, including when it found
+  nothing. Its evidence, from 2026-10-17: three independent attempts on a window-bootstrap
+  figure (`docs/benchmarks/2026-10-17-r1-window-bootstrap.mjs`) found that an independent
+  per-run resample carries no covariance between arms measured on shared footage, which
+  the reviewer had accepted; two attempts on a frame-resample figure
+  (`docs/benchmarks/2026-10-17-r1-frame-resample.mjs`) found that its 2.36% rate was a net
+  count ratio, not the rate the runs' frame sets differ by. Both findings changed what
+  reached the record (the plan, M3's runbook step 8, its note of 2026-10-17): the paired
+  resample (`docs/benchmarks/2026-10-17-r1-paired-cluster-resample.mjs`) stands beside the
+  independent one, and the 2.36% figure was set aside for the pair's own dropped
+  fractions, 0.303 and 0.331, at which the direct resample is registered and not run.
+- **A check that fires and does not stop the figure is not a gate.** Exercising a check
+  both ways shows that it responds; it does not show that its failure prevents the result
+  from being reported. Both must be shown, and the second is the one that was missing. Its
+  instance, from 2026-10-17: the four checks of #104's item 3 harness
+  (`docs/benchmarks/2026-10-17-104-stage1-probe-item3.mjs`), shadow equality, jitter
+  reproduction, unmatched detections and inconsistent duplicate residuals, each responded
+  correctly and counted its failures, and the harness printed every figure anyway; a posed
+  detection with no observed residual was admitted by every filter. Found by the review
+  tool on #144, before it had produced a wrong figure, and fixed by making the checks fatal
+  ahead of any computation (`71cfdac`).
+  - *A rule introduced in a PR is applied to that PR's own new files. Its instance,
+    2026-10-17: the four derivation scripts were promoted from scratch in the same commit
+    that introduced this rule, and all four violated it, their checks printing a
+    discrepancy and the figures after it; found by the review on #145, and fixed there by
+    making every check fatal before any figure is computed or printed.*
 
 The addenda written in a step's last hours get the least scrutiny and carry the most of
 its conclusions. They are read by someone who did not produce them.
