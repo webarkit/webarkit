@@ -3360,10 +3360,27 @@ the two.
        whole posed set to the common set, so applying it to the common set
        thins twice, to about eight frames an eligible window, a density no
        real comparison has. It is not the clause's noise.*
-     - *Against the allowance: 0.007 px is 0.91σ of the clause's own noise
-       (0.65σ of the double-thinned figure). Under one sigma in both
-       readings. The clause discriminates weakly, not at the 2σ the first
-       extrapolation suggested, and its standing is no longer undetermined.*
+     - *Against the allowance. 0.00767 px is one run against one run. The
+       clause's operand, quoted above, is "their mean `jitterPx`": the mean
+       of two worker runs against the mean of two synchronous runs. Under
+       this entry's own no-covariance model the SD of that difference is the
+       pair's divided by √2, 0.0054 px, so the 0.007 px allowance is about
+       1.3σ; on the double-thinned common-set reading, 0.01082 ÷ √2 =
+       0.0077 px, it is about 0.92σ. The clause discriminates weakly, not at
+       the 2σ the first extrapolation suggested, and its standing is no
+       longer undetermined. No clause changes. (Corrected on 2026-10-17 from
+       "0.91σ" and "under one sigma in both readings", which read the
+       one-run SD against the allowance, by an independent read of the
+       diff.)*
+     - *What the correction shows, recorded and not acted on. The allowance
+       is the movement of a single pair of runs, the session's first and
+       last on 2026-09-28; the statistic it gates is a difference between
+       two two-run means. The bound and the statistic have been on different
+       bases since the clause was registered on 2026-10-01: the shape the
+       step protocol names, "a per-run figure against a movement"
+       (step-protocol.md:98-101 at `f740b8b`). Nothing is proposed here; the
+       decision on the allowance stays the maintainer's, due before M4's
+       round 1's first counted run.*
      - *Both extrapolations understated the noise of their own population:
        0.00352 px, from M3's whole-run coefficient, against the measured
        whole-set 0.00767 (a factor of 2.2); 0.0093 px, from this pair's
@@ -3371,8 +3388,10 @@ the two.
        0.01082 (a factor of 1.16). The remainder is the law: s(p) = c ·
        √(p ÷ 0.1) under-extrapolates Bernoulli thinning by about 15% at
        these rates, 15.8% on the whole set (per-run keep-0.9 SD 0.00258 and
-       0.00255 px predict 0.00645) and 13.6% on the common set (0.00371 and
-       0.00372 predict 0.00935).*
+       0.00255 px, from*
+       `node docs/benchmarks/2026-10-17-r1-frame-resample.mjs 10000 1 --rates=0.9 --population=whole`*,
+       predict 0.00645) and 13.6% on the common set (0.00371 and 0.00372,
+       the default path's keep-0.9 line, predict 0.00935).*
      - *The footage instant 4.966667 s carries about a quarter of the
        movement's variance at these rates, 24.3% on the common set and
        19.7% on the whole set, read as the variance between the four groups

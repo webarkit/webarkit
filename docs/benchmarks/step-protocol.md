@@ -329,7 +329,10 @@ Three rules on checks, added 2026-10-17:
     making every check fatal before any figure is computed or printed.*
 - **A missing or malformed input never falls back to a default that changes a figure; it
   fails.** Written on 2026-10-17 at the third instance of one shape: the item 3 harness
-  admitting a posed detection with no observed residual as passing every filter (#144); the
+  admitting a posed detection with no observed residual as passing every filter (documented
+  in #144's review and in `71cfdac`, the commit that made its checks fatal; the defect was
+  fixed before that PR merged, so the item 3 record describes the fatal checks, not the
+  defect); the
   four derivation scripts printing figures after a failed check (#145); and a bare `--rates`
   or `--population` option on the frame-resample script running the default path while the
   documented command appeared to request another (#147). Each was found by review before a

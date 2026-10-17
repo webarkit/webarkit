@@ -91,7 +91,12 @@
  * exactly. The tolerance on checks 1 and 3 is zero, a stated choice: it is
  * the same function on the same frames in the same order, and it reproduced
  * both recorded values bit for bit, so anything but equality is a changed
- * metric or a changed export.
+ * metric or a changed export. Two more guards, both fatal: a keep
+ * probability that is not a finite number in (0, 1], from either --rates
+ * branch (the own branch divides by a run's posed media times, zero for an
+ * export with no posed frames); and, in the delete-one influence, a frame the
+ * metric hands the include predicate that is not among the run's frames
+ * (mask[-1] would be undefined and the frame silently excluded).
  *
  * A known limitation, as the frame-set script's and the stall check's: this
  * script is covered by no test and by no format check (`docs/` is outside
@@ -248,6 +253,14 @@ if (RATES_FLAG !== null) {
         pr = parts[1] ?? parts[0];
         how = "keep probabilities given on the command line";
     }
+    // both branches: a keep probability that is not a finite number in (0, 1] is fatal, naming the
+    // run and the value. The own branch divides by a run's posed media times, zero for an export
+    // with no posed frames; rnd() < Infinity would keep every frame and rnd() < NaN drop every one
+    for (const [run, p] of [["baseline", pb], ["repeat", pr]]) {
+        if (!(Number.isFinite(p) && p > 0 && p <= 1)) {
+            fatal(`--rates: the ${run}'s keep probability is ${p}, not a finite number in (0, 1]`);
+        }
+    }
     RATES.length = 0;
     RATES.push({
         label: `keep baseline ${pb.toFixed(4)} (drop ${(100 * (1 - pb)).toFixed(2)}%), repeat ${pr.toFixed(4)} (drop ${(100 * (1 - pr)).toFixed(2)}%), ${POPULATION} frame set: ${how}`,
@@ -285,7 +298,16 @@ function influence(label, e) {
     const idx = F.map((fr, i) => (inPopulation(fr) ? i : -1)).filter((i) => i >= 0);
     const mask = new Uint8Array(F.length);
     for (const i of idx) mask[i] = 1;
-    const inc = (fr) => mask[F.indexOf(fr)] === 1;
+    // identity lookup, kept: the metric is frozen and imported, and hands back the very frame objects it
+    // was given. A frame it hands back that is not in F would read mask[-1], undefined, and be silently
+    // excluded; it is fatal instead, since it would mean the metric changed
+    const inc = (fr) => {
+        const i = F.indexOf(fr);
+        if (i < 0) {
+            fatal(`${label} influence: the metric handed the include predicate a frame that is not in the run's frames (media time ${fr?.mediaTimeSeconds})`);
+        }
+        return mask[i] === 1;
+    };
     const total = finite(`${label} influence, all ${POPULATION} frames`, cornerJitter(F, { include: inc }).jitterPx);
     let loop = 0;
     const loopOf = new Array(F.length);

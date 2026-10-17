@@ -507,7 +507,10 @@ synchronous mean is misrecorded by 0.00002 px. The two synchronous static
 runs' whole-set `runSummary.jitterPx`, read from their exports, are
 0.1416344684738684 and 0.14174855108176043, whose mean is 0.14169 px against
 the 0.14171 px recorded above (twice, in the null control as registered and
-as replaced), so the worker arm's excess is 0.00047 px, not 0.00045. The
+as replaced), so the worker arm's excess is 0.00047 px, not 0.00045, at the
+three places the excess is stated: the two above and "Today's excess,
+0.00045 px, passes it by a factor of fifteen" in the replacement's
+derivation, where the factor, 0.007 ÷ 0.00047 = 14.9, still reads fifteen. The
 worker mean, 0.14216 px, recomputes exactly. The per-run table's five-decimal
 values are not the cause: the full-precision mean rounds to 0.14169. No
 verdict changes, since the excess is far below both the withdrawn allowance's
