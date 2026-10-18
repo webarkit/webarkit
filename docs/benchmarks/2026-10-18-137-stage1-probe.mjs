@@ -111,7 +111,11 @@
  * recorded runSummary.jitterPx, with zero tolerance (the same function on the
  * same frames in the same order); the window keying reproduces jitterWindows
  * under every reading; a frame counted as a 4-inlier detection has corners
- * only if it is posed. Per pair, the common set is not empty under "none" and
+ * only if it is posed; a posed frame is in a window (it always is, by
+ * construction, and the check is on that rather than on a property read of
+ * undefined). Per pair, both exports record a processing resolution and the
+ * two are equal, reported with the sizes observed as compareExports reports
+ * them; the common set is not empty under "none" and
  * both runs' common-set jitterPx are finite; under an exclusion an empty
  * common set or a null jitterPx is printed as such, not fatal, since an
  * exclusion may legitimately empty a set. Exports that cannot be compared are
@@ -133,13 +137,22 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = "2026-10-18-137-stage1-probe.mjs";
-const { cornerJitter, countedLoopFrames, isLoopWrap, mediaKey, unwrapMediaTimes, METRICS_VERSION, JITTER_WINDOW_S } =
-    await import(pathToFileURL(join(HERE, "../../examples/js/bench-metrics.mjs")).href);
 
 const fatal = (message) => {
     console.error(`${SCRIPT}: ${message}`);
     process.exit(1);
 };
+
+// The frozen metrics module, its absence reported as every other failure here is: through
+// fatal, naming what is missing, rather than as an unhandled rejection with a stack trace.
+const METRICS_PATH = join(HERE, "../../examples/js/bench-metrics.mjs");
+let metrics;
+try {
+    metrics = await import(pathToFileURL(METRICS_PATH).href);
+} catch (err) {
+    fatal(`cannot import ${METRICS_PATH}: ${err?.message ?? err}`);
+}
+const { cornerJitter, countedLoopFrames, isLoopWrap, mediaKey, unwrapMediaTimes, METRICS_VERSION, JITTER_WINDOW_S } = metrics;
 const g = (v, d = 4) => (v === null || v === undefined ? "null" : v.toFixed(d));
 const f = (v, d = 4) => (v === null || v === undefined ? "null" : (v >= 0 ? "+" : "") + v.toFixed(d));
 
@@ -195,6 +208,14 @@ for (const file of readdirSync(HERE).filter((n) => n.endsWith(".json")).sort()) 
     }
     runs.set(name, { name, e, clip, hasLoops, frames, D, whole });
 }
+// Every section below walks the runs in one order, by name, so that no printed section's order
+// depends on what readdirSync returns on a given filesystem. The file list above is sorted too,
+// but with the .json extension on, under which "-" sorts before "." and tracking-table-repeat
+// comes before tracking-table; by name the shorter comes first. The one exception is the per-run
+// jackknife under "none", printed by the record's value, largest first, name as the tie-break.
+const byName = (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+inventory.sort(byName);
+const RUNS = [...runs.values()].sort(byName);
 
 // ---- window keying, as cornerJitter keys it -------------------------------
 function windowsOf(run, include) {
@@ -223,7 +244,7 @@ function eligible(list) {
 }
 
 // ---- per run, every reading -----------------------------------------------
-for (const run of runs.values()) {
+for (const run of RUNS) {
     const { frames, D, name } = run;
     const det = frames.filter(isDetect);
     run.counts = {
@@ -253,6 +274,9 @@ for (const run of runs.values()) {
         const excluded = frames.filter((fr) => fr.corners && !include(fr));
         const where = excluded.map((fr) => {
             const w = [...windows.values()].find((x) => x.all.includes(fr));
+            // windowsOf puts every frame with corners in a window, so this cannot happen on these
+            // exports; if it ever does, it is reported, not read as a property of undefined.
+            if (w === undefined) fatal(`${name}, ${r}: the excluded frame at media time ${fr.mediaTimeSeconds} is in no window`);
             return {
                 media: fr.mediaTimeSeconds,
                 inliers: fr.numInliers,
@@ -293,7 +317,15 @@ for (const p of PAIRS) {
     const B = runs.get(p.b);
     const ra = A.e.processingResolution;
     const rb = B.e.processingResolution;
-    if (ra.width !== rb.width || ra.height !== rb.height) fatal(`pair ${p.label} on ${p.clip}: different processing resolutions`);
+    // As compareExports refuses it, with the sizes observed: an export without the field is
+    // reported here, not thrown as a TypeError from a property read on undefined.
+    const sized = (res) => res?.width > 0 && res?.height > 0;
+    if (!sized(ra) || !sized(rb)) {
+        fatal(`pair ${p.label} on ${p.clip}: an export records no processingResolution (${ra?.width}x${ra?.height}, ${rb?.width}x${rb?.height})`);
+    }
+    if (ra.width !== rb.width || ra.height !== rb.height) {
+        fatal(`pair ${p.label} on ${p.clip}: their corners are in different frame sizes (${ra.width}x${ra.height}, ${rb.width}x${rb.height})`);
+    }
     p.results = {};
     for (const r of READING_NAMES) {
         const include = READINGS[r];
@@ -334,17 +366,22 @@ const spread = (values) => {
     if (v.length < 2) return { n: v.length, min: null, max: null, ratio: null, range: null };
     const min = Math.min(...v);
     const max = Math.max(...v);
-    return { n: v.length, min, max, ratio: max / min, range: max - min };
+    // cornerJitter can return 0 with nonzero degrees of freedom, and a ratio over a smallest
+    // value that is not positive is no ratio: null, as for fewer than two finite values.
+    return { n: v.length, min, max, ratio: min > 0 ? max / min : null, range: max - min };
 };
 for (const grp of GROUPS) {
     const [label, , names] = grp;
+    if (names.length === 0) fatal(`group ${label}: names no run`);
     for (const n of names) if (!has(n)) fatal(`group ${label}: ${n} is missing or unreadable`);
     grp.members = names.map((n) => runs.get(n));
     grp.results = {};
     for (const r of READING_NAMES) {
         const include = READINGS[r];
-        let common = null;
-        for (const m of grp.members) common = common === null ? new Set(m.read[r].keys) : new Set([...common].filter((k) => m.read[r].keys.has(k)));
+        // The intersection starts from the first member's media times, so it is a Set whatever the
+        // members share: an empty one prints its size, 0, and a null jitterPx on it.
+        let common = new Set(grp.members[0].read[r].keys);
+        for (const m of grp.members.slice(1)) common = new Set([...common].filter((k) => m.read[r].keys.has(k)));
         const inc = (fr) => include(fr) && common.has(mediaKey(fr.mediaTimeSeconds));
         const onCommon = grp.members.map((m) => cornerJitter(m.frames, { include: inc, clipDurationS: m.D }));
         grp.results[r] = {
@@ -394,7 +431,7 @@ for (const grp of GROUPS) {
 // jitterPx recomputed; the deletion that moves it most is kept, with its ties as above. This is
 // what lets the document say of each large whole-set value in the record whether it is one
 // frame, and of what support, rather than infer it from the readings.
-for (const run of runs.values()) {
+for (const run of RUNS) {
     const base = run.read.none.jitterPx;
     const posed = run.frames.filter((fr) => fr.corners);
     const moves = [];
@@ -537,6 +574,7 @@ for (const grp of REVIEWED) {
         for (const fr of m.frames) {
             if (!fr.corners) continue;
             const w = [...windows.values()].find((x) => x.all.includes(fr));
+            if (w === undefined) fatal(`${m.name}: the posed frame at media time ${fr.mediaTimeSeconds} is in no window`);
             const isCarrier = isDetect(fr) && fr.numInliers === 4 && eligible(w.all);
             const jk = grp.jackknife.find((j) => j.name === m.name).best;
             const isNamed = jk !== null && fr === jk.victim;
@@ -561,14 +599,14 @@ for (const { name, clip, why } of inventory) console.log(`${name} | ${clip} | ${
 
 console.log("\n== Per run: frames, detections, 4-inlier detections, and jitterPx under each reading");
 console.log("run | clip | frames | DETECT (with corners) | 4-inl DETECT (with corners) | 5-6-inl with corners | 7-inl with corners | consumed (of them DETECT; refused with 4 inliers, with corners) | none: jitterPx (posed, windows) | X4 | X6 | X8 | XD");
-for (const run of runs.values()) {
+for (const run of RUNS) {
     const c = run.counts;
     const cell = (r) => `${g(run.read[r].jitterPx)} (${run.read[r].posedFrames}, ${run.read[r].jitterWindows} w)`;
     console.log(`${run.name} | ${CLIP_SHORT[run.clip] ?? run.clip} | ${c.frames}${run.hasLoops ? " counted" : " all"} | ${c.detect} (${c.detectCorners}) | ${c.inl4} (${c.inl4Corners}) | ${c.inl56Corners} | ${c.inl7Corners} | ${c.consumed} (${c.consumedDetect}; ${c.consumedLost4}, ${c.consumedLost4Corners}) | ${READING_NAMES.map(cell).join(" | ")}`);
 }
 
 const totals = { runs: runs.size, detect: 0, inl4: 0, inl4Corners: 0, inl4Eligible: 0, runsMoved: 0 };
-for (const run of runs.values()) {
+for (const run of RUNS) {
     totals.detect += run.counts.detect;
     totals.inl4 += run.counts.inl4;
     totals.inl4Corners += run.counts.inl4Corners;
@@ -578,7 +616,7 @@ for (const run of runs.values()) {
 console.log(`\nTotals over the ${totals.runs} runs read: DETECT frames ${totals.detect}; 4-inlier detections ${totals.inl4}, of them with corners ${totals.inl4Corners}, of them in a window eligible before the exclusion ${totals.inl4Eligible}; runs whose jitterPx X4 moves at all: ${totals.runsMoved}`);
 
 console.log("\n== Where the excluded 4-inlier detection frames sat (X4): window key, frames with corners before -> after, eligible before, and the run's change");
-for (const run of runs.values()) {
+for (const run of RUNS) {
     const x = run.read.X4;
     if (x.excluded.length === 0) {
         console.log(`${run.name}: no posed 4-inlier detection frame; change 0`);
@@ -590,7 +628,7 @@ for (const run of runs.values()) {
 
 console.log("\n== Per run, jackknife under none: the single posed frame whose deletion moves the record's whole-set jitterPx most");
 console.log("run | none | after deleting it | move | the frame (state, inliers, media time) | tied deletions");
-for (const run of [...runs.values()].sort((a, b) => b.read.none.jitterPx - a.read.none.jitterPx)) {
+for (const run of [...RUNS].sort((a, b) => b.read.none.jitterPx - a.read.none.jitterPx || byName(a, b))) {
     const b = run.jackknifeNone.best;
     console.log(`${run.name} | ${g(run.read.none.jitterPx, 2)} | ${g(b.after, 2)} | ${f(b.move, 2)} | ${b.state}, ${b.inliers} inliers, ${b.media} | ${run.jackknifeNone.ties}`);
 }
