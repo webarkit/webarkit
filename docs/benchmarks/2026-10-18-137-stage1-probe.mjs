@@ -62,8 +62,11 @@
  *    "X6": detection frames with 4 to 6 inliers excluded, the range #137's
  *    comment of 2026-10-16 names. "XD": every DETECT frame excluded, the
  *    ceiling of what any gate acting on detections alone could remove from
- *    the figure. Each is cornerJitter's own include option; a non-DETECT frame
- *    is always kept, and no H changes, so every movement is frame selection.
+ *    the figure. "X8": every detection below 8 inliers excluded, the reading
+ *    that matches #137's gate, minTrackedPatches (8), which its body says
+ *    never sees a detection; it differs from X6 by the 7-inlier detections.
+ *    Each is cornerJitter's own include option; a non-DETECT frame is always
+ *    kept, and no H changes, so every movement is frame selection.
  * 5. Per pair (question 1): the whole-set difference and the common-set
  *    difference under each reading, sign first arm minus second. The common
  *    set is the media times (mediaKey(mediaTimeSeconds)) both runs pose under
@@ -81,11 +84,26 @@
  *    inlier count, and the group's ratio is recomputed with each run's most
  *    influential frame deleted. If the remaining spread sits in single frames,
  *    the jackknife names them; if it does not, no single frame carries it.
+ *    Deletions that move jitterPx by exactly the same amount are a tie, and
+ *    are printed as one: when the named frame's window holds exactly four
+ *    posed frames, any deletion drops the window and all four tie, so the
+ *    frame named is the first in frame order, not a uniquely influential one.
  * 8. Window diagnostics: each excluded frame's one-second window, keyed as
  *    cornerJitter keys it, with the window's frame count before and after the
  *    exclusion and whether it was eligible (at least 4 frames) before. The
  *    window count so obtained must equal the module's jitterWindows under
  *    every reading of every run (fatal).
+ * 9. Per run, the same jackknife under "none", the record's own reading, so
+ *    that each large whole-set value in the record can be said to be one
+ *    frame, or not, and of what support.
+ * 10. The independent reviewer's figures (the document's "Independent: a
+ *    reviewer's attempt"), recomputed here on the two M3 sync groups: the
+ *    residual's share by window and by frame and the DETECT frames' share
+ *    under X4, which repeats cornerJitter's regression to attribute what it
+ *    does not expose and is checked to reproduce its jitterPx bit for bit;
+ *    the mean of the four corners on the frames the document names; and the
+ *    ratio under X4 over each loop alone, over all frames, and over loops 1
+ *    to 4 with each loop's first and last second removed.
  *
  * The checks, all fatal: a failed check exits non-zero naming the run or the
  * pair and the values that disagree, and no figure is printed after it. Per
@@ -115,7 +133,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = "2026-10-18-137-stage1-probe.mjs";
-const { cornerJitter, countedLoopFrames, isLoopWrap, mediaKey, METRICS_VERSION, JITTER_WINDOW_S } =
+const { cornerJitter, countedLoopFrames, isLoopWrap, mediaKey, unwrapMediaTimes, METRICS_VERSION, JITTER_WINDOW_S } =
     await import(pathToFileURL(join(HERE, "../../examples/js/bench-metrics.mjs")).href);
 
 const fatal = (message) => {
@@ -139,6 +157,7 @@ const READINGS = {
     none: () => true,
     X4: (fr) => !(isDetect(fr) && fr.numInliers === 4),
     X6: (fr) => !(isDetect(fr) && fr.numInliers >= 4 && fr.numInliers <= 6),
+    X8: (fr) => !(isDetect(fr) && fr.numInliers < 8),
     XD: (fr) => !isDetect(fr),
 };
 const READING_NAMES = Object.keys(READINGS);
@@ -214,6 +233,7 @@ for (const run of runs.values()) {
         inl4: det.filter((fr) => fr.numInliers === 4).length,
         inl4Corners: det.filter((fr) => fr.numInliers === 4 && fr.corners).length,
         inl56Corners: det.filter((fr) => fr.numInliers >= 5 && fr.numInliers <= 6 && fr.corners).length,
+        inl7Corners: det.filter((fr) => fr.numInliers === 7 && fr.corners).length,
         consumed: frames.filter((fr) => fr.detectionUse === "consumed").length,
         consumedDetect: frames.filter((fr) => fr.detectionUse === "consumed" && isDetect(fr)).length,
         // A consumed detection the tracking step refuses leaves the detection's inlier count
@@ -286,9 +306,15 @@ for (const p of PAIRS) {
         if (r === "none" && !(Number.isFinite(ja.jitterPx) && Number.isFinite(jb.jitterPx))) {
             fatal(`pair ${p.label} on ${p.clip}: a common-set jitterPx is not finite`);
         }
-        const whole = A.read[r].jitterPx - B.read[r].jitterPx;
+        // A difference exists only when both of its terms do. Under XD a stateless run keeps no
+        // posed frame and its jitterPx is null; subtracting null would coerce it to 0 and print
+        // a number for a comparison that is undefined (the review of 4d7c8fb, finding 1).
+        const whole =
+            Number.isFinite(A.read[r].jitterPx) && Number.isFinite(B.read[r].jitterPx)
+                ? A.read[r].jitterPx - B.read[r].jitterPx
+                : null;
         const com = Number.isFinite(ja.jitterPx) && Number.isFinite(jb.jitterPx) ? ja.jitterPx - jb.jitterPx : null;
-        p.results[r] = { common: common.size, union, ja, jb, whole, com, part: com === null ? null : whole - com };
+        p.results[r] = { common: common.size, union, ja, jb, whole, com, part: whole === null || com === null ? null : whole - com };
     }
 }
 
@@ -333,17 +359,198 @@ for (const grp of GROUPS) {
     grp.jackknife = grp.members.map((m) => {
         const base = m.read.X4.jitterPx;
         const posed = m.frames.filter((fr) => fr.corners && READINGS.X4(fr));
+        const moves = [];
         let best = null;
         for (const victim of posed) {
             const j = cornerJitter(m.frames, { clipDurationS: m.D, include: (fr) => READINGS.X4(fr) && fr !== victim });
             const move = j.jitterPx === null ? null : j.jitterPx - base;
-            if (move !== null && (best === null || Math.abs(move) > Math.abs(best.move))) {
-                best = { move, after: j.jitterPx, windows: j.jitterWindows, state: victim.state, inliers: victim.numInliers, media: victim.mediaTimeSeconds, detectionUse: victim.detectionUse };
+            if (move === null) continue;
+            moves.push({ move, windows: j.jitterWindows, victim });
+            if (best === null || Math.abs(move) > Math.abs(best.move)) {
+                best = { move, after: j.jitterPx, windows: j.jitterWindows, state: victim.state, inliers: victim.numInliers, media: victim.mediaTimeSeconds, detectionUse: victim.detectionUse, victim };
             }
         }
-        return { name: m.name, base, best, posed: posed.length };
+        // The strict > above keeps the first of equal moves. When the named frame sits in a window
+        // of exactly four posed frames, deleting any one of the four leaves three, cornerJitter
+        // drops the window, and the four deletions move jitterPx by the same amount: the frame
+        // named is then the first in frame order, not a uniquely influential one (the review of
+        // 4d7c8fb, finding 3). So the ties are counted and the window's fate printed.
+        const ties = best === null ? [] : moves.filter((x) => x.move === best.move && x.windows === best.windows);
+        const windowDropped = best !== null && best.windows < m.read.X4.jitterWindows;
+        return {
+            name: m.name,
+            base,
+            best,
+            posed: posed.length,
+            ties: ties.map((x) => ({ state: x.victim.state, inliers: x.victim.numInliers, media: x.victim.mediaTimeSeconds })),
+            windowDropped,
+        };
     });
     grp.jackknifeSpread = spread(grp.jackknife.map((j) => (j.best ? j.best.after : j.base)));
+}
+
+// ---- per run, the jackknife under "none": what one frame carries of the record's figure ----
+// For every run read, every posed frame is deleted alone from the record's own reading and
+// jitterPx recomputed; the deletion that moves it most is kept, with its ties as above. This is
+// what lets the document say of each large whole-set value in the record whether it is one
+// frame, and of what support, rather than infer it from the readings.
+for (const run of runs.values()) {
+    const base = run.read.none.jitterPx;
+    const posed = run.frames.filter((fr) => fr.corners);
+    const moves = [];
+    let best = null;
+    for (const victim of posed) {
+        const j = cornerJitter(run.frames, { clipDurationS: run.D, include: (fr) => fr !== victim });
+        if (j.jitterPx === null) continue;
+        const move = j.jitterPx - base;
+        moves.push({ move, windows: j.jitterWindows });
+        if (best === null || Math.abs(move) > Math.abs(best.move)) {
+            best = { move, after: j.jitterPx, windows: j.jitterWindows, state: victim.state, inliers: victim.numInliers, media: victim.mediaTimeSeconds };
+        }
+    }
+    run.jackknifeNone = { best, ties: best === null ? 0 : moves.filter((x) => x.move === best.move && x.windows === best.windows).length };
+}
+
+// ---- the reviewer's selections and shares, recomputed here -----------------
+// The independent reviewer's figures (the document's "Independent: a reviewer's attempt") came
+// from a scratch script that is not committed. Every figure in the document must come from a
+// committed derivation (the review of 4d7c8fb, finding 4), so the same quantities are computed
+// here on the two groups the document cites, M3's sync arm on each clip, and printed in the
+// order the document reports them, for comparison with the reviewer's own.
+
+/**
+ * cornerJitter's window regression, repeated only to attribute the residual to windows and to
+ * frames, which cornerJitter does not expose, and to read a frame set whose loop restarts
+ * mid-clip (the edge-trimmed selection below), which the module's wrap reader refuses. Same
+ * keying (loopIdx[i], floor(mediaTime)), same two eligibility rules, same operation order, so
+ * its jitterPx must equal cornerJitter's bit for bit wherever both can read the set: checked,
+ * fatal, on every run and reading it is used with.
+ */
+function windowResiduals(frames, loopIdx, include) {
+    const windows = new Map();
+    for (let i = 0; i < frames.length; i++) {
+        const fr = frames[i];
+        if (!(fr.corners && include(fr))) continue;
+        const key = `${loopIdx[i]}:${Math.floor(fr.mediaTimeSeconds / JITTER_WINDOW_S)}`;
+        if (!windows.has(key)) windows.set(key, []);
+        windows.get(key).push(fr);
+    }
+    let residuals = 0;
+    let dof = 0;
+    let used = 0;
+    const perWindow = [];
+    const perFrame = new Map();
+    for (const [key, w] of windows) {
+        const n = w.length;
+        if (n < 4) continue;
+        let tMean = 0;
+        for (const fr of w) tMean += fr.mediaTimeSeconds;
+        tMean /= n;
+        let tSpread = 0;
+        for (const fr of w) tSpread += (fr.mediaTimeSeconds - tMean) ** 2;
+        if (tSpread === 0) continue;
+        let sum = 0;
+        for (let c = 0; c < 4; c++) {
+            for (let axis = 0; axis < 2; axis++) {
+                let mean = 0;
+                for (const fr of w) mean += fr.corners[c][axis];
+                mean /= n;
+                let slope = 0;
+                for (const fr of w) slope += (fr.mediaTimeSeconds - tMean) * (fr.corners[c][axis] - mean);
+                slope /= tSpread;
+                for (const fr of w) {
+                    const r2 = (fr.corners[c][axis] - mean - slope * (fr.mediaTimeSeconds - tMean)) ** 2;
+                    residuals += r2;
+                    sum += r2;
+                    perFrame.set(fr, (perFrame.get(fr) ?? 0) + r2);
+                }
+            }
+        }
+        perWindow.push({ key, residual: sum, frames: w });
+        dof += n - 2;
+        used++;
+    }
+    return { jitterPx: dof > 0 ? Math.sqrt(residuals / (4 * dof)) : null, jitterWindows: used, residuals, perWindow, perFrame };
+}
+/** The loop index of each frame as cornerJitter counts it over this very array: by its wraps. */
+function loopIndexByWraps(frames, D) {
+    let loop = 0;
+    return frames.map((fr, i) => {
+        if (i > 0 && isLoopWrap(frames[i - 1], fr, D, i)) loop++;
+        return loop;
+    });
+}
+/** The mean of a frame's four corners: the quantity the reviewer reported as the "projected centre". */
+const cornerMean = (c) => [0, 1].map((axis) => c.reduce((s, p) => s + p[axis], 0) / 4);
+
+const REVIEWED = GROUPS.slice(0, 2); // M3 sync, wall; M3 sync, table
+for (const grp of REVIEWED) {
+    for (const m of grp.members) {
+        // the repeated regression reproduces the module on the counted frames, every reading
+        const loopIdx = loopIndexByWraps(m.frames, m.D);
+        for (const r of READING_NAMES) {
+            const own = windowResiduals(m.frames, loopIdx, READINGS[r]);
+            if (own.jitterPx !== m.read[r].jitterPx || own.jitterWindows !== m.read[r].jitterWindows) {
+                fatal(`${m.name}, ${r}: the repeated regression gives ${own.jitterPx} over ${own.jitterWindows} windows, cornerJitter ${m.read[r].jitterPx} over ${m.read[r].jitterWindows}`);
+            }
+        }
+        // shares of the residual under X4, by window and by frame, and the DETECT frames' share
+        const x4 = windowResiduals(m.frames, loopIdx, READINGS.X4);
+        const topWindow = x4.perWindow.reduce((a, w) => (a === null || w.residual > a.residual ? w : a), null);
+        let topFrame = null;
+        let detectResidual = 0;
+        for (const [fr, r2] of x4.perFrame) {
+            if (topFrame === null || r2 > topFrame.r2) topFrame = { fr, r2 };
+            if (isDetect(fr)) detectResidual += r2;
+        }
+        m.shares = {
+            topWindow: topWindow === null ? null : { key: topWindow.key, share: topWindow.residual / x4.residuals, frames: topWindow.frames.map((fr) => `${fr.state} ${fr.numInliers}`) },
+            topFrame: topFrame === null ? null : { share: topFrame.r2 / x4.residuals, state: topFrame.fr.state, inliers: topFrame.fr.numInliers, media: topFrame.fr.mediaTimeSeconds },
+            detectShare: detectResidual / x4.residuals,
+        };
+        // the selections of the run's frames, under X4
+        const all = m.e.frames;
+        const t = unwrapMediaTimes(all, m.D);
+        const loopOf = (i) => Math.floor(t[i] / m.D);
+        const within = (i) => t[i] - loopOf(i) * m.D;
+        m.selections = {};
+        for (let k = 0; k <= 4; k++) {
+            const sel = all.filter((_, i) => loopOf(i) === k);
+            m.selections[`loop ${k} alone`] = cornerJitter(sel, { clipDurationS: m.D, include: READINGS.X4 }).jitterPx;
+        }
+        m.selections["all frames"] = cornerJitter(all, { clipDurationS: m.D, include: READINGS.X4 }).jitterPx;
+        // loops 1 to 4 with each loop's first and last second removed: the module's wrap reader
+        // refuses a restart more than 0.5 s into the clip, so this one is the repeated regression,
+        // keyed by the module's own unwrapped loop index
+        const trimmedIdx = [];
+        const trimmed = all.filter((_, i) => {
+            const k = loopOf(i);
+            const keep = k >= 1 && k <= 4 && within(i) >= 1 && within(i) < m.D - 1;
+            if (keep) trimmedIdx.push(k);
+            return keep;
+        });
+        m.selections["loops 1-4, first and last second of each loop removed"] = windowResiduals(trimmed, trimmedIdx, READINGS.X4).jitterPx;
+        // the corners' mean on the frames the document names: the X4-excluded frame in an eligible
+        // window, and the jackknife's named frame, each against the mean of its window's other frames
+        const windows = windowsOf(m, READINGS.none);
+        const named = [];
+        for (const fr of m.frames) {
+            if (!fr.corners) continue;
+            const w = [...windows.values()].find((x) => x.all.includes(fr));
+            const isCarrier = isDetect(fr) && fr.numInliers === 4 && eligible(w.all);
+            const jk = grp.jackknife.find((j) => j.name === m.name).best;
+            const isNamed = jk !== null && fr === jk.victim;
+            if (!isCarrier && !isNamed) continue;
+            const others = w.all.filter((o) => o !== fr).map((o) => cornerMean(o.corners));
+            const mean = others.length === 0 ? null : [0, 1].map((axis) => others.reduce((s, p) => s + p[axis], 0) / others.length);
+            named.push({ why: isCarrier ? "X4-excluded, eligible window" : "jackknife's named frame", fr, window: w.key, centre: cornerMean(fr.corners), others: mean, n: others.length });
+        }
+        m.named = named;
+    }
+    grp.selectionRatios = {};
+    for (const key of Object.keys(grp.members[0].selections)) {
+        grp.selectionRatios[key] = spread(grp.members.map((m) => m.selections[key]));
+    }
 }
 
 // ---- output ---------------------------------------------------------------
@@ -353,11 +560,11 @@ console.log("== Inventory: every committed export on a hand-held clip");
 for (const { name, clip, why } of inventory) console.log(`${name} | ${clip} | ${why ? `NOT READ: ${why}` : "read"}`);
 
 console.log("\n== Per run: frames, detections, 4-inlier detections, and jitterPx under each reading");
-console.log("run | clip | frames | DETECT (with corners) | 4-inl DETECT (with corners) | 5-6-inl with corners | consumed (of them DETECT; refused with 4 inliers, with corners) | none: jitterPx (posed, windows) | X4 | X6 | XD");
+console.log("run | clip | frames | DETECT (with corners) | 4-inl DETECT (with corners) | 5-6-inl with corners | 7-inl with corners | consumed (of them DETECT; refused with 4 inliers, with corners) | none: jitterPx (posed, windows) | X4 | X6 | X8 | XD");
 for (const run of runs.values()) {
     const c = run.counts;
     const cell = (r) => `${g(run.read[r].jitterPx)} (${run.read[r].posedFrames}, ${run.read[r].jitterWindows} w)`;
-    console.log(`${run.name} | ${CLIP_SHORT[run.clip] ?? run.clip} | ${c.frames}${run.hasLoops ? " counted" : " all"} | ${c.detect} (${c.detectCorners}) | ${c.inl4} (${c.inl4Corners}) | ${c.inl56Corners} | ${c.consumed} (${c.consumedDetect}; ${c.consumedLost4}, ${c.consumedLost4Corners}) | ${cell("none")} | ${cell("X4")} | ${cell("X6")} | ${cell("XD")}`);
+    console.log(`${run.name} | ${CLIP_SHORT[run.clip] ?? run.clip} | ${c.frames}${run.hasLoops ? " counted" : " all"} | ${c.detect} (${c.detectCorners}) | ${c.inl4} (${c.inl4Corners}) | ${c.inl56Corners} | ${c.inl7Corners} | ${c.consumed} (${c.consumedDetect}; ${c.consumedLost4}, ${c.consumedLost4Corners}) | ${READING_NAMES.map(cell).join(" | ")}`);
 }
 
 const totals = { runs: runs.size, detect: 0, inl4: 0, inl4Corners: 0, inl4Eligible: 0, runsMoved: 0 };
@@ -379,6 +586,13 @@ for (const run of runs.values()) {
     }
     const list = x.excluded.map((w) => `${w.window} ${w.before}->${w.after}${w.eligibleBefore ? " eligible" : " ineligible"}`).join("; ");
     console.log(`${run.name}: ${x.excluded.length} excluded [${list}]; jitterPx ${g(run.read.none.jitterPx)} -> ${g(x.jitterPx)}, change ${f(x.jitterPx - run.read.none.jitterPx)}${x.jitterPx === run.read.none.jitterPx ? " (exactly 0)" : ""}`);
+}
+
+console.log("\n== Per run, jackknife under none: the single posed frame whose deletion moves the record's whole-set jitterPx most");
+console.log("run | none | after deleting it | move | the frame (state, inliers, media time) | tied deletions");
+for (const run of [...runs.values()].sort((a, b) => b.read.none.jitterPx - a.read.none.jitterPx)) {
+    const b = run.jackknifeNone.best;
+    console.log(`${run.name} | ${g(run.read.none.jitterPx, 2)} | ${g(b.after, 2)} | ${f(b.move, 2)} | ${b.state}, ${b.inliers} inliers, ${b.media} | ${run.jackknifeNone.ties}`);
 }
 
 console.log("\n== Question 1, per pair: whole-set and common-set differences (first minus second) under each reading");
@@ -407,7 +621,34 @@ for (const grp of GROUPS) {
     console.log("jackknife under X4: per run, the single posed frame whose deletion moves jitterPx most");
     for (const j of grp.jackknife) {
         const b = j.best;
-        console.log(`  ${j.name.replace(/^2026-\d\d-\d\d-/, "")}: ${j.posed} posed; ${g(j.base, 2)} -> ${g(b.after, 2)} (${f(b.move, 2)}, ${b.windows} w) by deleting a ${b.state} frame, ${b.inliers} inliers, detectionUse ${b.detectionUse}, media time ${b.media}`);
+        const tie =
+            j.ties.length > 1
+                ? `; TIE: ${j.ties.length} deletions move it by exactly this amount (${j.ties.map((t) => `${t.state} ${t.inliers} inl @ ${t.media}`).join(", ")}), the first in frame order is named${j.windowDropped ? "; each of them drops the window below 4 frames" : ""}`
+                : j.windowDropped
+                  ? "; the deletion drops the window below 4 frames"
+                  : "";
+        console.log(`  ${j.name.replace(/^2026-\d\d-\d\d-/, "")}: ${j.posed} posed; ${g(j.base, 2)} -> ${g(b.after, 2)} (${f(b.move, 2)}, ${b.windows} w) by deleting a ${b.state} frame, ${b.inliers} inliers, detectionUse ${b.detectionUse}, media time ${b.media}${tie}`);
     }
     console.log(`  group ratio with each run's most influential frame deleted: ${g(grp.jackknifeSpread.ratio, 2)} (range ${g(grp.jackknifeSpread.range, 2)}), against ${g(grp.results.X4.wholeSpread.ratio, 2)} under X4`);
+}
+
+console.log("\n== The reviewer's figures, recomputed from the committed exports (M3 sync groups, under X4)");
+for (const grp of REVIEWED) {
+    const [label] = grp;
+    console.log(`\n-- ${label}`);
+    console.log("residual shares under X4 on the counted loops: top window (its frames), top frame, DETECT frames' share of the residual");
+    for (const m of grp.members) {
+        const s = m.shares;
+        console.log(`  ${m.name.replace(/^2026-\d\d-\d\d-/, "")}: top window ${s.topWindow.key} ${(100 * s.topWindow.share).toFixed(1)}% [${s.topWindow.frames.join(", ")}]; top frame ${(100 * s.topFrame.share).toFixed(1)}% (${s.topFrame.state}, ${s.topFrame.inliers} inliers, media time ${s.topFrame.media}); DETECT share ${(100 * s.detectShare).toFixed(1)}%`);
+    }
+    console.log("corners' mean on the frames the document names, against the mean of the window's other frames (processing resolution " + `${grp.members[0].e.processingResolution.width} x ${grp.members[0].e.processingResolution.height})`);
+    for (const m of grp.members) {
+        for (const n of m.named) {
+            console.log(`  ${m.name.replace(/^2026-\d\d-\d\d-/, "")}: ${n.why}: ${n.fr.state}, ${n.fr.numInliers} of ${n.fr.numMatches} matches, media time ${n.fr.mediaTimeSeconds}, window ${n.window}: corners' mean (${n.centre.map((v) => v.toFixed(0)).join(", ")}) px; the window's other ${n.n} frames' mean ${n.others === null ? "none" : `(${n.others.map((v) => v.toFixed(0)).join(", ")}) px`}`);
+        }
+    }
+    console.log("selections of the runs' frames, jitterPx per run under X4, and the group's largest/smallest ratio");
+    for (const [key, sp] of Object.entries(grp.selectionRatios)) {
+        console.log(`  ${key}: ${grp.members.map((m) => g(m.selections[key], 2)).join(" ")} | ratio ${g(sp.ratio, 2)} | range ${g(sp.range, 2)}`);
+    }
 }
