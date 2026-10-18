@@ -103,6 +103,10 @@ selection leaves:
     window counts. A change between two groups against a correction's distance from its
     asymptote at one point. A trend read off a population that mixed right and wrong
     fits. Each was caught, three of them by the implementing session.*
+  - *Its boundary, recorded 2026-10-18 in the plan: the rule removes the selection
+    confound and does not make the common-set figure robust to a single dominant frame
+    that both arms posed. The null control's jitter clause, item 1 ("What it rejects"),
+    the addendum of that date under its first sub-bullet.*
 - A selection is reported in the metric's own unit of eligibility, not only as a frame
   count. `jitterPx` is not a consecutive-frame difference: `cornerJitter` fits a line in
   time to each corner within each one-second window of media time, keeps a window only
@@ -386,8 +390,8 @@ its conclusions. They are read by someone who did not produce them.
 
 ## What the record says afterwards
 
-Unchanged from `docs/benchmarks/README.md` and #102 Part 4, restated here because these
-four decide whether a step's outcome survives being read later:
+Unchanged from `docs/benchmarks/README.md` and #102 Part 4, restated here because the
+rules below decide whether a step's outcome survives being read later:
 
 - A fact lives in one place.
 - A derived figure carries its derivation. A bound stated more tightly than it was

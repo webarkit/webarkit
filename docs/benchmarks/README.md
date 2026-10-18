@@ -4292,6 +4292,9 @@ read.
     arm's exports are paired is registered with the block's shape, in the
     run order. That each comparison is read on common media times is not
     open.
+  - *What it does not cover, recorded 2026-10-18: a single dominant frame
+    that both arms posed. The null control's jitter clause, item 1 ("What
+    it rejects"), the addendum of that date under its first sub-bullet.*
   - **Where it does not: the clause's own readings,** round 0's arm test
     and every block's baseline variance. They read each run's
     `runSummary.jitterPx` over all its counted frames (items 2 and 3).
@@ -4339,24 +4342,26 @@ read.
        registered on the maintainer's ruling of that day and measured by
        #137's Stage 1 probe
        ([`2026-10-18-137-stage1-probe.md`](./2026-10-18-137-stage1-probe.md),
-       "A property of `jitterPx` on hand-held footage"). Whole-set
-       `jitterPx` on these clips is dominated by single low-support
-       detection frames: among the 37 committed hand-held exports the probe
-       read, every whole-set value above 20 px is one detection frame, named
-       by the probe's per-run jackknife with no tie, and after one 4-inlier
-       frame (`sync-wall-2`, 88.68 → 5.20 px) each is a 6-inlier detection:
-       `r1-baseline-table` 60.50 → 2.48 px,
+       "A property of `jitterPx` on hand-held footage, seen in question 1's
+       table"). Whole-set `jitterPx` on these clips is dominated by single
+       low-support detection frames: among the 37 committed hand-held
+       exports the probe read, every whole-set value above 20 px is one
+       detection frame, named by the probe's per-run jackknife with no tie,
+       and after one 4-inlier frame (`sync-wall-2`, 88.68 → 5.20 px) each is
+       a 6-inlier detection: `r1-baseline-table` 60.50 → 2.48 px,
        `sync-table-2` 46.06 → 2.65 px, the 2026-09-26 `tracking-table`
-       23.87 → 3.27 px. The boundary of the common-media-times rule, stated
-       exactly because it is narrower than it reads: the rule protects
-       comparisons between arms of different pipelines, where on the 20 M3
-       pairs no exclusion of a detection class by inlier count (`X4`, `X6`,
-       `X8`) moves the common-set figure and `XD`, every detection removed,
-       moves it by at most 0.28 px; it does not protect a comparison in
-       which both arms can pose the carrier's media time. Replicates of one
-       pipeline are such a comparison (M3's sync table group reads 19.49 on
-       its group common media times under `none`), and on two tuning pairs
-       the carrier's media time falls inside the common set (the Tab 9
+       23.87 → 3.27 px. What the common-media-times rule does and does not
+       do about this, stated exactly: the rule removes the selection
+       confound, which frames each arm processed, as its "Why it is paid"
+       says, and on the 20 M3 pairs it does: no exclusion of a detection
+       class by inlier count (`X4`, `X6`, `X8`) moves the common-set figure,
+       and `XD`, every detection removed, moves it by at most 0.28 px. It
+       does not make the common-set figure robust to a single dominant
+       frame that both arms posed, a different vulnerability, which the
+       rule never claimed to cover: the carrier's media time can fall
+       inside the common set, as it does within one pipeline's replicates
+       (M3's sync table group reads 19.49 on its group common media times
+       under `none`) and on two tuning pairs (the Tab 9
        tracking-against-stateless pair on the table clip, +25.02 → −0.74 px
        under `X6`; the r1 iter20-against-baseline pair on the wall clip,
        −7.91 → +1.72 px). Instance of the whole-set reading: `table | iter20
@@ -5446,8 +5451,9 @@ not at all:
       common media times under `none` and `X4`, is recorded as a known
       limitation of the instrument there, not as a blocker. What round 1
       still lacks before it can be scoped, its effect-size statement, is
-      registered under "What stays open" in the rulings of 2026-10-18,
-      below.*
+      registered below, in "#137's fix follows the campaign, and what stays
+      open before round 1 of #104 (2026-10-18)", the paragraph beginning
+      "What stays open".*
   - *The treatment's effect on `jitterPx` is not yet decomposed. `jitterPx`
     measures steadiness only where the target stays in view and every pose
     is right (`DEFINITIONS.jitterPx`); on a hand-held clip it computes but
@@ -5494,8 +5500,10 @@ not at all:
       difference is identical to the printed digit under the probe's
       readings `none`, `X4`, `X6` and `X8`, and moves by at most 0.28 px
       under `XD`, every DETECT frame removed; the whole-set difference on
-      the same pairs moves by up to 83.48 px between readings. The large
-      movement was selection. Instance: `sync-table-2` against
+      the same pairs moves by up to 83.48 px across `none`, `X4`, `X6` and
+      `X8` (`sync-wall-2`'s four pairs, from `none` to `X4`) and by 84.74 px
+      with `XD` in scope (the same four pairs, from `none` to `XD`). The
+      large movement was selection. Instance: `sync-table-2` against
       `worker-table-1`, +43.60 px whole-set against +0.12 px common-set
       (against `worker-table-2`, +43.54 and +0.27 px). The probe's
       question 1 holds all 20 rows.*
@@ -5598,11 +5606,14 @@ here:
   the outcome comparison on the hand-held clips", the first of those
   three;
 - the metric's limitation on hand-held footage: the null control's jitter
-  clause, its item 1, "Only static blocks".
+  clause, item 1 ("What it rejects"), as an addendum under its first
+  sub-bullet, the one that reads "Only static blocks", the shorthand #104's
+  probe's item 8 also uses for it.
 
 Four rules the same rulings add to the step protocol are in
-[`step-protocol.md`](./step-protocol.md), "Four rules on the record's
-figures and their bases, added 2026-10-18".
+[`step-protocol.md`](./step-protocol.md), under "Every check is exercised
+both ways", the paragraph beginning "Four rules on the record's figures and
+their bases".
 
 **#137's fix follows the campaign.** #137 is a correctness defect
 independent of any measurement: a homography fitted on 4 correspondences
