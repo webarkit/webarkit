@@ -4292,6 +4292,9 @@ read.
     arm's exports are paired is registered with the block's shape, in the
     run order. That each comparison is read on common media times is not
     open.
+  - *What it does not cover, recorded 2026-10-18: a single dominant frame
+    that both arms posed. The null control's jitter clause, item 1 ("What
+    it rejects"), the addendum of that date under its first sub-bullet.*
   - **Where it does not: the clause's own readings,** round 0's arm test
     and every block's baseline variance. They read each run's
     `runSummary.jitterPx` over all its counted frames (items 2 and 3).
@@ -4335,6 +4338,38 @@ read.
      on a clip where the target stays in view and every pose is right
      (`DEFINITIONS.jitterPx`). In round 0, which has no treatment, all
      eight runs are baseline, and its check is the arm test (item 3).
+     - *Addendum, 2026-10-18: the metric's limitation on hand-held footage,
+       registered on the maintainer's ruling of that day and measured by
+       #137's Stage 1 probe
+       ([`2026-10-18-137-stage1-probe.md`](./2026-10-18-137-stage1-probe.md),
+       "A property of `jitterPx` on hand-held footage, seen in question 1's
+       table"). Whole-set `jitterPx` on these clips is dominated by single
+       low-support detection frames: among the 37 committed hand-held
+       exports the probe read, every whole-set value above 20 px is one
+       detection frame, named by the probe's per-run jackknife with no tie,
+       and after one 4-inlier frame (`sync-wall-2`, 88.68 → 5.20 px) each is
+       a 6-inlier detection: `r1-baseline-table` 60.50 → 2.48 px,
+       `sync-table-2` 46.06 → 2.65 px, the 2026-09-26 `tracking-table`
+       23.87 → 3.27 px. What the common-media-times rule does and does not
+       do about this, stated exactly: the rule removes the selection
+       confound, which frames each arm processed, as its "Why it is paid"
+       says, and on the 20 M3 pairs it does: no exclusion of a detection
+       class by inlier count (`X4`, `X6`, `X8`) moves the common-set figure,
+       and `XD`, every detection removed, moves it by at most 0.28 px. It
+       does not make the common-set figure robust to a single dominant
+       frame that both arms posed, a different vulnerability, which the
+       rule never claimed to cover: the carrier's media time can fall
+       inside the common set, as it does within one pipeline's replicates
+       (M3's sync table group reads 19.49 on its group common media times
+       under `none`) and on two tuning pairs (the Tab 9
+       tracking-against-stateless pair on the table clip, +25.02 → −0.74 px
+       under `X6`; the r1 iter20-against-baseline pair on the wall clip,
+       −7.91 → +1.72 px). Instance of the whole-set reading: `table | iter20
+       vs baseline`, −57.90 px under `none` and +0.26 px under `X6`, the
+       sign inverting on one 6-inlier frame of the baseline run, with the
+       common-set difference +0.33 px under both. Tuning conclusions that
+       were read whole-set are to be re-read before being relied on; none is
+       re-read here.*
    - **What the clause is: a check on the conditions of measurement, not
      on its results,** read on an arm that carries no treatment.
    - **It is a gross-abnormality filter, not a precision instrument.**
@@ -5397,6 +5432,28 @@ not at all:
     neither replaces nor extends the clause's block gate, which reads static
     blocks only and is unchanged. Nothing is derived here: a calibration for
     those clips is a separate measurement with its own degrees of freedom.*
+    - *Addendum, 2026-10-18, the maintainer's ruling of that day: round 1
+      of #104 runs on the wall clip only, `pinball-bench.mp4`. This answers
+      item 8's "round 1 needs its own calibration on the clips it uses":
+      the clips it uses are one. The reason, with each figure's basis: on
+      the wall clip the replicate ratio of `jitterPx` is 1.46 for M3's sync
+      arm on the group's common media times under `none`, `X4`, `X6` and
+      `X8` (2.07 under `XD`, every detection removed), and 1.53 for its
+      worker arm whole-set under every reading, that arm holding no
+      detection to exclude and the probe's document printing no common-set
+      ratio for it (#137's Stage 1 probe, question 2), with no change to
+      the subject. The cost: M4's
+      conclusion is scoped to one clip, and item 8 measures the refusal's
+      residual differently on the two, 5.30 to 5.33 px on the wall clip at
+      A ≥ 12 against 2.33 to 2.36 px on the table clip at A ≥ 8, seeds 1
+      to 8, so how the refusal behaves on the table clip is not addressed
+      by this campaign. The table clip's sync group, 19.49 on its group
+      common media times under `none` and `X4`, is recorded as a known
+      limitation of the instrument there, not as a blocker. What round 1
+      still lacks before it can be scoped, its effect-size statement, is
+      registered below, in "#137's fix follows the campaign, and what stays
+      open before round 1 of #104 (2026-10-18)", the paragraph beginning
+      "What stays open".*
   - *The treatment's effect on `jitterPx` is not yet decomposed. `jitterPx`
     measures steadiness only where the target stays in view and every pose
     is right (`DEFINITIONS.jitterPx`); on a hand-held clip it computes but
@@ -5416,6 +5473,40 @@ not at all:
     the window rule, and set the whole-set difference beside the common-set
     difference. Movement that survives on the common set is steadiness;
     movement that vanishes was selection.*
+    - *Addendum, 2026-10-18, the maintainer's ruling of that day. The
+      measurement this entry registered "on round 1's exports" was
+      performed by #137's Stage 1 probe
+      ([`2026-10-18-137-stage1-probe.md`](./2026-10-18-137-stage1-probe.md),
+      merged in [#149](https://github.com/webarkit/webarkit/pull/149)) on
+      exports that exist: M3's of 2026-10-01, sync and worker, the 20 pairs
+      #104's probe's item 9 names, and the tuning pass's 20 pairs, by this
+      entry's own procedure, `jitterPx` recomputed for both arms on their
+      common media times and the whole-set difference set beside the
+      common-set difference. The ruling accepts that substitution for the
+      mechanism only, for interpretability and nothing else: no magnitude
+      transfers from M3's exports to round 1's, and round 1 calibrates its
+      own outcome comparison as item 8 requires (the first entry of these
+      three). It is scoped so for two reasons: M3's arms differ by
+      pipeline, sync against worker, which is not #104's treatment; and
+      item 8 is itself the record of a calibration that did not transfer.
+      #104's probe's item 9 had said of this decomposition on M3's pairs
+      that "Its result enters neither this file nor the plan", anything it
+      changes being "an addendum in its own PR"; this addendum is that
+      PR's, and enters the result for the mechanism only. The text above
+      stands as registered.*
+    - *The result, 2026-10-18, by this entry's own criterion, "Movement
+      that survives on the common set is steadiness; movement that
+      vanishes was selection". On the 20 M3 pairs the common-set
+      difference is identical to the printed digit under the probe's
+      readings `none`, `X4`, `X6` and `X8`, and moves by at most 0.28 px
+      under `XD`, every DETECT frame removed; the whole-set difference on
+      the same pairs moves by up to 83.48 px across `none`, `X4`, `X6` and
+      `X8` (`sync-wall-2`'s four pairs, from `none` to `X4`) and by 84.74 px
+      with `XD` in scope (the same four pairs, from `none` to `XD`). The
+      large movement was selection. Instance: `sync-table-2` against
+      `worker-table-1`, +43.60 px whole-set against +0.12 px common-set
+      (against `worker-table-2`, +43.54 and +0.27 px). The probe's
+      question 1 holds all 20 rows.*
   - *No block gate is defined for a non-static block. The clause's gate
     reads static blocks only, for the reason above, and round 1 runs
     hand-held blocks. A gate must be defined and registered before round
@@ -5423,6 +5514,17 @@ not at all:
     decomposition: a validity gate for a metric whose reading is not yet
     decomposed would be calibrated on a quantity that cannot be
     interpreted.*
+    - *Addendum, 2026-10-18, the maintainer's ruling of that day. As this
+      entry stood, no counted run could occur: the decomposition it waits
+      on was registered on round 1's exports, this gate "comes after the
+      decomposition", and it "must be defined and registered before round
+      1's first counted run". The ruling above opens the circularity: the
+      decomposition answered on M3's exports supplies what this entry
+      asked of it, interpretability, "a validity gate for a metric whose
+      reading is not yet decomposed would be calibrated on a quantity that
+      cannot be interpreted", and nothing else. The path is open; the
+      gate's own quantity and its basis remain undesigned, and nothing
+      here proposes either. The text above stands as registered.*
 
 **#104's state, settled (report, 2026-10-15).** Two commits reference #104,
 `136f143` and `d92a203` of 2026-10-13, both documentation of #113: the first
@@ -5481,3 +5583,81 @@ the reasoning is the issue's and is not restated.
   the state machine rather than restating it.
 - **The rename** to a distinct ACQUIRING state stays deferred to the
   post-campaign window, as #143's body says.
+
+### #137's fix follows the campaign, and what stays open before round 1 of #104 (2026-10-18)
+
+Registered on 2026-10-18, before round 1 and before any counted run of a
+treatment, from the maintainer's rulings of that day, taken after #137's
+Stage 1 probe
+([`2026-10-18-137-stage1-probe.md`](./2026-10-18-137-stage1-probe.md),
+merged in [#149](https://github.com/webarkit/webarkit/pull/149)). Each is
+his decision, dated and attributed, not a derivation from the probe. The
+rulings that answer an entry already in this plan are written beside that
+entry as dated addenda, the original text standing, and are not restated
+here:
+
+- the registered decomposition, answered on M3's exports for the
+  mechanism only, and its result: the entry "The treatment's effect on
+  `jitterPx` is not yet decomposed", under "#104: a joint claim, or none"
+  (above);
+- the circularity at the non-static block gate, opened: the entry "No
+  block gate is defined for a non-static block", beside it;
+- round 1 of #104 on the wall clip only: the entry "The calibration of
+  the outcome comparison on the hand-held clips", the first of those
+  three;
+- the metric's limitation on hand-held footage: the null control's jitter
+  clause, item 1 ("What it rejects"), as an addendum under its first
+  sub-bullet, the one that reads "Only static blocks", the shorthand #104's
+  probe's item 8 also uses for it.
+
+Four rules the same rulings add to the step protocol are in
+[`step-protocol.md`](./step-protocol.md), under "Every check is exercised
+both ways", the paragraph beginning "Four rules on the record's figures and
+their bases".
+
+**#137's fix follows the campaign.** #137 is a correctness defect
+independent of any measurement: a homography fitted on 4 correspondences
+has zero residual on its own points by construction and the detection path
+accepts it on `h.ok`, while `minTrackedPatches` (8) and the 0.6 px fit RMS
+gate belong to the tracking step and never see a detection. It does not
+enter M4, for two reasons. The ruling that round 1 runs on the wall clip
+only removes the need, for the reason recorded at that entry. And the gate
+lives in `packages/*/src/`, the subject ("The instrument, the subject and
+the inputs", item 2), so changing it mid-campaign would put the runs
+before and after it on different subjects.
+
+**#137's measured standing, from #149, beside the ruling so that whoever
+takes the fix does not re-derive it.** `X8` is the probe's reading that
+matches the gate #137 names, `minTrackedPatches` (8). Under `X8` all eight
+replicate groups sit at or below 3.07 whole-set and 2.16 on their group
+common media times, and the two groups the probe's first draft called the
+table clip's pathology collapse under it, M3's sync table from 17.95 to
+1.04 whole-set and from 19.49 to 1.11 on its group common media times, the
+2026-09-26 tracking table from 5.50 to 1.00 whole-set (the probe's own
+sentence calls the two "the two lowest" under `X8`; its table has the sync
+table group at 1.04 against 1.00, 1.02 and 1.03 for the other three table
+groups, so the figures are registered and the phrase is not); on the 20 M3
+pairs `X8` moves no common-set figure. The exactly-4-inlier detections
+number 1,246 over the 37 runs the probe read, 77 with corners, 2 in a
+window that was eligible before the exclusion, and `X4` moves `jitterPx`
+in 2 runs of 37; where it does, one frame carries the amount, so rare is
+not negligible: they leave the common-set comparisons unchanged and can
+dominate a whole-set figure. Two things this does not establish, recorded
+with it. First, an exclusion from the metric is not a gate in the
+pipeline: a refused fit leaves the tracker without a lock at that frame,
+and every later frame of the run differs, which frames detect, which
+track, which pose at all. Second, and following from it, the 1.46 is
+conditional on the current gate: a changed gate also changes which media
+times the two arms share, so the common set itself would differ. Settling
+what the fix produces needs the fixed pipeline run.
+
+**What stays open: round 1's effect-size statement.** No document states
+what change in `jitterPx` #104's refusal would produce; #104's body does
+not name the metric, and #107's names it and no magnitude. Registered as
+required before round 1 can be scoped: it is to be read on common media
+times, against a replicate ratio of 1.46 on the wall clip, and it must be
+posed against this plan's own statement that `jitterPx` "measures
+steadiness only where the target stays in view and every pose is right …
+on a hand-held clip it computes but does not measure that" (the
+decomposition entry, above). This is not a decision taken here, and
+nothing here proposes a value.

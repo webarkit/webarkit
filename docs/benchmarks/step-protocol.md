@@ -2,9 +2,11 @@
 
 Status: drafted 2026-10-15, after M4 step 3 (#105); revised 2026-10-16 with that day's
 findings (#123's seed test and frame-set decomposition, #137's gate and RNG findings, and
-#139's ratification of the box's entries), and 2026-10-17 with the comparison rule (Stage
-2) and the three rules on checks. Maintained, not written once: a finding that
-settles after the draft is folded in, dated, rather than left for an amendment.
+#139's ratification of the box's entries); 2026-10-17 with the comparison rule (Stage 2)
+and the three rules on checks; and 2026-10-18 with four rules on the record's figures and
+their bases, from the maintainer's rulings after #137's Stage 1 probe (#149).
+Maintained, not written once: a finding that settles after the draft is folded in, dated,
+rather than left for an amendment.
 
 Everything else in `docs/benchmarks/` governs a measurement: provenance, served-file
 hashes, block order, the jitter clause, run validity, what the record may and may not
@@ -101,6 +103,10 @@ selection leaves:
     window counts. A change between two groups against a correction's distance from its
     asymptote at one point. A trend read off a population that mixed right and wrong
     fits. Each was caught, three of them by the implementing session.*
+  - *Its boundary, recorded 2026-10-18 in the plan: the rule removes the selection
+    confound and does not make the common-set figure robust to a single dominant frame
+    that both arms posed. The null control's jitter clause, item 1 ("What it rejects"),
+    the addendum of that date under its first sub-bullet.*
 - A selection is reported in the metric's own unit of eligibility, not only as a frame
   count. `jitterPx` is not a consecutive-frame difference: `cornerJitter` fits a line in
   time to each corner within each one-second window of media time, keeps a window only
@@ -340,13 +346,52 @@ Three rules on checks, added 2026-10-17:
   before any default applies and before any figure is computed, and a failed check exits
   with the reason, printing nothing.
 
+Four rules on the record's figures and their bases, added 2026-10-18 from the maintainer's
+rulings of that day, after #137's Stage 1 probe (#149):
+
+- **A jackknife on a window at the eligibility boundary cannot attribute influence.** When
+  a window holds exactly the minimum eligible number of frames, deleting any one drops the
+  whole window, every deletion moves the figure by the same amount, and a strict comparison
+  names whichever came first. Such a jackknife establishes that the window carries the
+  amount, not which frame does. Instance: #149's `sync-wall-1`, window `1:3`, four posed
+  frames of 8, 15, 12 and 21 inliers, all four deletions −8.38 px, the window's largest own
+  residual belonging to the 12-inlier frame
+  (`docs/benchmarks/2026-10-18-137-stage1-probe.md`, "In the script: a jackknife on what
+  remains").
+- **A ruling states the basis its figures are read on.** A decision taken from whole-set
+  figures about a comparison the record requires read on common media times is a
+  comparison-method defect whatever the figures say. Stage 2's rule says which basis a
+  comparison is read on; this one says the ruling names it. Instance, the maintainer's
+  account of 2026-10-18: the rule requiring common media times for comparisons between
+  arms of different pipelines was already in the plan (ruled on 2026-10-14) when a ruling
+  on round 1's feasibility was taken from whole-set replicate ratios, and was withdrawn
+  when the basis was corrected.
+- **A brief declares the ref and the commit SHA it is read at; a report that cannot name
+  them is refused.** A report that does not say what it read cannot distinguish "read the
+  current record" from "read something else", and by the plan's blind-check rule (Start
+  refuses a run whenever its check is blind: `docs/benchmarks/README.md`, "The
+  instrument, the subject and the inputs", item 1) it refuses. #149's step 0 is the form:
+  fetch, report `origin/<branch>` and the working tree, state whether they match, and
+  verify the passages the work rests on before using them. Stage 4's citations by line
+  are read at that SHA.
+- **A record document states a fact in one place.** A count or list that restates what
+  another section enumerates goes stale at the next commit and becomes false; it is
+  written as a reference to that section, not as a tally. "A fact lives in one place",
+  below, is the general rule; this is its form for tallies. Instance: #149 carried three
+  such tallies in one day, a commit count and a review count in its document and a hash
+  list in its PR body, which the document pointed to. The commit count (`3e264a1`, revised
+  at `3101820`) was replaced (`ca892ca`) by the review count and the pointer, both
+  introduced while the first was being fixed; the day's third review then made the review
+  count false, the PR body's list gave way to a pointer at the commits view, and `79138f1`
+  removed both from the document.
+
 The addenda written in a step's last hours get the least scrutiny and carry the most of
 its conclusions. They are read by someone who did not produce them.
 
 ## What the record says afterwards
 
-Unchanged from `docs/benchmarks/README.md` and #102 Part 4, restated here because these
-four decide whether a step's outcome survives being read later:
+Unchanged from `docs/benchmarks/README.md` and #102 Part 4, restated here because the
+rules below decide whether a step's outcome survives being read later:
 
 - A fact lives in one place.
 - A derived figure carries its derivation. A bound stated more tightly than it was
