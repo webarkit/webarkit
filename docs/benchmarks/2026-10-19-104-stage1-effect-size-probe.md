@@ -33,7 +33,8 @@ both values of the replicate floor; the jackknife's attribution is read under
 the rule of 2026-10-18; and the script hashes the bundle and the metrics
 module against the manifest before any figure. What changed, and the
 script's output before and after, are under "Revised after the maintainer's
-review".
+review"; the maintainer's two wording items before merge, the same day, are
+its items 9 and 10.
 
 ## Step 0: provenance
 
@@ -460,8 +461,11 @@ refusal reaches the TRACK population:
 
 Here the four figures converge and the replicate ratio falls below the floor,
 to 1.12 to 1.17, at the cost of 6% to 12% of each sync run's posed frames at
-0.15 to 0.05 and 57% to 66% at 0.005, with the common set down to 46 keys
-and 11 to 16 windows. This is the movement the plan's joint-claim rule names
+0.15 to 0.05 (as first written; the table's counts give 6.1% to 11.4%, 23 of
+376 at τ = 0.15 to 43 of 376 at 0.05, and 11.4% does not round to 12%: noted
+2026-10-19, the original standing) and 57% to 66% at 0.005, with the common
+set down to 46 keys and 11 to 16 windows. This is the movement the plan's
+joint-claim rule names
 when it says `jitterPx` "can be improved arbitrarily by refusing more
 frames" ("#104: a joint claim, or none"): a number read beside its coverage
 or not at all. The worker arms move the same way: at 0.05, `worker-wall-1`
@@ -499,6 +503,11 @@ own ratio and range under the refusal:
 | 0.005 | the same (2.01, 2.20) | the same (+3.17, +3.87) | 2.00, 3.13 |
 | 5 | none | none | 1.46, 2.24 |
 
+In the px column the two runs are not alike: `sync-wall-4`'s smallest
+change, +2.94 at τ = 0.05, has room above 2.24 px; `sync-wall-1`'s, +2.25 at
+the same τ (+2.2467 by the breakpoint sweep), stands one least-significant
+digit above it as the figures are stated, and is read as a tie, not a
+clearance, in "Against both values of the floor" below.
 `sync-wall-2` and `-3` exceed neither at any τ (ratios 1.07 to 1.16 and 1.00
 to 1.10 at τ ≤ 2; at most +0.66 and +0.63 px). The group's own replicate ratio under
 the refusal is 1.67 to 2.00 and its range 2.72 to 3.13 px at every τ from
@@ -632,7 +641,8 @@ tables above and from the breakpoint sweep (the script's section (a), its
   of the reviewer's item 8 lies on [0.010982, 0.011617), below the floor.
 - On every posed frame, the same from 0.3 up; at 0.2 the group reads R 1.39;
   at 0.15 to 0.05 all four runs move by 1.35 to 1.75 and the floor falls to
-  1.16, at 6% to 12% of each sync run's posed frames.
+  1.16, at 6.1% to 11.4% of each sync run's posed frames (the all-frames
+  table's counts).
 - Withdrawn from the verdict's ranges, as lying below the floor on τ: the
   ratios 2.20, 2.15 and 1.85 of `sync-wall-4` and 2.01, 1.94 and 1.67 of
   `sync-wall-1` (τ = 0.005 to 0.02) with their changes in px (+3.27 to
@@ -643,9 +653,16 @@ tables above and from the breakpoint sweep (the script's section (a), its
   remain in the tables as computed; nothing is claimed of them.
 
 **Against both values of the floor.** Against the floor the registration
-names, 1.46 and 2.24 px, `sync-wall-1` and `sync-wall-4` exceed both at
-every τ in (0.031, 2]: the "exceeds the floor" claim survives the floor on
-τ in full for those two runs and for no other. Against the floor's
+names, 1.46 and 2.24 px, `sync-wall-1` and `sync-wall-4` exceed the ratio at
+every τ in (0.031, 2], and in px the two are not alike: `sync-wall-4`
+exceeds 2.24 px with room, +2.9382 px at the least; `sync-wall-1`'s least,
++2.2467 px, stands one least-significant digit above it as the figures are
+stated, 2.25 against 2.24, and the two quantities differ in kind, the
+floor's 2.24 px being the spread across the four replicates and the run's
+2.25 px its own shift. A shift equal to the spread is the indistinguishable
+case, so for that run the px criterion is a tie, not a clearance. The
+"exceeds the floor" claim survives the floor on τ in full for `sync-wall-4`,
+by ratio for `sync-wall-1`, and for no other run. Against the floor's
 jackknifed value, 1.76 and 3.08 px ("A property of the floor" above), no run
 exceeds either at any τ in (0.031, 2]: the largest ratio there is
 `sync-wall-4`'s 1.7370 and the largest change its +3.0115 px. Every crossing
@@ -884,8 +901,16 @@ nothing is claimed) and at both values of the replicate floor.
 reading the plan does not register.** Read on the group's common media
 times, kind E on DETECT frames, at every grid value from 0.05 to 2 and at
 every τ in (0.031, 2] by the breakpoint sweep, the figures of `sync-wall-1`
-and `sync-wall-4` move by ratios of 1.55 to 1.59 and 1.71 to 1.74 and by
-2.25 to 2.33 and 2.94 to 3.01 px, above the floor's 1.46 and 2.24 px;
+and `sync-wall-4` move by ratios of 1.55 to 1.59 and 1.71 to 1.74, both
+above the floor's 1.46, and by 2.25 to 2.33 and 2.94 to 3.01 px against the
+floor's 2.24 px, where the two runs are not alike: `sync-wall-4` clears it
+with room, its smallest change, 2.94 px, standing 0.70 px above it;
+`sync-wall-1`'s smallest change, 2.25 px (2.2467 by the sweep; the grid's
++2.25 at τ = 0.05), stands one least-significant digit above it as the
+figures are stated, and the two quantities differ in kind, 2.24 px being the
+spread across the four replicates and 2.25 px one run's shift. A shift equal
+to the spread is the indistinguishable case, so for that run the px
+criterion, read at every τ as the claim is, is a tie, not a clearance.
 `sync-wall-2` and `-3` move by 1.07 to 1.09 and 1.00 to 1.02 and by at most
 0.40 px, below it; at τ = 5 nothing moves. Against the floor's jackknifed
 value, 1.76 and 3.08 px (step 3, "A property of the floor"), no run clears
@@ -928,8 +953,9 @@ change to it is proposed, and no entry of `README.md` or `step-protocol.md`
 is edited.
 
 **As a feasibility verdict:** the signal clears the floor the registration
-names, above the floor on τ, in two replicates of four, and does not clear
-the floor's jackknifed value; the registered measurement does not read it.
+names, above the floor on τ, by ratio in two replicates of four and by px in
+one of them with room and in the other at a tie, and does not clear the
+floor's jackknifed value; the registered measurement does not read it.
 
 **What the verdict does not establish.**
 
@@ -994,7 +1020,7 @@ by more than 0.0613 px at any τ in (0.031, 2] for any reason other than a
 key leaving the intersection; and that the floor falls below 1.46 only when
 the refusal reaches TRACK frames, to 1.39 at τ = 0.2, where three TRACK
 frames of the group are refused and the one in `sync-wall-3` carries the
-change, and to 1.16 at 0.15 to 0.05, where 6% to 12% of each sync run's
+change, and to 1.16 at 0.15 to 0.05, where 6.1% to 11.4% of each sync run's
 posed frames are. The figures below the floor on τ stay in the tables as
 computed (the floor to 2.00 and 3.13 px, the own-refusal bound 0.1408 px,
 the all-frames floor 1.12 to 1.17 at up to 66% of the frames) and are
@@ -1186,8 +1212,46 @@ changed, in the brief's order:
    taken; the failing test's name without its parenthetical; the term
    "whole-set reading" given its half-sentence; and "its frames' own
    residual" named as the inference it is. The eighth, "6% to 12%" where
-   the counts give 6.1% to 11.4%, is text from before the review and is
-   left.
+   the counts give 6.1% to 11.4%, is text from before the review and was
+   left at first; it is taken in item 10 below.
+9. **`sync-wall-1`'s margin in px** (the maintainer's two wording items
+   before merge, 2026-10-19). Step 4's first part read "2.25 to 2.33 and
+   2.94 to 3.01 px, above the floor's 1.46 and 2.24 px", treating the two
+   runs alike, and step 3 stated the same comparison the same way in
+   "Against both values of the floor" and in the px column of its table, as
+   did the feasibility verdict. They are not alike: `sync-wall-4`'s
+   smallest change, 2.94 px, clears 2.24 px by 0.70 px; `sync-wall-1`'s,
+   2.25 px (2.2467 by the breakpoint sweep; the grid's +2.25 at τ = 0.05),
+   stands one least-significant digit above it as the figures are stated,
+   and the two quantities differ in kind, the floor's 2.24 px being the
+   spread across the four replicates and the 2.25 px one run's shift. A
+   shift equal to the spread is the indistinguishable case, so for that run
+   the px criterion is a tie, not a clearance; by ratio both runs clear
+   1.46. Revised directly in those four places, not by addendum: the text
+   is this revision's, in this PR, and nothing of it is in the record.
+   Item 1 above, "the claim holds at every τ in (0.031, 2] for
+   `sync-wall-1` and `-4`", is read with this distinction. Both figures
+   were verified against step 2's table (the
+   `none` row's 1.46 and 2.24; the τ = 0.05 row's +2.25 and +2.94) and the
+   sweep's minima under "The curve above the floor" before being written.
+10. **The stale percentage** (the same two items). "6% to 12%" where the
+    all-frames table's counts give 6.1% to 11.4% (23 of 376 at τ = 0.15 to
+    43 of 376 at 0.05), the eighth finding of item 8, left there as text
+    from before the review. 11.4% does not round to 12%, so it is a figure
+    the counts do not support, not a rounding. Taken with the mechanism
+    item 8's second finding used for the two other passages from before
+    the review: a dated qualifier beside the original, in the all-frames
+    section, the original standing. The figure had also been copied twice
+    into this revision's own text, in "The curve above the floor" and in
+    step 4's "What stands"; those two are corrected in place, as item 9's
+    sentences are. Item 8's closing sentence no longer says "is left"
+    beside a qualified passage. The two items differ in mechanism for one
+    reason: a dated qualifier keeps standing the text that the maintainer's
+    review of `8879509` and both independent reads were made on, while a
+    sentence written in this revision has been read by no one as a record
+    and is corrected. No digest is re-taken for either item: item 6's
+    digests are of stdout and of the script, and neither changes when this
+    document's text does.
 
 Nothing was re-run on any device or on the bench page; the exports are as
 they were; no issue was opened, edited or closed.
