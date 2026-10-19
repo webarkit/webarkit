@@ -23,6 +23,18 @@ built bundle and the committed target, and writes nothing. Its output is not
 committed; run it to reproduce every number here, the independent reviewer's
 included.
 
+**Revised 2026-10-19 after the maintainer's review of #153** (a comment of
+three findings, and two review threads): a floor on τ is declared from the
+record's own measurement of the signal on a right fit, and the curve is
+re-read above it, nothing being claimed below (step 3, "A floor on τ"); the
+verdict is restated in two parts, the second being that the comparison round
+1 registers does not read the movement (step 4); the comparison is stated at
+both values of the replicate floor; the jackknife's attribution is read under
+the rule of 2026-10-18; and the script hashes the bundle and the metrics
+module against the manifest before any figure. What changed, and the
+script's output before and after, are under "Revised after the maintainer's
+review".
+
 ## Step 0: provenance
 
 - **Ref:** `docs/104-stage1-effect-size`, branched from `dev`.
@@ -32,7 +44,14 @@ included.
   Node v24.21.0, the pin. The bundle was rebuilt at that commit
   (`npm run build`): its manifest reads HEAD `1f28fce`, clean, bundle
   `d568c8edca35…`. The script imports `intrinsics` and `decode` from it, the
-  second to read the committed target's size, and nothing else.
+  second to read the committed target's size, and nothing else. Since the
+  review of 2026-10-19 it hashes the bundle and `examples/js/bench-metrics.mjs`
+  before importing either and refuses a mismatch with the manifest's entry:
+  the bundle's bytes hash to the manifest's `d568c8edca35…`, the module's to
+  `47fedde90d48…`, the manifest's `served` entry for it (blob `f8bb5787…`,
+  the same blob at `1f28fce`, at `origin/dev`'s `f718c9f` and on this
+  branch). Both matched when the revision was run; the manifest is the build
+  of `1f28fce`, not rebuilt.
 - **The passages the brief rests on, verified against their sources at that
   commit:**
   1. **The registration.** The plan's section named above, its last
@@ -190,8 +209,14 @@ and #137's probe read them.
   shared by all nine and the committed target's hash and size; every frame
   with corners is `ok` and has a numeric `numInliers`; `K` has no skew; every
   recovery is within 10⁻⁶ px; the bundle's manifest names a commit, a clean
-  tree and a bundle hash. A missing or malformed input fails; nothing falls
-  back to a default. No figure is printed after a failed check.
+  tree and a bundle hash, and, since the review of 2026-10-19, the bundle's
+  bytes and the metrics module's bytes hash to the manifest's entries for
+  them, checked before either is imported (the manifest hashes the module
+  under `served`; where it carried no entry, the script would print the
+  module's hash in its provenance line instead of comparing it to nothing,
+  since a path is not provenance). A missing or malformed input fails;
+  nothing falls back to a default. No figure is printed after a failed
+  check.
 - **Exercised on the failing side,** as the protocol requires of a check
   before it is trusted: ten scratch copies of the script outside the
   repository, each pinned to this directory with one check inverted or one
@@ -203,7 +228,10 @@ and #137's probe read them.
   copy exits 0 with the script's output. The copies are not committed. The
   independent read of this document exercised four of them the same way,
   before this bullet existed (its second finding, under "Revised after the
-  independent read").
+  independent read"). After the maintainer's review of 2026-10-19, three
+  more copies exercised the two hash checks the same way, each reading a
+  scratch copy of the manifest with one entry altered or removed; their
+  outputs are under "Revised after the maintainer's review".
 - **The refusal, three kinds and two scopes.** Kind **E** refuses a frame
   whose |`d_scale`| or |`d_orth`| exceeds τ, the pair #104's probe called E
   and the refusal the brief names; **S** reads |`d_scale`| alone, **O**
@@ -474,7 +502,9 @@ own ratio and range under the refusal:
 `sync-wall-2` and `-3` exceed neither at any τ (ratios 1.07 to 1.16 and 1.00
 to 1.10 at τ ≤ 2; at most +0.66 and +0.63 px). The group's own replicate ratio under
 the refusal is 1.67 to 2.00 and its range 2.72 to 3.13 px at every τ from
-0.005 to 2: the refusal widens the floor, it does not narrow it, because it
+0.005 to 2 (1.67 to 1.70 and 2.72 to 2.83 px above the floor on τ, where
+alone it is claimed since 2026-10-19, "A floor on τ" below): the refusal
+widens the floor, it does not narrow it, because it
 takes the no-lock second out of the two runs whose residual sat there and
 leaves `sync-wall-3`, whose residual is diffuse (#137's probe, the reviewer's
 item 3: its top window at 25.1%, TRACK), at 6.77 px. For τ ≥ 1 the pair
@@ -484,14 +514,35 @@ largest τ are S readings.
 **A property of the floor, found by the reviewer's jackknife** (below, item
 6): deleting one media key alone from the 141 the four runs share, for every
 loop of every run, moves the group's ratio from 1.46 to 1.76 when the key is
-10.876254 s (`sync-wall-2` 4.86 → 4.04, `sync-wall-3` 6.90 → 5.81) and to
-1.47 when it is 7.986622 s (`sync-wall-3` → 5.73); deleting any one of the
-four keys of the no-lock second's windows gives the τ = 2 figures, 4.05,
-4.46, 6.77, 4.09, ratio 1.67. The floor the curve is read against is one
-deleted instant from 1.67 or 1.76. That is a property of the replicate
-figure on this footage, not of the refusal, and it is recorded beside the
-floor so that whoever reads the curve against 1.46 reads it against that
-too.
+10.876254 s (`sync-wall-2` 4.86 → 4.04, `sync-wall-3` 6.90 → 5.81; range
+3.08 px) and to 1.47 when it is 7.986622 s (`sync-wall-3` → 5.73); deleting
+any one of the four keys of the no-lock second's windows gives the τ = 2
+figures, 4.05, 4.46, 6.77, 4.09, ratio 1.67, range 2.72 px. Whether an
+amount can be attributed to a key is decided by the rule of 2026-10-18 (the
+step protocol, "A jackknife on a window at the eligibility boundary cannot
+attribute influence"), which turns on whether the deletions differ, and
+they do: 137 distinct figure vectors over the 141 deletions (the script's
+section (e), which prints each mover's range and the windows its frames sit
+in). The four keys of the no-lock second tie, each deletion dropping the
+same four-frame windows on the common set (`3:3` in run 1, `1:3` and `3:3`
+in run 2, `1:3` in run 3, `1:3` in run 4), so there the windows at the
+boundary carry the 1.67 and no key does, in the rule's form. The 10.876254 s
+key is alone at 1.76: on the none common set its frames sit in windows of 6
+to 14 frames in every loop of every run that poses it (`3:10` 10 → 9 in
+run 1; `0:10` 13 → 12 and `1:10` 14 → 13 in run 2; `0:10` 6 → 5, `2:10`
+13 → 12 and `3:10` 13 → 12 in run 3; `1:10` 10 → 9 and `2:10` 11 → 10 in
+run 4),
+none of them loses eligibility, and no other deletion gives its figures. The
+attribution to that key stands: the amount is carried by that key's frames
+in windows that stay eligible, in runs 2 and 3, an inference from the counts
+the script prints, not a residual it reads. So the floor the curve is read
+against has, under no refusal
+at all, a jackknifed value: 1.76 and 3.08 px, the largest ratio any single
+deletion gives and the range at that deletion. That is a property of the
+replicate figure on this footage, not of the refusal, and it is recorded
+beside the floor so that whoever reads the curve against 1.46 reads it
+against that too: the curve is read against both values below and in
+step 4.
 
 **The desktop reference, marked as not transferring.** #137's comment
 (passage 6) reports the draw's leverage over eight seeds on desktop replays,
@@ -508,6 +559,107 @@ correction); it bounds nothing here. The floor this curve is read against is
 the one the registration names, 1.46, on the group's common media times,
 reproduced above from the exports it came from.
 
+### A floor on τ, and the curve re-read above it (2026-10-19)
+
+**Why a floor.** A refusal criterion has two directions, and the curve
+above tests one: that it fires. The other, that a right fit survives it, is
+established above only at the loose end, where O alone refuses nothing at
+τ ≥ 1 because no posed DETECT frame on these exports has |`d_orth`| above
+0.985 (the S and O section). At the tight end the record holds one
+measurement of this signal on a fit known to be right: the calibration
+session of 2026-10-14, in its finding on four checks that could not
+distinguish the condition they claim to detect, records "#90's sweep signal
+for step 2, `d_scale` and `d_orth`, nonzero on correct fits of a view that
+is not a plane homography for the camera (0.0084 and 0.031 on its exact
+`H`)", and the plan's entry "#104's state, settled (report, 2026-10-15)"
+draws from it that "a threshold derived on that view would be inflated; the
+separation has to be shown per view". Both values sit inside the grid, whose
+lower bound is 0.005. So the verdict as first written, "at every τ from
+0.005 to 2", spanned thresholds at which, on the record's own measurement, a
+correct fit of some view is refused (the maintainer's review of 2026-10-19,
+the first thread). Threshold-insensitivity over that span was therefore not
+evidence of robustness.
+
+**The floor, derived.** Kind E refuses a frame when |`d_scale`| or
+|`d_orth`| exceeds τ, so the fit the record measured, 0.0084 and 0.031, is
+refused at every τ below 0.031 and passes at every τ at or above it. The
+floor is **0.031** under E and under O alone, and 0.0084 under S alone, and
+the claims below are made for τ above it, on (0.031, 2]. The record gives
+the value to two figures; whether τ = 0.031 itself passes turns on the
+third, which the record does not give, so the endpoint is left out; no grid
+value lies there, and the curve is constant on [0.029050, 0.031410), so the
+endpoint changes no figure (the script's re-reading starts its first stretch
+at 0.031). The floor is derived from the one such measurement the record holds,
+not chosen: it is one view's exact `H`, so it bounds from below where the
+criterion is known to refuse a right fit and says nothing about where it is
+known not to; a right fit of another view may read more. Above the floor the
+must-not-fire direction is untested here; below it the criterion is known to
+fire on a right fit, and this document claims nothing there. The other
+derivation the brief allowed, the distribution of |`d_scale`| and |`d_orth`|
+over the high-inlier posed frames of step 1, is not used: those are
+hand-held frames with no ground truth, and a floor read from them would be
+the proxy negative control the next paragraph records as ruled out. The
+script carries the floor as `TAU_FLOOR`, with its source, and re-reads the
+breakpoint sweep of the reviewer's item 2 above it; the grid is not
+recomputed.
+
+**The negative control, registered elsewhere.** No proxy negative control
+is run on these exports, on the maintainer's ruling of 2026-10-19: there is
+no ground truth on a hand-held clip, and a weak proxy would be read later as
+a negative control that was performed. The control, a right fit known by
+construction surviving the criterion at the τ it is given, belongs to #106's
+synthetic half, where the plan places the pose steps' synthetic results
+("#105 and #106: device claims withdrawn as unmeasurable on this instrument,
+not refuted": "Their synthetic halves stand and are where their results
+live"). It has not been performed here.
+
+**The curve above the floor**, kind E on DETECT frames, re-read from the
+tables above and from the breakpoint sweep (the script's section (a), its
+"above the floor on τ" lines). The grid's values at or above the floor are
+0.05 to 2, and 5:
+
+- `sync-wall-1` and `sync-wall-4` move by 1.56 to 1.58 and 1.71 to 1.74, by
+  +2.25 to +2.32 and +2.94 to +3.01 px, at every grid value from 0.05 to 2
+  (step 3's table); at every τ in (0.031, 2], by the breakpoint sweep, by
+  1.5528 to 1.5871 and 1.7064 to 1.7370, by +2.2467 to +2.3345 and +2.9382
+  to +3.0115 px. `sync-wall-2` and `-3` by 1.0710 to 1.0896 (+0.32 to
+  +0.40 px) and 0.9982 to 1.0198 (−0.01 to +0.13 px). At τ = 5 nothing
+  moves.
+- The group's own replicate ratio under the refusal reads 1.67 to 1.70, its
+  range 2.72 to 2.83 px, at every grid value from 0.05 to 2.
+- A run's own refusals at kept keys move no run by more than 0.0613 px at
+  any τ in (0.031, 2] (`sync-wall-1`, on [0.197867, 0.199671)); the 0.1408 px
+  of the reviewer's item 8 lies on [0.010982, 0.011617), below the floor.
+- On every posed frame, the same from 0.3 up; at 0.2 the group reads R 1.39;
+  at 0.15 to 0.05 all four runs move by 1.35 to 1.75 and the floor falls to
+  1.16, at 6% to 12% of each sync run's posed frames.
+- Withdrawn from the verdict's ranges, as lying below the floor on τ: the
+  ratios 2.20, 2.15 and 1.85 of `sync-wall-4` and 2.01, 1.94 and 1.67 of
+  `sync-wall-1` (τ = 0.005 to 0.02) with their changes in px (+3.27 to
+  +3.87 and +2.52 to +3.17), the 1.16 of `sync-wall-2` (τ = 0.01) and its
+  +0.66 px, the group's ratios above 1.70
+  and ranges above 2.83 px, and, on every posed frame, the 1.12 to 1.17, the
+  3.90, the 46-key intersection and the 57% to 66% coverage cost. They
+  remain in the tables as computed; nothing is claimed of them.
+
+**Against both values of the floor.** Against the floor the registration
+names, 1.46 and 2.24 px, `sync-wall-1` and `sync-wall-4` exceed both at
+every τ in (0.031, 2]: the "exceeds the floor" claim survives the floor on
+τ in full for those two runs and for no other. Against the floor's
+jackknifed value, 1.76 and 3.08 px ("A property of the floor" above), no run
+exceeds either at any τ in (0.031, 2]: the largest ratio there is
+`sync-wall-4`'s 1.7370 and the largest change its +3.0115 px. Every crossing
+of the jackknifed value lies below the floor on τ: by ratio, `sync-wall-1`
+and `-4` at 0.005 and 0.01 and `sync-wall-4` at 0.02; by range,
+`sync-wall-4` at 0.005 to 0.02 and `sync-wall-1` at 0.005 (the script's
+second step 3 block). So the alternative the review offered, restricting the
+claim to the replicate that clears the jackknifed floor, leaves nothing
+above the floor on τ, and the comparison is stated at both values instead:
+yes against 1.46 and 2.24 px, no against 1.76 and 3.08 px. Which value a
+ruling reads the curve against is the maintainer's, under the rule that a
+ruling states the basis its figures are read on (the step protocol, the
+second of the four rules of 2026-10-18); both are stated in step 4.
+
 ## The refutation attempt on the figure that decides step 4
 
 The step protocol: a figure that gates a decision gets one independent
@@ -515,8 +667,13 @@ attempt at refutation before it is recorded, and what the attempt found is
 recorded beside it, including when it found nothing. The deciding figure is
 the first row of step 3: at every τ from 0.005 to 2 the figures of
 `sync-wall-1` and `-4` on the group's common media times move by ratios
-above 1.46 and by more than 2.24 px. Two attempts: one built into the script,
-one by a reviewer with no part in this document's reasoning.
+above 1.46 and by more than 2.24 px. (As first written. Since 2026-10-19 the
+figure is claimed at every τ above the floor on τ, in (0.031, 2], step 3's
+"A floor on τ"; the attempts below were mounted on the whole span, and what
+they found holds on the part that is claimed, the breakpoint sweep's minima
+of the reviewer's item 2 lying above the floor.) Two attempts: one built
+into the script, one by a reviewer with no part in this document's
+reasoning.
 
 ### In the script: the decomposition and the boundary flags
 
@@ -630,7 +787,9 @@ value or in form, the bracketed note after the item says so.
    1.188, the group's ratio to 1.763). "So the replicate floor 1.46 is itself
    one deleted media time away from 1.76." **Supports the frame-selection
    reading; shows the floor is a soft reference.** [The script: the same six
-   keys and the same figures, section (e).]
+   keys and the same figures, section (e), which since 2026-10-19 also
+   prints each deletion's range and the windows each key's frames sit in,
+   read in step 3's "A property of the floor".]
 7. **Eligibility relaxed to n ≥ 3** (its own regression, cross-checked
    identical to the module at n ≥ 4). `none`: 6.311, 4.910, 6.888, 7.108;
    τ = 2: 4.062, 4.517, 6.749, 4.385, change 1.554 (run 1) and 1.621 (run 4)
@@ -711,20 +870,66 @@ step 4: the amount is one gross-outlier detection pose per run at 3.411 s,
 which under the frozen rule takes its four-frame window with it and under a
 relaxed rule moves the figure by nearly as much on its own. Item 6's finding,
 that one deleted media time takes the floor from 1.46 to 1.76, is recorded
-in step 3 as a property of the floor.
+in step 3 as a property of the floor, and since 2026-10-19 the curve is read
+against that value too.
 
 ## Step 4: the answer, in the form the plan asked for
 
 **Is there a candidate threshold at which the predicted change exceeds the
-replicate floor?** Yes. Read on the group's common media times, kind E on
-DETECT frames, at every τ on the grid from 0.005 to 2 the figures of
-`sync-wall-1` and `sync-wall-4` move by ratios of 1.56 to 2.20 and by 2.25
-to 3.87 px, above the floor's 1.46 and 2.24 px; `sync-wall-2` and `-3` move
-by 1.00 to 1.16 and by at most 0.66 px, below it; at τ = 5 nothing moves. S
-alone gives the same; O alone the same from 0.7 down and nothing at or above
-1. On every posed frame the same holds from 0.3 up; below 0.2 all four runs
-move by 1.35 to 3.90 and the floor itself falls to 1.12 to 1.17, with the
-coverage cost stated beside it.
+replicate floor?** In two parts, since the maintainer's review of
+2026-10-19; read above the floor on τ derived in step 3 (0.031, below which
+nothing is claimed) and at both values of the replicate floor.
+
+**First: the signal clears the floor the registration names, in a post-hoc
+reading the plan does not register.** Read on the group's common media
+times, kind E on DETECT frames, at every grid value from 0.05 to 2 and at
+every τ in (0.031, 2] by the breakpoint sweep, the figures of `sync-wall-1`
+and `sync-wall-4` move by ratios of 1.55 to 1.59 and 1.71 to 1.74 and by
+2.25 to 2.33 and 2.94 to 3.01 px, above the floor's 1.46 and 2.24 px;
+`sync-wall-2` and `-3` move by 1.07 to 1.09 and 1.00 to 1.02 and by at most
+0.40 px, below it; at τ = 5 nothing moves. Against the floor's jackknifed
+value, 1.76 and 3.08 px (step 3, "A property of the floor"), no run clears
+either at any τ above the floor on τ; every crossing of that value,
+`sync-wall-4` at 0.005 to 0.02 and `sync-wall-1` at 0.005 and 0.01, lies
+below it. S alone gives the same; O alone the same from 0.7 down and nothing
+at or above 1. On every posed frame the same holds from 0.3 up; at 0.2 the
+floor reads 1.39, and at 0.15 to 0.05 all four runs move by 1.35 to 1.75
+and the floor falls to 1.16, with the coverage cost stated beside it. The
+reading is each run against itself, under `none` and under τ, on the frames
+each reading keeps; the maintainer's comment of 2026-10-19 on #153 calls it
+a post-hoc whole-set reading, and it is carried by one instant (item 2
+below). The term names the basis, two readings that are not on common
+frames, and not step 2's whole-set columns: the figures compared are the
+group's common-set figures, rebuilt per τ.
+
+**Second: the comparison round 1 registers does not read it.** The plan
+binds that comparison and closes it: "Every comparison of `jitterPx` between
+arms that run different pipelines: a treatment against its baseline. Which
+of an arm's exports are paired is registered with the block's shape, in the
+run order. That each comparison is read on common media times is not open"
+([`README.md`](./README.md), the common-media-times rule, "Where it binds").
+A refusal's whole effect is to remove frames from its own arm, and a removed
+frame's media time is not in the two arms' intersection, so the registered
+comparison reads the frames where the treatment did nothing: on a
+selection-only surrogate the frames at the keys that stay are the same
+frames with the same corners, and the common-set difference is zero by
+construction, as #104's probe's item 9 says of its own data ("On this
+probe's own data the measurement is zero by construction (item 5), which is
+why it needs two real arms"). The number that comparison would read is not
+predicted here at all. This is a different gap from the one the rule records
+beside itself, "What it does not cover, recorded 2026-10-18: a single
+dominant frame that both arms posed": that one is a dominant frame surviving
+in the common set; this one is a dominant frame leaving it because the
+treatment removed it. The addendum of 2026-10-18 does not cover it. The
+remedy, reading the whole-set difference beside the common-set difference as
+the decomposition registered for #137 already prescribes, is a ruling and a
+dated addendum for a later registration PR: the rule is not changed here, no
+change to it is proposed, and no entry of `README.md` or `step-protocol.md`
+is edited.
+
+**As a feasibility verdict:** the signal clears the floor the registration
+names, above the floor on τ, in two replicates of four, and does not clear
+the floor's jackknifed value; the registered measurement does not read it.
 
 **What the verdict does not establish.**
 
@@ -757,19 +962,14 @@ coverage cost stated beside it.
    second of detection poses at 8 to 21 inliers in two runs of four, and in
    a diffuse residual in the other two" (its jackknife section); here one
    pose of that second carries a common-set figure in those same two runs.
-3. **The comparison round 1 registers reads none of this.** #104's claim is
-   the treatment arm against its baseline arm on **their** common media
-   times (the plan, "#104: a joint claim, or none"). On a selection-only
-   surrogate of one run, a refused frame's key leaves the common set of the
-   two arms, the frames at the keys that stay are the same frames with the
-   same corners, and the common-set difference is zero by construction, as
-   the probe's item 9 says of its own data ("On this probe's own data the
-   measurement is zero by construction (item 5), which is why it needs two
-   real arms"). The number that comparison would read is therefore not
-   predicted here at all. What the curve bounds is the part of a whole-set or
-   a group common-set figure that a refusal can move by selection; what it
-   cannot reach is the steadiness part, whose sign the plan records as
-   unknown (passage 7's entry).
+3. **The comparison round 1 registers reads none of this**: the verdict's
+   second part above, where it was moved on 2026-10-19 because it inverts
+   the feasibility answer rather than qualifying it. #104's claim is the
+   treatment arm against its baseline arm on **their** common media times
+   (the plan, "#104: a joint claim, or none"). What the curve bounds is the
+   part of a whole-set or a group common-set figure that a refusal can move
+   by selection; what it cannot reach is the steadiness part, whose sign the
+   plan records as unknown (passage 7's entry).
 4. **Posed against the plan's own statement.** `jitterPx` "measures
    steadiness only where the target stays in view and every pose is right …
    on a hand-held clip it computes but does not measure that" (passage 7).
@@ -784,20 +984,22 @@ coverage cost stated beside it.
    second, which the record knew; it does not say the refusal steadies
    anything.
 
-**What stands, stated as numbers.** The curve, with its derivation, and
-three facts the registration can rest on: that the group's replicate floor
-on its common media times reads 1.67 to 2.00 (2.72 to 3.13 px), not 1.46,
-at every τ on the grid from 0.005 to 2, and one deleted instant from 1.67 or
-1.76 under no refusal at all; that under the detect scope no run's figure on
-those media times moves by more than 0.0613 px at the grid's values, or
-0.1408 px at any τ, for any reason other than a key leaving the intersection;
-and that
-the floor falls below 1.46
-only when the refusal reaches TRACK frames, to 1.39 at τ = 0.2, where three
-TRACK frames of the group are refused and the one in `sync-wall-3` carries
-the change, and to 1.12 to 1.17 at 0.15 and below, where 6% to 66% of each
-run's posed frames are. None of these is a threshold and none is a
-prediction of round 1's result.
+**What stands, stated as numbers**, above the floor on τ. The curve, with
+its derivation, and three facts the registration can rest on: that the
+group's replicate floor on its common media times reads 1.67 to 1.70 (2.72
+to 2.83 px), not 1.46, at every grid value from 0.05 to 2, and has a
+jackknifed value of 1.76 and 3.08 px under no refusal at all, carried by one
+key; that under the detect scope no run's figure on those media times moves
+by more than 0.0613 px at any τ in (0.031, 2] for any reason other than a
+key leaving the intersection; and that the floor falls below 1.46 only when
+the refusal reaches TRACK frames, to 1.39 at τ = 0.2, where three TRACK
+frames of the group are refused and the one in `sync-wall-3` carries the
+change, and to 1.16 at 0.15 to 0.05, where 6% to 12% of each sync run's
+posed frames are. The figures below the floor on τ stay in the tables as
+computed (the floor to 2.00 and 3.13 px, the own-refusal bound 0.1408 px,
+the all-frames floor 1.12 to 1.17 at up to 66% of the frames) and are
+claimed of nothing. None of these is a threshold and none is a prediction of
+round 1's result.
 
 ## What this probe does not decide
 
@@ -813,6 +1015,11 @@ prediction of round 1's result.
   no reading of these exports reaches.
 - **The cause of the recurring signal values** across runs (step 1), a
   conjecture labelled as one.
+- **The negative control at the tight end of τ**: whether a right fit
+  survives the criterion at any τ above the floor of 0.031. Not performed
+  here, on the maintainer's ruling of 2026-10-19 that no proxy is run on
+  these exports (step 3, "A floor on τ"); it belongs to #106's synthetic
+  half, where a right fit is known by construction.
 
 ## Revised after the independent read
 
@@ -872,11 +1079,126 @@ Nothing was re-run on any device or on the bench page; the exports are as
 they were. The script's output before its last section is unchanged by any
 of this: checked with `diff` against the output before the section existed.
 
+## Revised after the maintainer's review (2026-10-19)
+
+The maintainer reviewed `8879509` on 2026-10-19: a comment of three
+findings on #153, and two review threads answering an automated reviewer's
+two findings on the script, the first rejected on its premise with one item
+taken (the negative control), the second taken (the hashes). The brief for
+this revision named the branch head `8879509` and `dev` at `1f28fce`; when
+it was applied `origin/dev` was `f718c9f`, the merge of #152, which touches
+only `examples/test/detection-worker-core.test.mjs`, and the branch was not
+rebased. The five record passages the brief rests on read identically at
+`1f28fce`, `f718c9f` and `8879509`: the common-media-times rule's "Where it
+binds" and its "What it does not cover" of 2026-10-18 in `README.md`, the
+calibration session's finding on four checks, and the step protocol's
+"A jackknife on a window at the eligibility boundary cannot attribute
+influence" and "A ruling states the basis its figures are read on". What
+changed, in the brief's order:
+
+1. **A floor on τ** (the first thread, which the comment's first finding
+   also rests on). Derived from the calibration session's measurement of
+   the signal on a right fit, 0.031 under E; the grid re-read above it, not
+   recomputed; the negative control registered to #106's synthetic half and
+   stated as not performed; nothing claimed below the floor (step 3, "A
+   floor on τ"). The brief's stop condition, the floor removing the
+   "exceeds the floor" claim across the whole remaining range, did not
+   fire against the floor the registration names: the claim holds at every
+   τ in (0.031, 2] for `sync-wall-1` and `-4`. Against the floor's
+   jackknifed value it never held above the floor on τ, which the next two
+   items record and leave to the maintainer's ruling.
+2. **The verdict's basis** (the first finding). Moved from "What the verdict
+   does not establish", item 3, into the verdict as its second part, citing
+   the rule's "is not open", and distinguished from the gap the addendum of
+   2026-10-18 records. No rule is changed or proposed; `README.md` and
+   `step-protocol.md` are untouched; the remedy is named as a later
+   registration PR's.
+3. **The floor's two values** (the second finding). The comparison is
+   stated at both, 1.46 and 2.24 px and 1.76 and 3.08 px, in step 3 and in
+   step 4. Above the floor on τ no replicate clears the second, so the
+   restriction the finding offered as the alternative would leave nothing;
+   the replicates that cleared it in the verdict as first written,
+   `sync-wall-4` at 2.20 and 2.15 and `sync-wall-1` at 2.01 and 1.94, are
+   the grid's τ = 0.005 and 0.01, below the floor on τ.
+4. **The jackknife's wording** (the third finding). The per-deletion values
+   are the committed script's, not only the refutation session's, and they
+   differ: 137 distinct figure vectors over the 141 deletions. The four keys
+   of the no-lock second tie and drop the same windows, so the windows at
+   the boundary carry the 1.67 and the wording takes the rule's form; the
+   10.876254 s key is alone at 1.76, its frames in windows of 6 to 14 that
+   drop nothing, so the attribution to it stands and says so (step 3, "A
+   property of the floor"). The script's section (e) now prints each
+   mover's range and windows.
+5. **The manifest's hashes** (the second thread). The script hashes the
+   bundle and the metrics module before importing either and refuses a
+   mismatch with the manifest's entry; the metrics module's hash is printed
+   in the provenance line, and compared only where the manifest carries an
+   entry for it. Both matched when run: bundle `d568c8edca35…`, module
+   `47fedde90d48…`. The brief's stop condition, a recorded hash not
+   matching the bytes, did not fire. Exercised on three scratch copies
+   outside the repository, each pinned to this directory and reading a
+   scratch copy of the manifest with one change: the bundle's hash with its
+   first character altered, exit 1, nothing on stdout, stderr naming both
+   hashes; the module's `served` hash altered the same way, exit 1, nothing
+   on stdout, stderr naming both hashes and the path; the module's `served`
+   entry removed, exit 0, the committed script's output but for the
+   provenance line, which then reads "no manifest entry for it: hashed
+   here" after the hash. An unmodified copy pinned the same way and reading
+   the real manifest exits 0 with the committed script's output byte for
+   byte. The copies and the scratch manifests were deleted;
+   `examples/dist/` was not touched.
+6. **The script's output and digest.** Before this revision: 111,832 bytes,
+   SHA-256 `3ec28f1c…`; the script `8117ca96…`. After: 115,956 bytes,
+   SHA-256 `29833860…`; the script `d9839b0d…`. Two runs of the revised
+   script give byte-identical output. Of the earlier output's lines, one
+   changed in content, the provenance line, which now names the metrics
+   module by its repository path and hash rather than by an absolute path,
+   and the bundle's hash as computed rather than as the manifest states it;
+   the seven lines of section (e), its heading and the six movers, are
+   extended, each keeping its earlier text as a prefix with the deletion's
+   range and windows appended; every other earlier line is unchanged and in
+   its place, and the rest of the diff against the earlier output is
+   additions: the curve against the floor's jackknifed value per τ, the
+   breakpoint sweep re-read above the floor on τ, and the jackknifed value's
+   line. No table value and no figure of the curve moved.
+7. **The test suite**, `npm test` at the revised tree: `cv-backend-spec`
+   27 passed, `cv-backend-jsfeatnext` 33, `nft-tracker` 740 passed and 1
+   skipped, `examples/test/` 396 passed and 1 failed. The failure is
+   `examples/test/provenance.test.mjs`, "hashes the files on disk, the
+   bundle and jsfeat-next's included (rebuild after an edit)", timing out at
+   Vitest's 5 s: the
+   pre-existing failure reported on #136, which is why nothing had verified
+   the manifest before the probe trusted it, and which the script's own
+   hash checks now stand in for on this document's inputs. `npm run
+   typecheck` passes.
+8. **An independent read of the revision**, before its commit, by a
+   session with no part in it, against the brief, the script's output and
+   the sources. It confirmed every number of the new text, the five
+   quotations, the hash checks' placement and behaviour on its own scratch
+   copies, the determinism run, the digests and the scope, and made eight
+   findings, none changing a figure or the verdict, seven applied here: a
+   diff statement that called section (e)'s extended lines unchanged; the
+   refutation section's deciding figure and one sentence of step 3 still
+   spanning the whole grid, now carrying a dated qualifier; "the replicate
+   that cleared" the jackknifed value being two; the interval above the
+   floor closed at an endpoint this text calls undecided, now open here and
+   in the script's label, which is why item 6's digests are the third pair
+   taken; the failing test's name without its parenthetical; the term
+   "whole-set reading" given its half-sentence; and "its frames' own
+   residual" named as the inference it is. The eighth, "6% to 12%" where
+   the counts give 6.1% to 11.4%, is text from before the review and is
+   left.
+
+Nothing was re-run on any device or on the bench page; the exports are as
+they were; no issue was opened, edited or closed.
+
 ## Constraints kept
 
 Read-only on committed exports; no run on any device, on the bench page or
-by replay; `package.json`, the lockfile, the tsconfigs, the target and the
-clips untouched; no export edited or deleted; `docs/benchmarks/README.md` and
-`step-protocol.md` unchanged; no issue opened or commented on. The two files
-are this document and its script, on `docs/104-stage1-effect-size`; the
-bundle was rebuilt at `1f28fce` in `examples/dist/`, which git ignores.
+by replay; `package.json`, the lockfile, the tsconfigs, the target, the
+clips and `fixtures/nft-target/` untouched; no export edited or deleted;
+`docs/benchmarks/README.md` and `step-protocol.md` unchanged; no issue
+opened, edited, closed or commented on. The two files are this document and
+its script, on `docs/104-stage1-effect-size`; the bundle was rebuilt at
+`1f28fce` in `examples/dist/`, which git ignores, and was not rebuilt for
+the revision of 2026-10-19, whose script checks its hashes.

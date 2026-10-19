@@ -101,15 +101,25 @@
  *    intrinsics.
  *
  * The checks, all fatal: a failed check exits non-zero naming what disagrees,
- * and no figure is printed after it. Every export named must exist, carry
- * metricsVersion 1, the wall clip, loops, one processing resolution shared
- * by all nine, and the committed target's sha256 and size; every frame with
- * corners is ok and carries a numeric numInliers; the whole-set jitterPx
- * reproduces exactly; K has no skew; every H recovery reprojects its corners
- * to 1e-6 px or better; the window keying reproduces jitterWindows under
- * every reading; the floor's five readings reproduce the record's printed
- * figures. A missing or malformed input never falls back to a default: it
- * fails.
+ * and no figure is printed after it. The bundle's manifest names a commit, a
+ * clean tree and a bundle hash; the bundle's bytes and the metrics module's
+ * bytes hash to what the manifest records for them, before either is
+ * imported (the module's hash is printed in the provenance line, and compared
+ * only where the manifest carries an entry for it). Every export named must
+ * exist, carry metricsVersion 1, the wall clip, loops, one processing
+ * resolution shared by all nine, and the committed target's sha256 and size;
+ * every frame with corners is ok and carries a numeric numInliers; the
+ * whole-set jitterPx reproduces exactly; K has no skew; every H recovery
+ * reprojects its corners to 1e-6 px or better; the window keying reproduces
+ * jitterWindows under every reading; the floor's five readings reproduce the
+ * record's printed figures. A missing or malformed input never falls back to
+ * a default: it fails.
+ *
+ * Revised 2026-10-19 after the review of #153: the two hash checks above; a
+ * floor on τ (TAU_FLOOR, with its source) and the breakpoint sweep re-read
+ * above it; the single-key jackknife's range and the windows each mover sits
+ * in; and the curve against the floor's jackknifed value. No figure of the
+ * curve changed.
  *
  * A known limitation, as every derivation script's here: no test and no
  * format check cover `docs/`, so this script could break silently later while
@@ -134,10 +144,35 @@ const g = (v, d = 2) => (v === null || v === undefined ? "null" : v.toFixed(d));
 const f = (v, d = 2) => (v === null || v === undefined ? "null" : (v >= 0 ? "+" : "") + v.toFixed(d));
 
 // ---- the frozen module, the bundle, the target --------------------------------------------
-const METRICS_PATH = join(HERE, "../../examples/js/bench-metrics.mjs");
+const METRICS_REL = "examples/js/bench-metrics.mjs";
+const METRICS_PATH = join(HERE, `../../${METRICS_REL}`);
 const BUNDLE_PATH = join(HERE, "../../examples/dist/webarkit-packages.mjs");
 const MANIFEST_PATH = join(HERE, "../../examples/dist/provenance.json");
 const TARGET_PATH = join(HERE, "../../examples/targets/pinball.wnft");
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+// The manifest is read first, then the bytes on disk are hashed against it, and only then is either
+// module imported: no figure is computed from a bundle or a metrics module whose hash the manifest
+// does not carry. The manifest's claims are read, not defaulted: one that names no commit, no bundle
+// hash, or a dirty tree is refused, since the provenance line below would then state something
+// unknown. A bundle or a module whose bytes differ from the manifest's entry is refused the same way:
+// the manifest would then describe a build other than the one the figures are computed against
+// (the review of 2026-10-19 on #153, the second finding).
+if (!existsSync(MANIFEST_PATH)) fatal(`no manifest at ${MANIFEST_PATH}: the bundle's provenance cannot be stated`);
+const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
+if (typeof manifest.head !== "string" || !/^[0-9a-f]{40}$/.test(manifest.head)) fatal(`the manifest names no commit (head ${JSON.stringify(manifest.head)})`);
+if (manifest.clean !== true) fatal(`the manifest records an unclean tree (clean ${JSON.stringify(manifest.clean)}, dirty ${JSON.stringify(manifest.dirtyPaths)}): rebuild from a clean tree`);
+if (typeof manifest.bundle?.sha256 !== "string") fatal("the manifest records no bundle sha256");
+if (!existsSync(BUNDLE_PATH)) fatal(`no bundle at ${BUNDLE_PATH} (run npm run build first)`);
+if (!existsSync(METRICS_PATH)) fatal(`no metrics module at ${METRICS_PATH}`);
+const BUNDLE_SHA = sha256(readFileSync(BUNDLE_PATH));
+const METRICS_SHA = sha256(readFileSync(METRICS_PATH));
+if (BUNDLE_SHA !== manifest.bundle.sha256) fatal(`the bundle's sha256 is ${BUNDLE_SHA}, the manifest records ${manifest.bundle.sha256}: the bundle on disk is not the one the manifest describes`);
+// The metrics module is served unbuilt and the manifest hashes it under `served`; where that entry
+// exists the bytes must match it, and where it does not, the hash computed here is what the
+// provenance line states, since a path is not provenance.
+const metricsEntry = manifest.served?.[METRICS_REL]?.sha256;
+if (typeof metricsEntry === "string" && metricsEntry !== METRICS_SHA) fatal(`the metrics module's sha256 is ${METRICS_SHA}, the manifest records ${metricsEntry} for ${METRICS_REL}: the module on disk is not the one the manifest describes`);
+const METRICS_PROVENANCE = typeof metricsEntry === "string" ? `${METRICS_SHA} (equal to the manifest's served entry)` : `${METRICS_SHA} (no manifest entry for it: hashed here)`;
 let metrics;
 let bundle;
 try {
@@ -153,15 +188,8 @@ try {
 const { cornerJitter, countedLoopFrames, isLoopWrap, mediaKey, targetCorners, METRICS_VERSION, JITTER_WINDOW_S } = metrics;
 const { intrinsics, decode } = bundle;
 if (typeof intrinsics !== "function" || typeof decode !== "function") fatal("the bundle exports no intrinsics or no decode");
-if (!existsSync(MANIFEST_PATH)) fatal(`no manifest at ${MANIFEST_PATH}: the bundle's provenance cannot be stated`);
-const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
-// The bundle's provenance is read, not defaulted: a manifest that names no commit, no bundle hash,
-// or a dirty tree is refused, since the provenance line below would then state something unknown.
-if (typeof manifest.head !== "string" || !/^[0-9a-f]{40}$/.test(manifest.head)) fatal(`the manifest names no commit (head ${JSON.stringify(manifest.head)})`);
-if (manifest.clean !== true) fatal(`the manifest records an unclean tree (clean ${JSON.stringify(manifest.clean)}, dirty ${JSON.stringify(manifest.dirtyPaths)}): rebuild from a clean tree`);
-if (typeof manifest.bundle?.sha256 !== "string") fatal("the manifest records no bundle sha256");
 const targetBytes = readFileSync(TARGET_PATH);
-const TARGET_SHA = createHash("sha256").update(targetBytes).digest("hex");
+const TARGET_SHA = sha256(targetBytes);
 const decoded = decode(new Uint8Array(targetBytes));
 if (!decoded.ok) fatal(`the target does not decode: ${decoded.error}`);
 const TARGET_W = decoded.target.meta.widthPx;
@@ -246,6 +274,14 @@ const RUN_NAMES = [
 ];
 const GROUP_NAMES = ["sync-wall-1", "sync-wall-2", "sync-wall-3", "sync-wall-4"];
 const TAUS = [0.005, 0.01, 0.02, 0.03, 0.05, 0.07, 0.1, 0.15, 0.2, 0.3, 0.5, 0.7, 1, 2, 5];
+// The floor on τ below which the record's own measurement says the criterion refuses a right fit:
+// on the exact H of #105's sweep's second view, a view that is not a plane homography for the
+// camera, the signal reads d_scale 0.0084 and d_orth 0.031
+// (2026-10-14-tab9-m4-calibration-session.md, the finding "Four checks that could not distinguish
+// the condition they claim to detect"). Kind E refuses a frame when either exceeds τ, so that fit
+// is refused at every τ below 0.031. Declared in the document's "A floor on τ" section
+// (2026-10-19); the grid is re-read above it, not recomputed, and nothing is claimed below it.
+const TAU_FLOOR = 0.031;
 const KINDS = {
     E: (c) => Math.max(Math.abs(c.dScale), Math.abs(c.dOrth)),
     S: (c) => Math.abs(c.dScale),
@@ -652,6 +688,52 @@ const keyJackknife = [...commonNone].sort((a, b) => a - b).map((k) => {
     return { key: k, on: on.map((j) => j.jitterPx), change: on.map((j, i) => FLOOR.on[i].jitterPx / j.jitterPx), ratio: spread(on.map((j) => j.jitterPx)).ratio };
 });
 const movesOver5 = keyJackknife.filter((j) => j.change.some((c) => Math.abs(c - 1) > 0.05));
+// The floor's jackknifed value: the largest replicate ratio any single deletion gives, and the range
+// at that same deletion. The windows each mover's frames sit in on the none common set, per run, with
+// their frame counts before and after the deletion and whether the window loses eligibility: the rule
+// of 2026-10-18 (the step protocol, "A jackknife on a window at the eligibility boundary cannot
+// attribute influence") turns on whether the deletions differ and whether a window drops.
+const jackFloor = keyJackknife.reduce((best, j) => (best === null || j.ratio > best.ratio ? j : best), null);
+const jackFloorRange = Math.max(...jackFloor.on) - Math.min(...jackFloor.on);
+const moverWindows = movesOver5.map((j) => {
+    const set = new Set(commonNone);
+    set.delete(j.key);
+    return GROUP.map((m) => {
+        const before = windowsOf(m, onNone);
+        const after = windowsOf(m, (fr) => set.has(mediaKey(fr.mediaTimeSeconds)));
+        const keys = [...new Set(m.frames.filter((fr) => fr.corners && mediaKey(fr.mediaTimeSeconds) === j.key).map((fr) => m.wkey.get(fr)))];
+        return keys.map((k) => {
+            const b = before.get(k)?.kept ?? [];
+            const a = after.get(k)?.kept ?? [];
+            return `${k} ${b.length}->${a.length}${eligible(b) && !eligible(a) ? " drops" : ""}`;
+        });
+    });
+});
+// (a), continued: the breakpoint sweep re-read above the floor on τ. An entry holds on [b_k, b_k+1),
+// so every entry whose interval meets [TAU_FLOOR, 2] is read, the first from TAU_FLOOR. Per run: the
+// smallest and largest change ratio and change in px there, and whether the run exceeds the floor
+// (ratio 1.46, range 2.24 px) at every τ of the stretch and the floor's jackknifed value at any.
+// The document claims the open interval (TAU_FLOOR, 2], the record giving the floor's value to
+// two figures; the first stretch is printed from TAU_FLOOR, and the curve is constant on it.
+const aboveFloor = sweep.map((s, k) => ({ s, k })).filter(({ s, k }) => s.tau <= 2 && (k + 1 >= breakpoints.length || breakpoints[k + 1] > TAU_FLOOR));
+const intervalAboveFloor = (k) => `[${Math.max(breakpoints[k], TAU_FLOOR).toFixed(6)}, ${k + 1 < breakpoints.length ? breakpoints[k + 1].toFixed(6) : "∞"})`;
+const aboveFloorSummary = GROUP.map((m, i) => {
+    const pick = (value, k) => ({ value, at: intervalAboveFloor(k) });
+    let minR = null;
+    let maxR = null;
+    let minPx = null;
+    let maxPx = null;
+    let maxOwn = null;
+    for (const { s, k } of aboveFloor) {
+        const px = FLOOR.on[i].jitterPx - s.on[i];
+        if (minR === null || s.change[i] < minR.value) minR = pick(s.change[i], k);
+        if (maxR === null || s.change[i] > maxR.value) maxR = pick(s.change[i], k);
+        if (minPx === null || px < minPx.value) minPx = pick(px, k);
+        if (maxPx === null || px > maxPx.value) maxPx = pick(px, k);
+        if (maxOwn === null || s.ownRefusal[i] > maxOwn.value) maxOwn = pick(s.ownRefusal[i], k);
+    }
+    return { run: m.short, minR, maxR, minPx, maxPx, maxOwn };
+});
 
 // (h) Pairwise, as compareExports reads two runs: the pair's common media times, rebuilt per τ.
 const pairwise = [];
@@ -725,7 +807,7 @@ const INLIER_GROUPS = [
 
 console.log(`${SCRIPT}: ${RUNS.length} exports read; every fatal check passed, the floor's five readings among them.\n`);
 console.log("== Step 0: what was read");
-console.log(`node ${process.version}; metrics module ${METRICS_PATH}; bundle manifest HEAD ${manifest.head} (clean ${manifest.clean}), bundle sha256 ${manifest.bundle?.sha256 ?? "(none)"}; target ${TARGET_SHA} (${TARGET_W} x ${TARGET_H}); processing resolution ${resolution.width} x ${resolution.height}; K = [${[...GROUP[0].K].map((v) => +v.toFixed(3)).join(", ")}]`);
+console.log(`node ${process.version}; metrics module ${METRICS_REL} sha256 ${METRICS_PROVENANCE}; bundle manifest HEAD ${manifest.head} (clean ${manifest.clean}), bundle sha256 ${BUNDLE_SHA} (equal to the manifest's); target ${TARGET_SHA} (${TARGET_W} x ${TARGET_H}); processing resolution ${resolution.width} x ${resolution.height}; K = [${[...GROUP[0].K].map((v) => +v.toFixed(3)).join(", ")}]`);
 console.log("run | counted frames | posed (DETECT, TRACK) | ok without corners | recorded jitterPx (windows) | H recovery max error (px)");
 for (const run of RUNS) {
     const posed = run.frames.filter((fr) => fr.corners);
@@ -795,6 +877,14 @@ for (const row of curve["detect:E"]) {
     const overPx = G.on.map((j, i) => [GROUP[i].short, FLOOR.on[i].jitterPx - j.jitterPx]).filter(([, d]) => Math.abs(d) > FLOOR.spread.range);
     console.log(`${row.tau} | ${over.length ? over.map(([n, r]) => `${n} (${g(r)})`).join(", ") : "none"} | ${overPx.length ? overPx.map(([n, d]) => `${n} (${f(d)})`).join(", ") : "none"} | ${g(G.spread.ratio)}, ${g(G.spread.range)}`);
 }
+console.log(`-- the same, against the floor's jackknifed value (ratio ${g(jackFloor.ratio, 3)}, range ${g(jackFloorRange, 3)} px: the largest ratio any single-key deletion gives, section (e), and the range at that deletion); τ below the floor on τ (${TAU_FLOOR}) marked`);
+console.log("τ | runs whose change ratio none/τ exceeds the jackknifed ratio | runs whose change in px exceeds the jackknifed range");
+for (const row of curve["detect:E"]) {
+    const G = row.group;
+    const over = G.on.map((j, i) => [GROUP[i].short, FLOOR.on[i].jitterPx / j.jitterPx]).filter(([, r]) => r > jackFloor.ratio);
+    const overPx = G.on.map((j, i) => [GROUP[i].short, FLOOR.on[i].jitterPx - j.jitterPx]).filter(([, d]) => Math.abs(d) > jackFloorRange);
+    console.log(`${row.tau}${row.tau < TAU_FLOOR ? " (below the floor on τ)" : ""} | ${over.length ? over.map(([n, r]) => `${n} (${g(r)})`).join(", ") : "none"} | ${overPx.length ? overPx.map(([n, d]) => `${n} (${f(d)})`).join(", ") : "none"}`);
+}
 
 console.log("\n== The reviewer's figures, recomputed from the committed exports (kind E, DETECT frames, the M3 sync wall group)");
 console.log(`(a) breakpoints: ${breakpoints.length} distinct E values of posed DETECT frames at or above 0.005, ${sweepIn.length} of them at or below 2; the figure holds on [b_i, b_i+1). |d_orth| never exceeds 1 (max ${g(maxAbsDOrth, 5)}), so for τ ≥ 1 the pair is |d_scale| alone.`);
@@ -802,6 +892,10 @@ for (const [i, s] of sweepSummary.entries()) console.log(`  ${s.run}: change rat
 console.log(`  sync-wall-3 below 1: ${run3Below1.length ? run3Below1.join("; ") : "never"}`);
 console.log(`  the four figures are constant on: ${stretches.slice(0, 2).map((s) => `[${s.from.toFixed(6)}, ${s.to === null ? "∞" : s.to.toFixed(6)}) at ${s.key}`).join("; ")}`);
 console.log(`  the intersection regains 141 keys at τ ≥ ${regain141 ? regain141.tau.toFixed(5) : "never on the sweep"}`);
+console.log(`  above the floor on τ, (${TAU_FLOOR}, 2] (the first stretch printed from ${TAU_FLOOR}; the curve is constant across it, so the endpoint changes no figure), ${aboveFloor.length} stretches: per run the change ratio none/τ and the change in px, smallest and largest; against the floor (ratio ${g(FLOOR.spread.ratio)}, range ${g(FLOOR.spread.range)} px) at every τ there, and against its jackknifed value (ratio ${g(jackFloor.ratio, 3)}, range ${g(jackFloorRange, 3)} px) at any`);
+for (const s of aboveFloorSummary) {
+    console.log(`    ${s.run}: ratio ${g(s.minR.value, 4)} on ${s.minR.at} to ${g(s.maxR.value, 4)} on ${s.maxR.at}; px ${f(s.minPx.value, 4)} on ${s.minPx.at} to ${f(s.maxPx.value, 4)} on ${s.maxPx.at}; exceeds the floor's ratio at every τ: ${s.minR.value > FLOOR.spread.ratio ? "yes" : "no"}, its range: ${s.minPx.value > FLOOR.spread.range ? "yes" : "no"}; exceeds the jackknifed ratio at any τ: ${s.maxR.value > jackFloor.ratio ? "yes" : "no"}, its range: ${s.maxPx.value > jackFloorRange ? "yes" : "no"}; largest |rebuilt − τ keys only| ${g(s.maxOwn.value, 4)} px on ${s.maxOwn.at}`);
+}
 console.log("(b), (c) every frame of the five sync exports at 1.846 s, 2.448 s and 3.411 s, with its E (loop, state, inliers, E, d_scale, d_orth):");
 for (const [i, m] of SYNC_RUNS.entries()) {
     console.log(`  ${m.short}: ${INSTANTS.map((t, k) => `${t.toFixed(3)} s: ${instantFrames[i][k].length ? instantFrames[i][k].map((x) => `(${x.loop}, ${x.state}, ${x.inliers}, ${g(x.E, 5)}, ${f(x.dScale, 5)}, ${f(x.dOrth, 5)})`).join(" ") : "no posed frame"}`).join(" | ")}`);
@@ -818,8 +912,9 @@ console.log("(f) the relaxed eligibility rule, n ≥ 3, on the rebuilt common se
 for (const [k, r] of Object.entries(relaxed)) {
     console.log(`  ${k}: ${r.on.map((v, i) => `${g(v, 3)} (${r.windows[i]})`).join(" ")}${k === "none" ? "" : ` | change ${r.on.map((v, i) => g(relaxed.none.on[i] / v, 3)).join(" ")}`}`);
 }
-console.log(`(e) single-key jackknife on the none common set (${commonNone.size} keys, each deleted alone from every loop of every run): keys whose deletion moves any run by more than 5%`);
-for (const j of movesOver5) console.log(`  ${(j.key / 1e6).toFixed(6)} s: ${j.on.map((v) => g(v, 3)).join(" ")} | change ${j.change.map((c) => g(c, 3)).join(" ")} | group ratio ${g(j.ratio, 3)}`);
+console.log(`(e) single-key jackknife on the none common set (${commonNone.size} keys, each deleted alone from every loop of every run): keys whose deletion moves any run by more than 5%; then, per run, the windows the key's frames sit in on that set (key frames before->after; "drops" when the window loses eligibility)`);
+for (const [n, j] of movesOver5.entries()) console.log(`  ${(j.key / 1e6).toFixed(6)} s: ${j.on.map((v) => g(v, 3)).join(" ")} | change ${j.change.map((c) => g(c, 3)).join(" ")} | group ratio ${g(j.ratio, 3)}, range ${g(Math.max(...j.on) - Math.min(...j.on), 3)} | ${moverWindows[n].map((w, i) => `${GROUP[i].short}: ${w.length ? w.join(", ") : "no frame"}`).join("; ")}`);
+console.log(`  the floor's jackknifed value: the largest ratio any single deletion gives, ${g(jackFloor.ratio, 3)} at ${(jackFloor.key / 1e6).toFixed(6)} s, and the range at that deletion, ${g(jackFloorRange, 3)} px; ${new Set(keyJackknife.map((j) => j.on.map((v) => v.toFixed(3)).join(" "))).size} distinct figure vectors over the ${keyJackknife.length} deletions`);
 console.log("(h) pairwise, as compareExports reads two runs (the pair's common media times, rebuilt per τ): common; the two figures");
 for (const p of pairwise) console.log(`  (${p.pair}): ${Object.entries(p.at).map(([k, v]) => `${k}: ${v.common}, ${v.on.map((x) => g(x, 3)).join(" / ")}`).join(" | ")}`);
 console.log("(j) other intrinsics: at τ = 2 and 0.5, the keys leaving the intersection and the figures; and each run's largest E at 3.411 s");
