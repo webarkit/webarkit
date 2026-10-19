@@ -198,13 +198,23 @@ describe("the manifest npm run build writes", () => {
         ].join("\n");
     };
 
+    /**
+     * `h` is `path`'s hash in the manifest. The message is built only when the
+     * hashes differ: `whyStale` runs git twice, and as an eager argument it ran
+     * for every file, which on Windows took the test past vitest's 5 s timeout.
+     */
+    const expectHash = (path, h) => {
+        const onDisk = sha256(path);
+        expect(h, h === onDisk ? undefined : `${path}: the manifest's hash is not the file's\n${whyStale()}`).toBe(onDisk);
+    };
+
     it("hashes the files on disk, the bundle and jsfeat-next's included (rebuild after an edit)", () => {
         expect(manifest.schema).toBe("webarkit-bench-provenance/1");
         expect(manifest.head).toMatch(/^[0-9a-f]{40}$/);
         for (const [path, { sha256: h }] of Object.entries({ ...manifest.sources, ...manifest.served })) {
-            expect(h, `${path}: the manifest's hash is not the file's\n${whyStale()}`).toBe(sha256(path));
+            expectHash(path, h);
         }
-        expect(manifest.bundle.sha256, `${manifest.bundle.path}: the manifest's hash is not the file's\n${whyStale()}`).toBe(sha256(manifest.bundle.path));
+        expectHash(manifest.bundle.path, manifest.bundle.sha256);
         const jsfeat = manifest.dependencies["@webarkit/jsfeat-next"];
         expect(jsfeat.sha256).toBe(sha256(jsfeat.file));
         expect(jsfeat.installedVersion).toBe(jsfeat.version);
