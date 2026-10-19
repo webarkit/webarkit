@@ -4085,6 +4085,11 @@ not counted.
        open, the target's SHA-256 stays the one recorded at its start
        (`AGENTS.md`).*
 
+       *Addendum, 2026-10-19: which exports are the last, and so when
+       that window closes, had no text until the campaign milestone's
+       closing criterion named them: "M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)",
+       entry 4, below. `AGENTS.md` is unchanged.*
+
      So the comparison is exact for everything the export records. The
      string itself is not in the export.
    - **The recorded URL.** Each counted run is opened with one command,
@@ -5174,6 +5179,9 @@ each round against its own pipeline.
      is a change of instrument the manifest cannot see. Code work runs on
      any machine. Campaign-scoped: it expires when the campaign closes.
 
+     *Addendum, 2026-10-19: when the campaign closes is now defined, by
+     the campaign milestone's closing criterion: "M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)", entry 2, below.*
+
 **The role rule's sweep.** The rule was applied on 2026-10-14 to
 `examples/test/` and to what `packages/` holds outside `src/`, against the
 counted measurements registered so far and those #104 to #106 name.
@@ -5394,6 +5402,14 @@ already measured (criteria C1 to C11, their verdicts, the crossover as the
 measured interval 7°–10°); #106's lag measurement on synthetic sequences,
 when it is written.
 
+- *Addendum, 2026-10-19, the maintainer's ruling of that day: #106 moves
+  out of M4 (milestone 5) to M5 (milestone 6). The reason is this
+  paragraph's, carried with its consequence in "M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)",
+  entry 3, below: the claim is not deferred but unmeasurable by this
+  instrument, and rescheduling it without a metric that responds to a
+  pose treatment meets the same wall. The text above stands as
+  registered.*
+
 **#104: a joint claim, or none.** A refusal of a fit flips `result.ok`, and
 line 165 then nulls that frame's corners, so `jitterPx` and `trackTimeShare`
 move, but because a frame stopped being posed, not because any frame got
@@ -5560,6 +5576,10 @@ byte-identical, and #104 may still be measurable under this instrument. Any
 pose metric ends this campaign; that sequencing decision is the maintainer's,
 and it is not taken in a PR.
 
+- *Addendum, 2026-10-19: no such metric is proposed on this day either.
+  The ruling that moves One Euro to M5 rests on there being none: "M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)",
+  entry 3, below.*
+
 **The milestone is renamed going forward (2026-10-15):** "M4: pose
 correctness and homography steadiness", its description saying "homography
 steadiness" where it said "steadiness". The reason, in one sentence: no
@@ -5567,6 +5587,11 @@ exported value is a function of the pose, measured on 2026-10-15, so the
 device half measures homography steadiness and not pose steadiness. The
 rename is not applied to the record behind it; no file, commit or
 never-amended text carried the old title.
+
+- *Addendum, 2026-10-19: the title stands. The device reading it names,
+  homography steadiness on Tab_9_WiFi, closes the campaign milestone
+  (milestone 7) and not M4 (milestone 5), by the maintainer's rulings of
+  that day: "M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)", entries 1 and 2, below.*
 
 ### Counts of LOST frames and of `trackLoss` declare what they count (2026-10-17)
 
@@ -5626,6 +5651,11 @@ lives in `packages/*/src/`, the subject ("The instrument, the subject and
 the inputs", item 2), so changing it mid-campaign would put the runs
 before and after it on different subjects.
 
+- *Addendum, 2026-10-19: this rule concerns a fix applied to every run,
+  not a registered arm. #104's implementation lands as the campaign's
+  treatment arm and does not fall under it: "M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)",
+  entry 1, below.*
+
 **#137's measured standing, from #149, beside the ruling so that whoever
 takes the fix does not re-derive it.** `X8` is the probe's reading that
 matches the gate #137 names, `minTrackedPatches` (8). Under `X8` all eight
@@ -5661,3 +5691,242 @@ steadiness only where the target stays in view and every pose is right …
 on a hand-held clip it computes but does not measure that" (the
 decomposition entry, above). This is not a decision taken here, and
 nothing here proposes a value.
+
+- *Addendum, 2026-10-19: the campaign milestone's closing criterion,
+  registered in "M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)",
+  entry 2, below, names this statement first among the eight
+  registrations round 1 waits on, and says whose it is: "the statement
+  is the maintainer's". It is unwritten on that day.*
+
+### M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)
+
+Registered on 2026-10-19, before round 1 and before any counted run of a
+treatment, from the maintainer's rulings of that day. Four entries, each
+his decision, dated and attributed. Where one answers an entry already in
+this plan, a dated addendum beside that entry points here, the original
+text standing; nothing already in the plan is edited or removed. The
+milestones are cited by number and never by title, because a title can
+change and a number cannot: M4 is
+[milestone 5](https://github.com/webarkit/webarkit/milestone/5), the
+campaign is [milestone 7](https://github.com/webarkit/webarkit/milestone/7),
+and M5 is [milestone 6](https://github.com/webarkit/webarkit/milestone/6).
+The milestone descriptions on GitHub are the maintainer's, and the moves
+they record were made before this entry, not by it. Every passage quoted
+below was read at `11e6797`, the head of `dev` on 2026-10-19, and is
+quoted, not paraphrased.
+
+**1. M4's closing criterion.** M4 (milestone 5) closes on three things:
+
+- IPPE in place of the homography decomposition, with its synthetic
+  acceptance: [#105](https://github.com/webarkit/webarkit/issues/105), its
+  criteria in
+  [`2026-10-15-m4-step3-ippe-acceptance.md`](./2026-10-15-m4-step3-ippe-acceptance.md)
+  and their verdicts in that file's dated addendum, as "#105's criteria,
+  and the pose stage on tracker arms from round 1 (2026-10-15)", above,
+  registers them;
+- [#104](https://github.com/webarkit/webarkit/issues/104)'s conditioning
+  signal existing and refusing an ambiguous fit where the residual limit
+  cannot, with its synthetic acceptance, which includes #104's own
+  condition that it refuses none of today's right fits on
+  [#90](https://github.com/webarkit/webarkit/issues/90)'s sweep. This plan
+  already names that condition, under "#104: a joint claim, or none"
+  (2026-10-15): "the share of right fits the signal refuses on #90's sweep
+  (the step's "refuses none of today's right fits" condition), measured on
+  the shipped target and on M2's 64 patches";
+- jsfeatNext standing as the numeric oracle for both. The role is the
+  one "The instrument, the subject and the inputs" (2026-10-14) gives it
+  at item 3: "**#105's oracle:** `packages/cv-backend-jsfeatnext/src/`".
+
+Homography steadiness and cost on Tab_9_WiFi are not M4's: they close the
+campaign milestone, entry 2 below. One Euro is not M4's: entry 3 below.
+
+*The structure that makes this coherent.* #104's implementation lands as
+the campaign's treatment arm, so it does not fall under the rule that
+deferred [#137](https://github.com/webarkit/webarkit/issues/137)'s fix.
+That rule, in "#137's fix follows the campaign, and what stays open before
+round 1 of #104 (2026-10-18)", above, reads: "the gate lives in
+`packages/*/src/`, the subject ("The instrument, the subject and the
+inputs", item 2), so changing it mid-campaign would put the runs before
+and after it on different subjects." It concerns a fix applied to every
+run, baseline and treatment alike, not a registered arm: the campaign's
+design already has "the instrument, frozen for the campaign, and the
+subject, which changes every round" (the same 2026-10-14 entry, "The
+ruling"), and a treatment arm is the subject changing on one side of a
+registered comparison. So M4 closes when #104's code exists and passes its
+synthetic acceptance; the campaign closes later, when the device reading
+is made or is ruled unobtainable, under entry 2. M4 therefore does not
+wait on the campaign's close. The synthetic halves are where M4's results
+live, as the 2026-10-15 entry "What M4's device half measures, and which
+steps reach it" already says of #105 and #106: "Their synthetic halves
+stand and are where their results live".
+
+**2. The campaign milestone's closing criterion.** The maintainer's
+approved text, registered here word for word. The milestone's description
+on GitHub carries the same text with two additions, line references into
+this file read at that day's head, and a pointer at entry 3 below after
+"unmeasurable by this instrument"; neither is reproduced, because a line
+number does not survive the next edit and the pointer's target is on this
+page. Below the quotation, each of its eight registrations is placed in
+this plan by the name of the entry that holds it.
+
+> **Milestone: M4 campaign — the device measurement**
+>
+> What it is. The registered device measurement of #104's conditioning
+> signal on Tab_9_WiFi, under #107's plan: round 0 as the baseline, round
+> 1 as the treatment, read on the bundled clips.
+>
+> It closes when either holds, whichever comes first:
+>
+> 1. Round 1 of #104 has run and been read, on the basis its registration
+>    names, and its result is recorded — a joint jitter-and-coverage
+>    result, or a refusal under the coverage-loss bound.
+> 2. The maintainer rules that round 1's registered comparison cannot be
+>    read, in a dated entry giving the reason. The release note then
+>    states that M4's device steadiness claim was not obtained, and why.
+>
+> Either way, the campaign's last exports are named in that entry, which
+> is what closes the window `AGENTS.md` opens ("from its first device run
+> until its last device exports are committed"). Under 2, round 0's
+> exports are the last.
+>
+> Round 1 cannot be run until all of these are registered — each is
+> unwritten today:
+>
+> - the effect-size statement, from #153's derivation (the statement is
+>   the maintainer's);
+> - the pre-stated bound on coverage loss, with its derivation, which
+>   needs the signal implemented;
+> - the gate for a non-static block, whose own quantity and basis remain
+>   undesigned;
+> - the run order, the predictions with what would refuse each, and the
+>   campaign's stopping rules;
+> - the comparison's own redefinition for an exclusion treatment: the
+>   whole-set difference read beside the common-set difference, as the
+>   decomposition registered for #137 prescribes, because the common-set
+>   difference is zero by construction on a treatment whose effect is to
+>   remove frames;
+> - the coverage half's wording, so that "the clip's frames on the same
+>   media times" cannot be read as the common set, on which coverage is 1
+>   by construction;
+> - a resolution of s_r for a round with no static block: the jitter
+>   clause's per-round readings require a within-block spread that round
+>   1, on the wall clip only, does not produce;
+> - an answer to #137's comment of 2026-10-16T07:59Z, which says that
+>   while the gate stands, `jitterPx` on the hand-held clips cannot carry
+>   a counted comparison. If the record supersedes it, the entry that
+>   does so is written; if it stands, round 1 is not run under condition
+>   1.
+>
+> What this milestone does not contain. One Euro's device claim:
+> unmeasurable by this instrument. #137's gate fix, #24's code, #143's
+> rename: the post-campaign window. Pose correctness on the synthetic
+> renders: M4's.
+
+Where each of the eight lives in this plan, at `11e6797`:
+
+- *the effect-size statement:* "What stays open: round 1's effect-size
+  statement", the last paragraph of the 2026-10-18 entry above, which
+  registers it "as required before round 1 can be scoped" and says
+  "nothing here proposes a value"; #153's derivation is
+  [`2026-10-19-104-stage1-effect-size-probe.md`](./2026-10-19-104-stage1-effect-size-probe.md);
+- *the bound on coverage loss:* "#104: a joint claim, or none"
+  (2026-10-15), its second bullet, "**a pre-stated bound on coverage
+  loss,** with its derivation, to be stated here before round 1's first
+  counted run of #104", and its last sentence there: "The number does not
+  exist today, because the signal does not";
+- *the gate for a non-static block:* the entry "No block gate is defined
+  for a non-static block", under the same heading, whose addendum of
+  2026-10-18 reads "the gate's own quantity and its basis remain
+  undesigned, and nothing here proposes either";
+- *the run order, the predictions and the stopping rules:* the opening
+  of "2026-10-13 — M4: the plan's first entries, the setup and the
+  pre-flight run": "The rest of what #107 asks of the plan is not written
+  yet: predictions with what would refuse each, the adoption rule, the
+  run order, the validity checks beyond those three, and the stopping
+  rules";
+- *the comparison's redefinition for an exclusion treatment:* the entry
+  "The treatment's effect on `jitterPx` is not yet decomposed", under
+  "#104: a joint claim, or none", which registers the reading "set the
+  whole-set difference beside the common-set difference", and whose
+  2026-10-18 addenda record that reading performed on M3's pairs for the
+  mechanism only;
+- *the coverage half's wording:* the claim's first bullet under "#104: a
+  joint claim, or none": "read **beside** the treatment arm's coverage,
+  its posed frames over the clip's frames on the same media times";
+- *the resolution of s_r:* "The null control's jitter clause
+  (2026-10-14)", item 3, "The reading of record, at the round's end":
+  "The same pool over the blocks admitted is the round's within-block
+  spread, s_r, which the round's jitter readings are set against; how the
+  predictions use it is theirs to register";
+- *the answer to #137's comment:* the comment is on GitHub, at
+  2026-10-16T07:59:05Z, by the maintainer; no entry of this plan
+  supersedes it at `11e6797`.
+
+This criterion decides when the machine rule of "The instrument, the
+subject and the inputs", item 5, expires ("Campaign-scoped: it expires
+when the campaign closes"), and it is what entry 4 below rests on.
+
+**3. One Euro's move out of M4, to M5.**
+[#106](https://github.com/webarkit/webarkit/issues/106), M4's step 4,
+moves from M4 (milestone 5) to M5 (milestone 6). The move was the
+maintainer's, made on GitHub before this entry. The reason, which is this
+entry's substance:
+
+One Euro's device claim is not deferred — it is unmeasurable by this
+instrument. `jitterPx` is read from `H`, and One Euro filters the
+rotation, so the registered metric does not respond to the treatment. A
+device claim for One Euro requires a metric that responds to a pose
+treatment, which is a design that does not exist. Rescheduling it without
+that metric meets the same wall.
+
+The characterisation this rests on is the third addendum of
+[`2026-10-15-m4-step3-ippe-c4-characterisation.md`](./2026-10-15-m4-step3-ippe-c4-characterisation.md),
+"the jitter dry run. Round 1's registered metric cannot see the
+treatment": "`jitterPx` and `spreadPx` are computed from the target's
+corners under each frame's `H` (`frameRecord`: `corners:
+reprojectCorners(result.H, …)`), and the treatment changes the pose and
+not `H`", and, of what a metric that could see the pose would be, "A
+steadiness measurement that could see the pose would have to read the
+pose: for example the reprojection of the target's corners through
+`K · [R | t]` rather than through `H`, which is a new metric, outside
+METRICS_VERSION 1, and so outside this campaign's instrument." How that
+addendum is read is governed by the correction of the same date that
+follows it, "a zero from a metric that cannot respond is no measurement,
+not no effect": "the registered metric does not respond to this treatment
+by construction; the split prediction, read as a jitter prediction, is
+void, not refuted; no statement about the treatment's effect follows from
+the zero", and "Wherever the third addendum says "no effect", read "no
+measurement"". That correction puts the structural claim on the frozen
+module's own lines, and this plan took it up on 2026-10-15 for #106 by
+name, under "What M4's device half measures, and which steps reach it":
+"#105 replaces the decomposition of `H`, #106 filters `R` and `t`. No
+exported value is a function of the pose, so the registered device metric
+cannot respond to either, by construction." The same section says "Any
+pose metric ends this campaign; that sequencing decision is the
+maintainer's, and it is not taken in a PR": no such metric is proposed
+here, and the ruling rests on there being none.
+
+M5 (milestone 6) has no description at `11e6797`'s date, so the reason
+for the move cannot rest on the destination's scope: it rests on this
+entry and on #106 itself. What the 2026-10-15 entry says of #106's
+synthetic half, "#106's lag measurement on synthetic sequences, when it
+is written", stands as registered.
+
+**4. An end point for the campaign window.** `AGENTS.md`'s bullet on
+`examples/targets/pinball.wnft` opens the window and, at `11e6797`, says
+this of its extent: "**When a campaign is open:** from its first device
+run until its last device exports are committed. M4's opened with its
+pre-flight run of 2026-10-13." No text in that file or in this plan said
+which exports are the last, so the window had an opening and no end point
+a check could read. The campaign milestone's criterion, entry 2 above,
+now names them: "Either way, the campaign's last exports are named in that
+entry, which is what closes the window `AGENTS.md` opens ("from its first
+device run until its last device exports are committed"). Under 2, round
+0's exports are the last." So the window closes with the dated entry that
+closes milestone 7, and under its condition 2 the last exports are round
+0's, committed on 2026-10-14. `AGENTS.md` is not edited by this entry;
+this plan's own reference to that bullet, under validity rule 3 of the
+2026-10-13 entry ("The parameters are the pinned string's, exactly"), at
+the target's bytes ("The rule this check reads is on the file's state:
+while a campaign is open, the target's SHA-256 stays the one recorded at
+its start (`AGENTS.md`)"), carries a dated addendum pointing here.
