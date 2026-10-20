@@ -4,7 +4,9 @@ Status: drafted 2026-10-15, after M4 step 3 (#105); revised 2026-10-16 with that
 findings (#123's seed test and frame-set decomposition, #137's gate and RNG findings, and
 #139's ratification of the box's entries); 2026-10-17 with the comparison rule (Stage 2)
 and the three rules on checks; and 2026-10-18 with four rules on the record's figures and
-their bases, from the maintainer's rulings after #137's Stage 1 probe (#149).
+their bases, from the maintainer's rulings after #137's Stage 1 probe (#149); and
+2026-10-20 with two rules on citation and on figures, from the maintainer's rulings of
+that day.
 Maintained, not written once: a finding that settles after the draft is folded in, dated,
 rather than left for an amendment.
 
@@ -384,6 +386,29 @@ rulings of that day, after #137's Stage 1 probe (#149):
   introduced while the first was being fixed; the day's third review then made the review
   count false, the PR body's list gave way to a pointer at the commits view, and `79138f1`
   removed both from the document.
+
+Two rules on citation and on figures, added 2026-10-20 from the maintainer's rulings of
+that day:
+
+- **A brief that cites a record entry quotes it, at the ref it declares.** A paraphrase of
+  an entry is not a citation of it: it carries the writer's reading, and a session that
+  acts on the paraphrase acts on that reading rather than on the record. The rule above
+  says a brief declares the ref and the SHA; this one says what it does with them.
+  Instances, both of 2026-10-19: a brief described item 8 of #104's Stage 1 probe as
+  registering a calibration of the signal's threshold, where it registers one of the
+  outcome comparison, and as a desktop calibration, where it is round 0's device static
+  one with desktop hand-held residuals set against it; and a brief stated that #24's
+  fourteen-day period was still running, three days after it had expired, reasoning from
+  the rule instead of reading the notice.
+- **A figure is stated with its margin.** A figure that clears a threshold by less than
+  its own last significant digit is reported as a tie, not as a clearance; and a figure
+  whose robustness the document has itself measured is stated against both values.
+  Instance: #153's `sync-wall-1`, whose smallest change of 2.25 px stands one
+  least-significant digit above the floor's 2.24 px range, and whose two quantities differ
+  in kind — the floor being the spread across four replicates and the change one run's
+  shift, so that a shift equal to the spread is the indistinguishable case. Applied in the
+  same document: its ratios and px are given to four decimals, and the replicate floor is
+  stated at 1.46 and at its jackknifed 1.76 and 3.08 px.
 
 The addenda written in a step's last hours get the least scrutiny and carry the most of
 its conclusions. They are read by someone who did not produce them.

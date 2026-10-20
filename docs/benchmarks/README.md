@@ -5523,6 +5523,39 @@ not at all:
       `worker-table-1`, +43.60 px whole-set against +0.12 px common-set
       (against `worker-table-2`, +43.54 and +0.27 px). The probe's
       question 1 holds all 20 rows.*
+    - *Addendum, 2026-10-20, the maintainer's ruling of that day, his words
+      verbatim, this entry's text and its addenda of 2026-10-18 standing.
+      #153 is
+      [`2026-10-19-104-stage1-effect-size-probe.md`](./2026-10-19-104-stage1-effect-size-probe.md),
+      merged in [#153](https://github.com/webarkit/webarkit/pull/153); every
+      passage this rests on was read at `34c3ea0`, the head of `dev` on
+      2026-10-20.*
+
+      ***The decomposition applies to an exclusion treatment, and there it
+      is the only readable form (2026-10-20).** The entry above registers
+      the whole-set difference read beside the common-set difference, with
+      the reading that movement surviving on the common set is steadiness
+      and movement that vanishes was selection. Its addenda of 2026-10-18
+      record that reading performed on M3's pairs, for the mechanism only.*
+
+      *This adds what #153 established. When a treatment's whole effect is
+      to remove frames from its own arm, a removed frame's media time is not
+      in the two arms' intersection, so the common-set difference is zero by
+      construction (#153, step 4, second part). For such a treatment the
+      pair is therefore not an enrichment of a readable comparison: it is
+      the only form in which the treatment is readable at all, and the
+      whole-set half carries all of it.*
+
+      *The common-media-times rule is not changed. "That each comparison is
+      read on common media times is not open" stands as ruled on 2026-10-14.
+      The pair is additive: the common-set half remains the comparison of
+      record, and what is added beside it, for a treatment of this kind, is
+      the whole-set half and the statement of which half carries the
+      effect.*
+
+      *This does not design round 1's comparison. Which arms are paired, the
+      basis each half is read on, and what refuses the pair remain the
+      campaign milestone's registrations.*
   - *No block gate is defined for a non-static block. The clause's gate
     reads static blocks only, for the reason above, and round 1 runs
     hand-held blocks. A gate must be defined and registered before round
@@ -5697,6 +5730,60 @@ nothing here proposes a value.
   entry 2, below, names this statement first among the eight
   registrations round 1 waits on, and says whose it is: "the statement
   is the maintainer's". It is unwritten on that day.*
+
+Beside the entry above, from the maintainer's ruling of 2026-10-20, his
+words verbatim and the entry's text standing. #153's derivation is
+[`2026-10-19-104-stage1-effect-size-probe.md`](./2026-10-19-104-stage1-effect-size-probe.md),
+merged in [#153](https://github.com/webarkit/webarkit/pull/153); every
+passage this rests on was read at `34c3ea0`, the head of `dev` on
+2026-10-20.
+
+**Round 1's effect-size statement (ruled 2026-10-20).** The entry "What
+stays open: round 1's effect-size statement" registers this as required
+before round 1 can be scoped, and says that nothing there proposes a value.
+This supplies it, from #153's derivation and on the basis that derivation
+states.
+
+**The basis.** The figure is read on the wall clip's M3 sync replicate
+group, on the group's common media times, kind E on DETECT frames, above the
+floor on τ of 0.031 — below which the record's own measurement of this
+signal on a correct fit, 0.0084 and 0.031, says the criterion refuses right
+fits. It is read against both values of the replicate floor: the registered
+1.46 ratio with its 2.24 px range, and the 1.76 and 3.08 px that a single
+media-key deletion gives. Where the record has measured its own floor's
+fragility, that fragility is part of the basis a ruling names.
+
+**The statement.** The refusal's predicted change in `jitterPx` is of the
+same order as the measurement's own instability. Above the floor on τ, two
+of the four replicates move by ratios of 1.55 to 1.59 and 1.71 to 1.74, and
+by 2.25 to 2.33 and 2.94 to 3.01 px; the other two move by at most 1.09 and
+by at most 0.40 px. Against the floor as registered, those two clear the
+ratio; `sync-wall-4` clears the px range with room and `sync-wall-1` ties it
+at one least-significant digit. Against the floor's jackknifed value, none
+of the four clears either. The probe's document says the same of its own
+comparison, in step 3, "A floor on τ, and the curve re-read above it
+(2026-10-19)", the paragraph "Against both values of the floor": "So the
+alternative the review offered, restricting the claim to the replicate that
+clears the jackknifed floor, leaves nothing above the floor on τ, and the
+comparison is stated at both values instead: yes against 1.46 and 2.24 px,
+no against 1.76 and 3.08 px."
+
+So: detectable against the floor as registered; not detectable against the
+floor as it behaves when one media key is removed. No single number is
+declared as "the effect size", because the derivation does not support one.
+What it supports is this interval and its two bases.
+
+**What this does not decide.** Whether round 1 runs. That is held by the
+other seven registrations of the campaign milestone's criterion, and in
+particular by the comparison's redefinition for an exclusion treatment: the
+registered comparison would read this effect as zero by construction
+whatever its size. This statement says what the record holds the effect to
+be; it is not permission to measure it.
+
+**What supersedes it.** The derivation is post-hoc, on four replicates of
+one clip, read as two readings of one arm rather than two real arms. When
+the redefinition is registered and round 1 runs, the statement is re-derived
+from that round, and this one is superseded rather than amended.
 
 ### M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)
 
