@@ -34,7 +34,9 @@ the rule of 2026-10-18; and the script hashes the bundle and the metrics
 module against the manifest before any figure. What changed, and the
 script's output before and after, are under "Revised after the maintainer's
 review"; the maintainer's two wording items before merge, the same day, are
-its items 9 and 10.
+its items 9 and 10. The maintainer's correction of 2026-10-20, on where the
+negative control belongs, is under "Where the negative control belongs,
+corrected 2026-10-20", at the end; the statements it corrects stand.
 
 ## Step 0: provenance
 
@@ -1266,3 +1268,23 @@ opened, edited, closed or commented on. The two files are this document and
 its script, on `docs/104-stage1-effect-size`; the bundle was rebuilt at
 `1f28fce` in `examples/dist/`, which git ignores, and was not rebuilt for
 the revision of 2026-10-19, whose script checks its hashes.
+
+## Where the negative control belongs, corrected 2026-10-20
+
+The maintainer's correction of 2026-10-20, the maintainer's words verbatim.
+Every passage it rests on was read at `1362a4b`, the head of `dev` on
+2026-10-20. It answers three places in this document: step 3's "The
+negative control, registered elsewhere", "What this probe does not
+decide", its item "The negative control at the tight end of τ", and item 1
+of "Revised after the maintainer's review (2026-10-19)". All three stand.
+
+This document places the control — a right fit known by construction
+surviving the criterion at the τ it is given — in "#106's synthetic half".
+That is wrong on two counts. #106 is One Euro filtering, and neither its
+body nor its comment of 2026-10-16 holds a conditioning-signal control.
+And #106 moved to M5 on 2026-10-19, outside M4 altogether.
+
+The control belongs to #104's own synthetic acceptance, whose body already
+requires "It refuses none of today's right fits" on #90's sweep, and which
+M4's closing criterion of 2026-10-19 names. The statements above stand;
+this says where the control is to be read.

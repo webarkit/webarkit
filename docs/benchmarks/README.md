@@ -5423,6 +5423,31 @@ not at all:
 - the claim: `jitterPx` on the treatment arm against its baseline arm, on
   their common media times, read **beside** the treatment arm's coverage,
   its posed frames over the clip's frames on the same media times;
+  - *Addendum, 2026-10-20, the maintainer's correction of that day, the
+    maintainer's words verbatim, this bullet's text standing. Every
+    passage it rests on was read at `1362a4b`, the head of `dev` on
+    2026-10-20.*
+
+    ***What "the same media times" means in the coverage half
+    (2026-10-20).** The claim's first bullet reads the treatment arm's
+    coverage as "its posed frames over the clip's frames on the same media
+    times". That phrase is not to be read as the two arms' intersection. On
+    the intersection every media time is one the treatment arm posed, so
+    coverage there is 1 by construction, and the refusal for a coverage
+    loss beyond the bound could never fire.*
+
+    *The denominator is the clip's frames over the span the comparison is
+    read on. That is what this entry's own reason requires: the
+    joint claim exists because "`jitterPx` can be improved arbitrarily by
+    refusing more frames, and a metric improvable by declining to measure
+    is not an improvement metric on its own", so coverage is there to show
+    the frames that stopped being posed — and those are precisely the
+    frames absent from the intersection. A coverage read on the
+    intersection cannot see what the clause was written to see.*
+
+    *The bullet's text stands; this says how it is read. Registered as one
+    of the campaign milestone's eight open items on 2026-10-19, and
+    answered here.*
 - **a pre-stated bound on coverage loss,** with its derivation, to be stated
   here before round 1's first counted run of #104. Its derivation is #104's
   own: the share of right fits the signal refuses on #90's sweep (the step's
@@ -5945,6 +5970,24 @@ Where each of the eight lives in this plan, at `11e6797`:
   "The same pool over the blocks admitted is the round's within-block
   spread, s_r, which the round's jitter readings are set against; how the
   predictions use it is theirs to register";
+  - *Addendum, 2026-10-20, the maintainer's correction of that day, the
+    maintainer's words verbatim, this bullet's text standing. Every
+    passage it rests on was read at `1362a4b`, the head of `dev` on
+    2026-10-20.*
+
+    ***`s_r` has two locations, not one (2026-10-20).** The bullet above
+    locates the resolution of `s_r` at "The null control's jitter clause
+    (2026-10-14)", item 3, "The reading of record, at the round's end",
+    which is where `s_r` is defined: "The same pool over the blocks
+    admitted is the round's within-block spread, s_r, which the round's
+    jitter readings are set against; how the predictions use it is theirs
+    to register."*
+
+    *Item 6, "When it is read, and revisited", is where the per-round
+    readings require it: "Read at each round's end: … the round's
+    within-block spread against round 0's: F = (s_r ÷ s₀)²". A round with
+    no static block leaves the first undefined and the second
+    unsatisfiable. Both locations are part of the open item.*
 - *the answer to #137's comment:* the comment is on GitHub, at
   2026-10-16T07:59:05Z, by the maintainer; no entry of this plan
   supersedes it at `11e6797`.
