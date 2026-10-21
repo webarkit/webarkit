@@ -17,6 +17,9 @@ To contribute to the project, please follow these steps:
    ```
 3. **Develop and Test**: Make your changes and ensure they pass all tests (see the [Testing](#testing) section).
 4. **Submit the Pull Request**: Open a PR against the `dev` branch of the main repository.
+5. **Name the issues it addresses, and close them after the merge**: The pull request's description names each issue it addresses (`#NNN`), which puts a reference on the issue. Whoever merges then closes each one with a comment naming the pull request or the commit that did the work. An issue closed for another reason (not planned, a duplicate, superseded) gets a comment saying what decided it.
+
+   Closing keywords (`Closes #NNN`, `Fixes #NNN`) are not used. GitHub honours them for pull requests into the default branch, `master`, and for commit messages that reach it; every pull request here targets `dev`, so in a pull request's description they close nothing and link nothing: [#99](https://github.com/webarkit/webarkit/pull/99)'s description says "Closes #72", and it linked nothing. Avoid them even in prose that denies them: GitHub matches the token and not the sentence, so "does not close #NNN" reads as `close #NNN`. In a pull request into `dev` that closes nothing, but in a commit message it fires when the commit reaches `master`, which is how [#11](https://github.com/webarkit/webarkit/issues/11) was closed — so write "#NNN stays open" rather than naming the keyword at all.
 
 > **Important**: All PRs must be made against the `dev` branch. The `master` branch is reserved exclusively for stable releases.
 
