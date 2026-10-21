@@ -115,6 +115,12 @@ const DEGENERATE: ConditioningReading = Object.freeze({ ok: false, reason: "dege
  * pose step reads it). Never throws: an input it cannot read is `ok: false`.
  */
 export function conditioning(H: Mat3, K: Mat3): ConditioningReading {
+    // Every entry of H, not only the six that b1 and b2 read: a homography
+    // with a non-finite entry anywhere is not a reading the signal can take,
+    // whichever column carries it (found in review, on #161).
+    for (let i = 0; i < 9; i++) {
+        if (!Number.isFinite(H[i])) return DEGENERATE;
+    }
     // K⁻¹ by the adjugate, for any 3 × 3 K: no assumption of zero skew.
     const det =
         K[0] * (K[4] * K[8] - K[5] * K[7]) -

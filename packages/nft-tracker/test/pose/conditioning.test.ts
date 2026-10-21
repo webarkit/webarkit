@@ -155,6 +155,17 @@ describe("conditioning(H, K): an input it cannot read", () => {
         ["a singular K", VIEW_1, singularK],
         ["a NaN in H", nan, RECORD_K],
         ["an infinity in H", inf, RECORD_K],
+        // The third column of H does not enter b1 or b2, so a reading that
+        // checked only the two columns it uses would pass these (found in
+        // review, on #161): the claim is that a non-finite entry anywhere in
+        // H is refused, and the code must match the claim.
+        ["a NaN in H's third column", Float64Array.from([1, 0, NaN, 0, 1, 0, 0, 0, 1]), RECORD_K],
+        [
+            "an infinity in H's third column",
+            Float64Array.from([1, 0, 0, 0, 1, Infinity, 0, 0, 1]),
+            RECORD_K,
+        ],
+        ["a NaN in H's last entry", Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, NaN]), RECORD_K],
         ["a NaN in K", VIEW_1, nan],
     ])("returns ok: false and does not throw on %s", (_name, H, K) => {
         let r;

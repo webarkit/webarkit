@@ -413,7 +413,12 @@ export interface NftTrackerOptions {
     readonly minPatchZncc?: number;
     /**
      * See {@link ConditioningOptions} and {@link DEFAULT_CONDITIONING}. In the
-     * refusing state both thresholds are required, finite and `≥ 0`.
+     * refusing state both thresholds are required, numbers `≥ 0`, `+Infinity`
+     * leaving that quantity unbounded: the shape the derivation of record found
+     * on the sweep's second view, where "τ_s must stay below 0.04174 there
+     * while τ_o may rise without limit"
+     * (`docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.md`, "Two
+     * separate thresholds", the bullet "Per view, both separate").
      */
     readonly conditioning?: ConditioningOptions;
     /**
