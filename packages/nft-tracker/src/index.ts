@@ -96,6 +96,14 @@ export {
 export type { PoseSelection, PoseSelectionOutcome } from "./pose/select_pose.js";
 export { closedFormPose } from "./pose/closed_form.js";
 
+// The conditioning signal on the fit, before the pose step (M4's step 2,
+// #104): the two quantities, the refusing state's rule, and the tracker's
+// option for its three states, off by default.
+export { conditioning, conditioningRefuses } from "./pose/conditioning.js";
+export type { ConditioningReading, ConditioningThresholds } from "./pose/conditioning.js";
+export { DEFAULT_CONDITIONING } from "./tracker.js";
+export type { ConditioningMode, ConditioningOptions } from "./tracker.js";
+
 // The tracking state (M2). Every function is exported here up front, stub or
 // not, so the branches implementing them never need to touch this file.
 export { levelScale } from "./tracking/level_scale.js";

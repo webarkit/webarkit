@@ -305,7 +305,9 @@ union. Besides `H`, `pose`, `numMatches`, `numInliers`, `sceneKeypoints` and,
 when not `ok`, a `reason` (`"too-few-matches"` or `"no-consensus"` from a
 detection; `"no-detection"` when `externalDetection` is on and no detection
 was handed in; `"unconfirmed"` when one was handed in and the tracking step
-refused it — see **External detection** below), every result carries:
+refused it — see **External detection** below; `"conditioning"` when the
+conditioning signal, in its refusing state, refused a detection's homography
+— see **The conditioning signal** below), every result carries:
 
 | `state` | Meaning | `quality`, in `[0, 1]` |
 |---|---|---|
@@ -318,7 +320,8 @@ that succeeds locks the tracker on its homography. A frame with a lock predicts
 this frame's homography from the last two, aligns the target's patches where
 the prediction puts them, fits a homography to them and judges it. A step that
 fails drops the lock and says why in `trackLoss` (`"no-prediction"`,
-`"too-few-patches"`, `"fit-failed"`, `"too-many-outliers"` or `"poor-fit"`), and
+`"too-few-patches"`, `"fit-failed"`, `"too-many-outliers"`, `"poor-fit"` or, in
+the conditioning signal's refusing state only, `"conditioning"`), and
 the same frame is detected again; a detection that fails is `LOST`. Every
 result also carries `tracking`, the step's patch counts (culled, attempted,
 observed, lost, unconverged, rejected, failed) and its fit's outcome (inliers,
@@ -454,7 +457,41 @@ have made in the default mode.
 | `maxOutlierShare` | 0.45 | Share of correspondences the fit may weigh 0: #64's breakdown |
 | `maxFitRms` | 0.6 px | The fit's weighted RMS residual |
 | `minPatchZncc` | 0.6 | A converged patch's correlation with its window |
+| `conditioning` | `{ mode: "off" }` | The conditioning signal's state: `"off"`, `"report"`, or `"refuse"` with `maxDScale` and `maxDOrth`, both required, numbers ≥ 0, `Infinity` for no bound; a threshold in another state is refused (below) |
 | `clock` | none | `() => ms`, for `timings` |
+
+**The conditioning signal** ([#104](https://github.com/webarkit/webarkit/issues/104),
+M4's step 2). Two quantities read on a fit's homography under `K` before the
+pose step, with `b1` and `b2` the first two columns of `K⁻¹H`:
+`d_scale = ‖b1‖ / ‖b2‖ − 1` and `d_orth = b1·b2 / (‖b1‖ ‖b2‖)`, both 0 for a
+plane seen by a pinhole camera. The `conditioning` option has three states.
+**Off**, the default: nothing is computed, and the pose path is the one the
+measurement campaign's baseline reads, which is why the default is forced
+rather than preferred. **Reporting** (`{ mode: "report" }`): every result with
+a pose carries `conditioning: { ok: true, dScale, dOrth }`, the two numbers
+kept apart and never combined, as M4's milestone requires ("exposed
+separately with no combined quantity and no default threshold"); the
+derivation of record
+([`docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.md`](../../docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.md),
+"Two separate thresholds") says of #90's sweep that the two "differ in which
+gross fits they catch" and that which form is registered is not decided
+there; nothing is refused. **Refusing**
+(`{ mode: "refuse", maxDScale, maxDOrth }`): a fit whose `|d_scale|` or
+`|d_orth|` exceeds its threshold, or whose reading cannot be taken, gets no
+pose — a detection ends `"LOST"` with `reason: "conditioning"` and the
+reading, a tracking step drops its lock with `trackLoss: "conditioning"`, its
+reading in `trackLossConditioning`, and the frame is detected again. Both
+thresholds are the caller's and both are required, numbers `≥ 0`
+(`Infinity` leaves that quantity unbounded): **no default threshold exists
+and M4 registers none**, because the same derivation found no single value
+that separates right fits from gross wrong fits pooled over the sweep's two
+views; a refusing state without them is a `RangeError` at construction, not a
+tracker that passes everything, and so is a threshold given in another
+state. The
+signal's acceptance is `test/pose/conditioning_sweep.test.ts`: on #90's sweep
+no right fit of either target is refused and each of the eight gross wrong
+fits of M2's 64 patches is, read per view at the view's own floors, with
+every figure checked against the derivation's.
 
 **What it survives**, measured on synthetic frames of the camera path (the
 pinball target at 0.45 in 270 × 360; `test/tracking/track_frame.test.ts`,

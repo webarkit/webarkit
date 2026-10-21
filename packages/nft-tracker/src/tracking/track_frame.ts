@@ -189,7 +189,15 @@ export type TrackLoss =
     /** The fit gave weight 0 to more than `maxOutlierShare` of the correspondences. */
     | "too-many-outliers"
     /** The fit's weighted RMS residual is above `maxFitRms`: its correspondences disagree. */
-    | "poor-fit";
+    | "poor-fit"
+    /**
+     * The step's fit held every rule above, and the tracker's conditioning
+     * signal refused it under the caller's thresholds (#104; `NftTracker`'s
+     * `conditioning` option, in its refusing state only). Produced by the
+     * tracker, after the step and before the pose, never by `trackFrame`,
+     * which has no `K`.
+     */
+    | "conditioning";
 
 /**
  * A step's patch counts: `culled + attempted = patches.count`, and the five
