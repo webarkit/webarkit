@@ -485,8 +485,7 @@ them inside the right fits' range of E on that view, which starts at
 0.02636, and two just below it; they are refused only by the two-threshold
 form, through `d_scale`, by at most 0.0015. Nothing in the record says
 whether the signal must refuse a wrong fit that is not gross; the figures
-are reported
-and no rule is drawn from them.
+are reported and no rule is drawn from them.
 
 ## Beyond the brief: how much rests on K's focal length
 
