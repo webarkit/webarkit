@@ -380,7 +380,7 @@ the interval between the two, if the first is below the second.
 | both targets, both views | 0.03265 (M2's 64, seed 2, view 1, roll +3°, 23 inliers) | 0.01564 (seed 1, view 0, scale x1.1, 7.274 px) | **no** | none | −0.01701 | 0.479 |
 | both targets, view 0 only, against the three gross fits of view 0 | 0.003526 (M2's 64, seed 3, view 0, scale x1.08, 13 inliers) | 0.01564 (the same) | yes | [0.003526, 0.01564) | 0.01211 | 4.44 |
 | both targets, view 1 only, against the five gross fits of view 1 | 0.03265 (the same as the first row) | 0.04174 (seed 4, view 1, scale x1.12, 8.148 px) | yes | [0.03265, 0.04174) | 0.00909 | 1.28 |
-| the shipped target only, both views, against all eight | 0.03155 (shipped, seed 5, view 1, shift 4 px @ 247.5°, 20 inliers) | 0.01564 (the same) | **no** | none | −0.01591 | 0.496 |
+| the shipped target's right fits, both views, against M2's eight gross fits | 0.03155 (shipped, seed 5, view 1, shift 4 px @ 247.5°, 20 inliers) | 0.01564 (the same) | **no** | none | −0.01591 | 0.496 |
 | M2's 64 patches only, both views, against all eight | 0.03265 | 0.01564 | **no** | none | −0.01701 | 0.479 |
 
 - **Pooled over both views, no single τ separates.** The two gross fits of
@@ -398,10 +398,9 @@ the interval between the two, if the first is below the second.
   and on the wrong side by the two 10-inlier `scale x1.1` fits. On view 1
   the interval is [0.03265, 0.04174): a factor of 1.28, width 0.00909,
   lying 0.0017 to 0.011 above the view's own inflation of 0.031. Both
-  intervals are
-  of right fits against gross fits on the same view; a threshold applied
-  by the tracker does not know which view it is on, and what that means
-  for the two intervals is not decided here.
+  intervals are intervals of right fits read against gross fits on the
+  same view; a threshold applied by the tracker does not know which view
+  it is on, and what that means for the two intervals is not decided here.
 - **The shipped target alone bounds τ from below at 0.03155** (its right
   fits' largest E, on view 1); M2's 64 patches at 0.03265. The two bounds
   differ by 0.0011, so on this sweep the right side of the margin does not
@@ -420,7 +419,7 @@ region, and each gross fit is refused there iff it exceeds either floor.
 | both targets, both views | 0.009661 (M2's 64, seed 4, view 1, shift 3 px @ 112.5°) | 0.03265 (M2's 64, seed 2, view 1, roll +3°) | **6 of 8** | empty |
 | both targets, view 0 only, against view 0's three | 0.002624 (M2's 64, seed 4, view 0, roll -3°) | 0.003526 (M2's 64, seed 3, view 0, scale x1.08) | 3 of 3 | τ_s ≥ 0.002624 and τ_o ≥ 0.003526, each bounded above only by the other's catch (below) |
 | both targets, view 1 only, against view 1's five | 0.009661 (the same) | 0.03265 (the same) | 5 of 5 | τ_s in [0.009661, 0.04174) with τ_o at its floor; τ_o unbounded above with τ_s at its floor |
-| the shipped target only, both views, against all eight | 0.009270 (shipped, seed 4, view 1, roll +4°) | 0.03155 (shipped, seed 5, view 1, shift 4 px @ 247.5°) | 6 of 8 | empty |
+| the shipped target's right fits, both views, against M2's eight gross fits | 0.009270 (shipped, seed 4, view 1, roll +4°) | 0.03155 (shipped, seed 5, view 1, shift 4 px @ 247.5°) | 6 of 8 | empty |
 
 **Each gross fit against the pooled floor pair** (0.009661, 0.03265), as
 its excess over each threshold, positive meaning refused by that quantity:
@@ -444,7 +443,8 @@ its excess over each threshold, positive meaning refused by that quantity:
   both quantities they lie inside the other view's right fits. Of the six
   that are refused, each clears the pair by at least 0.02200 on the larger
   of its two excesses; the smallest positive excess on any single
-  quantity among them is 0.0163 (seed 3, view 0, on `d_scale`).
+  quantity among them is 0.01572 (seed 4, view 1, `scale x1.1`, on
+  `d_orth`).
 - **Per view, both separate.** On view 0, each of the three gross fits
   exceeds both floors, so each threshold alone catches all three and
   neither bounds the other from above: the smallest excess is 0.000633 on
@@ -468,19 +468,23 @@ against the pooled largest right E (0.03265); the full values are in the
 
 | view | fits | E | at the view's one-τ interval | at the view's floor pair |
 |---|---|---|---|---|
-| 0 | nine: five `roll -4°` (0.546 to 0.621 px, 11 to 13 inliers), three `roll +5°` (0.741 to 0.880 px, 8 inliers), one `scale x1.08` (0.522 px, 13 inliers) | 0.003647 to 0.006524 | all nine refused at every τ in [0.003526, 0.01564): the smallest, 0.003647, clears the interval's lower end by 0.000121, a factor of 1.03 | all nine refused |
-| 1 | seven: five `roll -4°` (0.571 to 0.644 px, 12 inliers), two `roll +5°` (1.347 and 1.491 px, 8 inliers) | 0.02603 to 0.03411 | the five `roll -4°` fits, E 0.02603 to 0.02695, pass at every τ in [0.03265, 0.04174); the two `roll +5°` fits, E 0.03349 and 0.03411, are refused at τ below 0.03349 and pass from there | all seven refused: the five `roll -4°` fits by `d_scale`, 0.009963 to 0.01114 against the floor 0.009661, excesses 0.000302 to 0.001479; the two `roll +5°` by `d_orth` |
+| 0 | nine: five `roll -4°` (0.546 to 0.621 px, 11 to 13 inliers), three `roll +5°` (0.741 to 0.880 px, 8 inliers), one `scale x1.08` (0.522 px, 13 inliers) | 0.003647 to 0.006524 | all nine refused only at the interval's floor, for τ in [0.003526, 0.003647), a width of 0.000121, 1.0% of the interval's 0.01211: the smallest of the nine, 0.003647, clears the interval's lower end by 0.000121, a factor of 1.03. From τ = 0.006524, their largest E, none of the nine is refused while all three gross fits still are, over [0.006524, 0.01564), width 0.00912, three quarters of the interval | all nine refused |
+| 1 | seven: five `roll -4°` (0.571 to 0.644 px, 12 inliers), two `roll +5°` (1.347 and 1.491 px, 8 inliers) | 0.02603 to 0.03411 | the five `roll -4°` fits, E 0.02603 to 0.02695, pass at every τ in [0.03265, 0.04174); the two `roll +5°` fits, E 0.03349 and 0.03411, are both refused at τ below 0.03349, the larger alone at τ from 0.03349 to below 0.03411, and both pass from 0.03411 | all seven refused: the five `roll -4°` fits by `d_scale`, 0.009963 to 0.01114 against the floor 0.009661, excesses 0.000302 to 0.001479; the two `roll +5°` by `d_orth` |
 
-Pooled against 0.03265: fourteen of the sixteen lie below it, among the
-right fits of view 1 in E; the two `roll +5°` fits of view 1 lie above it
-by 0.00084 and 0.00146.
+Pooled against 0.03265: fourteen of the sixteen lie below it, the nine of
+view 0 at 0.003647 to 0.006524 and five of view 1 at 0.02603 to 0.02695;
+the two `roll +5°` fits of view 1 lie above it by 0.00084 and 0.00146.
 
-So on view 0 any threshold that refuses the gross fits refuses the sixteen
-too, with the thinnest of all margins in this document between the
-largest right E and the smallest of the nine. On view 1 the five
-`roll -4°` fits, 0.57 to 0.64 px off on 12 inliers, lie inside the right
-fits' range of E and are refused only by the two-threshold form, through
-`d_scale`, by at most 0.0015. Nothing in the record says whether the
+So on view 0 a threshold that refuses the gross fits refuses the nine only
+when set in the lowest 1% of the interval, and over most of the interval
+it refuses none of them; where it does refuse them, it does so with the
+thinnest of all margins in this document, 0.000121 between the largest
+right E and the smallest of the nine. On view 1 the five `roll -4°` fits,
+0.57 to 0.64 px off on 12 inliers, lie at E 0.02603 to 0.02695, three of
+them inside the right fits' range of E on that view, which starts at
+0.02636, and two just below it; they are refused only by the two-threshold
+form, through `d_scale`, by at most 0.0015. Nothing in the record says
+whether the
 signal must refuse a wrong fit that is not gross; the figures are reported
 and no rule is drawn from them.
 
