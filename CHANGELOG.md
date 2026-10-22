@@ -14,6 +14,33 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+### Added
+
+- **`NftTracker` can read how far a fit is from one a plane can produce, and is off by default**
+  ([#161](https://github.com/webarkit/webarkit/pull/161), M4's step 2,
+  [#104](https://github.com/webarkit/webarkit/issues/104)). Two quantities are read on a fit's
+  homography before the pose step, `d_scale` and `d_orth`; both are 0 for a plane seen by a
+  pinhole camera. The new `conditioning` option has three states.
+  - **Off, the default.** Nothing is computed and the pose path is unchanged. Every result now
+    carries two fields, `conditioning` and `trackLossConditioning`, both `null` in this state.
+  - **Reporting, `{ mode: "report" }`.** Every result with a pose carries `conditioning`, the two
+    numbers kept apart, never combined into one. Nothing is refused.
+  - **Refusing, `{ mode: "refuse", maxDScale, maxDOrth }`.** A fit past either threshold, or one
+    whose reading cannot be taken, gets no pose. A detection ends `"LOST"` with the new reason
+    `"conditioning"`. A tracking step drops its lock with the new `trackLoss: "conditioning"`,
+    its reading in `trackLossConditioning`, and the frame is detected again.
+
+  **No threshold is registered, and none is built in.** The derivation on #90's sweep
+  (`docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.md`) found no single value that
+  separates right fits from gross wrong ones over both of the sweep's views. So both thresholds
+  are the caller's: numbers ≥ 0, `Infinity` for no bound. The constructor throws a `RangeError`
+  on a refusing state without them, on a threshold given in another state, and on an unknown
+  mode. What is claimed: on that synthetic sweep, read per view at each view's own floors, no
+  right fit of either target is refused and each of the eight gross wrong fits of M2's 64
+  patches is (`test/pose/conditioning_sweep.test.ts`). No device claim and
+  no campaign claim. The reading and the refusing rule are also exported, as
+  `conditioning` and `conditioningRefuses`, with `DEFAULT_CONDITIONING`.
+
 ### Changed
 
 - **`NftTracker` takes its pose from IPPE, above the contract** (M4's step 3,
