@@ -32,7 +32,7 @@ release pull request's body and the GitHub Release's notes.
 
   **No threshold is registered, and none is built in.** The derivation on #90's sweep
   (`docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.md`) found no single value that
-  separates right fits from gross wrong ones over both of the sweep's views. So both thresholds
+  separates right fits from gross wrong ones pooled across the sweep's two views. So both thresholds
   are the caller's: numbers ≥ 0, `Infinity` for no bound. The constructor throws a `RangeError`
   on a refusing state without them, on a threshold given in another state, and on an unknown
   mode. What is claimed: on that synthetic sweep, read per view at each view's own floors, no
