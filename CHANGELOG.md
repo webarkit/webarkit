@@ -14,6 +14,12 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-22
+
+M4 of [ADR-0001](docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md), pose correctness and
+homography steadiness: the code and its synthetic acceptance, with the device campaign on its own
+milestone. `.wnft` format: still **0.3**, in both codecs, so this tag freezes no new corpus.
+
 ### Added
 
 - **`NftTracker` can read how far a fit is from one a plane can produce, and is off by default**
@@ -343,7 +349,8 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 - The original single-page jsartoolkitNFT demo the repository started as. It is kept at the tag
   `archive/original-nft-demo`.
 
-[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.4.0...dev
+[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.5.0...dev
+[0.5.0]: https://github.com/webarkit/webarkit/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/webarkit/webarkit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/webarkit/webarkit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/webarkit/webarkit/compare/v0.1.0...v0.2.0
