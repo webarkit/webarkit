@@ -90,38 +90,6 @@ milestone. `.wnft` format: still **0.3**, in both codecs, so this tag freezes no
     the repository with `npx http-server -c-1`. The demos still load each package's own `dist/`.
   - **Replay.** `scripts/replay-clips.mjs` takes `--packages <dist|bundle>`.
 
-### What M4 did not deliver
-
-- **No threshold for the conditioning signal, and so no refusal the campaign can read.**
-  [#104](https://github.com/webarkit/webarkit/issues/104)'s body requires the threshold recorded,
-  with its derivation, before the campaign reads it. The derivation
-  (`docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.md`) found no single value: pooled
-  across [#90](https://github.com/webarkit/webarkit/pull/90)'s sweep's two views, nothing separates
-  right fits from gross wrong ones, in either form, at any of three focal lengths. Per view both
-  forms separate, by 4.44 on the first view and 1.28 on the second, and on the second that
-  separation is gone by fov 90°. The cause is measured and reproduced as a fatal check: the sweep's
-  second view is not a plane homography for the camera, so its *correct* fits read 0.0084 and 0.031
-  and sit above the first view's gross wrong ones. What is registered instead is the two per-view
-  intervals and that reason. The signal therefore ships off by default, and its refusing state takes
-  both thresholds from the caller or throws.
-- **The three candidates were not weighed against each other.** #104's body asks that its signal be
-  weighed against the two directions of [#92](https://github.com/webarkit/webarkit/issues/92) — a
-  limit scaled by the inlier count, and a bound on the scale change one step may imply — on #90's
-  sweep, by evidence. One of the three is weighed. #92 is on M5 and carries the comparison; the
-  instrument it needs is the derivation's script, which reproduces the frozen sweep under a fatal
-  step 0 and reads a criterion over every fit it produces.
-- **Nothing here was read on a device.** Every claim in this entry is synthetic: #90's sweep and the
-  acceptance files. The campaign that reads the tracker on the reference device is the "M4 campaign"
-  milestone, whose eight registered preconditions for round 1 are all open, so this milestone ships
-  with its measurement arm unstarted — which is what splitting it was for.
-- **The contract question of [#43](https://github.com/webarkit/webarkit/issues/43) is unanswered**,
-  and cannot be answered while there is one implementation: whether `cv-backend-spec` must say which
-  root `poseFromHomography` returns, and whether a second implementation must match the first. #43's
-  other question, whether pose disambiguation stays above the contract, is answered in code and by
-  measurement. It was examined for gate 4 and left open with no milestone, named on
-  [#9](https://github.com/webarkit/webarkit/issues/9) so that neither lands without the other being
-  looked at.
-
 ### Fixed
 
 - **The bench's guarded paths, before M4's measurements open**
@@ -159,6 +127,38 @@ milestone. `.wnft` format: still **0.3**, in both codecs, so this tag freezes no
   - **`packages/nft-tracker`'s README and `src/tracker.ts`** say what M3's tuning pass did to
     each default, where they had called the defaults provisional until a pass that has since
     run. The README also documents the four detection options and their domains.
+
+### What M4 did not deliver
+
+- **No threshold for the conditioning signal, and so no refusal the campaign can read.**
+  [#104](https://github.com/webarkit/webarkit/issues/104)'s body requires the threshold recorded,
+  with its derivation, before the campaign reads it. The derivation
+  (`docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.md`) found no single value: pooled
+  across [#90](https://github.com/webarkit/webarkit/pull/90)'s sweep's two views, nothing separates
+  right fits from gross wrong ones, in either form, at any of three focal lengths. Per view both
+  forms separate, by 4.44 on the first view and 1.28 on the second, and on the second that
+  separation is gone by fov 90°. The cause is measured and reproduced as a fatal check: the sweep's
+  second view is not a plane homography for the camera, so its *correct* fits read 0.0084 and 0.031
+  and sit above the first view's gross wrong ones. What is registered instead is the two per-view
+  intervals and that reason. The signal therefore ships off by default, and its refusing state takes
+  both thresholds from the caller or throws.
+- **The three candidates were not weighed against each other.** #104's body asks that its signal be
+  weighed against the two directions of [#92](https://github.com/webarkit/webarkit/issues/92) — a
+  limit scaled by the inlier count, and a bound on the scale change one step may imply — on #90's
+  sweep, by evidence. One of the three is weighed. #92 is on M5 and carries the comparison; the
+  instrument it needs is the derivation's script, which reproduces the frozen sweep under a fatal
+  step 0 and reads a criterion over every fit it produces.
+- **Nothing here was read on a device.** Every claim in this entry is synthetic: #90's sweep and the
+  acceptance files. The campaign that reads the tracker on the reference device is the "M4 campaign"
+  milestone, whose eight registered preconditions for round 1 are all open, so this milestone ships
+  with its measurement arm unstarted — which is what splitting it was for.
+- **The contract question of [#43](https://github.com/webarkit/webarkit/issues/43) is unanswered**,
+  and cannot be answered while there is one implementation: whether `cv-backend-spec` must say which
+  root `poseFromHomography` returns, and whether a second implementation must match the first. #43's
+  other question, whether pose disambiguation stays above the contract, is answered in code and by
+  measurement. It was examined for gate 4 and left open with no milestone, named on
+  [#9](https://github.com/webarkit/webarkit/issues/9) so that neither lands without the other being
+  looked at.
 
 ## [0.4.0] - 2026-10-01
 
