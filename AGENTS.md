@@ -10,9 +10,12 @@
 
 ## Environment & commands
 
-- **Node:** version pinned in [`.nvmrc`](./.nvmrc) (currently v24.18.0); `package.json` sets a floor of `>=18`. **Package manager:** npm 9+ (for [workspaces](https://docs.npmjs.com/cli/v9/using-npm/workspaces)).
+- **Node:** version pinned in [`.nvmrc`](./.nvmrc) (currently v24.21.0); `package.json` sets a floor of `>=18`. **Package manager:** npm 9+ (for [workspaces](https://docs.npmjs.com/cli/v9/using-npm/workspaces)).
+  - **Aligned to the record on 2026-10-14.** The pin had read v24.18.0 since 2026-09-03, when CI was added. M4's round 0 was built outside it, on v24.21.0, as its exports' manifests record (`provenance.manifest.toolchain`). Its eight exports are evidence against that build, so the pin moved to the build, not the build to the pin. Why the toolchain must then hold for the rest of the campaign: [M4's plan](./docs/benchmarks/README.md), "The instrument, the subject and the inputs", item 5.
+  - **What CI ran until then: v24.18.0.** CI reads the pin (`actions/setup-node`, `node-version-file`). On `37dc6d4` itself, CI run 38400892197 resolved `.nvmrc` as 24.18.0 at 12:55Z on 2026-10-13, and round 0's build of the same commit ran v24.21.0 at 13:37Z.
+  - **The difference had been seen and accepted before.** Four agent plans in `docs/superpowers/plans/`, dated 2026-09-11 to 2026-09-27, record a local node other than the pin: v24.20.0, then v24.21.0. One of them says CI still used v24.18.0. Each accepted the difference because the major matched and `package.json`'s floor is `>=18`. What changed on 2026-10-14 is that a campaign's toolchain became part of what it measures.
 - Install: `npm install` — resolves and symlinks every workspace package, no publish step needed to develop against them together.
-- Build: `npm run build` — builds `@webarkit/cv-backend-spec`, **then** `@webarkit/cv-backend-jsfeatnext`, **then** `@webarkit/nft-tracker`, **then** bundles `examples/js/detection-worker.mjs` into `examples/dist/` with esbuild — last, because it reads the packages' `dist/`, and because a module worker does not read the page's import map — in that order. That order is load-bearing, not incidental — but the chain is not simply "each on the previous", and the difference is the architecture showing through. `cv-backend-jsfeatnext`'s build type-checks against the spec's freshly-built `dist/`. `nft-tracker`'s build needs the **spec's** `dist/` and *not* the backend's: its `src/` may not import a backend at all (ADR-0001, point 2), so it compiles fine with `cv-backend-jsfeatnext/dist` deleted — the injected-backend rule made visible in the build graph. What does need the backend built is `nft-tracker`'s **typecheck**, which widens the program to `test/`, where a real backend is injected; that step runs after `build`. npm's own default (alphabetical) workspace build order broke this once already (see commit `109caaf`) — don't "simplify" this into a bare `npm run build --workspaces`.
+- Build: `npm run build` — runs [`scripts/build-provenance.mjs`](./scripts/build-provenance.mjs), which builds `@webarkit/cv-backend-spec`, **then** `@webarkit/cv-backend-jsfeatnext`, **then** `@webarkit/nft-tracker`, **then** bundles the three into `examples/dist/webarkit-packages.mjs` with esbuild — the bench page's shared bundle, which both its detection arms load, because a module worker does not read the page's import map — and **then** writes `examples/dist/provenance.json`, the manifest the page checks at Start ([#110](https://github.com/webarkit/webarkit/issues/110)) — in that order. The script runs the packages' build itself so that no bundle is made from a `dist/` it did not just build. That order is load-bearing, not incidental — but the chain is not simply "each on the previous", and the difference is the architecture showing through. `cv-backend-jsfeatnext`'s build type-checks against the spec's freshly-built `dist/`. `nft-tracker`'s build needs the **spec's** `dist/` and *not* the backend's: its `src/` may not import a backend at all (ADR-0001, point 2), so it compiles fine with `cv-backend-jsfeatnext/dist` deleted — the injected-backend rule made visible in the build graph. What does need the backend built is `nft-tracker`'s **typecheck**, which widens the program to `test/`, where a real backend is injected; that step runs after `build`. npm's own default (alphabetical) workspace build order broke this once already (see commit `109caaf`) — don't "simplify" this into a bare `npm run build --workspaces`.
 - Typecheck: `npm run typecheck` — `tsc` across `src/` **and** `test/` in every workspace (separate from build, which only checks `src/`).
 - **Test:** `npm test` — Vitest across every workspace, then over `examples/test/` (`npm run test:examples`): the bench page's logic lives in `examples/js/bench-metrics.mjs`, and `examples/` is not a workspace, so the root declares `vitest` for it.
 - These four are exactly what the `build-and-test` job in [`.github/workflows/CI.yml`](./.github/workflows/CI.yml) runs on every push and pull request. Do not claim a change is verified without actually running them.
@@ -43,7 +46,25 @@
   therefore a change to that test's expectations, not a refresh: update the
   asserted counts in the same commit, or don't recompile. It is deliberately
   **not** in `fixtures/nft-target/`, which may only hold what the corpus
-  generator produces.
+  generator produces. **While a measurement campaign is open, the target's
+  SHA-256 stays the one recorded at the campaign's start.** Every run of a
+  campaign must read the same target. Its exports record the hash as
+  `target.sha256`, and its plan checks it (M4's: validity rule 3 in
+  `docs/benchmarks/README.md`).
+  - **"Do not recompile it" is the practical advice, not the rule.** A
+    recompile to byte-identical output harms nothing; swapping the file
+    from a backup is no recompile and harms everything. So the rule is on
+    the file's state, which a check can read, not on an action, which can
+    only be promised.
+  - **When a campaign is open:** from its first device run until its last
+    device exports are committed. M4's opened with its pre-flight run of
+    2026-10-13.
+  - **Its history:** a rule on this file has held since 2026-09-30, when
+    the maintainer set it for M3's campaign as "not recompiled". It was
+    written here on 2026-10-14, because M4's plan holds that no document
+    outside this repository and its issues is a source for any session, so
+    an unwritten rule does not bind. It was restated on the file's state
+    the same day.
 - **`fixtures/nft-target/` is generated, shared, and read-only for Rust.** The TypeScript generator produces it; `crates/wnft-format` consumes it and MUST NEVER regenerate it. A second implementation that rebuilt the corpus from its own writer would be checking itself against itself, and §8.2 item 4 would prove nothing. See [`fixtures/nft-target/README.md`](./fixtures/nft-target/README.md).
 
 ## Test assets
@@ -51,7 +72,7 @@
 - **Deterministic fixtures that a committed script regenerates** — the `.wnft` corpus in `fixtures/nft-target/`, the PGMs in `packages/nft-tracker/test/fixtures/`, `examples/targets/*.wnft` — stay in this repository, next to their generator. A format change must touch the spec, the fixtures and both codecs in one PR; splitting them out into another repository makes it possible to forget one of the three.
 - **Opaque binary media** (video, photos) is added only when it serves a reproducible measurement, is re-encoded as small as the measurement allows, and is replaced as rarely as possible — every replacement leaves the old bytes in this repository's git history forever.
 - When the media total passes roughly 50 MB, or a clip needs replacing more than once or twice, move it to a versioned npm package (`@webarkit/test-assets`, a devDependency) instead of committing it directly. Not a submodule, and not a branch-name-pinned sibling repository the way OpenCV vendors `opencv_extra`: both let the two trees drift apart and fail CI for reasons unrelated to the change at hand. Current total: about 4.1 MB, across the three clips in `examples/videos/`.
-- **Benchmark exports** (`docs/benchmarks/`) keep the per-frame JSON of every device run a written conclusion rests on, adopted or not; desktop replays are not committed, since they reproduce from the repository. The directory's own README carries the summaries, and decides how exports are stored and when that changes (its tuning plan, "A device session"): judged by the size stored in git history, not on disk, with new exports switching to gzip past about 20 MB stored. Deleting old exports is not the remedy: it removes the evidence a conclusion cites and reclaims nothing from history.
+- **Benchmark exports** (`docs/benchmarks/`) keep the per-frame JSON of every device run a written conclusion rests on, adopted or not; desktop replays are not committed, since they reproduce from the repository. The directory's own README carries the summaries, and decides how exports are stored and when that changes (its tuning plan, "A device session"): judged by the size stored in git history, not on disk, with new exports switching to gzip past about 20 MB stored. Committed exports are kept, never deleted and never re-edited, because they are evidence: deleting one removes what a conclusion cites and reclaims nothing from history, and editing one changes what was measured.
 
 ## Conventions
 
@@ -60,6 +81,7 @@
 - TypeScript, and Rust in `crates/`. License: **LGPL-3.0-or-later**. Existing `src/` files in both packages and in `crates/wnft-format` (its `src/`, `tests/` and fuzz target included) carry an LGPL header — match that template for new files in the same crate or package. This repo does not yet have jsfeatNext's automated header-check script (`scripts/check-license-headers.mjs`); for now this is enforced by review, not CI.
 - Preserve the public `CvBackend` contract surface (`detect`, `describe`, `match`, `estimateHomography`, `poseFromHomography`, optional `filterMatches`) unless a change to `cv-backend-spec` is explicitly intended and reflected in both packages together. Changing `DescriptorKind` or `DescriptorNorm` in `packages/cv-backend-spec/src/cv_backend.ts` requires resyncing `crates/wnft-format/src/known.rs`, which hand-transcribes both unions: a drift shows up only as a descriptor set that one codec warns about and drops while the other accepts it, on a file no fixture contains, so the shared corpus cannot catch it. `npm run check:contract` ([`scripts/check-contract-sync.mjs`](./scripts/check-contract-sync.mjs)) is what catches it instead; run it after touching either union, and don't take a green `npm test` and `cargo test` as evidence on this point, because neither can see it.
 - Keep capability negotiation between the contract and its implementations honest: `capabilities` must never claim something the API can't actually reach (see `cv-backend-jsfeatnext/README.md`'s own notes on `detectors`/`matchFilters` for why this matters).
+- **The root `README.md` is not changed without the maintainer's say.** It is what a reader uses to decide whether to adopt this contract, so its wording is the maintainer's; an explanation that belongs to one subject goes in the README that owns that subject.
 - Never commit `.idea/` (already in `.gitignore`).
 
 ## Design records
@@ -73,6 +95,8 @@
 - **Open PRs against `dev` — never `master`.** `dev` is the integration branch; `master` is for stable releases only. This matches the convention already in place in [webarkit/jsfeatNext](https://github.com/webarkit/jsfeatNext) and [webarkit/purecv](https://github.com/webarkit/purecv) (both of which call their release branch `main` — this repo's is named `master`, so don't copy the branch name verbatim from those, only the workflow).
 - **Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):** `type(scope): summary` — e.g. `feat(cv-backend-jsfeatnext): …`, `fix(cv-backend-spec): …`, `docs: …`, `chore: …`, `test: …`, `refactor: …`, `ci: …`. Keep the subject imperative and concise. Common scopes so far: `cv-backend-spec`, `cv-backend-jsfeatnext`, `examples`, `ci` — omit the scope for changes spanning the whole repo (root README, this file, CI config).
 - One branch per task/issue, branched from an up-to-date `dev`.
+- **Issues are closed by hand, with a comment naming the PR or commit that did the work**, or, for one not planned, duplicated or superseded, what decided it; the PR names the issues it addresses. `Closes #NNN` in a PR description does nothing here, since every PR targets `dev` ([`CONTRIBUTING.md`](./CONTRIBUTING.md), "Pull Request Workflow").
+- **No closing keyword in a commit message, not even to deny one**: GitHub matches the token and not the sentence, so "does not close #NNN" contains `close #NNN`, and a commit message fires when the commit reaches `master` — which is how [#11](https://github.com/webarkit/webarkit/issues/11) was closed. Write "#NNN stays open".
 
 ## Before you make changes
 

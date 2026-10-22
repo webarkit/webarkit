@@ -47,7 +47,7 @@ None of the three is published to npm yet — see [Getting started](#-getting-st
 
 ### Prerequisites
 
-- Node.js — version pinned in [`.nvmrc`](./.nvmrc) (currently v24.18.0); `package.json` sets a floor of `>=18`.
+- Node.js — version pinned in [`.nvmrc`](./.nvmrc) (currently v24.21.0); `package.json` sets a floor of `>=18`.
 - npm 9+ (for [workspaces](https://docs.npmjs.com/cli/v9/using-npm/workspaces) support).
 
 ### Install
@@ -91,7 +91,7 @@ Two runnable demos exercise the full `CvBackend` pipeline — `detect → descri
 
 ```bash
 npm run build
-npx http-server -p 8080 -s
+npx http-server -p 8080 -s -c-1
 ```
 
 Then open `http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html` (two still photos, easiest to debug) or `.../pinball-webcam-jsfeatnext-backend.html` (live camera, stateless per tick).

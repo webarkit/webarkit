@@ -26,7 +26,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { accountingError } from "../js/bench-metrics.mjs";
+import { ACCOUNTING_COUNTS, accountingError } from "../js/bench-metrics.mjs";
 import { createDetectionPolicy } from "../js/detection-policy.mjs";
 
 // The tracker's results, reduced to the two fields the policy reads.
@@ -34,6 +34,13 @@ const asks = { needsDetection: true, detectionUse: "none" };
 const consumed = (needsDetection) => ({ needsDetection, detectionUse: "consumed" });
 
 describe("createDetectionPolicy", () => {
+    // #95, Task 3: the count names were written twice, here and in bench-metrics, where
+    // accountingError checks them. One list now, which the policy keeps its counts under.
+    it("keeps exactly the counts accountingError checks, under the same names, in the same order", () => {
+        expect(Array.isArray(ACCOUNTING_COUNTS)).toBe(true);
+        expect(Object.keys(createDetectionPolicy().accounting())).toEqual([...ACCOUNTING_COUNTS]);
+    });
+
     it("posts on needsDetection when idle, and hands the result to the next process call exactly once", () => {
         const policy = createDetectionPolicy();
         const post = vi.fn();

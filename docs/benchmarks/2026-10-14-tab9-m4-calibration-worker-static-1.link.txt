@@ -1,0 +1,31 @@
+# link monitor, M4 setup item 4 — device Tab9WEEA0001504, adb.log C:\Users\perda\AppData\Local\Temp\adb.log
+
+## begin 2026-10-14T11:57:15.609Z
+$ adb --version
+Android Debug Bridge version 1.0.41
+Version 35.0.1-11580240
+Installed as C:\Users\perda\android-sdk-tools\platform-tools\adb.exe
+Running on Windows 10.0.26300
+$ adb -s Tab9WEEA0001504 devices -l
+List of devices attached
+Tab9WEEA0001504        device product:Tab_9_WiFi_EEA model:Tab_9_WiFi device:Tab_9_WiFi transport_id:28
+$ adb -s Tab9WEEA0001504 reverse --list
+UsbFfs tcp:8093 tcp:8093
+adb.log length: 166008 bytes
+
+## end 2026-10-14T11:59:44.405Z
+$ adb -s Tab9WEEA0001504 devices -l
+List of devices attached
+Tab9WEEA0001504        device product:Tab_9_WiFi_EEA model:Tab_9_WiFi device:Tab_9_WiFi transport_id:28
+$ adb -s Tab9WEEA0001504 reverse --list
+UsbFfs tcp:8093 tcp:8093
+adb.log length: 166008 bytes
+
+## adb.log lines written between begin and end (0 bytes)
+
+
+## verdict
+connection terminated lines naming Tab9WEEA0001504: 0
+transport_id: begin 28 (device), end 28 (device) -> same
+mapping tcp:8093 tcp:8093: begin present, end present
+no drop: true

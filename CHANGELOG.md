@@ -14,6 +14,152 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-22
+
+M4 of [ADR-0001](docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md), pose correctness and
+homography steadiness: the code and its synthetic acceptance, with the device campaign on its own
+milestone. `.wnft` format: still **0.3**, in both codecs, so this tag freezes no new corpus.
+
+### Added
+
+- **`NftTracker` can read how far a fit is from one a plane can produce, and is off by default**
+  ([#161](https://github.com/webarkit/webarkit/pull/161), M4's step 2,
+  [#104](https://github.com/webarkit/webarkit/issues/104)). Two quantities are read on a fit's
+  homography before the pose step, `d_scale` and `d_orth`; both are 0 for a plane seen by a
+  pinhole camera. The new `conditioning` option has three states.
+  - **Off, the default.** Nothing is computed and the pose path is unchanged. Every result now
+    carries two fields, `conditioning` and `trackLossConditioning`, both `null` in this state.
+  - **Reporting, `{ mode: "report" }`.** Every result with a pose carries `conditioning`, the two
+    numbers kept apart, never combined into one. Nothing is refused.
+  - **Refusing, `{ mode: "refuse", maxDScale, maxDOrth }`.** A fit past either threshold, or one
+    whose reading cannot be taken, gets no pose. A detection ends `"LOST"` with the new reason
+    `"conditioning"`. A tracking step drops its lock with the new `trackLoss: "conditioning"`,
+    its reading in `trackLossConditioning`, and the frame is detected again.
+
+  **No threshold is registered, and none is built in.** The derivation on #90's sweep
+  (`docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.md`) found no single value that
+  separates right fits from gross wrong ones pooled across the sweep's two views. So both thresholds
+  are the caller's: numbers ≥ 0, `Infinity` for no bound. The constructor throws a `RangeError` on a
+  refusing state without them, on a threshold given in another state, and on an unknown mode. What
+  is claimed: on that synthetic sweep, read per view at each view's own floors, no right fit of
+  either target is refused and each of the eight gross wrong fits of M2's 64 patches is
+  (`test/pose/conditioning_sweep.test.ts`). No device claim and no campaign claim. The reading and
+  the refusing rule are also exported, as `conditioning` and `conditioningRefuses`, with
+  `DEFAULT_CONDITIONING`.
+
+### Changed
+
+- **`NftTracker` takes its pose from IPPE, above the contract** (M4's step 3,
+  [#105](https://github.com/webarkit/webarkit/issues/105)). The two poses a planar homography
+  allows are computed in `packages/nft-tracker/src/pose/`; one is chosen per frame by depth,
+  by reprojection error over the frame's correspondences, and by a declared margin under which
+  the frame is ambiguous and takes a tracker-local copy of the closed form; no earlier frame
+  enters. The backend's `poseFromHomography` is no longer called by the tracker; the contract is
+  unchanged. Results carry `poseSelection`, and the tracker counts `fallbackFrames` per run. A
+  `Detection` and a tracking step's result now carry their `correspondences`. What is claimed
+  for it, and no more: an **accuracy result on rigid synthetic ground truth**, from criteria
+  registered before the implementation (`docs/benchmarks/2026-10-15-m4-step3-ippe-acceptance.md`):
+  deterministic (bit-identical on repeat, unchanged under 60 random correspondence orders, 0 reads
+  of `Math.random`), less accurate than the closed form below 7° of tilt (per-step medians of the
+  error ratio 2.2 to 3.0), a tie at 10° (median 0.968, quartiles straddling 1), and clearly more
+  accurate from 15° to 50° (2.4× to 3.5× on the per-step medians), the crossover lying between 7°
+  and 10°. No steadiness (`jitterPx`)
+  claim: that metric reads `H`, which the change does not touch, and so cannot respond to it. No
+  campaign claim.
+- **`examples/bench-nft.html` attests the code a session run executes**
+  ([#111](https://github.com/webarkit/webarkit/pull/111), designed in
+  [#110](https://github.com/webarkit/webarkit/issues/110)).
+  - **One bundle for both arms.** Both detection arms now load one bundle of the three
+    packages, `examples/dist/webarkit-packages.mjs`: the page through its import map, the worker
+    by URL. The separately bundled worker, `examples/dist/detection-worker.mjs`, is gone.
+  - **`npm run build` is `scripts/build-provenance.mjs`.** It builds the packages, then the bundle,
+    then `examples/dist/provenance.json`: the commit, whether the tree was clean, and the hash of
+    every input. Without git it still builds, and the manifest says the commit is unknown.
+  - **What Start checks.** A session run (`?loops=` or `?run=`) is checked at Start against that
+    manifest, and refused, with its reason and remedy, on:
+    - a mismatch with the build;
+    - a dirty tree, or a manifest built without git;
+    - a module the check cannot see, or one run from the HTTP cache;
+    - a response without `Cache-Control: no-store`.
+
+    The check attests the bytes the server serves at Start, not the bytes the page loaded. Other
+    runs refuse nothing and record the findings.
+  - **What exports carry.** Exports carry `provenance` beside `protocol`, and
+    `run.lostVisibility`. They no longer carry `detection.workerBundleSha256`.
+  - **Parameters and server.** `?loops=` and `?run=` take whole numbers only, never floored. Serve
+    the repository with `npx http-server -c-1`. The demos still load each package's own `dist/`.
+  - **Replay.** `scripts/replay-clips.mjs` takes `--packages <dist|bundle>`.
+
+### Fixed
+
+- **The bench's guarded paths, before M4's measurements open**
+  ([#96](https://github.com/webarkit/webarkit/issues/96) and
+  [#95](https://github.com/webarkit/webarkit/issues/95)'s `[guarded]` items, the guarded-items
+  half of M4's step 0).
+  - **A loop wrap is the clip restarting.** Any step back in media time used to count as a loop
+    wrap, so a stutter or a seek could fabricate a loop in every metric read per loop, and end a
+    `?loops=` run a loop early. A step back is now a wrap only near the clip's start, with at most
+    0.5 s skipped across the wrap; any other step back refuses the run, naming the frame. No
+    committed export's figures change.
+    - **Where the 0.5 s bound comes from, and its status, are
+      [#114](https://github.com/webarkit/webarkit/issues/114)'s.**
+    - **The fallback is chosen.** Without a clip duration, the rule asks for a step back of more
+      than 0.5 s; that reuses the value, and was not derived.
+    - **Its revisiting is [#114](https://github.com/webarkit/webarkit/issues/114)'s:** when, and
+      by what rule.
+    - **A refused run is a rejected sample.** M4's runbook re-runs it and does not record it.
+  - **`replay-clips --transfer` recomputes each export's protocol** with the tracker's own
+    defaults, and refuses a record the rule does not bear out, rather than trust
+    `protocol.sessionRun`. M3's committed exports all pass, and their transfer is unchanged.
+  - **A worker failure after a run ended fails that run**, and the run a Download exports, so
+    that Download is refused; it used to be dropped, and the run exported as clean. A later
+    failure no longer replaces the first on the error line.
+  - **Smaller corrections.**
+    - The worker passes on the decoder's warnings.
+    - Start names why a `.wnft` did not load, on both detection paths, where it had pointed at
+      an error line it had just cleared.
+    - A replay arm with external detection exports `detection.path: "worker"` and a new
+      `detection.latencyOf`.
+    - `replay-clips` refuses `--tracking-only` where it does nothing. It also refuses
+      `--packages bundle` on a manifest built without git, where it had thrown a `TypeError`.
+    - `firstStepLatency` keeps a sample detected up to 1 ms past the clip's end.
+    - Refusals number frames alike, and a count recorded as text is quoted.
+  - **`packages/nft-tracker`'s README and `src/tracker.ts`** say what M3's tuning pass did to
+    each default, where they had called the defaults provisional until a pass that has since
+    run. The README also documents the four detection options and their domains.
+
+### What M4 did not deliver
+
+- **No threshold for the conditioning signal, and so no refusal the campaign can read.**
+  [#104](https://github.com/webarkit/webarkit/issues/104)'s body requires the threshold recorded,
+  with its derivation, before the campaign reads it. The derivation
+  (`docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.md`) found no single value: pooled
+  across [#90](https://github.com/webarkit/webarkit/pull/90)'s sweep's two views, nothing separates
+  right fits from gross wrong ones, in either form, at any of three focal lengths. Per view both
+  forms separate, by 4.44 on the first view and 1.28 on the second, and on the second that
+  separation is gone by fov 90°. The cause is measured and reproduced as a fatal check: the sweep's
+  second view is not a plane homography for the camera, so its *correct* fits read 0.0084 and 0.031
+  and sit above the first view's gross wrong ones. What is registered instead is the two per-view
+  intervals and that reason. The signal therefore ships off by default, and its refusing state takes
+  both thresholds from the caller or throws.
+- **The three candidates were not weighed against each other.** #104's body asks that its signal be
+  weighed against the two directions of [#92](https://github.com/webarkit/webarkit/issues/92) — a
+  limit scaled by the inlier count, and a bound on the scale change one step may imply — on #90's
+  sweep, by evidence. One of the three is weighed. #92 is on M5 and carries the comparison; the
+  instrument it needs is the derivation's script, which reproduces the frozen sweep under a fatal
+  step 0 and reads a criterion over every fit it produces.
+- **Nothing here was read on a device.** Every claim in this entry is synthetic: #90's sweep and the
+  acceptance files. The campaign that reads the tracker on the reference device is the "M4 campaign"
+  milestone, whose eight registered preconditions for round 1 are all open, so this milestone ships
+  with its measurement arm unstarted — which is what splitting it was for.
+- **The contract question of [#43](https://github.com/webarkit/webarkit/issues/43) is unanswered**,
+  and cannot be answered while there is one implementation: whether `cv-backend-spec` must say which
+  root `poseFromHomography` returns, and whether a second implementation must match the first. #43's
+  other question, whether pose disambiguation stays above the contract, is answered in code and by
+  measurement. It was examined for gate 4 and left open with no milestone, named on
+  [#9](https://github.com/webarkit/webarkit/issues/9) so that neither lands without the other being
+  looked at.
+
 ## [0.4.0] - 2026-10-01
 
 M3 of [ADR-0001](docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md), detection off the
@@ -235,7 +381,8 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 - The original single-page jsartoolkitNFT demo the repository started as. It is kept at the tag
   `archive/original-nft-demo`.
 
-[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.4.0...dev
+[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.5.0...dev
+[0.5.0]: https://github.com/webarkit/webarkit/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/webarkit/webarkit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/webarkit/webarkit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/webarkit/webarkit/compare/v0.1.0...v0.2.0

@@ -176,9 +176,9 @@ The expected cost of Option A on a WASM backend is small but unmeasured: trackin
 
 1. [x] Review and accept this ADR; add a pointer to `docs/adr/` in `AGENTS.md`.
 2. [x] Review and accept [`docs/specs/nft-target-format.md`](../specs/nft-target-format.md) (v0).
-3. [ ] Scaffold `packages/nft-tracker` (package.json, tsconfig, vitest, LGPL headers) and append it to the root `build` script **after** the spec — the build order is load-bearing.
-4. [ ] **M1 — parity:** a detection-only `NftTracker` equivalent to the webcam demo; move `buildLevelIndex` / `matchPerLevel` from `examples/js/pinball-shared.mjs` into the package, with tests.
-5. [ ] File the contract issues listed under "Contract gaps".
+3. [x] Scaffold `packages/nft-tracker` (package.json, tsconfig, vitest, LGPL headers) and append it to the root `build` script **after** the spec — the build order is load-bearing.
+4. [x] **M1 — parity:** a detection-only `NftTracker` equivalent to the webcam demo; move `buildLevelIndex` / `matchPerLevel` from `examples/js/pinball-shared.mjs` into the package, with tests.
+5. [x] File the contract issues listed under "Contract gaps".
 6. [x] Pick the reference device; record baseline numbers for the stateless demo. Reference device: a Samsung-class Android tablet, model `Tab_9_WiFi`. See [`docs/benchmarks/README.md`](../benchmarks/README.md#2026-09-19--adr-0001-action-item-6-baseline) (2026-09-19) — measured **on-device**, not on a desktop browser against tablet-sourced footage, a distinction that matters here (see that file's own note on why).
 7. [ ] **M2** patch tracker + state machine → **M3** IPPE + One Euro filter → **M4** target compiler with synthetic views. Each milestone is measured against the previous one on the same recorded sequences.
 

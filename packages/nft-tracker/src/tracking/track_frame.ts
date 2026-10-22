@@ -189,7 +189,15 @@ export type TrackLoss =
     /** The fit gave weight 0 to more than `maxOutlierShare` of the correspondences. */
     | "too-many-outliers"
     /** The fit's weighted RMS residual is above `maxFitRms`: its correspondences disagree. */
-    | "poor-fit";
+    | "poor-fit"
+    /**
+     * The step's fit held every rule above, and the tracker's conditioning
+     * signal refused it under the caller's thresholds (#104; `NftTracker`'s
+     * `conditioning` option, in its refusing state only). Produced by the
+     * tracker, after the step and before the pose, never by `trackFrame`,
+     * which has no `K`.
+     */
+    | "conditioning";
 
 /**
  * A step's patch counts: `culled + attempted = patches.count`, and the five
@@ -259,6 +267,17 @@ export type TrackFrameResult =
           readonly quality: number;
           /** The fit's weights, one per observed patch, in patch order. */
           readonly weights: Float64Array;
+          /**
+           * The fit's correspondences, in the same order as `weights`: each
+           * observed patch's centre (`src`, target level-0 px) and where
+           * alignment found it (`dst`, frame level-0 px), `[x0, y0, x1, y1, …]`
+           * of length `2 · stats.observed`. The pose selection reads those
+           * with a weight above 0 (#105's rule (b)).
+           */
+          readonly correspondences: {
+              readonly src: Float64Array;
+              readonly dst: Float64Array;
+          };
           readonly stats: TrackStats;
           readonly outcomes: Uint8Array;
           readonly timings: TrackStepTimings | null;
@@ -408,6 +427,10 @@ export function trackFrame(
         H: fit.H,
         quality: sum / counts.attempted,
         weights: fit.weights,
+        correspondences: {
+            src: src.subarray(0, 2 * counts.observed),
+            dst: dst.subarray(0, 2 * counts.observed),
+        },
         stats: { ...counts, ...fitStats },
         outcomes,
         timings: timings(),

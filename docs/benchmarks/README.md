@@ -3208,7 +3208,14 @@ the two.
    dispersion — it can be arbitrarily small by luck, and when it is, the
    clause refuses whenever the worker runs' mean lands above the synchronous
    runs' mean: under the null, where the worker is no different, about half
-   the time, while a worker that happens to be steadier passes. (Corrected on
+   the time, while a worker that happens to be steadier passes. *Corrected
+   on 2026-10-16, from Copilot's review of #140: "no estimate of dispersion"
+   overstates it. Two observations do estimate a dispersion,
+   s² = (x₁ − x₂)² ÷ 2 on one degree of freedom; what makes it unfit for a
+   tolerance is its uncertainty, a 95% interval for σ from 0.45 s to 32 s, a
+   factor of about seventy, so a bound set from it bounds nothing. "Can be
+   arbitrarily small by luck" and the rule below stand as written: the rule
+   is a policy with that number as its reason, not an impossibility.* (Corrected on
    2026-10-01, after the session, in two places: here, from "fires almost
    surely", which overstated it; and below, where the sentence saying what
    had been seen when the clause was withdrawn, and which way the
@@ -3228,6 +3235,178 @@ the two.
    two observations**: where a bound needs a spread, it comes from repeats or
    from a prior session's measured movement, with its derivation written
    beside it.
+   - *Added on 2026-10-17, ruled by the maintainer: this clause's standing,
+     read from the measurements of that day on its own data, the two static
+     baselines of the tuning pass's round 1
+     (`2026-09-28-tab9-tuning-r1-baseline-static.json` and
+     `-baseline-static-repeat.json`). No change to the clause, no new value.
+     M4's own clause, below, is a different form with its own threshold and
+     is not read here. The figures come from three scripts committed beside
+     the record, each read-only on the committed exports:
+     [`2026-10-17-r1-frame-resample.mjs`](./2026-10-17-r1-frame-resample.mjs),
+     [`2026-10-17-r1-window-bootstrap.mjs`](./2026-10-17-r1-window-bootstrap.mjs)
+     and
+     [`2026-10-17-r1-paired-cluster-resample.mjs`](./2026-10-17-r1-paired-cluster-resample.mjs),
+     and from
+     [`2026-10-16-frame-set-overlap.mjs`](./2026-10-16-frame-set-overlap.mjs).*
+     - *Its standing is undetermined. The direct resample of this pair at
+       its own dropped fractions, 0.303 and 0.331 (defined as 1 − common ÷
+       own by the frame-set overlap script), does not exist. Two
+       extrapolations from the same model exist and disagree. The model
+       scales a measured 0.9-keep per-run SD to a dropped fraction by
+       √(p ÷ 0.1), under its stated assumption of random drops at M3's run
+       length. M3's coefficient, 0.0013 to 0.0015 px per run on its four
+       static runs, scaled to this pair gives 0.00352 px for the movement
+       (band 0.00327 to 0.00378, the overlap script's own line for this
+       pair). This pair's own coefficient, 0.0037 px per run at 0.9 keep
+       (the frame-resample script), scaled the same way gives about
+       0.0093 px. The pair's runs are 300 frames in 18 to 20 eligible
+       windows against M3's 815 to 822 in 48 to 49, so a coefficient taken
+       from M3's runs understates this pair by construction.*
+     - *Against the allowance, 0.007 px, that is about 2σ on the first
+       extrapolation and about 0.75σ on the second. The two do not agree on
+       whether the clause can discriminate at all, so its standing is
+       undetermined. The measurement that settles it, the direct resample of
+       this pair at its own dropped fractions, is registered and not run.*
+     - *What stays weak, whatever that measurement finds: the allowance's
+       value rests on one pair of runs. Resampling the footage puts the same
+       movement anywhere from +0.00026 to +0.01644 px (the paired cluster
+       resample by footage second, 10,000 resamples, seed 1) or −0.01241 to
+       +0.03078 px (the independent window bootstrap, 10,000 resamples, seed
+       1). "The smaller of the two movements" is not a derivation, and that
+       holds whatever the clause's power.*
+     - *The two designs, and what each varies, so that a later reader does
+       not mistake one for the other: the frame resample holds the footage
+       fixed and varies which of the frames a run processed are counted; the
+       cluster and window resamples hold the frames and vary the footage.*
+     - *One observation: at a 10% drop, a single footage instant, 4.966667 s,
+       with a residual RMS of 0.314 px against the baseline run's median of
+       0.059 px, carries about a third of the movement's variance (the
+       frame-resample script's last section). The noise figure is not
+       diffuse.*
+     - *Three successive readings of this clause on that day each rested on
+       figures computed on a different basis, which is why this entry
+       carries none of them.*
+     - *No change is proposed here. A decision on the allowance is registered
+       as due before M4's round 1's first counted run.*
+   - *Added on 2026-10-17, later that day: the measurement the entry above
+     registers now exists, and the clause's standing is no longer
+     undetermined. Read-only on the same two exports, `cornerJitter`
+     imported unchanged; no clause, value or verdict moves. For it the
+     frame-resample script gained a rate option and a population option,
+     documented in its header; run with no arguments its output is the
+     record's, line for line.*
+     - *What the clause reads, from the registration's own words. Its
+       operand is "their mean `jitterPx`", each run's `runSummary.jitterPx`
+       over all its frames, and its 0.007 px is the smaller of two whole-set
+       movements, 0.1476 → 0.1552 px over the two runs' windows; M3's gate
+       read it so on 2026-10-01, 0.14216 against 0.14171 px, means of
+       whole-set run values. So the clause compares two arms on whole-set
+       figures. The ruling of 2026-10-14 ("Every jitter comparison between
+       arms of different pipelines is read on their common media times",
+       M4's clause's section, item 4; README.md:4147-4148 at `5677367`)
+       binds every `jitterPx` comparison between arms running different
+       pipelines and exempts the clause's own readings ("Where it does not",
+       README.md:4177-4180 at `5677367`). What makes the
+       exemption hold is the clip: on the static clip the two arms' frame
+       sets differ little (M3's four static runs, pairwise, each keep 94.5%
+       to 98.2% of their counted frames), so the selection component the
+       hand-held clips showed, whole-set differences of +0.05 to +85.5 px
+       against −1.5 to +2.8 px on shared media times (the step protocol's
+       comparison rule, from `2026-10-16-m3-handheld-frame-set.mjs`), does
+       not arise. That is a property of the clip, not of the clause, and the
+       exemption does not transfer to a non-static block. The same pair read
+       on its 168 common media times is 0.1476 and 0.1568 px, 0.0092 px
+       apart ("What the window does not explain", under M4's clause's item
+       4; README.md:4543-4545 at `5677367`): a reading the clause never
+       performs.*
+     - *The brief for this measurement named the wrong population, the
+       common set, and the refutation pass the step protocol requires caught
+       it. Two figures were therefore measured, and only one is the
+       clause's.*
+     - *The clause's own noise, at the pair's own dropped fractions:
+       **0.00767 px**, from*
+       `node docs/benchmarks/2026-10-17-r1-frame-resample.mjs 10000 1 --rates=own --population=whole`*:
+       the design of
+       [`2026-10-17-r1-frame-resample.mjs`](./2026-10-17-r1-frame-resample.mjs),
+       footage held fixed and each run's frames kept independently with a
+       fixed probability, applied to each run's whole 300 frames at the
+       baseline's keep 0.697 (drop 0.303) and the repeat's keep 0.669 (drop
+       0.331), the fractions
+       [`2026-10-16-frame-set-overlap.mjs`](./2026-10-16-frame-set-overlap.mjs)
+       defines as 1 − common ÷ own posed media times. 10,000 resamples,
+       mulberry32 seed 1: movement (repeat − baseline) mean 0.00761, SD
+       0.00767, 2.5% −0.00755, 97.5% +0.02279 px; per-run SD 0.00522 and
+       0.00562 px; kept frames 209.1 and 200.9 a resample on average,
+       against the real common set's 212 and 207, 11.2 frames an eligible
+       window; eligible windows 17 to 20 of 20 and 17 to 18 of 18; no
+       resample left a run without an eligible window. Seeds 2 and 3 give
+       0.00769 and 0.00760; 100,000 resamples at seed 7 give 0.00768. The
+       script's check 3 holds: at keep 1 the whole-set include reproduces
+       each export's recorded `runSummary.jitterPx` exactly. The 0.00767
+       equals √(0.00522² + 0.00562²), the two runs' independent per-run SDs
+       summed in quadrature, and carries no covariance between the runs,
+       correctly for this design: the footage is held fixed and what is
+       resampled is which frames each run processed, which the two runs do
+       independently; the finding of 2026-10-17 about a missing covariance
+       applies to designs that resample the footage, which is shared between
+       arms, and does not apply here.*
+     - *A second figure, recorded so that it is not rediscovered and
+       mistaken for the first: **0.01082 px** (the same command with
+       `--population=common`, or without it; 10,000 resamples, seed 1; seed
+       2: 0.01093) is what the registered design produces when those rates
+       are applied on top of the common set, which the script thins by
+       default. The dropped fraction describes the step from a run's
+       whole posed set to the common set, so applying it to the common set
+       thins twice, to about eight frames an eligible window, a density no
+       real comparison has. It is not the clause's noise.*
+     - *Against the allowance. 0.00767 px is one run against one run. The
+       clause's operand, quoted above, is "their mean `jitterPx`": the mean
+       of two worker runs against the mean of two synchronous runs. Under
+       this entry's own no-covariance model the SD of that difference is the
+       pair's divided by √2, 0.0054 px, so the 0.007 px allowance is about
+       1.3σ; on the double-thinned common-set reading, 0.01082 ÷ √2 =
+       0.0077 px, it is about 0.92σ. The clause discriminates weakly, not at
+       the 2σ the first extrapolation suggested, and its standing is no
+       longer undetermined. No clause changes. (Corrected on 2026-10-17 from
+       "0.91σ" and "under one sigma in both readings", which read the
+       one-run SD against the allowance, by an independent read of the
+       diff.)*
+     - *What the correction shows, recorded and not acted on. The allowance
+       is the movement of a single pair of runs, the session's first and
+       last on 2026-09-28; the statistic it gates is a difference between
+       two two-run means. The bound and the statistic have been on different
+       bases since the clause was registered on 2026-10-01: the shape the
+       step protocol names, "a per-run figure against a movement"
+       (step-protocol.md:98-101 at `f740b8b`). Nothing is proposed here; the
+       decision on the allowance stays the maintainer's, due before M4's
+       round 1's first counted run.*
+     - *Both extrapolations understated the noise of their own population:
+       0.00352 px, from M3's whole-run coefficient, against the measured
+       whole-set 0.00767 (a factor of 2.2); 0.0093 px, from this pair's
+       common-set coefficient at keep 0.9, against the measured common-set
+       0.01082 (a factor of 1.16). The remainder is the law: s(p) = c ·
+       √(p ÷ 0.1) under-extrapolates Bernoulli thinning by about 15% at
+       these rates, 15.8% on the whole set (per-run keep-0.9 SD 0.00258 and
+       0.00255 px, from*
+       `node docs/benchmarks/2026-10-17-r1-frame-resample.mjs 10000 1 --rates=0.9 --population=whole`*,
+       predict 0.00645) and 13.6% on the common set (0.00371 and 0.00372,
+       the default path's keep-0.9 line, predict 0.00935).*
+     - *The footage instant 4.966667 s carries about a quarter of the
+       movement's variance at these rates, 24.3% on the common set and
+       19.7% on the whole set, read as the variance between the four groups
+       of its fate in the two runs. It is the most influential frame of both
+       runs on either population, by delete-one through the metric. Each
+       figure is the last section of a committed command: 24.3% from*
+       `node docs/benchmarks/2026-10-17-r1-frame-resample.mjs 10000 1 --rates=own --population=common`
+       *(the common frame set, keep 0.697 for the baseline and 0.669 for the
+       repeat), 19.7% from*
+       `node docs/benchmarks/2026-10-17-r1-frame-resample.mjs 10000 1 --rates=own --population=whole`
+       *(the whole frame set, the same two keeps). The "about a third" above
+       is the same frame at keep 0.9 on the common set, the default's own
+       output (33.7%), and stands for that rate.*
+     - *The decision on the allowance stays the maintainer's, due before
+       M4's round 1's first counted run. This entry proposes nothing.*
 9. **After every block**, the thermal rule: if the closing synchronous run
    is slower than the opening one — `trackStepMs` p50 by more than 6.6%, or
    `acquire` p50 (`summaryMs`, read only from an export whose
@@ -3445,3 +3624,2439 @@ record.*
   41.0% and 37.5% in the two blocks against 20–36%, for reasons its inputs give: more
   video time locked than the prediction's input assumed (45% against round
   2's 39.1%), and waiting frames 56.5 ms of video apart rather than 40–45.
+
+## 2026-10-06 — M4: the session's runbook, provenance steps
+
+Registered before M4's plan, which #107 writes and which adopts these steps
+as its runbook's first and last. M3's runbook, above, is the record of how
+M3 was run and stays as it is: it did not run these steps, and adding them to
+it would make it false. Why they exist is #95's provenance item and
+[#110](https://github.com/webarkit/webarkit/issues/110), which built what
+they check.
+
+**Before the tablet.**
+
+1. **The guard diff**, as M3's step 1 has it, against the commit of M4's own
+   guard check (named when that check runs, #107):
+   `git diff --stat <guard commit> HEAD -- examples/bench-nft.html examples/js scripts packages`
+   shows nothing.
+   *From round 1, its paths are the instrument's and the inputs', and it
+   reads each round's head:
+   [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+   below (2026-10-14).*
+2. **The clean working tree**, directly after it. Step 1 compares commits,
+   so an uncommitted edit is invisible to it, while the page serves
+   `examples/js` from the working tree:
+   ```bash
+   git status --porcelain --untracked-files=all -- examples/bench-nft.html examples/js scripts packages package.json package-lock.json
+   ```
+   prints nothing. It cannot see git-ignored build output (`dist/`); step 4
+   covers that.
+   *From round 1, its paths gain the target and the clips:
+   [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+   below (2026-10-14).*
+3. **The server sends `Cache-Control: no-store`** on every response, beside
+   range requests and module MIME types. A server that lets the browser
+   cache (http-server's default is `max-age=3600`; `npx http-server -c-1`
+   does not) can hand the page a module edited and reverted since its last
+   load, which runs without the server being asked, or after a 304 that a
+   date validator can grant, so no hash taken at Start can see it. Start
+   refuses a session run whose responses lack `no-store`, and one that ran
+   a module from the cache, but a refused session wastes the session: check
+   the server first, with
+   `curl -sI http://localhost:<port>/examples/js/bench-metrics.mjs`, whose
+   `Cache-Control` must read `no-store`. A server restarted with
+   `no-store` does not empty a cache an earlier server filled: clear the
+   browser's cache for the origin too.
+4. **The build and its manifest.** `npm run build` prints
+   `examples/dist/provenance.json: HEAD <head>, clean, …`, with `<head>` the
+   session's commit. Every session run (`?loops=` or `?run=`) is then
+   checked at its Start against that manifest — the bundle, the page and
+   each `examples/js` module the server serves, the modules the page and the
+   worker loaded, and the manifest itself since page load — and refused,
+   with each reason and its remedy on the page, on any difference, and
+   whenever the check is blind: a worker run whose modules the browser does
+   not show, a module run from the HTTP cache (a hit or a 304), a response
+   without `no-store`, a full resource timeline.
+   A refused Start is not a run: apply the remedy it names, reload, and
+   start again. Each export records what was checked under `provenance`.
+   *From round 1, the session's commit is its round's head, and each round's
+   build is made once:
+   [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+   below (2026-10-14).*
+
+**During the session.**
+
+5. **The page in the foreground**, from Start to the run's end, on every
+   session run: a hidden tab throttles timers and `requestAnimationFrame`.
+   Each export records `run.lostVisibility`. It is reported, not gating: a
+   run with `true` is not refused, and the session record says what it
+   decided about that run.
+
+**A run the loop-wrap rule refuses** (added 2026-10-13, before any M4 run;
+[#113](https://github.com/webarkit/webarkit/pull/113)). A step back in media
+time that is not the clip restarting refuses the run on the page, naming the
+frame: `isLoopWrap`, with its 0.5 s bound, whose derivation and revisiting
+[#114](https://github.com/webarkit/webarkit/issues/114) holds. *Corrected
+on 2026-10-13: the sentence restated #114's first criterion ("the 0.5 s
+bound #114 fixes before the first counted run"). It now points at #114
+instead.*
+
+- **It is a rejected sample, not a failed measurement.** The run is re-run,
+  and it is not recorded. Its export, if the page lets one be taken, is not
+  copied into `docs/benchmarks/`, and nothing reads its numbers. The re-run
+  that replaces it is named in the session record, as step 7 names every
+  re-run.
+- **A refusal naming a frame is the rule doing its job, not a defect to
+  debug mid-campaign.** On a loaded device, a stall that lands on a wrap is
+  expected now and then, and the rule exists to keep that run out.
+- **The bound is not changed mid-campaign.** How many re-runs a block allows
+  before the session stops is for the campaign's plan to register (#107).
+
+**After the last run.**
+
+6. **Step 2 again, printing nothing.** A tree that changed during the
+   session invalidates the runs made after the change, and the session
+   record says which.
+7. **The exports, into the repository.** They leave the browser as
+   downloads; this is the step where the wrong file gets committed or one
+   goes missing.
+   - **Before the session starts, the download folder is cleared of
+     `bench-nft-*.json`.** The session's exports arrive there by the same
+     route as every earlier trial's, and the count below means nothing if
+     the folder already holds files nobody can tell apart from them.
+   - **Destination:** `docs/benchmarks/<date>-tab9-m4-<path>-<clip>-<k>.json`,
+     flat in `docs/benchmarks/` as M3's are: `<date>` the session's,
+     `<path>` `sync`, `worker` or `stateless`, `<clip>` `static`, `wall` or
+     `table`, and `<k>` the run's repeat within its path and clip (the
+     stateless run has none). Stored as "A device session" above says.
+   - **Only a session run's exports are evidence.** An export from the
+     ready check, a trial, a demonstration or a refused Start is never
+     copied there; one with `protocol.sessionRun` false is copied only if
+     the plan registered it as a run and the record says why it is not a
+     session run.
+   - **The count and the identity are checked before the commit:** the
+     number of exports copied equals the number of runs the plan's order
+     called for (re-runs included, each named in the record), and each
+     export's `run.order` equals its `?run=`, its `loops.loopCount` the
+     plan's, its `bundledClip` and `detection.path` its file name's, and
+     its `provenance.manifest.head` the commit of step 4. A mismatch stops
+     the commit until the record explains it.
+     *From round 1, the commit of step 4 is the round's head:
+     [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+     below (2026-10-14).*
+
+## 2026-10-13 — M4: the plan's first entries, the setup and the pre-flight run
+
+[#107](https://github.com/webarkit/webarkit/issues/107)'s plan is registered
+here, as M3's was, and is written as it is decided. These are its first
+entries: the setup every counted run shares, the pre-flight run of
+2026-10-13, and, added the same day after it, the reading of the
+independent check of the evidence guards and three validity rules. The rest
+of what #107 asks of the plan is not written yet: predictions with what
+would refuse each, the adoption rule, the run order, the validity checks
+beyond those three, and the stopping rules. No counted run is made before
+it is. *Added on 2026-10-14, before any counted run and before the
+calibration block, with the pre-flight run the only M4 device run so far:
+what the plan rests on, next, the full Chrome build in the setup's item 5,
+and the null control's jitter clause, after the validity rules.*
+
+**What the plan rests on.** The authority for M4's steps is their issues,
+[#103](https://github.com/webarkit/webarkit/issues/103) to
+[#107](https://github.com/webarkit/webarkit/issues/107), the issues they
+cite for their parts (such as #114, for the loop-wrap bound), and this
+plan. No document outside this repository and its issues is a source for
+any session. The brief for step 1 cited a "Passo 1" section of the
+maintainer's own notes, which are kept outside the repository; nothing
+here holds it, and step 1 was worked from #103.
+
+**The setup, the same for every counted run.**
+
+1. **The build attested at `37dc6d4`, never redone.**
+   `examples/dist/provenance.json` names head
+   `37dc6d4fa3507992bbe7e13cd8da7cb759b7265c`, a clean tree, and the bundle
+   `3a2567c15d59b1fb669a82a52d9f1eedcd1586664936250ff2fbf21e87513876`.
+   Every counted run's export carries that head (step 7) and that bundle.
+   A commit outside the frozen paths, such as this one, moves the
+   checkout's HEAD past `37dc6d4` and leaves the build as it is.
+   *This item is round 0's. From round 1, each round has its own build, at
+   its own head:
+   [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+   below (2026-10-14).*
+2. **The guard check's reference commit is `37dc6d4`**, not M3's
+   `c261b77`. Step 1 is
+   `git diff --stat 37dc6d4 HEAD -- examples/bench-nft.html examples/js scripts packages`,
+   which shows nothing.
+   *From round 1, the reference stays `37dc6d4`, and the diff reads each
+   round's head over the instrument and the inputs, no longer over the
+   whole of `packages`:
+   [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+   below (2026-10-14).*
+3. **The transport is USB.** The page is served over `adb reverse` to
+   `localhost`, because a direct LAN address has no secure context. On
+   `http://192.168.1.4:8093`, `crypto.subtle` is undefined (checked in
+   Chrome on 2026-10-13), so the page has no SHA-256, and Start refuses
+   every session run there: as a mismatch, naming a rebuild as the remedy,
+   which does not apply. That is the reason for the cable; it is not a
+   preference. (The tablet could not reach that address either; the cause
+   was not diagnosed.) Serving over https, so that a later campaign need
+   not depend on a cable, is
+   [#116](https://github.com/webarkit/webarkit/issues/116), after this one.
+   The route is identical across runs:
+   - **the server:** `npx http-server -p 8093 -s -c-1` (http-server
+     14.1.1) at the repository root, as `examples/README.md` gives it with
+     the port changed: 8080 was held by another process. Step 3's `curl`
+     reads `Cache-Control: no-cache, no-store, must-revalidate`;
+   - **the tunnel:** `adb -s Tab9WEEA0001504 reverse tcp:8093 tcp:8093`;
+   - **the page:** `http://localhost:8093/examples/bench-nft.html?…`,
+     which is a secure context.
+
+   **A drop of the USB link removes the tunnel.** On 2026-10-13, before
+   the pre-flight run, the link dropped again and again (adb's log:
+   `read failed`). Each drop removed the mapping and brought the tablet's
+   authorization prompt back. The last drop was at 14:50:06Z, and none
+   followed up to 14:56:10Z, which covers the pre-flight run and its
+   download. So before every Start,
+   `adb -s Tab9WEEA0001504 reverse --list` shows `tcp:8093 tcp:8093`.
+4. **A drop of the USB link during a counted run invalidates that run.**
+   Not because a drop is known to change what is measured, but because the
+   page cannot tell whether it did, and an unattested condition cannot back
+   a counted measurement. The run counts for nothing; what replaces it is
+   for the stopping rules, not written yet.
+
+   **The link monitor runs for every counted run, and its log is kept
+   beside that run's export.** "No drop" is attested, never assumed.
+   - **It runs from before Start to after the export's download.** At each
+     end it records the UTC time, `adb -s Tab9WEEA0001504 devices -l`
+     (whose `transport_id` changes at every reconnection), and
+     `adb -s Tab9WEEA0001504 reverse --list`. At the start it also records
+     `adb --version`.
+   - **Between the two ends, it keeps everything the adb server's own log
+     gained.** That log is `%TEMP%\adb.log` on the session's Windows PC.
+     The monitor notes the log's length at the start, and at the end copies
+     every line written since.
+   - **Its log is `<the export's name>.link.txt`,** beside the export in
+     `docs/benchmarks/`, and committed with it. It is `.txt` because this
+     repository ignores `*.log`.
+   - **"No drop" holds when all three agree:** the log gained no
+     `connection terminated` line naming the device, the `transport_id` is
+     the same at both ends, and the mapping shows at both ends. Anything
+     else is a drop.
+5. **The browser is Chrome 154 on the tablet** (`Chrome/154.0.0.0` in the
+   pre-flight run's `userAgent`). M3's session ran on Chrome 153, in all 17
+   of its exports. Any comparison with M3's figures carries that caveat,
+   and is not treated as paired.
+
+   **The full build is recorded for every session,** read from
+   `chrome://version` on the tablet before the session's first run, in the
+   session record. An export carries only the reduced user agent,
+   `Chrome/154.0.0.0`, which names the major version and nothing finer.
+   M3's full build, 153.0.8010.36, is in its record's prose; round 1's is
+   recorded nowhere, and the pre-flight run's was not recorded. Jitter is
+   exactly the quantity a patch release can move, and a reduced user agent
+   is a lossy record of it.
+6. **Forward gaps within a loop are not checked by the page.** `isLoopWrap`
+   reads step backs only. Forward gaps belong to the validity checks,
+   through the stall check that M3's step 7 used.
+   - **Beside each counted run's verdict, the record names the tool and its
+     version:** `stall-check.mjs`, SHA-256
+     `cccb475bcc74f29fb6592577e31cdcf7eb5d2bb511c39d5e6a8c4edf3cf7f1be`.
+     The file carries no version number, so its hash names it.
+   - **Its verdict is supplementary.** The copy that runs is kept outside
+     the repository, with the session drivers. The repository holds the
+     tool only as a copy embedded in M3's record
+     ([`2026-10-01-m3-session-additions.md`](./2026-10-01-m3-session-additions.md),
+     "The scripts"), not as a tested tool: nothing tests that copy, CI does
+     not run it, and only the hash shows the two copies are the same.
+   - **On 2026-10-13 the two were byte-identical:** the same SHA-256, and
+     the same verdict on the pre-flight run's export. So a verdict
+     reproduces from the repository only while the tool's recorded hash
+     equals the embedded copy's. Bringing it into the repository as a
+     tested module is
+     [#117](https://github.com/webarkit/webarkit/issues/117), after the
+     campaign.
+
+*Item 3's first paragraph was rewritten, and items 4 and 6 were added, on
+2026-10-13, after the pre-flight run and before any counted run. Item 3
+first called the LAN address "preferred"; it is not usable, which is why
+the transport is USB. Its last sentence left a drop's reading to the
+validity checks; item 4 now decides it.*
+
+*Item 5's second paragraph was added on 2026-10-14, before any counted
+run.*
+
+**The pre-flight run.**
+
+- **What it is:** a baseline of provenance, and of the loop-wrap bound's
+  headroom ([#114](https://github.com/webarkit/webarkit/issues/114)), on
+  the attested build. It is not an M4 measurement: `37dc6d4` contains none
+  of M4's pipeline (#104, #105, #106), so it ran M3's synchronous pipeline.
+- **What ran:**
+  `?mode=tracking&target=wnft&detection=sync&clip=pinball-bench.mp4&loops=4&window=2000`,
+  device label `Tab_9_WiFi`.
+  - Before it, Chrome's cached files were cleared, and the download folder
+    held no `bench-nft-*.json`. The earlier ones were in the tablet's
+    trash, which keeps them in the folder, renamed `.trashed-…`.
+  - It ran one warm-up loop and four counted loops, from 14:52:33.741Z to
+    14:53:33.952Z: 623 frames, 5 wraps.
+  - It ended `done` and never lost visibility.
+- **Why it is not a session run:** `?run=` was left out on purpose. So
+  `protocol.sessionRun` is `false`, with the one gap `run.order none`.
+  That is correct, and it stays: the run belongs to no block, and step 7's
+  count does not include it.
+- **Provenance at Start:**
+  - the manifest's head `37dc6d4…`, clean;
+  - the bundle `3a2567c15d59…`, in the manifest and as observed;
+  - all 9 served files equal to the manifest;
+  - nothing run from the cache, and the manifest unchanged since page load;
+  - `refusal` and `note` both `null`.
+- **Its export:** `2026-10-13-tab9-m4-preflight-sync-wall.json`, the
+  page's file unchanged (SHA-256 `2dfb93f8…`). A pre-flight export is
+  named `<date>-tab9-m4-preflight-<path>-<clip>.json`, apart from step 7's
+  session names, so that no count of a session's exports takes it in.
+- **Its figures for #114:** the bound's three inputs, over the whole run
+  and over the counted loops. They are in #114's comment of 2026-10-13,
+  and move into this plan when the plan is written.
+
+**The independent check of the evidence guards (2026-10-13).**
+
+- **What ran.** An agent that did not write the code mutated the evidence
+  guards at `37dc6d4`, one at a time, in a separate worktree. A fresh
+  install and build there reproduced the bundle `3a2567c15d59…` byte for
+  byte.
+  - Of 258 mutations, 179 were killed by a test or a page check, 1 hung
+    the test suite (T3), and 78 survived, 6 of them equivalent.
+  - Its survivors, with their IDs, and the hang are
+    [#120](https://github.com/webarkit/webarkit/issues/120). The two gaps
+    it found in the code itself are
+    [#119](https://github.com/webarkit/webarkit/issues/119).
+- **What a survivor means.** A surviving mutant means that no test would
+  notice the change, not that the code is wrong. Whether the campaign can
+  run on `37dc6d4` turns on the guards' behaviour, not on their tests.
+  - For every survivor whose condition the agent could produce from a run,
+    a replay or a build, it produced that condition on the unmutated build
+    first. The guard refused each time. No guard it could trigger failed to
+    guard.
+  - It did not trigger six: PG23 (a racy window), RS2, RE1, RE2 and TPR1
+    (each needs a second fault to show), and BB2 (no trigger could be
+    built). The six equivalent mutants change nothing reachable.
+- **The six it did not trigger, against a counted run on the tablet,**
+  given the pinned parameters and the frozen build:
+  - **PG23,** `bench-nft.html:2359`, a worker that fails after
+    `workerReady` while the source starts: **can occur.** The pinned
+    string allows `detection=worker`, and a worker can fail at any moment.
+    It was produced on the unmutated build (below).
+  - **RS2,** `replay-clips.mjs:1202`, `--sequence` refusing an export whose
+    box fits the clip to another resolution: cannot. It is a desktop replay
+    of an export, never run on the tablet.
+  - **RE1,** `replay-clips.mjs:840`, an `--external` arm whose accounting
+    does not balance: cannot. It is a desktop replay.
+  - **RE2,** `replay-clips.mjs:907`, an `--external` arm that does not
+    reach the loop after its counted ones: cannot. It is a desktop replay.
+  - **TPR1,** `tuning-probe.mjs:151`, the tuning probe diverging from the
+    tracker: cannot. It is a desktop tool the replay runs.
+  - **BB2,** `build-provenance.mjs:172`, the build refusing a bundle whose
+    metafile output still imports: cannot. It runs only when the bundle is
+    built, and the campaign's build is never redone. That the campaign
+    never builds the bundle is true because of the freeze: here the freeze
+    works as a proof, not only as a constraint.
+    *Its reason is round 0's alone. From round 1 the build is redone once
+    per round, and the verdict rests on another reason:
+    [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+    below (2026-10-14).*
+- **PG23, produced on the unmutated build (2026-10-13, before any counted
+  run).** Desktop headless Chrome 155 ran the pinned string's worker form,
+  with `run=1`. It used the campaign tree, served with `no-store`, and
+  changed no file. Through the DevTools protocol, the page's worker was made
+  to fail inside `startBundled`'s `video.play()`: after `workerReady`, and
+  before `runBenchmark` makes the run live.
+  - **Without the fault (the control),** the run started and reached
+    `tracking`.
+  - **With it, Start refused within 217 ms.** The status went to `failed`.
+    The error line named the worker's own failure, then "The run did not
+    start, and nothing was exported." Start stayed disabled.
+  - **No run went live,** so no 5 s reply timeout hid the cause. That is
+    the guard at `:2359`: its throw lands in Start's catch (`:2382`), whose
+    hint is the one for a failed worker.
+  - **So the one of the six that a counted run on the tablet can meet**
+    has been produced on the unmutated build, and its guard refused.
+  - **Why a result from desktop Chrome 155 transfers to the tablet's
+    Chrome 154.** The reason is written here, not assumed: twice already,
+    the maintainer notes, one environment was assumed to stand for
+    another, wrongly.
+    - The guard is plain JavaScript control flow,
+      `if (run.path === "worker" && detectionWorker.failure !== null) throw new Error(detectionWorker.failure);`,
+      and a catch reached only by that throw. No platform API is involved
+      in either, so nothing that differs between the two browsers is on
+      that path.
+    - One step did involve a platform API, and the exercise stood in for
+      it: a worker's failure reaching the page as an `error` event on its
+      `Worker`. The exercise dispatched that event itself. That the browser
+      delivers a real failure as that event is what every worker-failure
+      guard on the page rests on (PG30, PG32); PG23 adds no new
+      assumption.
+- **The stop condition was the maintainer's, and it was the wrong
+  instrument.** It stopped the campaign's start on "a guard that does not
+  refuse when mutated", and so on 78 survivors. It conflated test coverage
+  with guard behaviour. Ruled on 2026-10-13: the campaign starts at
+  `37dc6d4`.
+- **What it leaves.** From now on, the campaign's data rests on guards
+  with no tests.
+  - Closing that is the first work of the window after the campaign
+    (#120).
+  - No test is added before then. The code cannot change, so a test now
+    would gain nothing; `examples/test/` is covered neither by the manifest
+    nor by Start; and one cv-backend test is already flaky, failing once
+    in about 25 runs during the check.
+    *Noted on 2026-10-14: the tests this bullet means are the guards'
+    (#120). The packages' tests and `examples/test/` are free to change,
+    except the files that play an input's role:
+    [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+    below, items 3 and 4.*
+  - Validity rules 1 and 2, below, cover the two code gaps at analysis
+    time.
+
+**Validity rules, read at analysis time from each committed export.**
+Registered on 2026-10-13, before any counted run. A run that fails one is
+not counted.
+
+1. **`run.failure` is `null`, and `run.endedBy` is `"done"`.** A run ended
+   by Stop is never counted.
+   - **The reason: the check's three page survivors that stick.** Break the
+     failure handling of a throw in a frame (PG17), of the worker path
+     (PG18) or of the worker's 5 s timeout (PG29), and the run does not
+     fail: it sticks. A stuck run can only be ended by Stop, so requiring a
+     run that ended itself closes that signature without touching code.
+   - **Reading `run.failure` as well covers #119's second gap:** nothing
+     that reads `protocol.sessionRun` reads `run.failure`.
+2. **The export's manifest (`provenance.manifest`) names head
+   `37dc6d4fa3507992bbe7e13cd8da7cb759b7265c`, `clean: true`, and an empty
+   `dirtyPaths`.**
+   - **The analysis compares `clean` with `dirtyPaths` itself,** because
+     the page does not (#119). The flag is not trusted: the flag and the
+     list must agree.
+   - **The head is compared in full,** so a `head` of `""` fails the rule.
+   - *From round 1, the head is the one of the run's own round:
+     [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+     below (2026-10-14).*
+3. **The parameters are the pinned string's, exactly.** Every counted
+   run's parameter string is one of these two, character for character,
+   with nothing else on it:
+   ```
+   ?mode=tracking&target=wnft&detection=<path>&clip=<clip>&loops=4&window=2000&run=<n>
+   ?mode=stateless&target=wnft&clip=<clip>&loops=4&window=2000&run=<n>
+   ```
+   - **The slots:** `<path>` is `sync` or `worker`; `<clip>` is
+     `pinball-static.mp4`, `pinball-bench.mp4` or
+     `pinball-bench-table.mp4`; and `<n>` is the run's place in the order.
+     The run order, not yet written, fills them. The two forms are M3's
+     (its runbook's step 4). The pre-flight run used the first, without
+     `&run=`.
+   - **The reason: G14b.** `sessionRunGaps` checks only the processing
+     box's width, so a wrong `?procHeight=` exports as a valid session run.
+   - **How it is read.** The export does not record its URL; it records
+     each parameter's effect. So the analysis compares, one field at a
+     time, what the export records with what the pinned string sets:
+     - `mode`; `target=wnft` as `target.source` `wnft`; `detection` as
+       `detection.path` (`sync` for the stateless form, which sets none);
+       `clip` as `bundledClip`, with `source` `bundled`; `loops=4` as
+       `loops` `{firstLoop: 1, loopCount: 4}`; and `run` as `run.order`;
+     - every parameter the string leaves out, at its default as the export
+       records it: `maxKeypoints` 300, `processingBox` 480 × 360 (no
+       `?procWidth=` or `?procHeight=`), `target.file`
+       `targets/pinball.wnft` (no `?targetFile=`), `camera` `null`, and
+       each option `?tracker=` can set present in `tracker.options` and
+       equal to the package's default;
+     - `window=2000`, the one value the export does not record:
+       `windowSize` is the number of frames held, not the cap. Its effect
+       is read instead: `ticks` equals `windowSize`, so no frame was lost.
+     - the target's bytes: `target.sha256` equal to
+       `9e8eb4863b58b635ad7fc2bd9f937d924b369a9002580e52a35ef0db7b0d5282`,
+       compared in full. That is the hash of `examples/targets/pinball.wnft`
+       at `37dc6d4`, and the one the pre-flight run's export records.
+       *Added on 2026-10-14, before any counted run and before the
+       calibration block, which it binds too. It is a dropped check: M3's
+       step 7 verified the target's bytes (`target.sha256` `9e8eb486…`),
+       M4's checks did not, and nobody decided that. `target.file` names
+       the file, not its bytes; step 7 checks the head, the clip, the path,
+       the loops and the order; and `examples/targets` is neither a guarded
+       path nor in the manifest. So nothing saw the target's bytes. The
+       rule this check reads is on the file's state: while a campaign is
+       open, the target's SHA-256 stays the one recorded at its start
+       (`AGENTS.md`).*
+
+       *Addendum, 2026-10-19: which exports are the last, and so when
+       that window closes, had no text until the campaign milestone's
+       closing criterion named them: "M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)",
+       entry 4, below. `AGENTS.md` is unchanged.*
+
+     So the comparison is exact for everything the export records. The
+     string itself is not in the export.
+   - **The recorded URL.** Each counted run is opened with one command,
+     never typed:
+     `adb -s Tab9WEEA0001504 shell "am start -a android.intent.action.VIEW -d '<URL>' com.android.chrome"`.
+     - The `<URL>` it passes is kept beside the export as
+       `<the export's name>.url.txt`, and committed with it.
+     - It must read `http://localhost:8093/examples/bench-nft.html`,
+       followed by the pinned string with its slots filled, character for
+       character.
+   - **The two checks are independent, and must agree.**
+     - The field check catches a parameter whose effect is wrong.
+     - The recorded URL catches a parameter the export reflects not at
+       all.
+     - The URL attests what was asked, not what the browser received.
+
+     So neither is authoritative alone. A run passes rule 3 only when both
+     pass.
+   - **Rule 3 verifies the parameters' effects, which is weaker than
+     verifying the parameters.** `window=2000` is the proof. The pre-flight
+     run asked for 2000, and its export records `windowSize` 623, the frames
+     it held, and the 2000 nowhere.
+   - **Is there a URL parameter whose effect the export records nowhere?
+     Yes: `camera`.**
+     - On a bundled-clip run, `?camera=` only presets the webcam's control.
+       The page reads it for a webcam source alone, and the export's
+       `camera` is `null` for any other run.
+     - So `camera` is invisible to both checks: the field check cannot see
+       its effect, and the recorded URL shows only that it was asked.
+     - The same holds for a parameter the page does not read at all, and
+       for a repeat of one it reads, since only the first is read.
+     - The pinned string admits none of them, so the recorded URL refuses
+       a run whose command carried one. What none of the checks could see
+       is such a parameter reaching the browser some other way. On a
+       bundled-clip run, it would change nothing the run does.
+     - **`camera`'s inertness depends on the run's shape.**
+       - Counted runs are bundled-clip runs: the pinned string's `clip=`
+         makes the source `bundled`. A webcam run is out of scope for this
+         campaign.
+       - If one is ever wanted, `camera` must first be made visible to a
+         check. On a webcam run it would become live and stay invisible in
+         the same moment.
+   - *From round 1, the package's defaults are those of the run's own
+     round, and the clip's bytes join the rule, read beside the export
+     rather than from it:
+     [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+     below (2026-10-14).*
+
+### The null control's jitter clause (2026-10-14)
+
+M4's step 1, [#103](https://github.com/webarkit/webarkit/issues/103).
+Registered on 2026-10-14, before any counted run and before the
+calibration block (item 3). The one M4 device run before it is the
+pre-flight run of 2026-10-13, on the wall clip, which is not an input
+(item 4). It replaces what #103 first named, one allowance taken from M3's
+four static runs together with round 1's static baselines. Item 4 says why
+round 1 is not an input, and #103's comment of 2026-10-14 records it there.
+
+**It is a form and a derivation rule, not a number.** The calibration block
+(item 3) runs M3's pipeline at `37dc6d4`, and the campaign's rounds run
+M4's, which `37dc6d4` does not contain. A threshold fixed now would be wrong
+for M4's pipeline from its first round. So what is fixed now is what the
+clause rejects, the quantity it reads, the loops it reads it over, and that
+it rejects a block, not a run. Its threshold has two readings (item 3): an
+operational one against round 0's calibration, read as each block ends, and
+one of record, derived at each round's end from that round's own baseline
+arms. This is [#114](https://github.com/webarkit/webarkit/issues/114)'s
+lesson applied to the clause: a bound calibrated on one pipeline is not a
+bound for the next, so the reading of record is each round's own.
+- **How a round's pipeline reaches a counted run is
+  [#124](https://github.com/webarkit/webarkit/issues/124)'s.** The setup's
+  item 1 and validity rule 2 hold every counted run at `37dc6d4`, which
+  contains none of M4's pipeline, while #114 and this clause read each
+  round against its own. #124 holds the resolution, which is settled before
+  round 1, the first treatment round. Round 0, the calibration block, runs
+  M3's pipeline at `37dc6d4` and fits the current freeze. The clause does
+  not depend on the answer, only on each static block having a baseline
+  arm of its own.
+  *Settled on 2026-10-14, before round 1:
+  [The instrument, the subject and the inputs](#the-instrument-the-subject-and-the-inputs-2026-10-14),
+  below.*
+
+**What was seen before it was written:**
+- the `jitterPx` of M3's four static runs (M3's record) and their span,
+  and of round 1's two baselines, over their windows and on their common
+  media times (item 4);
+- M3's record's resampling figure, and round 2's three static baselines
+  over their windows (the argument below);
+- round 2's aligned figures (round 2's results, above);
+- the inventory of every committed export on the static clip (item 4).
+
+On M3's four, the per-loop split was run only to check that it computes.
+Its window counts were read (item 2); its per-loop `jitterPx` values were
+not. The M3 values' standard deviation was not computed before the clause's
+first form was written; it was computed, by hand, while the per-block form
+below was, and nothing in that form depends on it. Nothing below rests on
+the M3 values: they set no threshold, and they gate nothing (item 3).
+
+**Why a comparison stays inside one block.** Ruled on 2026-10-14; this
+argument decides both how counted runs are grouped and when the clause is
+read.
+- **The fact.** M3's record reports that keeping each processed frame with
+  probability 0.9 moves one run's `jitterPx` with a standard deviation of
+  0.0013–0.0015 px ("What was looked at before the decision"). M3's four
+  consecutive static runs all fall within 0.00077 px (item 4). Four
+  independent measurements cannot agree more closely than the sampling
+  noise of one, so they are not independent: they share a slowly moving
+  state.
+- **Between blocks, that state moves; within a block, it is frozen.** In
+  the committed record it moved by 0.007–0.009 px: round 1's two
+  baselines, 19 minutes apart in one session, are 0.0092 px apart on the
+  same footage (item 4), and round 2's three static baselines span
+  0.00692 px over their windows
+  ([#123](https://github.com/webarkit/webarkit/issues/123)). Both ran 64
+  patches under the window procedure, so the size does not transfer as a
+  figure. The order of magnitude is the point.
+  - *Open since round 0 (noted on 2026-10-14): see the note under the next
+    bullet.*
+- **So counted runs come in back-to-back blocks,** baseline and treatment
+  arms adjacent, and no comparison ever spans two blocks. Within a block
+  the slow state cancels, which is what bracketing is for. Spread across
+  sessions, it would enter the comparison as noise an order of magnitude
+  larger than the within-block spread, and so than any effect a
+  within-block comparison is built to resolve. Blocks are repeated across
+  sessions to see whether an effect holds across states; each comparison
+  stays inside one block.
+  - *Added on 2026-10-14, after round 0 ran; ruled by the maintainer.*
+    - *Round 0 did not reproduce the anomaly that motivated this decision.
+      Its spread, s₀ = 0.00127 px, is about one run's resampling noise,
+      0.0013–0.0015 px. Its eight runs show no sign of agreeing more
+      closely than sampling allows: the within-run F is 1.47 on 7 and 21.
+      M3's four did: their F is 0.13 on 3 and 9, with a lower-tail
+      probability of 0.061 (the round-0 session record).*
+    - *So the design is retained because it costs no extra run and follows
+      M3's precedent, not because the evidence that motivated it still
+      stands.*
+    - *The between-block spread of the bullet above, 0.007–0.009 px over
+      rounds 1 and 2, is open: unexplained, and not reproduced (#123).*
+  - *Added on 2026-10-16, ruled by the maintainer from two results in
+    #123 (the seed test, and the frame-set decomposition recorded in the
+    round-0 session record under "How much of s₀ is frame-set variation").
+    Frame-set variation, which frames each run processed, carries most of
+    the within-block spread s₀ and little of the between-block spread: on
+    identical media times, rounds 1 and 2's blocks still differ by 0.008 to
+    0.009 px where round 0's eight runs differ by at most 0.0023 px. So the
+    within-block noise and the between-block spread do not share a
+    mechanism, and the clause, calibrated on the within-block σ, cannot
+    catch the between-block phenomenon at all. The clause gates what it was
+    calibrated on: a block whose arms disagree beyond its σ. The unexplained
+    spread is a different thing, outside its reach, and no reading of the
+    clause bears on it. What does: each comparison staying inside one block,
+    the bullet above. Nothing of the clause's form, σ or threshold changes
+    here.*
+- **The calibration's spread must match the campaign's, and so the
+  calibration block's eight runs run consecutively,** like the campaign's
+  blocks. Calibrating within one block and judging across blocks would
+  reject every run measured in a different state; calibrating across
+  blocks and judging within one would pass what a block should refuse. The
+  campaign measures a difference within a block, so the within-block
+  spread is the one the clause needs.
+- *A correction by the maintainer, 2026-10-14.* The ruling earlier that
+  day warned that M3's tight spread might be the anomaly. As a diagnosis
+  that was right: it is, against the device's behaviour between blocks. As
+  a design implication it was wrong. The campaign measures a difference
+  within a block, so the within-block spread is the one the clause needs,
+  and M3's four consecutive runs are the right population. The rule it
+  gave stands, that the calibration's spread must match the campaign's;
+  applied correctly, it says back to back, not spread. The plan's first
+  wording of it, which allowed the calibration to spread "across a
+  session, or across days", is replaced by the bullet above.
+- **What the argument rests on.** It takes the resampling figure as the
+  sampling noise of one run. A random 10% drop is not the perturbation a
+  run's own frame scheduling makes: if the scheduling picks much the same
+  frames in every run of one state, the runs share that too. The
+  conclusion holds either way: the runs of one block are not independent,
+  and what they share is fixed within it. It does not show what the state
+  is; #123 holds that question.
+- **Every jitter comparison between arms of different pipelines is read on
+  their common media times, with `compareExports`.** Ruled on 2026-10-14
+  as a constraint, not left to the predictions.
+  - **Why, and its size.** Jitter depends on which frames a run
+    processed: dropping 10% of them at random moves one run's `jitterPx`
+    by 0.0013–0.0015 px (above). A treatment that changes the cost of a
+    frame changes which frames its arm processes. At 10%, that effect
+    alone exceeds the whole four-run range of M3's static block,
+    0.00077 px. Read on each arm's own frames, a comparison would fold
+    "which frames each arm saw" into its result, with no way to separate
+    it from the pose's quality.
+  - **Its cost, measured.** The common set is at most what the slower arm
+    covered. Measured within one pipeline, over counted loops, on M3's
+    four static runs: the static clip has 363 frames (ffprobe, 30 fps),
+    each run covers 344 to 354 of them, and 314 are common to all four.
+    - **Pairwise, as `compareExports` reads two exports:** each run keeps
+      94.5% to 98.2% of its counted frames, a loss of 1.8% to 5.5%, and
+      3.3% on average over the six pairs.
+    - **On the set common to all four:** each run keeps 723 to 763 of its
+      815 to 822 counted frames, a loss of 7.2% to 11.3%, and 9.2% over
+      the four.
+    - Arms whose cost of a frame differs may share fewer frames than
+      these. Each comparison's record gives its own count.
+  - **Why it is paid.** The selection is symmetric: both arms are judged on
+    the same frames, and that symmetry is what removes the confound.
+  - **Where it binds.** Every comparison of `jitterPx` between arms that
+    run different pipelines: a treatment against its baseline. Which of an
+    arm's exports are paired is registered with the block's shape, in the
+    run order. That each comparison is read on common media times is not
+    open.
+  - *What it does not cover, recorded 2026-10-18: a single dominant frame
+    that both arms posed. The null control's jitter clause, item 1 ("What
+    it rejects"), the addendum of that date under its first sub-bullet.*
+  - **Where it does not: the clause's own readings,** round 0's arm test
+    and every block's baseline variance. They read each run's
+    `runSummary.jitterPx` over all its counted frames (items 2 and 3).
+    Ruled on 2026-10-14, in its general form:
+    - **The same variation does two opposite jobs.** In a comparison
+      between different pipelines, which frames each arm saw is a confound,
+      and the common media times remove it. In a calibration of noise, it
+      is part of the noise and must stay in: removed, the calibrated spread
+      comes out too small, and the clause rejects normal blocks. s₀ and v_b
+      are computed alike, both with it in.
+    - **Round 0's arms are one pipeline at one cost of a frame:** in M3's
+      four static runs every counted frame is TRACK (item 2), and `total`
+      p50 is 51.2–51.4 ms in both arms (M3's record).
+      - *Refuted for round 0, noted on 2026-10-14 after it ran.*
+        - *Its `total` p50 was 38.1–38.9 ms in six runs, and 48.0 and
+          52.7 ms in two. The difference is in `acquire` (the session
+          record,
+          [`2026-10-14-tab9-m4-calibration-session.md`](./2026-10-14-tab9-m4-calibration-session.md),
+          "The acquire finding").*
+        - *Balanced between the arms: mean `acquire` p50 was 30.37 ms in
+          the sync arm and 31.55 ms in the worker arm.*
+        - *The exclusion stands on the general reason, the bullet above,
+          alone, as the "A second reason" note below already said, and the
+          maintainer confirmed.*
+    - *A second reason was offered on 2026-10-14, and accepted: that a
+      frame set common to all eight runs would be very small. It does not
+      hold. Over four loops, a run visits nearly every frame of the clip,
+      and the set common to M3's four static runs keeps most of each run's
+      frames (the measured cost, above). The exclusion rests on the general
+      reason alone.*
+
+1. **What it rejects.** A static block whose baseline arm disagrees with
+   itself: its baseline runs, which carry no treatment, differ in jitter by
+   more than consecutive repeats of that pipeline on this device do. Within
+   a block the slow state should be frozen (above), and the clause checks
+   that it was. A baseline arm that disagrees with itself says the state
+   moved inside the block, or that something else happened that no
+   run-level check sees, and the block's comparison cannot rest on it.
+   - **It is read per block, on that block's own baseline arm, as part of
+     the block.** Only static blocks: `jitterPx` measures steadiness only
+     on a clip where the target stays in view and every pose is right
+     (`DEFINITIONS.jitterPx`). In round 0, which has no treatment, all
+     eight runs are baseline, and its check is the arm test (item 3).
+     - *Addendum, 2026-10-18: the metric's limitation on hand-held footage,
+       registered on the maintainer's ruling of that day and measured by
+       #137's Stage 1 probe
+       ([`2026-10-18-137-stage1-probe.md`](./2026-10-18-137-stage1-probe.md),
+       "A property of `jitterPx` on hand-held footage, seen in question 1's
+       table"). Whole-set `jitterPx` on these clips is dominated by single
+       low-support detection frames: among the 37 committed hand-held
+       exports the probe read, every whole-set value above 20 px is one
+       detection frame, named by the probe's per-run jackknife with no tie,
+       and after one 4-inlier frame (`sync-wall-2`, 88.68 → 5.20 px) each is
+       a 6-inlier detection: `r1-baseline-table` 60.50 → 2.48 px,
+       `sync-table-2` 46.06 → 2.65 px, the 2026-09-26 `tracking-table`
+       23.87 → 3.27 px. What the common-media-times rule does and does not
+       do about this, stated exactly: the rule removes the selection
+       confound, which frames each arm processed, as its "Why it is paid"
+       says, and on the 20 M3 pairs it does: no exclusion of a detection
+       class by inlier count (`X4`, `X6`, `X8`) moves the common-set figure,
+       and `XD`, every detection removed, moves it by at most 0.28 px. It
+       does not make the common-set figure robust to a single dominant
+       frame that both arms posed, a different vulnerability, which the
+       rule never claimed to cover: the carrier's media time can fall
+       inside the common set, as it does within one pipeline's replicates
+       (M3's sync table group reads 19.49 on its group common media times
+       under `none`) and on two tuning pairs (the Tab 9
+       tracking-against-stateless pair on the table clip, +25.02 → −0.74 px
+       under `X6`; the r1 iter20-against-baseline pair on the wall clip,
+       −7.91 → +1.72 px). Instance of the whole-set reading: `table | iter20
+       vs baseline`, −57.90 px under `none` and +0.26 px under `X6`, the
+       sign inverting on one 6-inlier frame of the baseline run, with the
+       common-set difference +0.33 px under both. Tuning conclusions that
+       were read whole-set are to be re-read before being relied on; none is
+       re-read here.*
+   - **What the clause is: a check on the conditions of measurement, not
+     on its results,** read on an arm that carries no treatment.
+   - **It is a gross-abnormality filter, not a precision instrument.**
+     Item 3's power tables show what its runs buy, and no reading of a
+     block that passes it may claim more.
+   - **It rejects a block, never a run, and the reason is not continuity
+     with M3.** Jitter is an outcome measure for M4: steadiness is what its
+     rounds measure ([#107](https://github.com/webarkit/webarkit/issues/107)).
+     Rejecting individual runs on a jitter threshold would select on the
+     dependent variable, and bias the mean of the runs that survive.
+     Rejecting the block selects nothing: its comparison is discarded and
+     redone whole.
+   - **It reads the baseline arm only.** That arm carries no treatment, so
+     no outcome of M4's enters the clause. A block criterion that read a
+     treatment's jitter, and was redone until it passed, would select on
+     the outcome one level up.
+   - **What it still selects, recorded as such.** Redoing a block until
+     its baseline passes still selects, indirectly, for quiet conditions.
+     Within a block, the baseline's conditions and the treatment's are
+     correlated, so a block kept for its quiet baseline tends to keep
+     quiet treatment runs with it. The one-redo cap bounds that selection
+     (item 5).
+   - **It cannot overlap validity rule 1.** Rule 1 decides whether a run
+     counts, on `run.failure` and `run.endedBy`, and every run-level check
+     the plan registers is read before the clause: rules 1 to 3, the link
+     check (the setup's item 4), the loop-wrap refusal and the stall check
+     (the setup's item 6). The clause reads the block those leave, runs
+     that passed them all, and it removes no run. So nothing rule 1 refuses
+     reaches it, and the two can never remove the same run.
+2. **What it reads: `runSummary.jitterPx`,** each run's, as the export
+   records it, over the run's four counted loops (`loops`
+   `{firstLoop: 1, loopCount: 4}`), never over its warm-up loop.
+   - **It is computable after the run, from the committed export alone.**
+     It is `cornerJitter` (`examples/js/bench-metrics.mjs`) over
+     `countedLoopFrames` of the export's `frames`, from each frame's
+     `corners` and `mediaTimeSeconds`, with the run's `clipDurationS` and
+     `loops`. The analysis recomputes it, and requires it to equal the
+     recorded value. On 2026-10-14 the two were equal, to the last digit,
+     in M3's four static exports and in the pre-flight run's. The clause
+     needs no field the frozen page does not already export.
+   - **The warm-up loop is not read, because the detection arms differ
+     there by construction:** a worker run's first lock arrives later. M3's
+     two worker static runs have 6 and 5 frames without `corners`, all in
+     their warm-up loops, and its two synchronous runs have none; every
+     frame of every counted loop of the four is TRACK. As #114's criterion
+     does, the clause reads the counted loops only.
+   - **One loop at a time, for item 3's within-run check:**
+     `countedLoopFrames` with `firstLoop` k and `loopCount` 1, for k from 1
+     to 4. The windows `jitterPx` pools never span a wrap, so the four loops
+     partition a run's windows exactly (12 + 12 + 12 + 13 = 49 in M3's
+     first synchronous static run), and the run's `jitterPx`² is the mean
+     of its loops' `jitterPx`², each weighted by its loop's Σ(n − 2).
+3. **The threshold: two readings of one statistic, stated once.** The two
+   readings were the maintainer's proposal on 2026-10-14, offered as a
+   proposal rather than a verified rule. The two changes made to it here
+   are marked below: the maintainer accepted the first, and ruled on the
+   second.
+   - **The statistic:** a block's baseline arm has k runs, k ≥ 2, with k
+     set by the run order, not written yet. v_b is the sample variance of
+     their x, as item 2 reads them, with k − 1 degrees of freedom. Too much
+     disagreement is abnormal and too little is not, so each reading is
+     one-sided, at 5%.
+   - **Whose statistic it is, and why it changed.** The decision that
+     counted runs come in back-to-back blocks (above) was the maintainer's.
+     It made the clause's first statistic impossible: an eight-run block
+     testing its four synchronous runs against its four worker runs cannot
+     be a counted block's baseline arm. The maintainer did not trace that
+     consequence when making the decision. The agent writing this clause
+     inherited it, and formulated the per-block statistic above in its
+     place; the maintainer confirmed it on 2026-10-14. The first statistic
+     survives as round 0's acceptance (below).
+   - **The operational reading, at the block's end:** against s₀, round
+     0's within-block standard deviation (7 degrees of freedom, below). The
+     block is rejected when v_b ÷ s₀² > F(0.95; k − 1, 7). It is read as
+     soon as the block finishes, so that a bad block is redone at once
+     instead of wasting the session.
+   - **The reading of record, at the round's end:** against the pooled
+     within-block standard deviation of that round's own baseline arms,
+     leaving out the block it judges. Over the round's other blocks,
+     s₋b² = Σ (x − that block's baseline mean)² ÷ d₋b, with
+     d₋b = Σ (k − 1). The block is rejected when
+     v_b ÷ s₋b² > F(0.95; k − 1, d₋b). It decides, retrospectively, which
+     blocks enter the analysis. The same pool over the blocks admitted is
+     the round's within-block spread, s_r, which the round's jitter
+     readings are set against; how the predictions use it is theirs to
+     register.
+   - **Why two.** One reading alone forces a choice between not wasting
+     the session and being right: s₀ is known at once but comes from M3's
+     pipeline, while the round's own spread is the right population and is
+     known only at its end. Both read baselines only, so neither selects on
+     the outcome.
+   - **The first change: leave one out.** As proposed, the pool of record
+     included the block it judges, so a gross block would widen the
+     threshold that judges it, most of all in a round of few blocks. The
+     reading of record pools the round's other blocks instead. Accepted by
+     the maintainer on 2026-10-14, as a real defect of the proposal.
+   - **The second change: below 7 degrees of freedom, the larger
+     threshold.** d₋b is Σ (k − 1) over the other blocks. With two baseline
+     runs a block, that is one per block, so a round needs eight blocks
+     before its reading of record carries round 0's 7 degrees of freedom.
+     Ruled on 2026-10-14: while d₋b is below 7, the reading of record uses
+     the larger of the two thresholds on v_b, s₀² × F(0.95; k − 1, 7) and
+     s₋b² × F(0.95; k − 1, d₋b), and the record says which one bound.
+     - **What that is:** not a better estimate of σ, but a decision rule
+       chosen for the direction in which it errs, towards acceptance. It
+       compares thresholds, because the threshold is what the decision
+       uses.
+     - *Corrected on 2026-10-14; the error was the maintainer's. The ruling
+       first said "the larger of round 0's estimate and the round's", the
+       larger σ, while meaning the more permissive gate. With fewer degrees
+       of freedom the F cut-off is higher, so a smaller estimate can give
+       the higher threshold: the two invert precisely where the rule
+       matters.*
+     - **Why that direction:** a filter whose power is 0.449 at 3 σ (k = 2,
+       the table below) was never catching much, so erring towards
+       acceptance costs little. Rejecting a good block on a thin estimate
+       loses data and protects against nothing.
+   - **For a block bracketed by two baseline runs, as M3's were (k = 2):**
+     F(0.95; 1, 7) = t(0.975; 7)² = 2.3646² = 5.5914, so the operational
+     reading rejects when |x₁ − x₂| > s₀ × √(2 × 5.5914) =
+     **3.3441 × s₀**: a two-sided 5% t test of the bracket difference, on 7
+     degrees of freedom. For k = 3 and 4, F(0.95; 2, 7) = 4.7374 and
+     F(0.95; 3, 7) = 4.3468.
+   - **The power it keeps, k = 2:** the probability that the operational
+     reading rejects a block whose two baseline runs differ by a true shift
+     Δ, the state moving inside the block, σ being the true within-block
+     standard deviation. It is the probability that a noncentral t with 7
+     degrees of freedom and noncentrality Δ ÷ (σ × √2) lies beyond ±2.3646,
+     integrated over the χ² distribution with 7 degrees of freedom;
+     simulating 10⁶ blocks at 2, 3 and 4 σ agreed within 0.001.
+
+     | the shift Δ inside the block | 0 | 1 σ | 2 σ | 3 σ | 4 σ | 5 σ |
+     |---|---|---|---|---|---|---|
+     | blocks rejected | 0.050 | 0.094 | 0.232 | 0.449 | 0.681 | 0.856 |
+
+     **A gross-abnormality filter (item 1):** a shift of 3 σ inside a block
+     passes more often than not. What it is built to catch is the state
+     moving inside a block by as much as it moves between blocks, about
+     ten times the whole range of M3's four consecutive runs (above). If
+     round 0's spread is of that order, such a move lies far past where
+     this table is weak.
+   - **Round 0, the calibration block: both readings' first instance** (the
+     rounds are named with the run order, not written yet).
+     - **What runs:** eight static runs on Tab_9_WiFi, Chrome 154, at
+       `37dc6d4`, four synchronous and four worker: M3's pipeline. They run
+       consecutively, back to back, like the campaign's blocks (above). It
+       is device work, in a session of its own, before the first counted
+       run.
+     - **They are not counted runs, and run under the pre-flight run's
+       discipline:** every item of the setup above, the manifest check at
+       Start, the link monitor and its log, and the URL kept beside each
+       export among them; validity rules 1 to 3, with rule 3 read on the
+       pinned string's first form without `&run=`, which the pre-flight run
+       left out too, so that `run.order` is `null` and
+       `protocol.sessionRun` is `false` with its one gap `run.order none`;
+       and the stall check (the setup's item 6). The clip slot is
+       `pinball-static.mp4`.
+     - **They are named apart from counted runs:**
+       `<date>-tab9-m4-calibration-<path>-static-<k>.json`, `<path>` `sync`
+       or `worker` and `<k>` the run's repeat within its path, 1 to 4. It
+       is the pre-flight run's pattern with `calibration` in place of
+       `preflight`, and with the repeat `-<k>` that a block of repeats
+       needs. So no count of a session's exports takes them in (step 7),
+       and no session name matches them.
+     - **Its order is counterbalanced: S W W S S W W S** (S synchronous,
+       W worker), M3's bracket pattern twice. Ruled on 2026-10-14.
+       - **The reason:** grouped, any drift across the block's ten minutes
+         projects onto the arm difference, which is the confound the arm
+         test must be free of.
+         - *Noted on 2026-10-14: round 0's block took 21 minutes, from
+           11:55:26Z to 12:16:27Z. "Ten minutes" was M3's static block's,
+           carried over without being checked.*
+       - **What it cancels: a drift linear in time, exactly.** Both arms sit
+         at mean position 4.5 in the order: sync at (1 + 4 + 5 + 8) ÷ 4,
+         worker at (2 + 3 + 6 + 7) ÷ 4. Grouped, four of one and then four
+         of the other, they would sit at 2.5 and 6.5, four runs' worth
+         apart.
+       - **What it does not cancel: curvature.** Sync's positions sit
+         further from the block's centre than worker's. Their squared
+         deviations from 4.5 sum to 3.5² + 0.5² + 0.5² + 3.5² = 25, against
+         2.5² + 1.5² + 1.5² + 2.5² = 17 for worker. So a quadratic drift,
+         c × (position − 4.5)², leaves (25 − 17) ÷ 4 = 2c between the arms'
+         means.
+       - *Corrected on 2026-10-14. The ruling before this one set a strict
+         alternation, S W S W S W S W, whose arms sit at mean positions 4
+         (1, 3, 5, 7) and 5 (2, 4, 6, 8): one run's worth of a linear drift
+         stayed on the difference. The maintainer had been correcting the
+         grouped order, four runs' worth, and stopped at the first
+         improvement rather than at the exact cancellation.*
+       - The rest of its procedure is registered when the session is
+         prepared, before it runs.
+     - **A run that fails a run-level check** is not one of the eight. What
+       replaces it is for the stopping rules, not written yet, as for a
+       counted run.
+     - **Its acceptance is the arm test,** which plays the operational
+       reading's part for round 0. Round 0 is one block, so it has no
+       reading of record.
+       - **The arms' difference:** D = (the worker runs' mean x) − (the
+         synchronous runs' mean x).
+       - **The pooled within-arm standard deviation:**
+         s_p = √(Σ (x − its arm's mean)² ÷ 6), summed over the eight runs,
+         each about its own arm's mean, so that the arms are not assumed
+         equal. 6 = (4 − 1) + (4 − 1) degrees of freedom.
+       - **The threshold:** A = t(0.975; 6) × s_p × √(1/4 + 1/4) = 2.4469 ×
+         0.70711 × s_p = **1.7302 × s_p**: the two-sided 5% critical
+         difference of Student's two-sample t test with four runs an arm.
+       - **The block is rejected when |D| > A.** Two-sided, because neither
+         arm is a treatment, so neither direction is the benign one. M3's
+         clause (its runbook's step 8) was one-sided because its worker arm
+         was the treatment, and a steadier worker was no defect.
+       - **Why the arm test matters past round 0:** on the static clip,
+         detection is the only part of a frame that differs between the
+         arms, and it runs to one lock, in the warm-up loop. An accepted
+         round 0 finds the two paths one population of repeats rather than
+         assuming it, which is what lets a block's baseline arm hold either
+         path.
+       - **Its power:** the probability that the arm test rejects a block
+         whose arms truly differ by δ, σ being the true run-to-run standard
+         deviation. It is the probability that a noncentral t with 6
+         degrees of freedom and noncentrality δ ÷ (σ × √(1/4 + 1/4)) =
+         √2 × δ ÷ σ lies beyond ±2.4469, integrated over the χ²
+         distribution with 6 degrees of freedom; simulating 10⁶ blocks at
+         1, 2, 2.5 and 3 σ agreed within 0.001.
+
+         | the arms' true difference δ | 0 | 0.5 σ | 1 σ | 1.5 σ | 2 σ | 2.5 σ | 3 σ |
+         |---|---|---|---|---|---|---|---|
+         | blocks rejected | 0.050 | 0.092 | 0.223 | 0.430 | 0.657 | 0.836 | 0.939 |
+
+         The first column is the false-rejection rate, by construction. In
+         px the row depends on σ, so round 0's record restates it with s₀.
+         **A gross-abnormality filter (item 1):** an arm difference of one σ
+         passes 1 − 0.223 = 0.777 of the time, about four times in five.
+     - **If it is accepted, s₀** is the standard deviation of all eight
+       values, with 7 degrees of freedom, the arms' equality now tested
+       rather than assumed. Its 95% interval runs from s₀ × √(7 ÷ 16.0128)
+       to s₀ × √(7 ÷ 1.6899), that is from **0.6612 s₀ to 2.0353 s₀**, a
+       factor of 2.0353 ÷ 0.6612 = 3.08; 16.0128 and 1.6899 are the χ²
+       distribution's 97.5% and 2.5% points with 7 degrees of freedom. s₀
+       is the operational reading's reference for every round.
+     - **Why not M3's four alone.** Four runs give 3 degrees of freedom: an
+       interval for the standard deviation from √(3 ÷ 9.3484) = 0.5665 to
+       √(3 ÷ 0.2158) = 3.7285 times the estimate, a factor of 3.7285 ÷
+       0.5665 = 6.58. A threshold derived from them could sit anywhere
+       across that factor, which the maintainer ruled wider than any effect
+       M4 hopes to detect (2026-10-14).
+   - **The within-run check.** Each run's four counted loops are read one
+     at a time (item 2): for round 0, 32 per-loop values, in a layout of
+     eight runs by four loops, read unweighted. Its residual mean square,
+     with (8 − 1) × (4 − 1) = 21 degrees of freedom, is the within-run
+     term. F = (the runs' mean square) ÷ (the residual mean square), on 7
+     and 21 degrees of freedom, against its 95% point, 2.4876, says whether
+     the runs differ by more than sampling within a run makes them differ.
+     - **It gates nothing.** The clause compares runs, so its error term
+       must be the run-to-run spread, which the within-run term cannot
+       replace.
+     - **What it is for:** when a round's spread moves (item 6), it says
+       whether the movement is between runs, the device's state from run to
+       run, or within them, loop to loop.
+   - **M3's four: an independent estimate, and a weak comparison, gating
+     nothing.** They are four consecutive runs in one block, the population
+     the clause needs (above), from another Chrome and another harness.
+     They are put through round 0's rule with two runs an arm, and reported
+     beside round 0's: s_p with 2 degrees of freedom, and A = t(0.975; 2) ×
+     s_p × √(1/2 + 1/2) = 4.3027 × s_p; their standard deviation, s_M3,
+     with 3; and the within-run check with (4 − 1) × (4 − 1) = 9 residual
+     degrees of freedom.
+     - **They are useful because they differ:** Chrome 153, against round
+       0's 154. But they differ in more than the browser. Between M3's
+       `0304390` and `37dc6d4` the page and its harness changed (its
+       guards, and the one bundle both arms now load:
+       [#111](https://github.com/webarkit/webarkit/pull/111),
+       [#113](https://github.com/webarkit/webarkit/pull/113)), while the
+       tracker's source did not (`packages/nft-tracker/src` changed in
+       comments only). So a difference between the two estimates cannot be
+       attributed to Chrome.
+     - **How the two are compared:** F = (s₀ ÷ s_M3)², on 7 and 3 degrees
+       of freedom, two-sided 5%. Between 0.1698 and 14.6244 the two are not
+       told apart. With 3 degrees of freedom on one side, that is a weak
+       comparison, and the record labels it so beside its result. Outside
+       that range, the spread moved between M3's session and round 0's,
+       for a reason this comparison cannot name, and every comparison with
+       M3's figures carries it.
+4. **The margin, and the set it is taken over.**
+   - **Per block, for each reading:** the threshold less the block's own
+     value, both with their inputs (for k = 2, operationally,
+     3.3441 × s₀ − |x₁ − x₂|), and for round 0, A − |D|. The nearest real
+     value is the block's own. The block's record gives both readings with
+     their inputs. No margin is given here: no block of M4's has run.
+   - **The set is a subset of the committed data; this is what is missing,
+     and why.** The candidates were every committed export on
+     `pinball-static.mp4`, tracking or stateless, and the one export on
+     Chrome 154, inventoried on 2026-10-14.
+     - **Round 1's static baselines**
+       (`2026-09-28-tab9-tuning-r1-baseline-static.json` and
+       `-baseline-static-repeat.json`), which #103 named as inputs, are
+       out.
+       - **They ended by Stop.** `?loops=` did not exist yet, so no run
+         could end by itself. Rounds 1 and 2 were run as 2026-09-26's
+         runs were, by a script that "pressed Stop and saved the page's
+         export unchanged" ("A device session", and 2026-09-26's "How the
+         runs were made", above). Their exports record no `run`, so
+         validity rule 1 cannot be read on them, and by the procedure they
+         would fail it.
+         A clause calibrated on runs that the rule beside it would not
+         count is incoherent. This reason alone excludes them.
+       - **The target.** Round 1 ran the 64-patch target (`4af6a7fb…`);
+         M3's runs and the campaign's read the 48-patch one (`9e8eb486…`).
+         Round 2's 48-patch candidate read `jitterPx` 0.144 against its
+         64-patch brackets' 0.160 and 0.167, aligned against the stateless
+         run: 10.0% and 13.8% lower. That is one run, and a window itself,
+         but a difference of that size is more than the spread being
+         measured.
+       - **The window.** 300 frames, the last before Stop, starting
+         wherever Stop left them: at 7.700 s with 2 wraps in the baseline,
+         at 6.433 s with 1 in its repeat. Two such runs do not cover the
+         same footage; a `?loops=4` run covers exactly four loops.
+       - **No loops.** A window has neither a warm-up loop nor counted
+         loops, so item 2's reading does not exist on it.
+       - **What the window does not explain.** Over their windows, round
+         1's two baselines moved 0.1476 → 0.1552 px, by 0.0076 px (M3's
+         record). M3's four counted-loop runs span 0.14163 to 0.14240 px,
+         0.00077 px, a tenth of it.
+         - The window does not account for that. On their 168 common
+           media times (`compareExports`, which reads the same footage in
+           both), the two baselines read 0.1476 and 0.1568 px, 0.0092 px
+           apart: more than over their windows.
+         - What the tenfold difference comes from is not shown. Two
+           candidates are the time between the runs, 19 minutes against
+           about 10 for M3's whole static block (07:35:46 to 07:46:07),
+           and the target. On common footage it is 0.0092 ÷ 0.00077 =
+           11.9, twelvefold, and #123 holds the question. One pair's
+           difference over about 210 frames against four runs' range over
+           about 820 each gives the size of the question, not a ratio of
+           two spreads.
+         - *The ruling of 2026-10-14 kept this bullet's first wording:
+           that the tenfold difference was consistent with the window
+           explanation, without proving it. The independent check of this
+           text, before it was committed, found the common-footage
+           comparison above, which goes against it.*
+       - **Excluding it as an input is not discarding it.** Round 1 stays
+         in the record as what it showed: movement between the first and
+         last runs of one session, 19 minutes apart, which the plan read as
+         drift's signature, and which bracketing exists to cancel (round
+         1's results, and "A device session", above).
+     - **Every other static `tracking` run from before M3 is out for the
+       first reason, and all but one for the second:** M2's
+       `2026-09-26-tab9-ondevice-tracking-static.json` and
+       `-static-repeat.json`; round 1's `iter20-static`, also a treatment,
+       a cap of 20; and round 2's `baseline-static-1` to `-3` (64 patches),
+       `p32-s16-static` (32) and `p48-s16-static` (48, `9e8eb486…`, before
+       its adoption). Each ended by Stop, with no `run` record and no
+       loops.
+     - **The Oppo A72's**
+       (`2026-09-26-oppo-a72-ondevice-tracking-static.json`): another
+       device. Devices are not pooled: jitter is more device-specific than
+       anything else measured here.
+     - **The pre-flight run**
+       (`2026-10-13-tab9-m4-preflight-sync-wall.json`): the one Chrome 154
+       export, but on the wall clip.
+     - **The static `stateless` runs,** sixteen on Tab_9_WiFi on
+       `pinball-static.mp4`, from 2026-09-24 to 2026-10-01, and the Oppo
+       A72's one: another pipeline.
+     - **What remains:** M3's four, an independent estimate (item 3), and
+       the calibration block, not yet run, round 0's input.
+   - **The Chrome caveat.** Every static export read so far is Chrome 153,
+     by the exports' reduced user agent; every run the clause will judge is
+     Chrome 154. That is why round 0's input is a block on 154, not M3's
+     four. Every comparison with M3's four carries the caveat, and none is
+     paired.
+5. **What happens to a rejected block, and who decides.**
+   - **The rules decide, without discretion:** a reading that rejects a
+     block rejects it, and nobody overrides either reading, either way.
+   - **The operational reading decides a redo; the reading of record
+     decides entry.** A block the operational reading rejects is redone at
+     once. Whether a block enters the analysis, including one the
+     operational reading rejected, is decided by the reading of record at
+     the round's end.
+   - **Every block is recorded.** Its exports are committed under their
+     names, and both readings, with their inputs, are in the session
+     record. A block the reading of record rejects enters no derivation and
+     no comparison. It is recorded because a rejection is the null control
+     firing on real data, and how often it fires is part of what item 6
+     reads. A run the loop-wrap rule refuses is the opposite case, a
+     rejected sample that is not recorded: that rule judges a run, and this
+     clause a block.
+   - **Its comparison goes with it.** The block's treatment runs are
+     recorded, and enter or stay out with the block.
+   - **It is redone once.** The redone block's files continue the repeat
+     index (`<k>` 5 to 8, for the calibration block), as M3's re-run wall
+     block did. If the redo is rejected too, the round stops, and the
+     maintainer rules on what follows: no third block runs without that
+     ruling. The stopping rules, when they are written, take this in. For
+     round 0, the arm test's rejection is the one that counts here.
+   - **The cap is what bounds the clause's residual selection** (item 1):
+     every redo keeps a block for its quiet conditions, so the number of
+     redos is the number of chances the campaign gives itself to keep only
+     quiet ones. That is the cap's job, not procedural convenience.
+6. **When it is read, and revisited.** On the campaign device, Tab_9_WiFi,
+   only: desktop values and other devices are not read by it.
+   - **It is read per block, as part of the block:** operationally at the
+     block's end, and of record at the round's end. No separate baseline
+     block has to come before a round's counted runs. *Corrected on
+     2026-10-14 by the maintainer: this item said the clause is read
+     "before the first counted run of each round, on that round's baseline
+     block", written with one baseline per round in mind. With the clause
+     read per block, the ordering question the plan had named, a baseline
+     block spread across a session that could not all come before its
+     first counted run, no longer arises.*
+   - **The one figure carried from round to round is round 0's s₀:**
+     always in the operational reading, which is provisional, and in the
+     reading of record only when it binds there, below 7 degrees of
+     freedom (item 3). Otherwise the reading of record is each round's own.
+   - **Read at each round's end:**
+     - each block's two readings (item 5);
+     - the round's within-block spread against round 0's: F = (s_r ÷ s₀)²,
+       on the round's degrees of freedom and 7, two-sided 5%, its bounds
+       computed per round. Outside them, the movement is recorded with the
+       within-run check's reading of it, and the round goes on. Its jitter
+       figures are not compared with round 0's as if both had one spread;
+     - the Chrome build of each of the round's sessions (the setup's item
+       5) against round 0's. A change is recorded; the reading of record,
+       on the round's own blocks, covers it.
+   - **What revisits the form itself:** a block and its redo both rejected
+     (item 5). The premise of the back-to-back design, a state frozen
+     within a block, has then failed twice running on that round's
+     pipeline, and the maintainer rules before the round goes on.
+
+**The scaled-step schedule stays descriptive.** It changes its own sample
+between runs on the same machine (#107, "What it must show"), so it never
+enters a paired comparison, and no figure of it reaches this clause.
+
+### Round 0, the calibration block: the session's procedure (2026-10-14)
+
+Registered on 2026-10-14, before the session runs, as item 3's round-0
+bullet requires ("the rest of its procedure is registered when the session
+is prepared, before it runs"). The session's brief was the maintainer's,
+given in a chat; by "What the plan rests on", above, it binds only as it is
+written here. One point of it was settled against the plan before this text
+was written: the brief gave each run its own `?run=<n>`, while the round-0
+bullet reads rule 3 on the pinned string's first form without `&run=`. The
+maintainer ruled for the plan, so `run.order` is `null` in all eight.
+
+**Who does what.** The session's PC runs the server, the tunnel, the link
+monitor, the command that opens each run, the pull of each export and the
+checks. The maintainer, at the tablet, types the device label, presses
+Start and then Download JSON, keeps the page in the foreground, and closes
+the run's tab.
+
+**Before the first run,** once, each result in the session record:
+- the provenance runbook's steps 1 to 4: the guard diff against `37dc6d4`
+  and the clean tree print nothing; `curl -sI` reads `Cache-Control:
+  no-cache, no-store, must-revalidate`; `examples/dist/provenance.json`
+  names head `37dc6d4…`, `clean: true`, an empty `dirtyPaths` and the
+  bundle `3a2567c15d59…`, and the files on disk hash as it says;
+- the target's SHA-256, `9e8eb486…` (rule 3), and `stall-check.mjs`'s,
+  `cccb475b…`, equal to the copy embedded in M3's record (the setup's item
+  6);
+- on the tablet: Chrome's cached files cleared, no `bench-nft-*.json` in
+  the download folder (step 7), and the full build read from
+  `chrome://version` (the setup's item 5);
+- **the link quiet:** no `connection terminated` line naming the device in
+  adb's log for five minutes before run 1. This is a readiness condition,
+  not a validity rule: a drop during a run invalidates that run anyway (the
+  setup's item 4), and this keeps a flapping link from spending the
+  session's re-runs.
+
+**The order and its names.** `<date>` is the session's.
+
+| Position | Path | Export |
+|---|---|---|
+| 1 | sync | `<date>-tab9-m4-calibration-sync-static-1.json` |
+| 2 | worker | `<date>-tab9-m4-calibration-worker-static-1.json` |
+| 3 | worker | `<date>-tab9-m4-calibration-worker-static-2.json` |
+| 4 | sync | `<date>-tab9-m4-calibration-sync-static-2.json` |
+| 5 | sync | `<date>-tab9-m4-calibration-sync-static-3.json` |
+| 6 | worker | `<date>-tab9-m4-calibration-worker-static-3.json` |
+| 7 | worker | `<date>-tab9-m4-calibration-worker-static-4.json` |
+| 8 | sync | `<date>-tab9-m4-calibration-sync-static-4.json` |
+
+Each position's URL is
+`http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=<path>&clip=pinball-static.mp4&loops=4&window=2000`.
+
+**Each run, in order:**
+1. `adb -s Tab9WEEA0001504 reverse --list` shows `tcp:8093 tcp:8093`. If
+   it does not, the run does not start: the tunnel is restored, and the
+   record says so.
+2. The link monitor begins.
+3. The URL is opened with rule 3's one command, and written to
+   `<the export's name>.url.txt`.
+4. At the tablet: the device label `Tab_9_WiFi`, Start, the page in the
+   foreground until the status reads `done`, then Download JSON. A refused
+   Start is not a run: its remedy is applied, the URL is opened again by
+   the same command, and Start is pressed again.
+5. The export is pulled from the tablet's download folder with `adb pull`,
+   unchanged, and renamed to its position's name. The link monitor ends
+   after the pull, and its log is `<the export's name>.link.txt`.
+6. The run-level checks, before the next run: validity rules 1 to 3, the
+   link's verdict and the stall check. They read no jitter value. No
+   `jitterPx` is read, by anyone, until the eighth run's checks have passed.
+7. The run's tab is closed, so that every run starts with the same tabs
+   open.
+
+**A run that fails a run-level check** is not one of the eight: one ended
+by Stop, one with `run.failure` set, one the loop-wrap rule refuses, a
+drop, or a failure of rule 2, rule 3 or the stall check.
+- **It is re-run once, at once, at its own position,** so the order stays
+  S W W S S W W S.
+- **Its export and logs are not copied into `docs/benchmarks/`.** The
+  record names the run, its time and the check it failed.
+- **If the re-run fails too, the session stops,** and the maintainer rules
+  before anything else runs. This rule is this session's only; the
+  campaign's stopping rules are still to be written.
+
+**After the eighth:**
+- step 6, the clean tree, again;
+- step 7's count and identity, read for round 0: eight exports, each with
+  its `.url.txt` and `.link.txt`; `run.order` `null`; `loops.loopCount` 4;
+  `bundledClip` `pinball-static.mp4`; `detection.path` its name's; and
+  `provenance.manifest.head` `37dc6d4…`;
+- then, and only then, item 3's computations: the eight values by arm; the
+  arm test; if it accepts, s₀ with its interval and the operational
+  thresholds; the within-run check; and M3's four beside them;
+- if the arm test rejects, item 5's redo: once, in the same order, with
+  `<k>` 5 to 8.
+
+**What is committed:** the eight exports, their `.url.txt` and `.link.txt`,
+and the session record, `<date>-tab9-m4-calibration-session.md`, which
+holds the Chrome build, each run's checks, any re-run, and item 3's
+computations with their inputs.
+
+### Round 0's result (2026-10-14)
+
+Added after the block ran, below its registered procedure, which stays as it
+was. The session record, with every input, is
+[`2026-10-14-tab9-m4-calibration-session.md`](./2026-10-14-tab9-m4-calibration-session.md).
+The independent read of the write-up, which recomputed every figure from the
+exports, is
+[`2026-10-14-tab9-m4-calibration-audit.md`](./2026-10-14-tab9-m4-calibration-audit.md).
+
+- **The runs:** eight runs in the order S W W S S W W S, on Chrome
+  154.0.8037.126. Every one passed its run-level checks at its first attempt,
+  so none was re-run.
+- **The arm test accepts the block:** |D| = 0.0012953 px ≤ A = 1.7302 × s_p =
+  0.0019834 px.
+- **s₀ = 0.0012672 px,** on 7 degrees of freedom, with a 95% interval of
+  0.0008378 to 0.0025790 px.
+- **The operational reading,** for a block with two baseline runs: reject
+  when |x₁ − x₂| > 3.3441 × s₀ = 0.0042375 px, from the unrounded
+  s₀ = 0.00126716 px.
+- **Against M3's four:** F = (s₀ ÷ s_M3)² = 14.1030, on 7 and 3 degrees of
+  freedom. That is inside 0.1698 to 14.6244, so the two are not told apart; it
+  is a weak comparison.
+- **Neither redo rule was exercised.** Added on 2026-10-14, at the
+  maintainer's instruction.
+  - No run failed a run-level check, so the session's rule, a failed run
+    re-run once at its own position, never ran.
+  - The arm test accepted the block, so item 5's rule, a rejected block
+    redone once, with `<k>` 5 to 8, never ran either.
+  - A rule that has never run is a rule nobody knows works. Item 5's redo
+    enters round 1 untried: its file naming, its place in the order, and the
+    stop after a second rejection have not yet met a real rejection.
+  - The session's re-run rule was registered for that session only. What
+    replaces a failed counted run is for the campaign's stopping rules, not
+    yet written.
+- **The cost of a frame moved within the block.** `acquire` p50 was about
+  28 ms in six runs, 42.1 ms in run 3 and 37.3 ms in run 5, while the
+  tracker's own steps moved by at most 0.2 ms at p50.
+  - That refutes, for round 0, a fact the plan quoted from M3: that round
+    0's arms run at one cost of a frame.
+  - The cost was balanced between the arms: mean `acquire` p50 was 30.37 ms
+    in the sync arm and 31.55 ms in the worker arm.
+  - The exclusion of common media times stands on the general reason, as
+    the registration already said.
+  - Across the eight runs, `acquire` correlates with `jitterPx` at
+    r = 0.4275. As a test, that is t = 1.158 on 6 degrees of freedom,
+    p = 0.291: not shown.
+  - Without run 3, r = 0.004. So `acquire` does not predict `jitterPx`
+    beyond run 3, and eight runs cannot exclude a moderate relation.
+  - **Archived as a report, and no rule changes on it** (the maintainer's
+    ruling, 2026-10-14). A true r of 0.43 would be detected about 18% of the
+    time, so a moderate relation is not excluded.
+  - The session record has the figures.
+- **Three claims of the maintainer's review were refuted by the data:**
+  - that the `acquire` shift is a mechanism for the slow state;
+  - that the block's acceptance was partly luck;
+  - that the block took ten minutes.
+
+  The session record says what refuted each.
+- **The corrections did not erode the result.** The eight values, the arm
+  test, s₀, its interval and the k = 2 threshold are unchanged by three
+  independent reads.
+  - The split that ran made the arm test's margin smaller than 58 of the 70
+    splits of its eight values would, and the block passed anyway.
+  - That is the record's correction of the "partly luck" claim, in the
+    session record.
+
+### A correction's account is not part of the record it corrects (2026-10-14)
+
+A rule for round 1 onward. The maintainer ruled it on 2026-10-14, after round
+0's record closed and before round 1.
+
+- **The session record** holds the measurement and its verdicts.
+- **The audit record** holds who found what, and what became of each
+  finding. It is signed, naming who wrote each entry, and it is not re-read.
+- **Reads check the session record.** The audit record is outside every
+  read's scope.
+
+**Why.** Round 0 had four independent reads
+([`2026-10-14-tab9-m4-calibration-audit.md`](./2026-10-14-tab9-m4-calibration-audit.md)).
+- **What they found:** after the first, none found a wrong figure, and every
+  one found an overstated verdict.
+- **Where the overstated verdicts sat:** the last read placed them all in
+  sentences saying what a computation or the record means. In that read
+  they were in the record's account of its own correction.
+- **The structural argument:**
+  - A read that checks the account checks text the previous correction
+    wrote.
+  - So every read produces a fresh unread layer.
+  - So the process cannot end by construction, whatever stopping rule sits
+    in front of it.
+
+  The rule rests on this argument.
+- **What it does not rest on:** the fourth read's diagnosis, that the
+  looseness comes from newly written summary sentences rather than from one
+  author. The maintainer took it over his own two, but it is a conjecture,
+  not measured (#102 Part 4's fourth rule).
+- **Round 0 is not changed by it.** Its record closed under the rule
+  committed before its last read: that read's findings, D1 and D2 among
+  them, stay recorded as found and not fixed.
+
+### The instrument, the subject and the inputs (2026-10-14)
+
+[#124](https://github.com/webarkit/webarkit/issues/124)'s resolution,
+registered on 2026-10-14, before round 1 and before any counted run. It
+binds from round 1. Round 0 ran under the setup as first written, at
+`37dc6d4`, and nothing here changes it.
+
+**The problem, #124's.** The setup held every counted run at one commit,
+`37dc6d4`, and its guard diff covered `packages`. So the freeze held the
+tracking pipeline as well as the instrument, and no round's pipeline could
+reach a counted run. Meanwhile #114's criterion and the jitter clause read
+each round against its own pipeline.
+
+**The ruling, and its two corrections.**
+- **The ruling.** On 2026-10-14 the maintainer ruled, in #124, that the
+  freeze confused two things: the instrument, frozen for the campaign, and
+  the subject, which changes every round.
+- *Corrected by the maintainer the same day; the error was the
+  maintainer's.* That two-way split had the wrong shape. Of the four
+  details #124 left open, only one, `scripts`, falls on either side, as
+  instrument. The other three fall on neither:
+  - the packages' `package.json` files, the lockfile and the packages'
+    tests, which #124 asked about together;
+  - the toolchain;
+  - the target.
+
+  So the ruling takes three categories, a place for what falls in none of
+  them, and a line on the toolchain.
+- *Corrected again by the maintainer the same day; the error was the
+  maintainer's, and the second shape error in this split that day.* The
+  categories were first drawn by directory, and the directory is the wrong
+  discriminator.
+  - **The role decides the category, not the path.** A file that supplies
+    reference values to a counted measurement is an input, whatever folder
+    it lives in.
+  - So items 2 to 4 below are read by role: item 3 lists the inputs that
+    live in the subject's directory or in the packages' tests, and items 2
+    and 4 except them.
+  - [#128](https://github.com/webarkit/webarkit/issues/128) raised the case
+    that showed it, #90's sweep. What the rule catches is under "The role
+    rule's sweep", below.
+
+1. **The instrument:** `examples/bench-nft.html`; `examples/js`, the
+   metrics module among its files; and `scripts`. Frozen for the whole
+   campaign: if it changes, what is measured changes.
+   - **Attested by the served files' hashes in the manifest, byte-identical
+     across every round.** `provenance.manifest.served` holds the page and
+     its `examples/js` modules, nine files, each with its SHA-256. Start
+     compares them with the bytes the server serves (the runbook's step 4).
+   - **Except `scripts`, which is never served.** The manifest cannot see
+     it; only the guard diff can (below). Among its files is
+     `scripts/build-provenance.mjs`, which writes the manifest. So the
+     manifest cannot attest its own producer.
+     - **It is the blind-check family, one level up.** Start refuses a run
+       whenever its check is blind, unable to see what ran (the runbook's
+       step 4). The manifest cannot see what made it, and nothing refuses.
+     - **For this campaign, the guard diff carries it.** After the
+       campaign, the manifest records its producer's SHA-256
+       ([#127](https://github.com/webarkit/webarkit/issues/127)).
+2. **The subject:** `packages/*/src/`, the tracking pipeline, except a file
+   there that supplies reference values to a counted measurement (item 3).
+   It changes every round: the change is the treatment.
+   - **Attested by the manifest's `sources` and the round's head.** The
+     round's build runs at its head on a clean tree (`clean`,
+     `dirtyPaths`). `sources` gives each file under `packages/*/src/` its
+     SHA-256 and git blob id, which a reader compares with that head's
+     tree.
+   - **So the bundle's hash differs from round to round, and the served
+     files' hashes do not.**
+     - The bundle, `examples/dist/webarkit-packages.mjs`, is built from the
+       packages, so `3a2567c15d59…` is round 0's only.
+     - The nine served files are instrument, and keep their hashes at
+       `37dc6d4` in every round's manifest.
+     - That a change to the subject reaches the bundle was produced on the
+       unmutated build by the independent check: a name exported from a
+       package's source changed the bundle's hash
+       ([#120](https://github.com/webarkit/webarkit/issues/120), BB8).
+3. **The inputs:** what the build and the runs read, and no round changes.
+   Frozen like the instrument, but each attested by a content hash recorded
+   for it, rather than by Start's check of what is served. The root
+   `package.json`, which has none, is the exception (below).
+   - **The target, `examples/targets/pinball.wnft`:** validity rule 3
+     already reads `target.sha256`.
+   - **The clip:** decided below. It did not bind round 0.
+   - **`package-lock.json`:** frozen. A dependency change is not a
+     treatment, and it would confound every round: the bundle embeds
+     jsfeat-next. `sources` hashes the lockfile. The manifest's
+     `dependencies["@webarkit/jsfeat-next"]` records the lockfile's entry,
+     with its `integrity`, the version installed, and the SHA-256 of the
+     file the bundle embeds.
+   - **The `package.json` files:** frozen, for the same reason. The
+     packages' own are in `sources`. The root's is not, so, like `scripts`,
+     only the guard diff carries it, and #127 holds it too.
+   - **`@webarkit/jsfeat-next` stays at `^0.17.0` for the campaign**
+     (2026-10-15): the consequence of the two freezes above for the one
+     dependency the bundle embeds, and it expires with them. jsfeatNext
+     1.0.0 (published 2026-09-30) and 1.1.0 (2026-10-15) both exist. This
+     deferral covers both, and any later 1.x. What changed between 1.0.0
+     and 1.1.0 is unreviewed; review it when the upgrade is taken up, not
+     before. The upgrade is #94.
+   - **The packages' `tsconfig.json` and `tsconfig.test.json`:** not named
+     by the ruling. They are in `sources`, and they are not the subject, so
+     they are inputs. Every `sources` entry outside `packages/*/src/` is an
+     input.
+   - **#90's ground truth:** the files that supply the reference values of
+     M4's correctness half (#104 to #106), in the packages' tests. Frozen,
+     and hashed where they lie, by their SHA-256 at `37dc6d4`:
+
+     | Path | SHA-256 |
+     |---|---|
+     | `packages/nft-tracker/test/tracking/track_frame.test.ts` | `cc6c70bcf3d5dbe4122698bb35584f74048bee5598b10ab85075376e1f262973` |
+     | `packages/nft-tracker/test/tracker_state_machine.test.ts` | `f40e97d4d90dc863fc26c6c3efcc6fc3b09bdf79593399f3d51ef1ea356bcce3` |
+     | `packages/nft-tracker/test/fixtures/tracking_target.ts` | `9407d82ec31bb4c4510a1b230062d3ed09994de69c4101f4f0f98bca1348209a` |
+     | `packages/nft-tracker/test/fixtures/warped_frames.ts` | `0afb9e6dc0bbe7ebf1d9cf264926e837e6ad2bd8b94a4bee9d725afb3d886e97` |
+     | `packages/nft-tracker/test/fixtures/pgm.ts` | `523c80d9e4f6a1beec41e4fda9f289da1f2badc0fe83a2be9d5364ce5ca7befc` |
+     | `packages/nft-tracker/test/fixtures/seeded_rng.ts` | `fb7883c55c47ec31140fc7fc75d0543f5f4b59909887872c9869da5b0d691f82` |
+     | `packages/nft-tracker/test/fixtures/pinball-target-640.pgm` | `1c82be7f22b00e04a9d878912955330e6f6a212f07da668f4ec7c94e760487e3` |
+
+     - **Why these seven:** the sweep and the synthetic sequences, and the
+       five fixtures they read: the target's image and its reader, its
+       patches, the renders, and the seeded random numbers the renders and
+       the sequences draw. Both tests also read
+       `examples/targets/pinball.wnft`, the target above.
+     - **No manifest hashes them,** since `sources` holds only `src/`. The
+       hashes here and the guard diff carry them, as the guard diff carries
+       `scripts`.
+     - **They move out of `test/` after the campaign:**
+       [#130](https://github.com/webarkit/webarkit/issues/130).
+   - **#105's oracle:** `packages/cv-backend-jsfeatnext/src/`, which the
+     subject's directory holds.
+     - **Its role:** the tracker's pose comes from its
+       `poseFromHomography`, the closed form that IPPE replaces. #105 reads
+       IPPE's pose against it twice: as the closed form, render by render,
+       and as the oracle, where the two should agree. So by role it is an
+       input.
+     - **The oracle and the subject overlap,** and that is why this package
+       sits outside the subject. While #105's comparison stands, no
+       treatment inside `packages/cv-backend-jsfeatnext/src/` is within
+       M4's reach, because it would move its own reference.
+     - **It costs nothing today:** #105 already requires that no backend be
+       modified. Its files are in `sources`, so the manifest hashes them.
+     - *The agent writing this section applied the role rule here, beyond
+       the directories the ruling named; the maintainer confirmed it on
+       2026-10-14.*
+4. **Outside all three: the packages' tests.** Not served, not built into
+   the bundle, and already absent from `sources`. The packages' tests are
+   free to change, except any file that supplies reference values to a
+   counted measurement: those are inputs (item 3).
+   - **The consequence.** A test-only change moves `dev`, so the next
+     build's `head` changes while the served bytes are identical. `head`
+     differing across rounds is by design. What a round ran is carried by
+     the served files and by the subject's declared sources, `sources`, not
+     by `head`.
+   - **The same three conditions hold for more files,** which are outside
+     all three for the same reason, but only where nothing in them plays an
+     input's role: `examples/test/`, and what `packages/` holds outside
+     `src/` and outside `sources` (the packages' READMEs and agent files,
+     `packages/nft-tracker/bin/` and `packages/nft-tracker/scripts/`).
+   - **#90's sweep is settled by the role rule** (#128): its ground truth is
+     an input, listed in item 3.
+5. **The toolchain,** the manifest's `toolchain` (`node`, `esbuild`), is
+   identical across all rounds. A change invalidates the campaign unless it
+   is re-baselined with a new round 0.
+   - *Round 0's is node `v24.21.0` and esbuild `0.28.2`, in its exports'
+     manifests (#124's comment of 2026-10-14). It was built outside the pin
+     that `.nvmrc` then held. The pin was aligned to it on 2026-10-14, and
+     what CI ran until then is recorded beside the pin (`AGENTS.md`,
+     "Environment & commands").*
+   - **A measurement campaign stays on the machine it started on**
+     (2026-10-15): the toolchain above is attested per build, but the
+     machine's decoder, scaler and clocks are not, so a change of machine
+     is a change of instrument the manifest cannot see. Code work runs on
+     any machine. Campaign-scoped: it expires when the campaign closes.
+
+     *Addendum, 2026-10-19: when the campaign closes is now defined, by
+     the campaign milestone's closing criterion: "M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)", entry 2, below.*
+
+**The role rule's sweep.** The rule was applied on 2026-10-14 to
+`examples/test/` and to what `packages/` holds outside `src/`, against the
+counted measurements registered so far and those #104 to #106 name.
+- **It catches #90's ground truth, and nothing else there:** the seven files
+  of item 3.
+- **What it does not catch:**
+  - **Generators.** `packages/nft-tracker/test/fixtures/make-fixtures.mjs`
+    and `packages/nft-tracker/bin/compile-target.mjs` made two of the
+    inputs, the image and the target. They supply nothing to a
+    measurement, and what they made is hashed.
+  - **A test that reads frozen fixtures.**
+    `examples/test/detection-worker-core.test.mjs` imports `pgm.ts` and
+    `warped_frames.ts`. It supplies nothing to a counted measurement, so it
+    stays free.
+  - **Everything else there:** the other tests and fixtures, the READMEs
+    and agent files, `bin/` and `scripts/`. None supplies a reference value
+    to a counted measurement.
+- **Beyond those directories, it catches #105's oracle** under
+  `packages/*/src/` (item 3).
+- **When the correctness half is registered,** any file it names as a
+  source of reference values is an input by the same rule.
+
+**The clip joins validity rule 3 from round 1, read beside the export
+rather than from it.** [#126](https://github.com/webarkit/webarkit/issues/126)
+holds the question, from findings A9 and B10 of
+[round 0's audit record](./2026-10-14-tab9-m4-calibration-audit.md). The
+maintainer asked that it be decided in this registration; the agent writing
+it decided as follows.
+- **Why not from the export.** The export does not record the clip's bytes,
+  and making it do so would change the page, which is the instrument
+  (#126's first fact).
+- **What is read instead.** On the session's PC, the SHA-256 of
+  `examples/videos/<clip>`, the run's `bundledClip`, when the run's URL is
+  opened and again after its export is pulled. Both readings, each with its
+  UTC time, are kept beside the export as `<the export's name>.clip.txt`,
+  and committed with it, as the recorded URL is.
+- **When it passes.** Both readings equal the SHA-256 of that clip's blob
+  at `37dc6d4`, compared in full. #126 lists the three clips' hashes.
+- **What it attests.** The file the server reads from, at each end of the
+  run. Not the bytes the browser decoded, and not a change made and undone
+  between the two readings. The recorded URL has the same kind of limit: it
+  attests what was asked, not what the browser received.
+- **Why per run.** A check before the session alone would attest the
+  session, not each run (#126's second fact). The link is attested at both
+  ends of every counted run for the same reason (the setup's item 4).
+
+**The campaign's identity** is not a commit, but a sequence of attested
+commits, one per round, under the condition that the instrument's served
+files are byte-identical across all of them. The inputs and the toolchain
+are held with it (items 3 and 5). A reader checks all of it from the
+exports of any two counted runs, of one round or of two:
+- **Each run fetched what its build attested.** In each export,
+  `provenance.refusal` is `null`; for each of the nine paths,
+  `provenance.observed.served[path]` equals
+  `provenance.manifest.served[path].sha256`; and
+  `provenance.observed.bundleSha256` equals
+  `provenance.manifest.bundle.sha256`.
+- **One instrument.** The two manifests' `served` give each of the nine
+  paths the same SHA-256.
+- **One set of inputs, on one toolchain.** The two manifests' `toolchain`
+  and `dependencies` are equal, as is every `sources` entry that is an
+  input: those outside `packages/*/src/`, and those under
+  `packages/cv-backend-jsfeatnext/src/` (item 3). The two exports'
+  `target.sha256` are equal too.
+- **What may differ.** `head` and `builtAt`; `bundle`, its hash and its
+  size; and the subject's `sources` entries, with the `bundledInputs` built
+  from them. Those say what each round's subject was.
+
+Two exports cannot show `scripts`, the root `package.json` or #90's ground
+truth. For those, the reader runs the guard diff's command (below) with the
+two exports' heads in place of its two commits, and it shows nothing. And
+each run's clip is in its `.clip.txt`.
+
+**What this changes above, from round 1.** Each place carries a dated note
+that points here.
+- **The setup's item 1, the build.** Each round has its own build, made
+  once, at the round's head, on a clean tree, before the round's first
+  counted run, and never redone within the round.
+  - The record of the round's first session names the head.
+  - Every counted run of the round carries that head and that build's
+    bundle.
+  - A commit after the build moves the checkout's HEAD, and leaves the
+    build as it is.
+- **The setup's item 2 and the runbook's step 1, the guard diff.** Its
+  reference stays `37dc6d4`. It covers the instrument and the inputs, not
+  the subject and not what is outside all three. It reads the round's head,
+  because `scripts` and the root `package.json` act when the build runs:
+  ```bash
+  git diff --stat 37dc6d4 <the round's head> -- examples/bench-nft.html examples/js scripts package.json package-lock.json 'packages/*/package.json' 'packages/*/tsconfig*.json' packages/cv-backend-jsfeatnext/src examples/targets/pinball.wnft examples/videos packages/nft-tracker/test/tracking/track_frame.test.ts packages/nft-tracker/test/tracker_state_machine.test.ts packages/nft-tracker/test/fixtures/tracking_target.ts packages/nft-tracker/test/fixtures/warped_frames.ts packages/nft-tracker/test/fixtures/pgm.ts packages/nft-tracker/test/fixtures/seeded_rng.ts packages/nft-tracker/test/fixtures/pinball-target-640.pgm
+  ```
+  shows nothing. When the checkout's HEAD has moved past the round's head,
+  the same diff from `37dc6d4` to `HEAD` shows nothing too.
+- **The runbook's step 2, the clean tree.** Its paths gain the inputs the
+  server reads from the working tree, the target and the clips:
+  ```bash
+  git status --porcelain --untracked-files=all -- examples/bench-nft.html examples/js scripts packages package.json package-lock.json examples/targets/pinball.wnft examples/videos
+  ```
+  prints nothing.
+- **The runbook's steps 4 and 7.** The session's commit is the round's
+  head. Step 4's build is the round's, made once (this list's first
+  bullet); a later session of the round reads that build's manifest, and
+  builds nothing.
+  Step 7 checks each export's `provenance.manifest.head` against the
+  round's head.
+- **Validity rule 2.** The head is the one of the run's own round, compared
+  in full. `37dc6d4…` is round 0's.
+- **Validity rule 3.** "Equal to the package's default" reads the defaults
+  of the run's own round, at its head: the defaults belong to the subject,
+  and may change with it. The rule also reads the clip's two readings
+  (above).
+- **The independent check's BB2 note.** The build is now redone once per
+  round: the case that note describes as never arising.
+  - So BB2's guard runs at each round's build. Its condition still cannot
+    arise there: #120 records that this esbuild configuration cannot leave
+    an import in the metafile's outputs. The configuration is in
+    `scripts`, and esbuild's version in the toolchain, and both are held
+    across rounds.
+  - #120 also records that BB3's text check, the next guard, covers it.
+- **"What it leaves."** Its "No test is added before then" means the
+  guards' tests (#120). Item 4 leaves the packages' tests and
+  `examples/test/` free to change, except the inputs item 3 lists. The
+  glossary's staleness check, `examples/test/glossary.test.mjs`, was added
+  there on 2026-10-14.
+- **The jitter clause's pointer to #124** now points here.
+
+### #105's criteria, and the pose stage on tracker arms from round 1 (2026-10-15)
+
+Registered on 2026-10-15, before round 1 and before any counted run; it
+binds from round 1. Three things, each decided by the maintainer that day
+while placing M4's step 3, [#105](https://github.com/webarkit/webarkit/issues/105).
+
+**#105's acceptance criteria are in their own file,**
+[`2026-10-15-m4-step3-ippe-acceptance.md`](./2026-10-15-m4-step3-ippe-acceptance.md),
+committed before the implementation existed (its commit is the registration)
+and read against the first run in a dated addendum at its end. IPPE lives in
+`packages/nft-tracker/src/`, the subject; the comparison with the oracle in
+`packages/nft-tracker/test/`, which is in none of the three categories (not
+served, and it supplies no reference value to a counted measurement), so it
+is ordinary code. The oracle, `packages/cv-backend-jsfeatnext/src/`, is
+untouched for the whole of #105. The brief for the step cited ADR-0001's
+point 7 for the no-import rule; the rule is point 2, and the brief's author
+corrected it.
+
+**The `pose` stage is not a measurement on arms that compute the pose in the
+tracker.** [#132](https://github.com/webarkit/webarkit/issues/132) holds the
+finding with the frozen lines quoted: the page times the stage through the
+instrumented backend's `poseFromHomography`, which a tracker on IPPE never
+calls, so on the tracking and detection-only arms every `ok` frame's sample
+is 0 and `framesForStage` still counts every `ok` frame. IPPE's cost lands in
+frame total, and only there. The maintainer's ruling, option A of #132:
+- **the zero is a check.** On tracker arms, every `ok` frame's `pose` sample
+  is exactly 0. A non-zero sample means the arm still routes through the
+  backend's decomposition, so the treatment was not applied, and that run is
+  refused as a measurement of the treatment. Registered for #107's validity
+  checks before round 1's first counted run;
+- **`poseMs` and its percentiles are not reported for tracker arms,** not as
+  0 and not as "n/a": the entry states that the stage is not measured on
+  arms that compute the pose in the tracker, and points at the check above.
+  The stateless arm, which calls the backend's decomposition itself
+  (`bench-nft.html:805`), keeps the stage: it is the control;
+- **#105's cost claim is read on frame total,** one measured quantity, not on
+  total minus the stages;
+- **`trackStepMs` keeps its frozen definition** (METRICS_VERSION 1); IPPE is
+  not folded into it;
+- **a timing the tracker takes of itself** (#132's option B) is never a
+  counted metric: it would be produced by the code that changes every round.
+  Admissible later as a labelled diagnostic only;
+- **re-baselining the instrument is excluded:** it would end this campaign.
+
+**The selection rule has no memory.** IPPE's two candidates are chosen
+between per frame, by depth, then by reprojection error over the frame's
+correspondences, then by a declared margin under which the frame is
+ambiguous and takes the frame's own closed-form pose. One per-run counter,
+`NftTracker.fallbackFrames`, counts every frame whose pose is not IPPE's own
+estimate, for whatever reason (the maintainer's ruling of 2026-10-15: whenever
+the arm does not use IPPE's estimate it is a mixture, and one count bounds
+it; each result's `poseSelection.outcome` says which reason fired). No earlier frame enters: the jitter
+clause's threshold was calibrated on arms whose per-frame pose does not
+depend on the previous frame, a selector with memory would make a wrong
+branch self-sustaining and read as lower jitter, and the control's pose has
+no history. The rule in full, with the margin's derivation and the headless
+ambiguous-frame rates per clip that #107's prediction and refusal threshold
+are to be stated from, is in the criteria file (§5, §7 and the addendum).
+The whole rule is part of the treatment's definition: if it changes after
+round 1's first counted run, the rounds before and after are not the same
+experiment.
+
+### What M4's device half measures, and which steps reach it (2026-10-15)
+
+Registered on 2026-10-15, before round 1 and before any counted run of a
+treatment, from the maintainer's rulings of that day on #105's
+characterisation
+([`2026-10-15-m4-step3-ippe-c4-characterisation.md`](./2026-10-15-m4-step3-ippe-c4-characterisation.md),
+its third addendum and the correction to it). It binds #107's registration.
+The milestone's title is not changed here.
+
+**The finding.** Every value a counted run exports is built by `frameRecord`
+in the metrics module, which copies a result's `ok`, `reason`, `state`,
+`quality`, `trackLoss`, the step's counts, the timings and the detection
+fields, and computes the corners from `result.H` (line 165). No exported
+value is a function of the pose. So M4's device half measures **homography
+stability** (`jitterPx`, `spreadPx`), **lock behaviour** (`trackTimeShare`,
+`detectionLocks`, `firstStepLatency`, the states) and **cost** (the stages,
+frame total, `trackStepMs`). Of the milestone's pose work, only #104 reaches
+those metrics, and only through which frames are posed.
+
+**#105 and #106: device claims withdrawn as unmeasurable on this
+instrument, not refuted.** For each, the treatment is confined to the pose:
+#105 replaces the decomposition of `H`, #106 filters `R` and `t`. No exported
+value is a function of the pose, so the registered device metric cannot
+respond to either, by construction. On #105 this was measured as well: both
+arms over every clip of the corpus gave byte-identical corners on all 2,012
+common frames and a `jitterPx` difference of exactly 0, which is no
+measurement, not no effect. **No round 1 is run for step 3**, and none is to
+be registered for step 4's `jitterPx` claim. Their synthetic halves stand and
+are where their results live: #105's accuracy result on the rigid sets,
+already measured (criteria C1 to C11, their verdicts, the crossover as the
+measured interval 7°–10°); #106's lag measurement on synthetic sequences,
+when it is written.
+
+- *Addendum, 2026-10-19, the maintainer's ruling of that day: #106 moves
+  out of M4 (milestone 5) to M5 (milestone 6). The reason is this
+  paragraph's, carried with its consequence in "M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)",
+  entry 3, below: the claim is not deferred but unmeasurable by this
+  instrument, and rescheduling it without a metric that responds to a
+  pose treatment meets the same wall. The text above stands as
+  registered.*
+
+**#104: a joint claim, or none.** A refusal of a fit flips `result.ok`, and
+line 165 then nulls that frame's corners, so `jitterPx` and `trackTimeShare`
+move, but because a frame stopped being posed, not because any frame got
+better. `jitterPx` can be improved arbitrarily by refusing more frames, and a
+metric improvable by declining to measure is not an improvement metric on its
+own: the same family as the four checks of 2026-10-15 that could not
+distinguish the condition they claim to detect (round 0's session record), a
+number that moves for a reason unrelated to the quality it is read as. So
+#104's device claim is registered as **jitter and coverage together**, or
+not at all:
+- the claim: `jitterPx` on the treatment arm against its baseline arm, on
+  their common media times, read **beside** the treatment arm's coverage,
+  its posed frames over the clip's frames on the same media times;
+  - *Addendum, 2026-10-20, the maintainer's correction of that day, the
+    maintainer's words verbatim, this bullet's text standing. Every
+    passage it rests on was read at `1362a4b`, the head of `dev` on
+    2026-10-20.*
+
+    ***What "the same media times" means in the coverage half
+    (2026-10-20).** The claim's first bullet reads the treatment arm's
+    coverage as "its posed frames over the clip's frames on the same media
+    times". That phrase is not to be read as the two arms' intersection. On
+    the intersection every media time is one the treatment arm posed, so
+    coverage there is 1 by construction, and the refusal for a coverage
+    loss beyond the bound could never fire.*
+
+    *The denominator is the clip's frames over the span the comparison is
+    read on. That is what this entry's own reason requires: the
+    joint claim exists because "`jitterPx` can be improved arbitrarily by
+    refusing more frames, and a metric improvable by declining to measure
+    is not an improvement metric on its own", so coverage is there to show
+    the frames that stopped being posed — and those are precisely the
+    frames absent from the intersection. A coverage read on the
+    intersection cannot see what the clause was written to see.*
+
+    *The bullet's text stands; this says how it is read. Registered as one
+    of the campaign milestone's eight open items on 2026-10-19, and
+    answered here.*
+- **a pre-stated bound on coverage loss,** with its derivation, to be stated
+  here before round 1's first counted run of #104. Its derivation is #104's
+  own: the share of right fits the signal refuses on #90's sweep (the step's
+  "refuses none of today's right fits" condition), measured on the shipped
+  target and on M2's 64 patches, is the refusal the device may show without
+  the gain being bought by dropping frames. The number does not exist today,
+  because the signal does not: no commit implements it (below);
+- **what refuses it:** a jitter gain accompanied by a coverage loss beyond
+  the bound is refused, not reported. A jitter gain within the bound is
+  reported as a joint result, never as a jitter result alone.
+- *Added on 2026-10-16, ruled by the maintainer from #104's Stage 1 probe
+  ([`2026-10-16-104-stage1-probe.md`](./2026-10-16-104-stage1-probe.md),
+  its items 8 and 9). Three things, in the order they bind:*
+  - *The calibration of the outcome comparison on the hand-held clips.
+    Round 0's provisional threshold under the null control's jitter clause
+    was calibrated on the static clip. The static clip holds no DETECT frame
+    in its counted loops, so no refusal reaches its `jitterPx` and it cannot
+    express #104. Round 1 of #104 must therefore run on the hand-held clips,
+    whose `jitterPx` once the low-inlier detections are refused carries a
+    residual three orders of magnitude above that threshold; the figures are
+    the probe's. The provisional threshold does not transfer to them, and
+    the outcome comparison on those clips needs its own calibration. This
+    neither replaces nor extends the clause's block gate, which reads static
+    blocks only and is unchanged. Nothing is derived here: a calibration for
+    those clips is a separate measurement with its own degrees of freedom.*
+    - *Addendum, 2026-10-18, the maintainer's ruling of that day: round 1
+      of #104 runs on the wall clip only, `pinball-bench.mp4`. This answers
+      item 8's "round 1 needs its own calibration on the clips it uses":
+      the clips it uses are one. The reason, with each figure's basis: on
+      the wall clip the replicate ratio of `jitterPx` is 1.46 for M3's sync
+      arm on the group's common media times under `none`, `X4`, `X6` and
+      `X8` (2.07 under `XD`, every detection removed), and 1.53 for its
+      worker arm whole-set under every reading, that arm holding no
+      detection to exclude and the probe's document printing no common-set
+      ratio for it (#137's Stage 1 probe, question 2), with no change to
+      the subject. The cost: M4's
+      conclusion is scoped to one clip, and item 8 measures the refusal's
+      residual differently on the two, 5.30 to 5.33 px on the wall clip at
+      A ≥ 12 against 2.33 to 2.36 px on the table clip at A ≥ 8, seeds 1
+      to 8, so how the refusal behaves on the table clip is not addressed
+      by this campaign. The table clip's sync group, 19.49 on its group
+      common media times under `none` and `X4`, is recorded as a known
+      limitation of the instrument there, not as a blocker. What round 1
+      still lacks before it can be scoped, its effect-size statement, is
+      registered below, in "#137's fix follows the campaign, and what stays
+      open before round 1 of #104 (2026-10-18)", the paragraph beginning
+      "What stays open".*
+  - *The treatment's effect on `jitterPx` is not yet decomposed. `jitterPx`
+    measures steadiness only where the target stays in view and every pose
+    is right (`DEFINITIONS.jitterPx`); on a hand-held clip it computes but
+    does not measure that. The probe measured the mechanism by which a
+    refusal moves it: frames leave the residual pool of windows that stay
+    eligible, and windows drop. Under the real treatment the movement has
+    two parts, steadiness and frame selection, and the sign of the selection
+    part is unknown; it is not guessed here. Not blindness, since the metric
+    responds, but confounding: a number that moves for two reasons where the
+    record names one. The claim above already reads the two arms on their
+    common media times, which excludes the selection part from the
+    comparison by construction; what is open is the size and sign of the
+    part a whole-set figure on these clips carries. The measurement that
+    settles it is registered, not run: on round 1's exports, read-only,
+    recompute `jitterPx` for both arms on their common media times as
+    `compareExports` builds them, scattered subsets being admissible under
+    the window rule, and set the whole-set difference beside the common-set
+    difference. Movement that survives on the common set is steadiness;
+    movement that vanishes was selection.*
+    - *Addendum, 2026-10-18, the maintainer's ruling of that day. The
+      measurement this entry registered "on round 1's exports" was
+      performed by #137's Stage 1 probe
+      ([`2026-10-18-137-stage1-probe.md`](./2026-10-18-137-stage1-probe.md),
+      merged in [#149](https://github.com/webarkit/webarkit/pull/149)) on
+      exports that exist: M3's of 2026-10-01, sync and worker, the 20 pairs
+      #104's probe's item 9 names, and the tuning pass's 20 pairs, by this
+      entry's own procedure, `jitterPx` recomputed for both arms on their
+      common media times and the whole-set difference set beside the
+      common-set difference. The ruling accepts that substitution for the
+      mechanism only, for interpretability and nothing else: no magnitude
+      transfers from M3's exports to round 1's, and round 1 calibrates its
+      own outcome comparison as item 8 requires (the first entry of these
+      three). It is scoped so for two reasons: M3's arms differ by
+      pipeline, sync against worker, which is not #104's treatment; and
+      item 8 is itself the record of a calibration that did not transfer.
+      #104's probe's item 9 had said of this decomposition on M3's pairs
+      that "Its result enters neither this file nor the plan", anything it
+      changes being "an addendum in its own PR"; this addendum is that
+      PR's, and enters the result for the mechanism only. The text above
+      stands as registered.*
+    - *The result, 2026-10-18, by this entry's own criterion, "Movement
+      that survives on the common set is steadiness; movement that
+      vanishes was selection". On the 20 M3 pairs the common-set
+      difference is identical to the printed digit under the probe's
+      readings `none`, `X4`, `X6` and `X8`, and moves by at most 0.28 px
+      under `XD`, every DETECT frame removed; the whole-set difference on
+      the same pairs moves by up to 83.48 px across `none`, `X4`, `X6` and
+      `X8` (`sync-wall-2`'s four pairs, from `none` to `X4`) and by 84.74 px
+      with `XD` in scope (the same four pairs, from `none` to `XD`). The
+      large movement was selection. Instance: `sync-table-2` against
+      `worker-table-1`, +43.60 px whole-set against +0.12 px common-set
+      (against `worker-table-2`, +43.54 and +0.27 px). The probe's
+      question 1 holds all 20 rows.*
+    - *Addendum, 2026-10-20, the maintainer's ruling of that day, his words
+      verbatim, this entry's text and its addenda of 2026-10-18 standing.
+      #153 is
+      [`2026-10-19-104-stage1-effect-size-probe.md`](./2026-10-19-104-stage1-effect-size-probe.md),
+      merged in [#153](https://github.com/webarkit/webarkit/pull/153); every
+      passage this rests on was read at `34c3ea0`, the head of `dev` on
+      2026-10-20.*
+
+      ***The decomposition applies to an exclusion treatment, and there it
+      is the only readable form (2026-10-20).** The entry above registers
+      the whole-set difference read beside the common-set difference, with
+      the reading that movement surviving on the common set is steadiness
+      and movement that vanishes was selection. Its addenda of 2026-10-18
+      record that reading performed on M3's pairs, for the mechanism only.*
+
+      *This adds what #153 established. When a treatment's whole effect is
+      to remove frames from its own arm, a removed frame's media time is not
+      in the two arms' intersection, so the common-set difference is zero by
+      construction (#153, step 4, second part). For such a treatment the
+      pair is therefore not an enrichment of a readable comparison: it is
+      the only form in which the treatment is readable at all, and the
+      whole-set half carries all of it.*
+
+      *The common-media-times rule is not changed. "That each comparison is
+      read on common media times is not open" stands as ruled on 2026-10-14.
+      The pair is additive: the common-set half remains the comparison of
+      record, and what is added beside it, for a treatment of this kind, is
+      the whole-set half and the statement of which half carries the
+      effect.*
+
+      *This does not design round 1's comparison. Which arms are paired, the
+      basis each half is read on, and what refuses the pair remain the
+      campaign milestone's registrations.*
+  - *No block gate is defined for a non-static block. The clause's gate
+    reads static blocks only, for the reason above, and round 1 runs
+    hand-held blocks. A gate must be defined and registered before round
+    1's first counted run; none is proposed here. It comes after the
+    decomposition: a validity gate for a metric whose reading is not yet
+    decomposed would be calibrated on a quantity that cannot be
+    interpreted.*
+    - *Addendum, 2026-10-18, the maintainer's ruling of that day. As this
+      entry stood, no counted run could occur: the decomposition it waits
+      on was registered on round 1's exports, this gate "comes after the
+      decomposition", and it "must be defined and registered before round
+      1's first counted run". The ruling above opens the circularity: the
+      decomposition answered on M3's exports supplies what this entry
+      asked of it, interpretability, "a validity gate for a metric whose
+      reading is not yet decomposed would be calibrated on a quantity that
+      cannot be interpreted", and nothing else. The path is open; the
+      gate's own quantity and its basis remain undesigned, and nothing
+      here proposes either. The text above stands as registered.*
+
+**#104's state, settled (report, 2026-10-15).** Two commits reference #104,
+`136f143` and `d92a203` of 2026-10-13, both documentation of #113: the first
+makes each tracking default's comment in `src/tracker.ts` say what M3's pass
+did to it, and names #104 as where #92's question goes; the second corrects
+three lines of the package README the same way. Neither adds code. No part of
+the conditioning signal, `d_scale` or `d_orth`, exists in the tree: the only
+occurrence of the word is a comment in `src/tracker.ts` (line 274) pointing
+at the issue. #104 is specified and unimplemented. One fact from #105's
+characterisation bears on its specification: the sweep's second view is not a
+plane homography for the camera, and the signal reads `d_scale` 0.0084 and
+`d_orth` 0.031 on its exact `H`, so a threshold derived on that view would be
+inflated; the separation has to be shown per view.
+
+**#104's state, Stage 1's item 3 (2026-10-17).** Stage 1's item 3 is
+complete for #104: four candidates measured on the probe's instrument,
+`d_scale`, `d_orth`, the inlier count and the inlier-scaled residual limit,
+and the fifth, the single-step scale-change bound, settled by definition
+([`2026-10-17-104-stage1-probe-item3.md`](./2026-10-17-104-stage1-probe-item3.md),
+its §4, merged in [#144](https://github.com/webarkit/webarkit/pull/144)).
+Nothing else about #104's state changes.
+
+**The common-media-times rule is more load-bearing than it was, not less
+(2026-10-15).** The resample it exists to neutralise, two runs processing
+different frames of the same clip, is now known to be partly RNG-driven:
+RANSAC draws from an unseeded `Math.random` through the contract (#24), so
+which frames re-detect moves between runs (#137, its seeded measurement).
+The rule is unchanged; the source is named.
+
+**The instrument does not change, and no pose metric is proposed here.**
+Round 0's calibration is valid only while the served files stay
+byte-identical, and #104 may still be measurable under this instrument. Any
+pose metric ends this campaign; that sequencing decision is the maintainer's,
+and it is not taken in a PR.
+
+- *Addendum, 2026-10-19: no such metric is proposed on this day either.
+  The ruling that moves One Euro to M5 rests on there being none: "M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)",
+  entry 3, below.*
+
+**The milestone is renamed going forward (2026-10-15):** "M4: pose
+correctness and homography steadiness", its description saying "homography
+steadiness" where it said "steadiness". The reason, in one sentence: no
+exported value is a function of the pose, measured on 2026-10-15, so the
+device half measures homography steadiness and not pose steadiness. The
+rename is not applied to the record behind it; no file, commit or
+never-amended text carried the old title.
+
+- *Addendum, 2026-10-19: the title stands. The device reading it names,
+  homography steadiness on Tab_9_WiFi, closes the campaign milestone
+  (milestone 7) and not M4 (milestone 5), by the maintainer's rulings of
+  that day: "M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)", entries 1 and 2, below.*
+
+### Counts of LOST frames and of `trackLoss` declare what they count (2026-10-17)
+
+[#143](https://github.com/webarkit/webarkit/issues/143)'s two no-code
+items, implemented here and in [the glossary](./glossary.md#lost-never-acquired-or-a-lock-lost);
+the reasoning is the issue's and is not restated.
+
+- **The rule.** Every count of LOST frames or of `trackLoss` in the record
+  declares which of the two conditions it counts, a frame never yet acquired
+  or a lock lost after it was held. A count that does not declare it is not
+  a readable figure.
+- **The glossary entry** states that LOST covers both conditions and gives
+  the sequence rule that separates them from the export alone, pointing at
+  the state machine rather than restating it.
+- **The rename** to a distinct ACQUIRING state stays deferred to the
+  post-campaign window, as #143's body says.
+
+### #137's fix follows the campaign, and what stays open before round 1 of #104 (2026-10-18)
+
+Registered on 2026-10-18, before round 1 and before any counted run of a
+treatment, from the maintainer's rulings of that day, taken after #137's
+Stage 1 probe
+([`2026-10-18-137-stage1-probe.md`](./2026-10-18-137-stage1-probe.md),
+merged in [#149](https://github.com/webarkit/webarkit/pull/149)). Each is
+his decision, dated and attributed, not a derivation from the probe. The
+rulings that answer an entry already in this plan are written beside that
+entry as dated addenda, the original text standing, and are not restated
+here:
+
+- the registered decomposition, answered on M3's exports for the
+  mechanism only, and its result: the entry "The treatment's effect on
+  `jitterPx` is not yet decomposed", under "#104: a joint claim, or none"
+  (above);
+- the circularity at the non-static block gate, opened: the entry "No
+  block gate is defined for a non-static block", beside it;
+- round 1 of #104 on the wall clip only: the entry "The calibration of
+  the outcome comparison on the hand-held clips", the first of those
+  three;
+- the metric's limitation on hand-held footage: the null control's jitter
+  clause, item 1 ("What it rejects"), as an addendum under its first
+  sub-bullet, the one that reads "Only static blocks", the shorthand #104's
+  probe's item 8 also uses for it.
+
+Four rules the same rulings add to the step protocol are in
+[`step-protocol.md`](./step-protocol.md), under "Every check is exercised
+both ways", the paragraph beginning "Four rules on the record's figures and
+their bases".
+
+**#137's fix follows the campaign.** #137 is a correctness defect
+independent of any measurement: a homography fitted on 4 correspondences
+has zero residual on its own points by construction and the detection path
+accepts it on `h.ok`, while `minTrackedPatches` (8) and the 0.6 px fit RMS
+gate belong to the tracking step and never see a detection. It does not
+enter M4, for two reasons. The ruling that round 1 runs on the wall clip
+only removes the need, for the reason recorded at that entry. And the gate
+lives in `packages/*/src/`, the subject ("The instrument, the subject and
+the inputs", item 2), so changing it mid-campaign would put the runs
+before and after it on different subjects.
+
+- *Addendum, 2026-10-19: this rule concerns a fix applied to every run,
+  not a registered arm. #104's implementation lands as the campaign's
+  treatment arm and does not fall under it: "M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)",
+  entry 1, below.*
+
+**#137's measured standing, from #149, beside the ruling so that whoever
+takes the fix does not re-derive it.** `X8` is the probe's reading that
+matches the gate #137 names, `minTrackedPatches` (8). Under `X8` all eight
+replicate groups sit at or below 3.07 whole-set and 2.16 on their group
+common media times, and the two groups the probe's first draft called the
+table clip's pathology collapse under it, M3's sync table from 17.95 to
+1.04 whole-set and from 19.49 to 1.11 on its group common media times, the
+2026-09-26 tracking table from 5.50 to 1.00 whole-set (the probe's own
+sentence calls the two "the two lowest" under `X8`; its table has the sync
+table group at 1.04 against 1.00, 1.02 and 1.03 for the other three table
+groups, so the figures are registered and the phrase is not); on the 20 M3
+pairs `X8` moves no common-set figure. The exactly-4-inlier detections
+number 1,246 over the 37 runs the probe read, 77 with corners, 2 in a
+window that was eligible before the exclusion, and `X4` moves `jitterPx`
+in 2 runs of 37; where it does, one frame carries the amount, so rare is
+not negligible: they leave the common-set comparisons unchanged and can
+dominate a whole-set figure. Two things this does not establish, recorded
+with it. First, an exclusion from the metric is not a gate in the
+pipeline: a refused fit leaves the tracker without a lock at that frame,
+and every later frame of the run differs, which frames detect, which
+track, which pose at all. Second, and following from it, the 1.46 is
+conditional on the current gate: a changed gate also changes which media
+times the two arms share, so the common set itself would differ. Settling
+what the fix produces needs the fixed pipeline run.
+
+**What stays open: round 1's effect-size statement.** No document states
+what change in `jitterPx` #104's refusal would produce; #104's body does
+not name the metric, and #107's names it and no magnitude. Registered as
+required before round 1 can be scoped: it is to be read on common media
+times, against a replicate ratio of 1.46 on the wall clip, and it must be
+posed against this plan's own statement that `jitterPx` "measures
+steadiness only where the target stays in view and every pose is right …
+on a hand-held clip it computes but does not measure that" (the
+decomposition entry, above). This is not a decision taken here, and
+nothing here proposes a value.
+
+- *Addendum, 2026-10-19: the campaign milestone's closing criterion,
+  registered in "M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)",
+  entry 2, below, names this statement first among the eight
+  registrations round 1 waits on, and says whose it is: "the statement
+  is the maintainer's". It is unwritten on that day.*
+
+Beside the entry above, from the maintainer's ruling of 2026-10-20, his
+words verbatim and the entry's text standing. #153's derivation is
+[`2026-10-19-104-stage1-effect-size-probe.md`](./2026-10-19-104-stage1-effect-size-probe.md),
+merged in [#153](https://github.com/webarkit/webarkit/pull/153); every
+passage this rests on was read at `34c3ea0`, the head of `dev` on
+2026-10-20.
+
+**Round 1's effect-size statement (ruled 2026-10-20).** The entry "What
+stays open: round 1's effect-size statement" registers this as required
+before round 1 can be scoped, and says that nothing there proposes a value.
+This supplies it, from #153's derivation and on the basis that derivation
+states.
+
+**The basis.** The figure is read on the wall clip's M3 sync replicate
+group, on the group's common media times, kind E on DETECT frames, above the
+floor on τ of 0.031 — below which the record's own measurement of this
+signal on a correct fit, 0.0084 and 0.031, says the criterion refuses right
+fits. It is read against both values of the replicate floor: the registered
+1.46 ratio with its 2.24 px range, and the 1.76 and 3.08 px that a single
+media-key deletion gives. Where the record has measured its own floor's
+fragility, that fragility is part of the basis a ruling names.
+
+**The statement.** The refusal's predicted change in `jitterPx` is of the
+same order as the measurement's own instability. Above the floor on τ, two
+of the four replicates move by ratios of 1.55 to 1.59 and 1.71 to 1.74, and
+by 2.25 to 2.33 and 2.94 to 3.01 px; the other two move by at most 1.09 and
+by at most 0.40 px. Against the floor as registered, those two clear the
+ratio; `sync-wall-4` clears the px range with room and `sync-wall-1` ties it
+at one least-significant digit. Against the floor's jackknifed value, none
+of the four clears either. The probe's document says the same of its own
+comparison, in step 3, "A floor on τ, and the curve re-read above it
+(2026-10-19)", the paragraph "Against both values of the floor": "So the
+alternative the review offered, restricting the claim to the replicate that
+clears the jackknifed floor, leaves nothing above the floor on τ, and the
+comparison is stated at both values instead: yes against 1.46 and 2.24 px,
+no against 1.76 and 3.08 px."
+
+So: detectable against the floor as registered; not detectable against the
+floor as it behaves when one media key is removed. No single number is
+declared as "the effect size", because the derivation does not support one.
+What it supports is this interval and its two bases.
+
+**What this does not decide.** Whether round 1 runs. That is held by the
+other seven registrations of the campaign milestone's criterion, and in
+particular by the comparison's redefinition for an exclusion treatment: the
+registered comparison would read this effect as zero by construction
+whatever its size. This statement says what the record holds the effect to
+be; it is not permission to measure it.
+
+**What supersedes it.** The derivation is post-hoc, on four replicates of
+one clip, read as two readings of one arm rather than two real arms. When
+the redefinition is registered and round 1 runs, the statement is re-derived
+from that round, and this one is superseded rather than amended.
+
+### M4's closing criterion, the campaign milestone's, One Euro's move to M5, and the window's end point (2026-10-19)
+
+Registered on 2026-10-19, before round 1 and before any counted run of a
+treatment, from the maintainer's rulings of that day. Four entries, each
+his decision, dated and attributed. Where one answers an entry already in
+this plan, a dated addendum beside that entry points here, the original
+text standing; nothing already in the plan is edited or removed. The
+milestones are cited by number and never by title, because a title can
+change and a number cannot: M4 is
+[milestone 5](https://github.com/webarkit/webarkit/milestone/5), the
+campaign is [milestone 7](https://github.com/webarkit/webarkit/milestone/7),
+and M5 is [milestone 6](https://github.com/webarkit/webarkit/milestone/6).
+The milestone descriptions on GitHub are the maintainer's, and the moves
+they record were made before this entry, not by it. Every passage quoted
+below was read at `11e6797`, the head of `dev` on 2026-10-19, and is
+quoted, not paraphrased.
+
+**1. M4's closing criterion.** M4 (milestone 5) closes on three things:
+
+- IPPE in place of the homography decomposition, with its synthetic
+  acceptance: [#105](https://github.com/webarkit/webarkit/issues/105), its
+  criteria in
+  [`2026-10-15-m4-step3-ippe-acceptance.md`](./2026-10-15-m4-step3-ippe-acceptance.md)
+  and their verdicts in that file's dated addendum, as "#105's criteria,
+  and the pose stage on tracker arms from round 1 (2026-10-15)", above,
+  registers them;
+- [#104](https://github.com/webarkit/webarkit/issues/104)'s conditioning
+  signal existing and refusing an ambiguous fit where the residual limit
+  cannot, with its synthetic acceptance, which includes #104's own
+  condition that it refuses none of today's right fits on
+  [#90](https://github.com/webarkit/webarkit/issues/90)'s sweep. This plan
+  already names that condition, under "#104: a joint claim, or none"
+  (2026-10-15): "the share of right fits the signal refuses on #90's sweep
+  (the step's "refuses none of today's right fits" condition), measured on
+  the shipped target and on M2's 64 patches";
+- jsfeatNext standing as the numeric oracle for both. The role is the
+  one "The instrument, the subject and the inputs" (2026-10-14) gives it
+  at item 3: "**#105's oracle:** `packages/cv-backend-jsfeatnext/src/`".
+
+Homography steadiness and cost on Tab_9_WiFi are not M4's: they close the
+campaign milestone, entry 2 below. One Euro is not M4's: entry 3 below.
+
+*The structure that makes this coherent.* #104's implementation lands as
+the campaign's treatment arm, so it does not fall under the rule that
+deferred [#137](https://github.com/webarkit/webarkit/issues/137)'s fix.
+That rule, in "#137's fix follows the campaign, and what stays open before
+round 1 of #104 (2026-10-18)", above, reads: "the gate lives in
+`packages/*/src/`, the subject ("The instrument, the subject and the
+inputs", item 2), so changing it mid-campaign would put the runs before
+and after it on different subjects." It concerns a fix applied to every
+run, baseline and treatment alike, not a registered arm: the campaign's
+design already has "the instrument, frozen for the campaign, and the
+subject, which changes every round" (the same 2026-10-14 entry, "The
+ruling"), and a treatment arm is the subject changing on one side of a
+registered comparison. So M4 closes when #104's code exists and passes its
+synthetic acceptance; the campaign closes later, when the device reading
+is made or is ruled unobtainable, under entry 2. M4 therefore does not
+wait on the campaign's close. The synthetic halves are where M4's results
+live, as the 2026-10-15 entry "What M4's device half measures, and which
+steps reach it" already says of #105 and #106: "Their synthetic halves
+stand and are where their results live".
+
+**2. The campaign milestone's closing criterion.** The maintainer's
+approved text, registered here word for word. The milestone's description
+on GitHub carries the same text with two additions, line references into
+this file read at that day's head, and a pointer at entry 3 below after
+"unmeasurable by this instrument"; neither is reproduced, because a line
+number does not survive the next edit and the pointer's target is on this
+page. Below the quotation, each of its eight registrations is placed in
+this plan by the name of the entry that holds it.
+
+> **Milestone: M4 campaign — the device measurement**
+>
+> What it is. The registered device measurement of #104's conditioning
+> signal on Tab_9_WiFi, under #107's plan: round 0 as the baseline, round
+> 1 as the treatment, read on the bundled clips.
+>
+> It closes when either holds, whichever comes first:
+>
+> 1. Round 1 of #104 has run and been read, on the basis its registration
+>    names, and its result is recorded — a joint jitter-and-coverage
+>    result, or a refusal under the coverage-loss bound.
+> 2. The maintainer rules that round 1's registered comparison cannot be
+>    read, in a dated entry giving the reason. The release note then
+>    states that M4's device steadiness claim was not obtained, and why.
+>
+> Either way, the campaign's last exports are named in that entry, which
+> is what closes the window `AGENTS.md` opens ("from its first device run
+> until its last device exports are committed"). Under 2, round 0's
+> exports are the last.
+>
+> Round 1 cannot be run until all of these are registered — each is
+> unwritten today:
+>
+> - the effect-size statement, from #153's derivation (the statement is
+>   the maintainer's);
+> - the pre-stated bound on coverage loss, with its derivation, which
+>   needs the signal implemented;
+> - the gate for a non-static block, whose own quantity and basis remain
+>   undesigned;
+> - the run order, the predictions with what would refuse each, and the
+>   campaign's stopping rules;
+> - the comparison's own redefinition for an exclusion treatment: the
+>   whole-set difference read beside the common-set difference, as the
+>   decomposition registered for #137 prescribes, because the common-set
+>   difference is zero by construction on a treatment whose effect is to
+>   remove frames;
+> - the coverage half's wording, so that "the clip's frames on the same
+>   media times" cannot be read as the common set, on which coverage is 1
+>   by construction;
+> - a resolution of s_r for a round with no static block: the jitter
+>   clause's per-round readings require a within-block spread that round
+>   1, on the wall clip only, does not produce;
+> - an answer to #137's comment of 2026-10-16T07:59Z, which says that
+>   while the gate stands, `jitterPx` on the hand-held clips cannot carry
+>   a counted comparison. If the record supersedes it, the entry that
+>   does so is written; if it stands, round 1 is not run under condition
+>   1.
+>
+> What this milestone does not contain. One Euro's device claim:
+> unmeasurable by this instrument. #137's gate fix, #24's code, #143's
+> rename: the post-campaign window. Pose correctness on the synthetic
+> renders: M4's.
+
+Where each of the eight lives in this plan, at `11e6797`:
+
+- *the effect-size statement:* "What stays open: round 1's effect-size
+  statement", the last paragraph of the 2026-10-18 entry above, which
+  registers it "as required before round 1 can be scoped" and says
+  "nothing here proposes a value"; #153's derivation is
+  [`2026-10-19-104-stage1-effect-size-probe.md`](./2026-10-19-104-stage1-effect-size-probe.md);
+- *the bound on coverage loss:* "#104: a joint claim, or none"
+  (2026-10-15), its second bullet, "**a pre-stated bound on coverage
+  loss,** with its derivation, to be stated here before round 1's first
+  counted run of #104", and its last sentence there: "The number does not
+  exist today, because the signal does not";
+- *the gate for a non-static block:* the entry "No block gate is defined
+  for a non-static block", under the same heading, whose addendum of
+  2026-10-18 reads "the gate's own quantity and its basis remain
+  undesigned, and nothing here proposes either";
+- *the run order, the predictions and the stopping rules:* the opening
+  of "2026-10-13 — M4: the plan's first entries, the setup and the
+  pre-flight run": "The rest of what #107 asks of the plan is not written
+  yet: predictions with what would refuse each, the adoption rule, the
+  run order, the validity checks beyond those three, and the stopping
+  rules";
+- *the comparison's redefinition for an exclusion treatment:* the entry
+  "The treatment's effect on `jitterPx` is not yet decomposed", under
+  "#104: a joint claim, or none", which registers the reading "set the
+  whole-set difference beside the common-set difference", and whose
+  2026-10-18 addenda record that reading performed on M3's pairs for the
+  mechanism only;
+- *the coverage half's wording:* the claim's first bullet under "#104: a
+  joint claim, or none": "read **beside** the treatment arm's coverage,
+  its posed frames over the clip's frames on the same media times";
+- *the resolution of s_r:* "The null control's jitter clause
+  (2026-10-14)", item 3, "The reading of record, at the round's end":
+  "The same pool over the blocks admitted is the round's within-block
+  spread, s_r, which the round's jitter readings are set against; how the
+  predictions use it is theirs to register";
+  - *Addendum, 2026-10-20, the maintainer's correction of that day, the
+    maintainer's words verbatim, this bullet's text standing. Every
+    passage it rests on was read at `1362a4b`, the head of `dev` on
+    2026-10-20.*
+
+    ***`s_r` has two locations, not one (2026-10-20).** The bullet above
+    locates the resolution of `s_r` at "The null control's jitter clause
+    (2026-10-14)", item 3, "The reading of record, at the round's end",
+    which is where `s_r` is defined: "The same pool over the blocks
+    admitted is the round's within-block spread, s_r, which the round's
+    jitter readings are set against; how the predictions use it is theirs
+    to register."*
+
+    *Item 6, "When it is read, and revisited", is where the per-round
+    readings require it: "Read at each round's end: … the round's
+    within-block spread against round 0's: F = (s_r ÷ s₀)²". A round with
+    no static block leaves the first undefined and the second
+    unsatisfiable. Both locations are part of the open item.*
+- *the answer to #137's comment:* the comment is on GitHub, at
+  2026-10-16T07:59:05Z, by the maintainer; no entry of this plan
+  supersedes it at `11e6797`.
+
+This criterion decides when the machine rule of "The instrument, the
+subject and the inputs", item 5, expires ("Campaign-scoped: it expires
+when the campaign closes"), and it is what entry 4 below rests on.
+
+**3. One Euro's move out of M4, to M5.**
+[#106](https://github.com/webarkit/webarkit/issues/106), M4's step 4,
+moves from M4 (milestone 5) to M5 (milestone 6). The move was the
+maintainer's, made on GitHub before this entry. The reason, which is this
+entry's substance:
+
+One Euro's device claim is not deferred — it is unmeasurable by this
+instrument. `jitterPx` is read from `H`, and One Euro filters the
+rotation, so the registered metric does not respond to the treatment. A
+device claim for One Euro requires a metric that responds to a pose
+treatment, which is a design that does not exist. Rescheduling it without
+that metric meets the same wall.
+
+The characterisation this rests on is the third addendum of
+[`2026-10-15-m4-step3-ippe-c4-characterisation.md`](./2026-10-15-m4-step3-ippe-c4-characterisation.md),
+"the jitter dry run. Round 1's registered metric cannot see the
+treatment": "`jitterPx` and `spreadPx` are computed from the target's
+corners under each frame's `H` (`frameRecord`: `corners:
+reprojectCorners(result.H, …)`), and the treatment changes the pose and
+not `H`", and, of what a metric that could see the pose would be, "A
+steadiness measurement that could see the pose would have to read the
+pose: for example the reprojection of the target's corners through
+`K · [R | t]` rather than through `H`, which is a new metric, outside
+METRICS_VERSION 1, and so outside this campaign's instrument." How that
+addendum is read is governed by the correction of the same date that
+follows it, "a zero from a metric that cannot respond is no measurement,
+not no effect": "the registered metric does not respond to this treatment
+by construction; the split prediction, read as a jitter prediction, is
+void, not refuted; no statement about the treatment's effect follows from
+the zero", and "Wherever the third addendum says "no effect", read "no
+measurement"". That correction puts the structural claim on the frozen
+module's own lines, and this plan took it up on 2026-10-15 for #106 by
+name, under "What M4's device half measures, and which steps reach it":
+"#105 replaces the decomposition of `H`, #106 filters `R` and `t`. No
+exported value is a function of the pose, so the registered device metric
+cannot respond to either, by construction." The same section says "Any
+pose metric ends this campaign; that sequencing decision is the
+maintainer's, and it is not taken in a PR": no such metric is proposed
+here, and the ruling rests on there being none.
+
+M5 (milestone 6) has no description at `11e6797`'s date, so the reason
+for the move cannot rest on the destination's scope: it rests on this
+entry and on #106 itself. What the 2026-10-15 entry says of #106's
+synthetic half, "#106's lag measurement on synthetic sequences, when it
+is written", stands as registered.
+
+**4. An end point for the campaign window.** `AGENTS.md`'s bullet on
+`examples/targets/pinball.wnft` opens the window and, at `11e6797`, says
+this of its extent: "**When a campaign is open:** from its first device
+run until its last device exports are committed. M4's opened with its
+pre-flight run of 2026-10-13." No text in that file or in this plan said
+which exports are the last, so the window had an opening and no end point
+a check could read. The campaign milestone's criterion, entry 2 above,
+now names them: "Either way, the campaign's last exports are named in that
+entry, which is what closes the window `AGENTS.md` opens ("from its first
+device run until its last device exports are committed"). Under 2, round
+0's exports are the last." So the window closes with the dated entry that
+closes milestone 7, and under its condition 2 the last exports are round
+0's, committed on 2026-10-14. `AGENTS.md` is not edited by this entry;
+this plan's own reference to that bullet, under validity rule 3 of the
+2026-10-13 entry ("The parameters are the pinned string's, exactly"), at
+the target's bytes ("The rule this check reads is on the file's state:
+while a campaign is open, the target's SHA-256 stays the one recorded at
+its start (`AGENTS.md`)"), carries a dated addendum pointing here.

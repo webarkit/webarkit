@@ -15,8 +15,10 @@ target, the codec for the `.wnft` files that store one, and
 `LOST → DETECT → TRACK` state machine
 ([ADR-0001](../../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md),
 [#48](https://github.com/webarkit/webarkit/issues/48)). A frame without a lock
-runs M1's `detect → describe → match → estimateHomography →
-poseFromHomography`; a frame with one tracks the target's patches instead,
+runs M1's `detect → describe → match → estimateHomography`, then takes its
+pose from `H` here, above the contract, by IPPE (M4's step 3,
+[#105](https://github.com/webarkit/webarkit/issues/105); the backend's
+`poseFromHomography` is no longer called); a frame with one tracks the target's patches instead,
 with `predictHomography`, `buildFramePyramid`, `alignPatch` and
 `robustHomography`, and runs none of detect, describe or match. A target
 without patches — anything `buildTargetFromImage` builds — keeps M1's
@@ -191,10 +193,13 @@ reproducible instead of quietly making every recompile a new file — and when
 that day comes, the seed will be changing target data too, which is the case
 this option exists for.
 
-**The patch options are first choices, not tuned values.** Each default's
-reason, and what it was measured on, is written where it is defined in
-`bin/compile-target.mjs`; the M2 tuning pass, which can measure alignment, is
-expected to revise them. The score is defined in
+**Two patch options were tuned; the rest are first choices.** M3's tuning
+pass moved `--patches` from 64 to 48 (round 2) and kept `--patch-size` at 16
+(round 3); it did not take up `--patch-levels`, `--patch-min-score` or
+`--patch-spacing`, and how patches are selected is
+[#89](https://github.com/webarkit/webarkit/issues/89)'s question. Each
+default's reason, and what it was measured on, is written where it is defined
+in `bin/compile-target.mjs`. The score is defined in
 [`src/tracking/select_patches.ts`](./src/tracking/select_patches.ts): the
 smaller eigenvalue of the mean structure tensor of a window's interior, in
 level-0 units so patches from different levels compete fairly. Fewer than four
@@ -300,7 +305,9 @@ union. Besides `H`, `pose`, `numMatches`, `numInliers`, `sceneKeypoints` and,
 when not `ok`, a `reason` (`"too-few-matches"` or `"no-consensus"` from a
 detection; `"no-detection"` when `externalDetection` is on and no detection
 was handed in; `"unconfirmed"` when one was handed in and the tracking step
-refused it — see **External detection** below), every result carries:
+refused it — see **External detection** below; `"conditioning"` when the
+conditioning signal, in its refusing state, refused a detection's homography
+— see **The conditioning signal** below), every result carries:
 
 | `state` | Meaning | `quality`, in `[0, 1]` |
 |---|---|---|
@@ -313,7 +320,8 @@ that succeeds locks the tracker on its homography. A frame with a lock predicts
 this frame's homography from the last two, aligns the target's patches where
 the prediction puts them, fits a homography to them and judges it. A step that
 fails drops the lock and says why in `trackLoss` (`"no-prediction"`,
-`"too-few-patches"`, `"fit-failed"`, `"too-many-outliers"` or `"poor-fit"`), and
+`"too-few-patches"`, `"fit-failed"`, `"too-many-outliers"`, `"poor-fit"` or, in
+the conditioning signal's refusing state only, `"conditioning"`), and
 the same frame is detected again; a detection that fails is `LOST`. Every
 result also carries `tracking`, the step's patch counts (culled, attempted,
 observed, lost, unconverged, rejected, failed) and its fit's outcome (inliers,
@@ -336,13 +344,17 @@ exported as two pure functions, so that the application can run it where it
 likes — in a worker it owns — and hand the result back:
 
 ```ts
+// The detection options (see Options below), the same on both sides: the
+// worker detects in the tracker's place. Typed, so a misspelt key is an error.
+const detectionOptions: DetectTargetOptions = { maxSceneKeypoints: 300 };
+
 // In the worker, once: the same target, its own backend.
-const setup = prepareDetection(cv, target, { maxSceneKeypoints: 300 });
+const setup = prepareDetection(cv, target, detectionOptions);
 // In the worker, per request: a fixed-shape Detection, safe to postMessage.
 const detection = detectTarget(cv, setup, frame, timestampMs);
 
 // On the main thread.
-const tracker = new NftTracker(cv, target, K, { externalDetection: true });
+const tracker = new NftTracker(cv, target, K, { externalDetection: true, ...detectionOptions });
 const result = tracker.process(frame, timestampMs); // no lock, no detection:
 // LOST, "no-detection". Ask for one — while none is in flight, which is the
 // application's policy to keep: the tracker asks on every lost frame.
@@ -403,18 +415,40 @@ returned as `"DETECT"`.
 
 **Options.** Every threshold the tracking state judges a frame by is an
 option, checked at construction (a value out of its domain throws a
-`RangeError` naming it), and every default is **provisional until the M2
-tuning pass** (#48). The fixed guards against degeneracy are constants, not
-tuning thresholds: `alignPatch`'s floor for a singular patch, and the
+`RangeError` naming it). M3's tuning pass, closed in
+[#93](https://github.com/webarkit/webarkit/pull/93), changed none of these
+defaults. It tuned two of them and kept both: `alignMaxIterations` at 30
+(round 1) and `minTrackedPatches` at 8 (round 4). Round 5, on
+`alignEpsilon`, did not run. The rest were outside its scope, as its plan
+says ("What this plan does not test"): `minPatchZncc`, the pyramid
+(`maxFrameLevels`), the fit's options, `photometric`, and the detection
+pipeline with its four options below. Its one adoption, 48 patches, is
+`compile-target`'s `--patches` default, not a tracker option
+([`docs/benchmarks/README.md`](../../docs/benchmarks/README.md#the-pass-2026-09-29-not-tunable-above-the-contract),
+"The pass (2026-09-29): not tunable above the contract"). The fixed guards
+against degeneracy are constants, not tuning thresholds: `alignPatch`'s floor
+for a singular patch, and the
 numerical singularity tests in `predictHomography` and `robustHomography`
 (`SINGULAR_RELATIVE_DET`, `SINGULAR_PIVOT_RATIO`). Each option is
 documented, with the measurement behind it, where it is defined in
 [`src/tracker.ts`](./src/tracker.ts).
 
+The four detection options are `prepareDetection`'s as well, which the
+constructor calls, and are checked there in the same way; they are defined in
+[`src/detection.ts`](./src/detection.ts). An `externalDetection` tracker
+checks them but never detects with them: only what the worker passes
+`prepareDetection` decides its detections. So the worker passes the values
+the tracker was given, or its detections are not the ones the tracker would
+have made in the default mode.
+
 | Option | Default | What it bounds |
 |---|---|---|
 | `detectionOnly` | `false` | Never track |
 | `externalDetection` | `false` | Never detect: the application hands detections to `process` |
+| `sceneLevels` | 1 | Pyramid levels `detect` searches in the frame; an integer ≥ 1 |
+| `maxSceneKeypoints` | 300 | `detect`'s keypoint budget in the frame; an integer ≥ 1 |
+| `ratio` | 0.8 | `match`'s ratio test; in `(0, 1]` |
+| `ransacThreshold` | 4 px | `estimateHomography`'s inlier threshold; finite and > 0 |
 | `maxFrameLevels` | 4 | Frame pyramid levels; fewer are built when the patches start on fewer (one on the camera path) |
 | `alignMaxIterations`, `alignEpsilon` | 30, 0.01 px | `alignPatch`'s cap and convergence step |
 | `photometric` | `true` | Gain and bias estimated per patch |
@@ -423,7 +457,41 @@ documented, with the measurement behind it, where it is defined in
 | `maxOutlierShare` | 0.45 | Share of correspondences the fit may weigh 0: #64's breakdown |
 | `maxFitRms` | 0.6 px | The fit's weighted RMS residual |
 | `minPatchZncc` | 0.6 | A converged patch's correlation with its window |
+| `conditioning` | `{ mode: "off" }` | The conditioning signal's state: `"off"`, `"report"`, or `"refuse"` with `maxDScale` and `maxDOrth`, both required, numbers ≥ 0, `Infinity` for no bound; a threshold in another state is refused (below) |
 | `clock` | none | `() => ms`, for `timings` |
+
+**The conditioning signal** ([#104](https://github.com/webarkit/webarkit/issues/104),
+M4's step 2). Two quantities read on a fit's homography under `K` before the
+pose step, with `b1` and `b2` the first two columns of `K⁻¹H`:
+`d_scale = ‖b1‖ / ‖b2‖ − 1` and `d_orth = b1·b2 / (‖b1‖ ‖b2‖)`, both 0 for a
+plane seen by a pinhole camera. The `conditioning` option has three states.
+**Off**, the default: nothing is computed, and the pose path is the one the
+measurement campaign's baseline reads, which is why the default is forced
+rather than preferred. **Reporting** (`{ mode: "report" }`): every result with
+a pose carries `conditioning: { ok: true, dScale, dOrth }`, the two numbers
+kept apart and never combined, as M4's milestone requires ("exposed
+separately with no combined quantity and no default threshold"); the
+derivation of record
+([`docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.md`](../../docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.md),
+"Two separate thresholds") says of #90's sweep that the two "differ in which
+gross fits they catch" and that which form is registered is not decided
+there; nothing is refused. **Refusing**
+(`{ mode: "refuse", maxDScale, maxDOrth }`): a fit whose `|d_scale|` or
+`|d_orth|` exceeds its threshold, or whose reading cannot be taken, gets no
+pose — a detection ends `"LOST"` with `reason: "conditioning"` and the
+reading, a tracking step drops its lock with `trackLoss: "conditioning"`, its
+reading in `trackLossConditioning`, and the frame is detected again. Both
+thresholds are the caller's and both are required, numbers `≥ 0`
+(`Infinity` leaves that quantity unbounded): **no default threshold exists
+and M4 registers none**, because the same derivation found no single value
+that separates right fits from gross wrong fits pooled over the sweep's two
+views; a refusing state without them is a `RangeError` at construction, not a
+tracker that passes everything, and so is a threshold given in another
+state. The
+signal's acceptance is `test/pose/conditioning_sweep.test.ts`: on #90's sweep
+no right fit of either target is refused and each of the eight gross wrong
+fits of M2's 64 patches is, read per view at the view's own floors, with
+every figure checked against the derivation's.
 
 **What it survives**, measured on synthetic frames of the camera path (the
 pinball target at 0.45 in 270 × 360; `test/tracking/track_frame.test.ts`,
@@ -460,7 +528,10 @@ a median of 0.079 px.
   and roll changes measured, the next step came within 0.9 px or refused,
   and the one after within 0.25 px or re-detected. Right fits on as few
   patches also reach a quality of 0.20, so quality flags such a pose without
-  separating it; which rule should is the tuning pass's question
+  separating it. Which rule should is
+  [#92](https://github.com/webarkit/webarkit/issues/92)'s question, which M3's
+  tuning pass sent onward (round 3) and M4's conditioning signal
+  ([#104](https://github.com/webarkit/webarkit/issues/104)) is weighed against
   (`DEFAULT_MAX_FIT_RMS` in `src/tracker.ts` has the measurements).
 - **A target leaving the frame** is tracked on the few patches still in view
   until too few are left; those last frames extrapolate, up to 1.2 px RMS off
@@ -472,7 +543,7 @@ a median of 0.079 px.
   these poses: the next step refused every lock they seeded
   (`tracker_state_machine.test.ts`). The `"DETECT"` result itself is
   returned.
-- **Patch levels** are the first thing the tuning pass should revisit: 47 of
+- **Patch levels** are a lever M3's tuning pass did not try: 47 of
   `examples/targets/pinball.wnft`'s 48 patches are level 0 and one is level 1,
   and on the camera path, where the target is seen at about half level 0's
   scale, every one of them is sharper than the frame it is aligned in, which

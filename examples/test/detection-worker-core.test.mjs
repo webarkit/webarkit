@@ -93,12 +93,56 @@ function mulberry32(seed) {
     };
 }
 
-/** `run()` with `Math.random` seeded, restored however it ends. */
+/**
+ * `run()` with `Math.random` seeded, restored however it ends. Synchronous only:
+ * the seed is in place exactly while `run()` is on the stack, so a `run()` that
+ * returns a promise would have the real `Math.random` restored before the
+ * awaited work draws, and the seed would reach none of it. Refused rather than
+ * supported: an async-aware helper invites nesting, and these two helpers are
+ * already duplicated once.
+ */
 function seeded(seed, run) {
     const original = Math.random;
     Math.random = mulberry32(seed);
     try {
-        return run();
+        const value = run();
+        if (typeof value?.then === "function") {
+            throw new TypeError(
+                "seeded(): run() returned a thenable; Math.random is restored when run() " +
+                    "returns, before the awaited work draws, so none of it would be seeded",
+            );
+        }
+        return value;
+    } finally {
+        Math.random = original;
+    }
+}
+
+/**
+ * `seeded`, with the draws `run()` makes counted: `{ value, draws }`. Synchronous
+ * only, for the reason above and one more: `draws` is read when `run()` returns,
+ * so a `run()` that returns a promise would report 0 for work that had not run
+ * yet, and a check that `draws` is 0 could not tell "zero draws" from "did not
+ * observe the draws". Such a check is blind, so the shape is refused.
+ */
+function counted(seed, run) {
+    const original = Math.random;
+    const next = mulberry32(seed);
+    let draws = 0;
+    Math.random = () => {
+        draws++;
+        return next();
+    };
+    try {
+        const value = run();
+        if (typeof value?.then === "function") {
+            throw new TypeError(
+                "counted(): run() returned a thenable; draws is read and Math.random is " +
+                    "restored when run() returns, before the awaited work draws, so the " +
+                    "count would be 0 without observing anything",
+            );
+        }
+        return { value, draws };
     } finally {
         Math.random = original;
     }
@@ -118,6 +162,27 @@ describe("prepareWorkerDetection", () => {
         expect(state.setup.ratio).toBe(0.8);
     });
 
+    // #95, Task 1: the decoder's warnings were dropped, where the page logs its own.
+    it("keeps the decoder's warnings, for the page to log as it logs its own", async () => {
+        const file = readFileSync(
+            new URL("../../fixtures/nft-target/0.3/warnings/unknown-chunk.wnft", import.meta.url),
+        );
+        const bytes = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
+        const state = await prepareWorkerDetection(
+            { targetBytes: bytes, options: OPTIONS },
+            PREPARE_DEPS,
+        );
+        expect(state.warnings).toEqual([
+            { code: "UNKNOWN_CHUNK_SKIPPED", detail: 'chunk type "XTRA"' },
+        ]);
+
+        const clean = await prepareWorkerDetection(
+            { targetBytes: targetBytes(), options: OPTIONS },
+            PREPARE_DEPS,
+        );
+        expect(clean.warnings).toEqual([]);
+    });
+
     it("refuses a target the decoder refuses, with the decoder's reason", async () => {
         await expect(
             prepareWorkerDetection(
@@ -135,26 +200,62 @@ describe("runWorkerDetection", () => {
             { targetBytes: bytes, options: OPTIONS },
             PREPARE_DEPS,
         );
-        const reply = seeded(42, () =>
+        const worker = counted(42, () =>
             runWorkerDetection(state, { jobId: 1, runId: 1, frame, timestampMs: 12.5 }, RUN_DEPS),
         );
+        const reply = worker.value;
 
         // The main thread's own pipeline, on its own backend and its own decode.
         const cv2 = await createJsfeatNextBackend();
         const decoded = decode(bytes);
         expect(decoded.ok).toBe(true);
-        const direct = seeded(42, () =>
-            detectTarget(cv2, prepareDetection(cv2, decoded.target, OPTIONS), frame, 12.5),
-        );
+        // Prepared outside the seed, as the worker's is above, so that nothing draws
+        // on the seed before `detectTarget` in either arm and the comparison reads
+        // only what `detectTarget` draws (#95, Task 1). Both setups are then built
+        // unseeded, which is sound only while `prepareDetection` draws nothing; the
+        // test below holds that.
+        const setup = prepareDetection(cv2, decoded.target, OPTIONS);
+        const direct = counted(42, () => detectTarget(cv2, setup, frame, 12.5));
 
         // The comparison means something only if the frame is one the target is found in.
-        expect(direct.ok).toBe(true);
+        expect(direct.value.ok).toBe(true);
         expect(reply.detection.ok).toBe(true);
         expect(reply.detection.timestampMs).toBe(12.5);
-        expect(reply.detection.numMatches).toBe(direct.numMatches);
-        expect(reply.detection.numInliers).toBe(direct.numInliers);
-        expect(Array.from(reply.detection.H)).toEqual(Array.from(direct.H));
-        expect(reply.detection.sceneKeypoints).toEqual(direct.sceneKeypoints);
+        expect(reply.detection.numMatches).toBe(direct.value.numMatches);
+        expect(reply.detection.numInliers).toBe(direct.value.numInliers);
+        expect(Array.from(reply.detection.H)).toEqual(Array.from(direct.value.H));
+        expect(reply.detection.sceneKeypoints).toEqual(direct.value.sceneKeypoints);
+
+        // The two arms consumed the same amount of the seed. "The comparison reads
+        // only what `detectTarget` draws" was, until here, a fact read off
+        // `runWorkerDetection`, a thin wrapper that resets the timings, takes two
+        // clock readings and delegates; this is the check of it. The worker arm
+        // drawing more than the direct one would mean the wrapper, or something it
+        // now calls, draws on the seed before or after `detectTarget`, and the
+        // equalities above would then hold on two different RNG states only by
+        // luck. The package side makes the same pair in `parity.test.ts`, "draws
+        // randomness only inside RANSAC, and the same amount on both sides".
+        expect(direct.draws).toBeGreaterThan(0);
+        expect(worker.draws).toBe(direct.draws);
+    });
+
+    // #95, Task 1: the comparison above builds both setups outside the seed. That is
+    // sound only while `prepareDetection` draws nothing, since an unseeded draw could
+    // build two different setups; the day it draws, both preparations need the seed,
+    // and this test says so. Counted at the seam `seeded` replaces, the global
+    // `Math.random`; `detectTarget` is the control that the counter sees a draw.
+    it("prepareDetection draws nothing from Math.random, which the seeded comparison above rests on", async () => {
+        const cv2 = await createJsfeatNextBackend();
+        const decoded = decode(targetBytes());
+        expect(decoded.ok).toBe(true);
+
+        const prepared = counted(42, () => prepareDetection(cv2, decoded.target, OPTIONS));
+        expect(prepared.draws).toBe(0);
+
+        // RANSAC's minimal-sample draws, through the same seam: the count is live.
+        const detected = counted(42, () => detectTarget(cv2, prepared.value, frame, 12.5));
+        expect(detected.value.ok).toBe(true);
+        expect(detected.draws).toBeGreaterThan(0);
     });
 
     it("returns a reply that survives structuredClone, with the job and run ids and the worker's stage times", async () => {

@@ -17,6 +17,9 @@ To contribute to the project, please follow these steps:
    ```
 3. **Develop and Test**: Make your changes and ensure they pass all tests (see the [Testing](#testing) section).
 4. **Submit the Pull Request**: Open a PR against the `dev` branch of the main repository.
+5. **Name the issues it addresses, and close them after the merge**: The pull request's description names each issue it addresses (`#NNN`), which puts a reference on the issue. Whoever merges then closes each one with a comment naming the pull request or the commit that did the work. An issue closed for another reason (not planned, a duplicate, superseded) gets a comment saying what decided it.
+
+   Closing keywords (`Closes #NNN`, `Fixes #NNN`) are not used. GitHub honours them for pull requests into the default branch, `master`, and for commit messages that reach it; every pull request here targets `dev`, so in a pull request's description they close nothing and link nothing: [#99](https://github.com/webarkit/webarkit/pull/99)'s description says "Closes #72", and it linked nothing. Avoid them even in prose that denies them: GitHub matches the token and not the sentence, so "does not close #NNN" reads as `close #NNN`. In a pull request into `dev` that closes nothing, but in a commit message it fires when the commit reaches `master`, which is how [#11](https://github.com/webarkit/webarkit/issues/11) was closed — so write "#NNN stays open" rather than naming the keyword at all.
 
 > **Important**: All PRs must be made against the `dev` branch. The `master` branch is reserved exclusively for stable releases.
 
@@ -38,7 +41,7 @@ Releases are cut by @kalwalt, from `dev` into `master`: the release pull request
    rustup target add thumbv7em-none-eabihf   # once
    cargo build -p wnft-format --no-default-features --target thumbv7em-none-eabihf
    ```
-2. **Close the changelog entry**: In [`CHANGELOG.md`](CHANGELOG.md), rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, add its compare link at the foot of the file, and open a fresh, empty `## [Unreleased]` above it. The section should already be complete: every pull request that changed behaviour added its own line to `[Unreleased]` when it landed (see [Commit Message Conventions](#commit-message-conventions)), so this step edits a heading, not a history.
+2. **Close the changelog entry**: In [`CHANGELOG.md`](CHANGELOG.md), rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, add its compare link at the foot of the file, and open a fresh, empty `## [Unreleased]` above it. The section should already be complete: every pull request that changed behaviour added its own line to `[Unreleased]` when it landed (see [Commit Message Conventions](#commit-message-conventions)), so this step edits a heading, not a history. **A shipped changelog entry is never amended:** a released note records what was claimed at the time, as an accepted ADR's decision is never edited in place (`AGENTS.md`, "Design records"); a later qualification goes in the next version's entry.
 3. **Open the release pull request**:
    * It goes from `dev` into `master`.
    * It is titled `chore(release): vX.Y.Z — <milestone>`, for example [`chore(release): v0.3.0 — M2 complete`](https://github.com/webarkit/webarkit/pull/74). `release` is the one scope that names no part of the repository.
@@ -70,6 +73,8 @@ Before the annotated tag, all of these hold and the release PR says so:
 4. The milestone's open issues examined, not necessarily zero: each is closed, or moved to another
    milestone with its reason recorded in the issue. A milestone may ship with work deferred; it may
    not ship with work unexamined.
+   The episode this gate was written from is recorded in
+   [M1's closing comment](https://github.com/webarkit/webarkit/issues/22#issuecomment-5948136199).
 5. If the release ships a new `.wnft` format minor, its fixture corpus is frozen under
    `fixtures/nft-target/<version>/` in the release PR
    ([format spec §8.3](docs/specs/nft-target-format.md#83-evolution-tests),

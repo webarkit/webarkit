@@ -105,7 +105,8 @@
  * in view and extrapolate to the rest: up to 1.2 px RMS off over the patch
  * centres, 2.5 px at the far end.
  *
- * **Patch levels are the first thing the tuning pass should revisit.** All
+ * **Patch levels are a lever M3's tuning pass did not try** (its rounds were
+ * the iteration cap, the patch count, the lock minimum and the patch size). All
  * but one patch of `examples/targets/pinball.wnft` come from level 0 (47 of
  * 48; the other is from level 1), and on the camera path the target is seen
  * at about half level 0's scale: each patch is sharper than the frame it is
@@ -142,6 +143,10 @@
  */
 
 import type { CvBackend, GrayImage, Keypoint, Mat3, Pose } from "@webarkit/cv-backend-spec";
+import { POSE_AMBIGUITY_SIGMA_TRACK_PX, selectPose, targetGrid } from "./pose/select_pose.js";
+import type { PoseSelection } from "./pose/select_pose.js";
+import { conditioning, conditioningRefuses } from "./pose/conditioning.js";
+import type { ConditioningReading, ConditioningThresholds } from "./pose/conditioning.js";
 import {
     DEFAULT_MAX_SCENE_KEYPOINTS,
     DEFAULT_RANSAC_THRESHOLD,
@@ -164,31 +169,42 @@ import type {
 import type { DetectionUse, TrackingState } from "./tracking/types.js";
 
 /*
- * The tracking state's defaults. Every one is provisional until the M2
- * tuning pass (#48, "Evaluation"), which replaces each with a measured value
- * and its reason. Where one was measured already, the measurement is cited;
- * the others are the configurations #63 and #64 measured their functions
- * under.
+ * The tracking state's defaults. M3's tuning pass (#93;
+ * docs/benchmarks/README.md, "The pass (2026-09-29): not tunable above the
+ * contract") changed none of them. It tuned two and kept both,
+ * `alignMaxIterations` (round 1) and `minTrackedPatches` (round 4); round 5,
+ * on `alignEpsilon`, did not run; and the rest were outside its scope ("What
+ * this plan does not test"). Each comment below says which. Where one was
+ * measured, the measurement is cited; the others are the configurations #63
+ * and #64 measured their functions under.
  */
 
 /**
  * Most frame pyramid levels a tracking frame builds. Fewer are built when the
  * patches start on fewer (`frameLevelsFor`): on the camera path, pinball's
  * patches need one, the frame itself. Four covers a level-0 patch seen at up
- * to twice its scale. Provisional until the M2 tuning pass.
+ * to twice its scale. Outside M3's tuning pass (the pyramid).
  */
 export const DEFAULT_MAX_FRAME_LEVELS = 4;
 
-/** `alignPatch`'s iteration cap per level: #63's measured configuration. Provisional until the M2 tuning pass. */
+/**
+ * `alignPatch`'s iteration cap per level: #63's measured configuration, kept
+ * by M3's tuning pass (round 1: a lower cap bought 11–17% of the step on
+ * moving footage by cutting right alignments short).
+ */
 export const DEFAULT_ALIGN_MAX_ITERATIONS = 30;
 
-/** `alignPatch`'s convergence step, frame px: #63's measured configuration. Provisional until the M2 tuning pass. */
+/**
+ * `alignPatch`'s convergence step, frame px: #63's measured configuration.
+ * Untested by M3's tuning pass: round 5, its round, did not run.
+ */
 export const DEFAULT_ALIGN_EPSILON = 0.01;
 
 /**
  * Estimate gain and bias with each patch's translation: camera exposure
  * changes, and a lost patch then ends `"singular"`, which the tracker reads
- * (align_patch.ts, point 6). Provisional until the M2 tuning pass.
+ * (align_patch.ts, point 6). Outside M3's tuning pass: the ZNCC gate reads the
+ * least-squares gain, which only photometric alignment has.
  */
 export const DEFAULT_PHOTOMETRIC = true;
 
@@ -196,8 +212,8 @@ export const DEFAULT_PHOTOMETRIC = true;
  * Tukey's cutoff, frame px: the detection state's RANSAC threshold, and #64's
  * configuration for its 45% breakdown. It also bounds the prediction error a
  * step survives: 4 px measured on the camera path (track_frame.test.ts),
- * since `robustHomography` starts weighting at the prediction. Provisional
- * until the M2 tuning pass.
+ * since `robustHomography` starts weighting at the prediction. Outside M3's tuning pass
+ * (the fit's options).
  */
 export const DEFAULT_TUKEY_C = 4;
 
@@ -205,11 +221,14 @@ export const DEFAULT_TUKEY_C = 4;
  * `robustHomography`'s iteration cap: #64's measured configuration. A fit that
  * reaches it is reported (`TrackStats.fitConverged`), not refused; on the
  * camera path only a fit the other rules refused has (`TrackStats`).
- * Provisional until the M2 tuning pass.
+ * Outside M3's tuning pass (the fit's options).
  */
 export const DEFAULT_FIT_MAX_ITERATIONS = 20;
 
-/** `robustHomography`'s convergence tolerance, px: #64's measured configuration. Provisional until the M2 tuning pass. */
+/**
+ * `robustHomography`'s convergence tolerance, px: #64's measured
+ * configuration. Outside M3's tuning pass (the fit's options).
+ */
 export const DEFAULT_FIT_EPSILON = 1e-6;
 
 /**
@@ -226,8 +245,9 @@ export const DEFAULT_FIT_EPSILON = 1e-6;
  * track_frame.test.ts pins one render): right fits kept 12 inliers or more,
  * and the wrong fits the rules let through 8–13. So 8 narrows the wrong fits
  * without separating them; 12 would refuse 15 of those 24, every one over
- * 1.6 px off among them, at no margin to the right fits — the tuning pass's
- * call, on real frames. Provisional until the M2 tuning pass.
+ * 1.6 px off among them, at no margin to the right fits. M3's tuning pass
+ * kept 8 (round 4): lowering the minimum won no right fit, and every fit it
+ * let through was wrong.
  */
 export const DEFAULT_MIN_TRACKED_PATCHES = 8;
 
@@ -235,7 +255,7 @@ export const DEFAULT_MIN_TRACKED_PATCHES = 8;
  * Largest share of correspondences the fit may weigh 0 before the frame is
  * lost: #64's measured breakdown (every outlier rejected in 2000 seeds of
  * 2000 up to 45%; failures from 50%, 40 patches, a prediction 3 px off).
- * Provisional until the M2 tuning pass.
+ * Outside M3's tuning pass (the fit's options).
  */
 export const DEFAULT_MAX_OUTLIER_SHARE = 0.45;
 
@@ -252,8 +272,9 @@ export const DEFAULT_MAX_OUTLIER_SHARE = 0.45;
  * 9–10% too large in scale. 0.4 px would have refused every one more than
  * 1.5 px off, 0.03 px above the right fits: too thin a margin to set on
  * synthetic frames, since the residual scales with the alignment noise and
- * real frames may need more. The tuning pass sets it on real ones.
- * Provisional until then.
+ * real frames may need more. Outside M3's tuning pass (the fit's options): the wrong
+ * fits it lets through are #92's question, which M4's conditioning signal
+ * (#104) is weighed against.
  */
 export const DEFAULT_MAX_FIT_RMS = 0.6;
 
@@ -274,10 +295,51 @@ export const DEFAULT_MAX_FIT_RMS = 0.6;
  * to 0.190 px with half the patches culled, and 0.085 to 0.109 px with some
  * covered (track_frame.test.ts pins the values with the gate). It reads the
  * alignment's gain and bias as least-squares estimates, so with
- * `photometric: false` it is not a correlation. Provisional until the M2
- * tuning pass.
+ * `photometric: false` it is not a correlation. Outside M3's tuning pass, which names
+ * it among what it does not test.
  */
 export const DEFAULT_MIN_PATCH_ZNCC = 0.6;
+
+/**
+ * The conditioning signal's state (#104; M4's step 2): the two quantities
+ * `d_scale` and `d_orth` of `src/pose/conditioning.ts`, read on a fit's `H`
+ * under the tracker's `K` before the pose step.
+ *
+ * - `"off"`: nothing is computed, and the pose path is the one the campaign's
+ *   baseline measures. A `K⁻¹H` that cannot be read cannot throw here,
+ *   because it is never formed.
+ * - `"report"`: both quantities are computed and carried on every result
+ *   with a pose, as `conditioning`, separately and uncombined. Nothing is
+ *   refused.
+ * - `"refuse"`: computed, carried, and a fit whose `|d_scale|` exceeds
+ *   `maxDScale` or whose `|d_orth|` exceeds `maxDOrth` — or whose reading
+ *   could not be taken — gets no pose: a detection ends `"LOST"` with
+ *   `reason: "conditioning"`, a tracking step drops its lock with
+ *   `trackLoss: "conditioning"` and the frame is detected again, as after
+ *   any loss, its reading in `trackLossConditioning`. Both thresholds are
+ *   the caller's and both are required, numbers `≥ 0`, `+Infinity` leaving
+ *   that quantity unbounded: no default exists, because the derivation of record
+ *   (`docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.md`) found
+ *   no single value that separates right fits from gross wrong fits pooled
+ *   over the sweep's two views, and M4 registers none. A refusing state
+ *   without thresholds is refused at construction rather than passing
+ *   everything.
+ */
+export type ConditioningOptions =
+    | { readonly mode: "off" }
+    | { readonly mode: "report" }
+    | ({ readonly mode: "refuse" } & ConditioningThresholds);
+
+/** Which of the three states a tracker's conditioning signal is in. */
+export type ConditioningMode = ConditioningOptions["mode"];
+
+/**
+ * Off. Forced by the campaign, not a preference: its baseline arm is today's
+ * pipeline, so the default must not change it (M4's milestone, appended
+ * 2026-10-21: "switchable, default off"). `test/tracker_conditioning.test.ts`
+ * asserts it, so that the baseline cannot change silently.
+ */
+export const DEFAULT_CONDITIONING: ConditioningOptions = Object.freeze({ mode: "off" });
 
 /** Why a frame produced no homography. */
 export type TrackFailure =
@@ -297,7 +359,14 @@ export type TrackFailure =
      * why. The detection is of an earlier frame, and the target moved past
      * what one step recovers, or the detection was wrong to begin with.
      */
-    | "unconfirmed";
+    | "unconfirmed"
+    /**
+     * A detection's homography was refused by the conditioning signal under
+     * the caller's thresholds (the `conditioning` option, refusing state
+     * only): no lock was set and no pose computed. The result carries the
+     * reading as `conditioning`.
+     */
+    | "conditioning";
 
 export interface NftTrackerOptions {
     /** See {@link DEFAULT_SCENE_LEVELS}. */
@@ -342,6 +411,16 @@ export interface NftTrackerOptions {
     readonly maxFitRms?: number;
     /** See {@link DEFAULT_MIN_PATCH_ZNCC}. In `[0, 1)`; 0 turns the gate off. */
     readonly minPatchZncc?: number;
+    /**
+     * See {@link ConditioningOptions} and {@link DEFAULT_CONDITIONING}. In the
+     * refusing state both thresholds are required, numbers `≥ 0`, `+Infinity`
+     * leaving that quantity unbounded: the shape the derivation of record found
+     * on the sweep's second view, where "τ_s must stay below 0.04174 there
+     * while τ_o may rise without limit"
+     * (`docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.md`, "Two
+     * separate thresholds", the bullet "Per view, both separate").
+     */
+    readonly conditioning?: ConditioningOptions;
     /**
      * A clock in milliseconds, e.g. `() => performance.now()`. When given,
      * every result carries {@link TrackTimings}; the tracker reads no clock of
@@ -388,6 +467,13 @@ interface TrackingFields {
      * describe the confirming step, and its `"TRACK"` result has `null` here.
      */
     readonly trackLoss: TrackLoss | null;
+    /**
+     * The reading a `trackLoss` of `"conditioning"` was refused on: the two
+     * quantities of the step's fit, so that a refusal is observable even
+     * when the detection that follows on the same frame carries its own
+     * `conditioning`. `null` whenever `trackLoss` is anything else.
+     */
+    readonly trackLossConditioning: ConditioningReading | null;
     /** The last tracking step's patch counts, when one ran this frame; else `null`. */
     readonly tracking: TrackStats | null;
     /** `null` without the `clock` option. */
@@ -450,6 +536,21 @@ export type TrackResult =
            */
           readonly pose: Pose;
           /**
+           * How {@link pose} was chosen: IPPE's two candidates and the
+           * selection rule's outcome (#105; M4's step 3). `pose` is
+           * `poseSelection.pose`. The tracker makes no `poseFromHomography`
+           * call: the pose is computed here, above the contract, from `H`
+           * and the frame's correspondences.
+           */
+          readonly poseSelection: PoseSelection;
+          /**
+           * The conditioning signal on {@link H} under `K`, read before the
+           * pose step (#104): `null` in the `"off"` state, the default; the
+           * two quantities, separately, in the other two. A frame the
+           * refusing state refuses is not on this branch.
+           */
+          readonly conditioning: ConditioningReading | null;
+          /**
            * The frame's keypoints, as detected. For overlays. Empty on a
            * `"TRACK"` frame, where nothing is detected — except one that
            * consumed a detection, which carries the DETECTED frame's
@@ -468,6 +569,13 @@ export type TrackResult =
           readonly numInliers: number;
           readonly H: null;
           readonly pose: null;
+          /**
+           * The reading the refusing state refused a detection on, when
+           * `reason` is `"conditioning"`; otherwise `null`. A tracking
+           * step's refusal is `trackLoss: "conditioning"` with its reading
+           * in `trackLossConditioning`.
+           */
+          readonly conditioning: ConditioningReading | null;
           readonly sceneKeypoints: readonly Keypoint[];
       });
 
@@ -491,12 +599,32 @@ export class NftTracker {
     readonly detectionOnly: boolean;
     /** Whether the tracker never detects itself: the `externalDetection` option. */
     readonly externalDetection: boolean;
+    /** The conditioning signal's state: the `conditioning` option's `mode`, `"off"` by default. */
+    readonly conditioningMode: ConditioningMode;
+    private readonly conditioningOptions: ConditioningOptions;
     /** The target's patches with their geometry, when this tracker tracks. */
     private readonly track: TrackTarget | null;
     private readonly trackOptions: TrackFrameOptions;
     private readonly clock: (() => number) | null;
     /** The last two homographies while locked: `previous` is `null` right after a detection. */
     private lock: { readonly previous: Mat3 | null; readonly current: Mat3 } | null = null;
+    /** The target's 5 × 5 grid, level-0 px: the pose selection's depth rule reads it. */
+    private readonly grid: Float64Array;
+    private fallbacks = 0;
+
+    /**
+     * Frames so far whose pose is not IPPE's own estimate but the closed form,
+     * for any reason: an ambiguous selection (#105's rule (c)), both
+     * candidates putting the plane behind the camera, or a degenerate
+     * homography. One counter, by the maintainer's ruling of 2026-10-15:
+     * whenever the arm does not use IPPE's estimate it is a mixture of the two
+     * decompositions, and the count bounds the mixture; a run in which it is
+     * large is not a measurement of IPPE. Each result's `poseSelection.outcome`
+     * says which reason fired on its frame.
+     */
+    get fallbackFrames(): number {
+        return this.fallbacks;
+    }
 
     /**
      * @param cv      The backend. Injected, never imported: the tracker runs on
@@ -533,6 +661,37 @@ export class NftTracker {
                 : null;
         this.detectionOnly = this.track === null;
         this.externalDetection = tracking.externalDetection;
+        this.conditioningOptions = tracking.conditioning;
+        this.conditioningMode = tracking.conditioning.mode;
+        const [width, height] = target.pyramid.levelSizes[0];
+        this.grid = targetGrid(width, height);
+    }
+
+    /**
+     * The frame's pose from `H` over the correspondences the estimate used,
+     * by #105's selection rule, counting a fallback frame. `sigma` is the
+     * correspondences' noise, frame px: the alignment's on a tracking step,
+     * the RANSAC threshold on a detection.
+     */
+    private selected(H: Mat3, src: Float64Array, dst: Float64Array, sigma: number): PoseSelection {
+        const s = selectPose(H, this.K, src, dst, sigma, this.grid);
+        if (s.chosen === "fallback") this.fallbacks++;
+        return s;
+    }
+
+    /**
+     * The conditioning signal on a fit's `H` under the tracker's `K`, read
+     * before {@link selected} runs on it (#104: "computed on the fit, before
+     * the pose step"), and whether the refusing state refuses it. `null` in
+     * the `"off"` state, where nothing is computed.
+     */
+    private condition(
+        H: Mat3,
+    ): { readonly reading: ConditioningReading; readonly refused: boolean } | null {
+        const o = this.conditioningOptions;
+        if (o.mode === "off") return null;
+        const reading = conditioning(H, this.K);
+        return { reading, refused: o.mode === "refuse" && conditioningRefuses(reading, o) };
     }
 
     /**
@@ -551,25 +710,48 @@ export class NftTracker {
         const clock = this.clock;
         const start = clock === null ? 0 : clock();
         let trackLoss: TrackLoss | null = null;
+        let trackLossConditioning: ConditioningReading | null = null;
         let tracking: TrackStats | null = null;
         let step: TrackStepTimings | null = null;
         if (this.lock !== null && this.track !== null) {
             const r = this.step(frame);
             tracking = r.stats;
             step = r.timings;
-            if (r.ok) {
-                return this.tracked(r, timestampMs, NO_KEYPOINTS, start, [step], {
-                    detectionUse: detection ? "ignored" : "none",
-                    detectionLatencyMs: null,
-                });
+            // The conditioning signal reads the fit before the pose step; a
+            // refusal is a loss of the step like any other below.
+            const c = r.ok ? this.condition(r.H) : null;
+            if (r.ok && !(c !== null && c.refused)) {
+                return this.tracked(
+                    r,
+                    timestampMs,
+                    NO_KEYPOINTS,
+                    start,
+                    [step],
+                    {
+                        detectionUse: detection ? "ignored" : "none",
+                        detectionLatencyMs: null,
+                    },
+                    c === null ? null : c.reading,
+                );
             }
             // The lock goes, and this same frame gets whatever detection
             // there is below: a target moved out of the step's reach is
             // often still in view.
-            trackLoss = r.loss;
+            if (r.ok) this.lock = null;
+            trackLoss = r.ok ? "conditioning" : r.loss;
+            trackLossConditioning = r.ok && c !== null ? c.reading : null;
         }
         if (detection) {
-            return this.consume(detection, frame, timestampMs, start, trackLoss, tracking, step);
+            return this.consume(
+                detection,
+                frame,
+                timestampMs,
+                start,
+                trackLoss,
+                trackLossConditioning,
+                tracking,
+                step,
+            );
         }
         if (this.externalDetection) {
             return {
@@ -582,8 +764,10 @@ export class NftTracker {
                 numInliers: 0,
                 H: null,
                 pose: null,
+                conditioning: null,
                 sceneKeypoints: NO_KEYPOINTS,
                 trackLoss,
+                trackLossConditioning,
                 tracking,
                 timings: this.timings(start, 0, [step]),
                 needsDetection: true,
@@ -601,6 +785,7 @@ export class NftTracker {
         }
         const fields: TrackingFields = {
             trackLoss,
+            trackLossConditioning,
             tracking,
             timings: this.timings(start, detectMs, [step]),
             needsDetection: false,
@@ -628,6 +813,7 @@ export class NftTracker {
         timestampMs: number,
         start: number,
         firstLoss: TrackLoss | null,
+        firstLossConditioning: ConditioningReading | null,
         firstStats: TrackStats | null,
         firstStep: TrackStepTimings | null,
     ): TrackResult {
@@ -639,7 +825,19 @@ export class NftTracker {
             this.lock = { previous: null, current: d.H };
             const r = this.step(frame);
             const steps = [firstStep, r.timings];
-            if (r.ok) return this.tracked(r, timestampMs, d.sceneKeypoints, start, steps, use);
+            const c = r.ok ? this.condition(r.H) : null;
+            if (r.ok && !(c !== null && c.refused)) {
+                return this.tracked(
+                    r,
+                    timestampMs,
+                    d.sceneKeypoints,
+                    start,
+                    steps,
+                    use,
+                    c === null ? null : c.reading,
+                );
+            }
+            if (r.ok) this.lock = null;
             return {
                 ok: false,
                 state: "LOST",
@@ -650,8 +848,10 @@ export class NftTracker {
                 numInliers: d.numInliers,
                 H: null,
                 pose: null,
+                conditioning: null,
                 sceneKeypoints: d.sceneKeypoints,
-                trackLoss: r.loss,
+                trackLoss: r.ok ? "conditioning" : r.loss,
+                trackLossConditioning: r.ok && c !== null ? c.reading : null,
                 tracking: r.stats,
                 timings: this.timings(start, 0, steps),
                 needsDetection: this.externalDetection,
@@ -666,6 +866,7 @@ export class NftTracker {
         const fields: TrackingFields & { timestampMs: number } = {
             timestampMs,
             trackLoss: firstLoss,
+            trackLossConditioning: firstLossConditioning,
             tracking: firstStats,
             timings: this.timings(start, 0, [firstStep]),
             needsDetection: this.externalDetection,
@@ -700,7 +901,21 @@ export class NftTracker {
         start: number,
         steps: readonly (TrackStepTimings | null)[],
         use: Pick<TrackingFields, "detectionUse" | "detectionLatencyMs">,
+        reading: ConditioningReading | null,
     ): TrackResult {
+        // The correspondences the fit weighed above 0, in the fit's order.
+        const n = r.stats.inliers;
+        const src = new Float64Array(2 * n);
+        const dst = new Float64Array(2 * n);
+        for (let i = 0, k = 0; i < r.weights.length; i++) {
+            if (!(r.weights[i] > 0)) continue;
+            src[2 * k] = r.correspondences.src[2 * i];
+            src[2 * k + 1] = r.correspondences.src[2 * i + 1];
+            dst[2 * k] = r.correspondences.dst[2 * i];
+            dst[2 * k + 1] = r.correspondences.dst[2 * i + 1];
+            k++;
+        }
+        const selection = this.selected(r.H, src, dst, POSE_AMBIGUITY_SIGMA_TRACK_PX);
         return {
             ok: true,
             state: "TRACK",
@@ -709,9 +924,12 @@ export class NftTracker {
             numMatches: r.stats.observed,
             numInliers: r.stats.inliers,
             H: r.H,
-            pose: this.cv.poseFromHomography(r.H, this.K),
+            pose: selection.pose,
+            poseSelection: selection,
+            conditioning: reading,
             sceneKeypoints,
             trackLoss: null,
+            trackLossConditioning: null,
             tracking: r.stats,
             timings: this.timings(start, 0, steps),
             needsDetection: false,
@@ -740,9 +958,31 @@ export class NftTracker {
                 numInliers: d.numInliers,
                 H: null,
                 pose: null,
+                conditioning: null,
                 sceneKeypoints: d.sceneKeypoints,
             };
         }
+        // The conditioning signal reads the detection's fit before its pose.
+        const cond = this.condition(d.H);
+        if (cond !== null && cond.refused) {
+            return {
+                ok: false,
+                state: "LOST",
+                quality: 0,
+                reason: "conditioning",
+                timestampMs: d.timestampMs,
+                numMatches: d.numMatches,
+                numInliers: d.numInliers,
+                H: null,
+                pose: null,
+                conditioning: cond.reading,
+                sceneKeypoints: d.sceneKeypoints,
+            };
+        }
+        // A handed-in detection is trusted as `detectTarget` produced it, its
+        // inlier correspondences included (the type carries that contract).
+        const c = d.correspondences;
+        const selection = this.selected(d.H, c.src, c.dst, this.setup.ransacThreshold);
         return {
             ok: true,
             state: "DETECT",
@@ -752,7 +992,9 @@ export class NftTracker {
             numMatches: d.numMatches,
             numInliers: d.numInliers,
             H: d.H,
-            pose: this.cv.poseFromHomography(d.H, this.K),
+            pose: selection.pose,
+            poseSelection: selection,
+            conditioning: cond === null ? null : cond.reading,
             sceneKeypoints: d.sceneKeypoints,
         };
     }
@@ -793,8 +1035,46 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
     readonly externalDetection: boolean;
     readonly clock: (() => number) | null;
     readonly track: TrackFrameOptions;
+    readonly conditioning: ConditioningOptions;
 } {
     const o = options ?? {};
+    // A threshold is a number >= 0; +Infinity leaves that quantity unbounded.
+    // NaN, a negative number, -Infinity and a non-number are refused.
+    const threshold = (name: string, v: unknown): number => {
+        if (!(typeof v === "number" && v >= 0)) {
+            throw new RangeError(
+                `NftTracker: conditioning.${name} must be a number >= 0 (+Infinity for no bound) in the refusing state, got ${String(v)}`,
+            );
+        }
+        return v;
+    };
+    const conditioningOptions = (v: unknown): ConditioningOptions => {
+        const t =
+            typeof v === "object" && v !== null
+                ? (v as { mode?: unknown; maxDScale?: unknown; maxDOrth?: unknown })
+                : {};
+        const mode = t.mode;
+        if (mode === "off" || mode === "report") {
+            // A threshold given outside the refusing state would be dropped
+            // silently, and a caller who gave one meant to refuse.
+            if (t.maxDScale !== undefined || t.maxDOrth !== undefined) {
+                throw new RangeError(
+                    `NftTracker: conditioning.maxDScale and maxDOrth are only read in the refusing state, got them with mode "${mode}"`,
+                );
+            }
+            return { mode };
+        }
+        if (mode === "refuse") {
+            return {
+                mode,
+                maxDScale: threshold("maxDScale", t.maxDScale),
+                maxDOrth: threshold("maxDOrth", t.maxDOrth),
+            };
+        }
+        throw new RangeError(
+            `NftTracker: conditioning.mode must be "off", "report" or "refuse", got ${String(mode)}`,
+        );
+    };
     const integer = (name: string, v: number, lo: number, hi = Infinity): number => {
         if (!(Number.isInteger(v) && v >= lo && v <= hi)) {
             throw new RangeError(
@@ -828,6 +1108,7 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
         detectionOnly: flag("detectionOnly", o.detectionOnly ?? false),
         externalDetection: flag("externalDetection", o.externalDetection ?? false),
         clock: o.clock ?? null,
+        conditioning: conditioningOptions(o.conditioning ?? DEFAULT_CONDITIONING),
         track: {
             maxFrameLevels: integer(
                 "maxFrameLevels",

@@ -1,0 +1,316 @@
+# adb server log (%TEMP%\adb.log on the session's PC), 2026-10-14 13:41:00 to 13:54:43 local time (UTC+2),
+# that is 11:41:00Z to run 1's link-monitor start at 11:54:43Z: only the lines naming Tab9WEEA0001504,
+# unchanged but for line endings (CRLF to LF). Left out: lines not naming the device (among them the PC's adb key fingerprint).
+10-14 13:41:25.823 43756 43780 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:41:25.823 43756 48572 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:41:25.850 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:41:28.913 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:42:41.275 43756 48572 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:42:41.275 43756 48572 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:42:41.276 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:42:41.276 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:42:41.276 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:42:41.276 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:42:41.276 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:42:41.276 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:42:48.685 43756 14108 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:42:48.685 43756 15388 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:42:48.687 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:42:48.771 43756 14108 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:42:48.771 43756 14108 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:42:48.772 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:42:48.773 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:42:48.773 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:42:48.773 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:42:48.773 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:42:48.773 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:42:50.719 43756 47432 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:42:50.720 43756 39604 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:42:50.739 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:42:52.127 43756 47432 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:42:52.127 43756 47432 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:42:52.128 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:42:52.128 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:42:52.128 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:42:52.128 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:42:52.128 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:42:52.128 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:42:52.721 43756 38916 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:42:52.721 43756 47336 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:42:52.722 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:42:53.953 43756 38916 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:42:53.953 43756 38916 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:42:53.954 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:42:53.954 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:42:53.954 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:42:53.954 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:42:53.954 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:42:53.954 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:42:54.738 43756 40352 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:42:54.738 43756 47404 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:42:54.742 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:42:55.737 43756 40352 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:42:55.737 43756 40352 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:42:55.738 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:42:55.738 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:42:55.738 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:42:55.738 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:42:55.738 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:42:55.738 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:42:56.765 43756 17480 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:42:56.765 43756 34236 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:42:56.768 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:42:58.007 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:43:18.646 43756 17480 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:43:18.646 43756 17480 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:43:18.647 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:43:18.647 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:43:18.647 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:43:18.647 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:43:18.647 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:43:18.647 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:43:19.993 43756 21736 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:43:19.993 43756 34504 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:43:19.996 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:43:23.603 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:43:38.222 43756 34504 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:43:38.222 43756 34504 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:43:38.223 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:43:38.223 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:43:38.223 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:43:38.223 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:43:38.223 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:43:38.223 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:43:39.201 43756 44248 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:43:39.201 43756 47800 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:43:39.204 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:43:42.907 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:43:47.334 43756 44248 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:43:47.334 43756 44248 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:43:47.334 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:43:47.334 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:43:47.334 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:43:47.334 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:43:47.334 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:43:47.334 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:44:24.625 43756 41392 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:44:24.625 43756  6088 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:44:24.626 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:44:27.065 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:44:33.513 43756 41392 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:44:33.513 43756 41392 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:44:33.513 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:44:33.513 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:44:33.513 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:44:33.513 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:44:33.513 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:44:33.513 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:45:01.017 43756 16808 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:45:01.017 43756 37324 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:45:01.019 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:45:02.445 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:45:44.089 43756 37324 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:45:44.089 43756 37324 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:45:44.090 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:45:44.090 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:45:44.090 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:45:44.090 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:45:44.090 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:45:44.090 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:45:45.435 43756 36640 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:45:45.436 43756 46720 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:45:45.438 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:45:47.465 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:45:53.945 43756 36640 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:45:53.945 43756 36640 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:45:53.946 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:45:53.946 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:45:53.946 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:45:53.946 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:45:53.946 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:45:53.946 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:45:54.558 43756 42020 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:45:54.563 43756  2772 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:45:54.580 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:45:54.612 43756  2772 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:45:54.612 43756  2772 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:45:54.613 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:45:54.613 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:45:54.613 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:45:54.613 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:45:54.613 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:45:54.613 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:45:55.563 43756 22876 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:45:55.563 43756 32172 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:45:55.565 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:45:56.950 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:46:04.313 43756 22876 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:46:04.313 43756 22876 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:46:04.313 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:46:04.313 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:46:04.313 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:46:04.313 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:46:04.313 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:46:04.313 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:46:05.675 43756 39492 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:46:05.675 43756 46072 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:46:05.677 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:46:07.020 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:46:09.049 43756 39492 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:46:09.049 43756 39492 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:46:09.050 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:46:09.050 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:46:09.050 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:46:09.050 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:46:09.050 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:46:09.050 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:46:09.709 43756 23160 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:46:09.710 43756  2524 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:46:09.711 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:46:11.243 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:46:13.145 43756 23160 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:46:13.145 43756 23160 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:46:13.145 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:46:13.145 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:46:13.145 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:46:13.145 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:46:13.145 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:46:13.145 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:46:13.736 43756 35468 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:46:13.736 43756 48412 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:46:13.737 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:46:15.147 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:46:21.209 43756 35468 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:46:21.209 43756 35468 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:46:21.210 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:46:21.210 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:46:21.210 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:46:21.210 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:46:21.210 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:46:21.210 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:46:21.825 43756 13616 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:46:21.825 43756 38860 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:46:21.827 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:46:22.911 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:46:29.656 43756 13616 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:46:29.656 43756 13616 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:46:29.656 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:46:29.657 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:46:29.657 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:46:29.657 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:46:29.657 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:46:29.657 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:46:29.888 43756 39208 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:46:29.888 43756 47132 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:46:29.945 43756 39208 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:46:29.945 43756 39208 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:46:29.945 43756 43996 I adb     : adb.cpp:176 Tab9WEEA0001504: already offline
+10-14 13:46:29.945 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:46:29.945 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:46:29.945 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:46:29.945 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:46:29.945 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:46:30.904 43756 47904 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:46:30.904 43756 41704 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:46:30.907 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:46:36.200 43756 41704 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:46:36.200 43756 41704 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:46:36.200 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:46:36.200 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:46:36.200 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:46:36.201 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:46:36.201 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:46:36.201 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:46:36.966 43756 29672 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:46:36.966 43756 25492 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:46:36.968 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:46:51.944 43756 29672 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:46:51.944 43756 29672 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:46:51.944 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:46:51.944 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:46:51.944 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:46:51.944 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:46:51.944 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:46:51.944 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:46:52.151 43756 47296 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:46:52.151 43756  1596 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:46:52.221 43756 47296 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:46:52.221 43756 47296 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:46:52.221 43756 43996 I adb     : adb.cpp:176 Tab9WEEA0001504: already offline
+10-14 13:46:52.221 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:46:52.221 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:46:52.221 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:46:52.221 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:46:52.221 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:46:53.164 43756 34960 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:46:53.164 43756 22876 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:46:53.167 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:47:18.518 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:47:18.695 43756 34960 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:47:18.695 43756 34960 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:47:18.696 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:47:18.696 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:47:18.696 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:47:18.696 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:47:18.696 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:47:18.696 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:47:19.416 43756 48852 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:47:19.416 43756 17184 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:47:19.419 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:47:20.359 43756 48852 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:47:20.359 43756 48852 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:47:20.359 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:47:20.359 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:47:20.359 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:47:20.360 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:47:20.360 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:47:20.360 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:47:22.461 43756 33764 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:47:22.461 43756 46400 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:47:22.463 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:47:24.694 43756 33764 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:47:24.694 43756 33764 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:47:24.695 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:47:24.695 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:47:24.695 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:47:24.695 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:47:24.695 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:47:24.695 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:47:26.497 43756 27676 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:47:26.497 43756 38524 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:47:26.500 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:47:26.854 43756 38524 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:47:26.854 43756 38524 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:47:26.854 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:47:26.854 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:47:26.854 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:47:26.854 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:47:26.854 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:47:26.854 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:47:28.521 43756 34972 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:47:28.521 43756  5588 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:47:28.523 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:47:28.732 43756 34972 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:47:28.732 43756 34972 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:47:28.732 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:47:28.732 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:47:28.732 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:47:28.733 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:47:28.733 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:47:28.733 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:47:29.562 43756 45532 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:47:29.569 43756 29044 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:47:29.580 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:47:39.660 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:47:53.949 43756 45532 I adb     : transport.cpp:342 Tab9WEEA0001504: read failed: Input/output error
+10-14 13:47:53.949 43756 45532 I adb     : transport.cpp:1150 Tab9WEEA0001504: connection terminated: read failed
+10-14 13:47:53.949 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
+10-14 13:47:53.949 43756 43996 I adb     : transport.cpp:833 destroying transport Tab9WEEA0001504
+10-14 13:47:53.949 43756 43996 I adb     : transport.cpp:410 BlockingConnectionAdapter(Tab9WEEA0001504): stopping
+10-14 13:47:53.949 43756 43996 I adb     : transport.cpp:428 BlockingConnectionAdapter(Tab9WEEA0001504): stopped
+10-14 13:47:53.950 43756 43996 I adb     : transport.cpp:297 BlockingConnectionAdapter(Tab9WEEA0001504): destructing
+10-14 13:47:53.950 43756 43996 I adb     : transport.cpp:403 BlockingConnectionAdapter(Tab9WEEA0001504): already stopped
+10-14 13:48:10.979 43756 48736 I adb     : transport.cpp:338 Tab9WEEA0001504: read thread spawning
+10-14 13:48:10.980 43756 34400 I adb     : transport.cpp:310 Tab9WEEA0001504: write thread spawning
+10-14 13:48:10.982 43756 43996 I adb     : transport.cpp:1704 fetching keys for transport Tab9WEEA0001504
+10-14 13:48:14.161 43756 43996 I adb     : adb.cpp:180 Tab9WEEA0001504: offline
