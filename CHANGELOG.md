@@ -33,13 +33,13 @@ release pull request's body and the GitHub Release's notes.
   **No threshold is registered, and none is built in.** The derivation on #90's sweep
   (`docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.md`) found no single value that
   separates right fits from gross wrong ones pooled across the sweep's two views. So both thresholds
-  are the caller's: numbers ≥ 0, `Infinity` for no bound. The constructor throws a `RangeError`
-  on a refusing state without them, on a threshold given in another state, and on an unknown
-  mode. What is claimed: on that synthetic sweep, read per view at each view's own floors, no
-  right fit of either target is refused and each of the eight gross wrong fits of M2's 64
-  patches is (`test/pose/conditioning_sweep.test.ts`). No device claim and
-  no campaign claim. The reading and the refusing rule are also exported, as
-  `conditioning` and `conditioningRefuses`, with `DEFAULT_CONDITIONING`.
+  are the caller's: numbers ≥ 0, `Infinity` for no bound. The constructor throws a `RangeError` on a
+  refusing state without them, on a threshold given in another state, and on an unknown mode. What
+  is claimed: on that synthetic sweep, read per view at each view's own floors, no right fit of
+  either target is refused and each of the eight gross wrong fits of M2's 64 patches is
+  (`test/pose/conditioning_sweep.test.ts`). No device claim and no campaign claim. The reading and
+  the refusing rule are also exported, as `conditioning` and `conditioningRefuses`, with
+  `DEFAULT_CONDITIONING`.
 
 ### Changed
 
