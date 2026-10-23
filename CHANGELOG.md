@@ -14,6 +14,8 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-23
+
 The "M4 campaign" milestone ([milestone 7](https://github.com/webarkit/webarkit/milestone/7)),
 the device measurement of [#104](https://github.com/webarkit/webarkit/issues/104)'s conditioning
 signal. Documentation only: no package code changes. `.wnft` format: still **0.3**, in both
@@ -406,7 +408,8 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 - The original single-page jsartoolkitNFT demo the repository started as. It is kept at the tag
   `archive/original-nft-demo`.
 
-[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.5.0...dev
+[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.5.1...dev
+[0.5.1]: https://github.com/webarkit/webarkit/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/webarkit/webarkit/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/webarkit/webarkit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/webarkit/webarkit/compare/v0.2.0...v0.3.0
