@@ -14,6 +14,33 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-23
+
+The "M4 campaign" milestone ([milestone 7](https://github.com/webarkit/webarkit/milestone/7)),
+the device measurement of [#104](https://github.com/webarkit/webarkit/issues/104)'s conditioning
+signal. Documentation only: no package code changes. `.wnft` format: still **0.3**, in both
+codecs, so this tag freezes no new corpus.
+
+### Changed
+
+- **M4's plan registers the campaign's closing entry**, "The campaign closes under its condition
+  2: round 1 of #104 is ruled unreadable (2026-10-23)", in
+  [`docs/benchmarks/README.md`](docs/benchmarks/README.md).
+
+### What the M4 campaign did not deliver
+
+- **M4's device steadiness claim was not obtained.** The campaign closed on 2026-10-23 under its
+  condition 2. Round 1's comparison needs the conditioning signal to refuse frames, and no
+  threshold for it can be registered before [#92](https://github.com/webarkit/webarkit/issues/92)'s
+  weighing, which follows the campaign. Round 0's exports, committed 2026-10-14, are the
+  campaign's last.
+- **The bench page's run-lifecycle defects
+  ([#166](https://github.com/webarkit/webarkit/issues/166)) are not fixed in this release.** The
+  `[0.5.0]` entry's sentence "A later failure no longer replaces the first on the error line" does
+  not describe the shipped behaviour: in worker mode, a failure that fails a second ended run
+  replaces the first cause on the error line. The defects are to be fixed before the next
+  campaign's first device run.
+
 ## [0.5.0] - 2026-10-22
 
 M4 of [ADR-0001](docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md), pose correctness and
@@ -381,7 +408,8 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 - The original single-page jsartoolkitNFT demo the repository started as. It is kept at the tag
   `archive/original-nft-demo`.
 
-[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.5.0...dev
+[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.5.1...dev
+[0.5.1]: https://github.com/webarkit/webarkit/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/webarkit/webarkit/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/webarkit/webarkit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/webarkit/webarkit/compare/v0.2.0...v0.3.0
