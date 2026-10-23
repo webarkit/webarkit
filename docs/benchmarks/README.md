@@ -6060,3 +6060,62 @@ this plan's own reference to that bullet, under validity rule 3 of the
 the target's bytes ("The rule this check reads is on the file's state:
 while a campaign is open, the target's SHA-256 stays the one recorded at
 its start (`AGENTS.md`)"), carries a dated addendum pointing here.
+
+### The campaign closes under its condition 2: round 1 of #104 is ruled unreadable (2026-10-23)
+
+**Ruling.** Round 1's registered comparison cannot be read. This is the
+dated entry milestone 7's condition 2 asks for, and it closes the M4
+campaign.
+
+**The reason.**
+- The comparison the campaign milestone defines reads the treatment arm's
+  coverage, its posed frames over the clip's frames. Coverage falls below 1
+  only if frames stop being posed, and only the conditioning signal's
+  refusing state stops them. In `"off"` and `"report"` no frame is refused,
+  so the treatment arm poses exactly the frames the baseline poses, and its
+  coverage cannot differ from the baseline's.
+- The refusing state takes both thresholds from the caller and is a
+  `RangeError` without them. No threshold is registered. The derivation's
+  registered result is two per-view intervals, [0.003526, 0.01564) and
+  [0.03265, 0.04174), which no single value spans (#104, comment of
+  2026-10-21). A value chosen so that round 1 can run would be chosen in
+  order to measure, not derived.
+- The weighing that could choose the signal's form and its thresholds is
+  #92's, in milestone 6, which cannot open while this campaign is open.
+  Bringing it forward could make the treatment arm a signal other than the
+  one M4 delivered.
+- The instrument cannot pass the signal's options.
+  `TUNABLE_TRACKER_OPTIONS` in `examples/js/bench-metrics.mjs` has no
+  `conditioning`, and the instrument is frozen for the whole campaign.
+
+**The last exports.** Under condition 2 the campaign's last exports are
+round 0's, committed on 2026-10-14:
+
+- `docs/benchmarks/2026-10-14-tab9-m4-calibration-sync-static-1.json`
+- `docs/benchmarks/2026-10-14-tab9-m4-calibration-worker-static-1.json`
+- `docs/benchmarks/2026-10-14-tab9-m4-calibration-worker-static-2.json`
+- `docs/benchmarks/2026-10-14-tab9-m4-calibration-sync-static-2.json`
+- `docs/benchmarks/2026-10-14-tab9-m4-calibration-sync-static-3.json`
+- `docs/benchmarks/2026-10-14-tab9-m4-calibration-worker-static-3.json`
+- `docs/benchmarks/2026-10-14-tab9-m4-calibration-worker-static-4.json`
+- `docs/benchmarks/2026-10-14-tab9-m4-calibration-sync-static-4.json`
+
+added by `e9396df`. The window `AGENTS.md` opens ("from its first device
+run until its last device exports are committed") closes with this entry.
+`AGENTS.md` is not edited, as entry 4 of 2026-10-19 already provides.
+
+**What this does not decide.** This entry neither meets nor withdraws any
+of round 1's eight preconditions, nor any part listed in #107's comment of
+2026-10-16 (the adoption rule, the zero invariant on the `pose` stage, the
+ambiguous-frame refusal threshold). They were preconditions of a round that
+will not run. They pass, open, to whatever campaign next measures #104's
+signal, and this entry does not register that campaign. The addenda of
+2026-10-20 stand as written.
+
+**The instrument stayed frozen to the end.** #166's two defects in the
+bench page's run lifecycle are not fixed inside this campaign. #166 moves
+to milestone 6. It is to be fixed before the next campaign's first device
+run, not before round 1.
+
+**The release note.** v0.5.1, a documentation-only release, states that
+M4's device steadiness claim was not obtained, and why.
