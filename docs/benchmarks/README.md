@@ -6069,10 +6069,11 @@ campaign.
 
 **The reason.**
 - The comparison the campaign milestone defines reads the treatment arm's
-  coverage, its posed frames over the clip's frames. Coverage falls below 1
-  only if frames stop being posed, and only the conditioning signal's
-  refusing state stops them. In `"off"` and `"report"` no frame is refused,
-  so the treatment arm poses exactly the frames the baseline poses, and its
+  coverage, its posed frames over the clip's frames. The two arms'
+  coverages differ only if the treatment arm stops posing frames the
+  baseline poses, and only the conditioning signal's refusing state can
+  make it do so. In `"off"` and `"report"` no frame is refused, so the
+  treatment arm poses exactly the frames the baseline poses, and its
   coverage cannot differ from the baseline's.
 - The refusing state takes both thresholds from the caller and is a
   `RangeError` without them. No threshold is registered. The derivation's
