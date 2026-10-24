@@ -636,12 +636,13 @@ async function main() {
     const server = await serve();
     const base = `http://127.0.0.1:${server.address().port}`;
     const extra = (process.env.CHROME_ARGS ?? "").split(" ").filter(Boolean);
-    const browser = await puppeteer.launch({
-        executablePath,
-        headless: true,
-        args: ["--autoplay-policy=no-user-gesture-required", "--mute-audio", ...extra],
-    });
+    let browser;
     try {
+        browser = await puppeteer.launch({
+            executablePath,
+            headless: true,
+            args: ["--autoplay-policy=no-user-gesture-required", "--mute-audio", ...extra],
+        });
         console.log(
             `${await browser.version()} (${executablePath}); serving examples/ at ${base}; manifest HEAD ${manifest.head}, ${manifest.clean ? "clean" : "dirty"}; ${UNKNOWN_CHUNK_TARGET_PARAM} sha256 ${target.sha256.slice(0, 12)}…`,
         );
@@ -653,7 +654,7 @@ async function main() {
         await workerAbsentTarget(browser, base);
         await syncAbsentTarget(browser, base);
     } finally {
-        await browser.close();
+        await browser?.close();
         server.close();
     }
     for (const r of results) console.log(r.ok ? `PASS  ${r.name}` : `FAIL  ${r.name}: ${r.why}`);
