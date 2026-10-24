@@ -129,11 +129,34 @@ This is an npm-workspaces monorepo — run these from the repo root; they cover 
 
 These are exactly the checks CI runs on every push and pull request (see `.github/workflows/CI.yml`). If you add a new feature, make sure to include appropriate tests in the relevant package's `test/` directory (Vitest, e.g. `packages/cv-backend-jsfeatnext/test/*.test.ts`).
 
+### Formatting
+
+[Prettier](https://prettier.io/) formats the repository, with the settings in `.prettierrc.json`. `npm run format` writes, and `npm run format:check` is the check CI runs on every push and pull request. The list of files exists once, in `format:check`, and `format` runs it with `--write`, so the two cannot disagree about what they cover.
+
+```powershell
+npm run format
+```
+
+What is checked: TypeScript under each package's `src/` and `test/`, the scripts under `packages/*/bin/` and `scripts/`, the modules and tests under `examples/js/` and `examples/test/`, and Markdown everywhere except the three places below. Each is kept out in `.prettierignore`, with its reason written beside it:
+
+- **`docs/`**, as a whole: the ADRs, whose accepted decisions are never edited in place, the specifications, and `docs/benchmarks/`, the measurement record, which is cited by line number.
+- **`fixtures/`**, `fixtures/nft-target/README.md` included: the corpus is generated, and both codecs compare it byte for byte.
+- **The root `README.md`**, deliberately: its wording is the maintainer's (`AGENTS.md`, "Conventions"), and prettier would pad its packages table to the width of its longest row, about 1,300 characters, leaving the source unreadable while the rendered page is unchanged. It is not frozen with range markers instead, because it is edited in the middle, where a range would hide every edit from the check.
+
+The rest of `examples/` stays out as well: its HTML pages are read together with their inline scripts, and `targets/`, `images/` and `videos/` are not source. Prettier does not reflow prose (`proseWrap` is unset), so in Markdown it keeps your line breaks and changes list indentation, table alignment and emphasis markers.
+
+**`CHANGELOG.md` is checked, except its shipped entries.** Those are byte for byte the release pull requests' bodies and the GitHub Releases' notes, so a prettier-ignore range freezes them: it runs from the `## [0.5.1] - 2026-10-23` heading to the end of the file.
+
+- A new entry goes under `## [Unreleased]`, above the range, and is checked.
+- At release, the renamed section stays where it is, outside the range, so it remains checked. Nothing is ever moved into the range.
+- The compare links at the foot of the file are inside the range, so the link a release adds there (step 2 of [Releasing](#releasing)) is not checked.
+- The markers, `<!-- prettier-ignore-start -->` and `<!-- prettier-ignore-end -->`, each stand on a line of their own with a blank line on the side facing the range. Keep them as they are.
+
 ## Commit Message Conventions
 
 This project strictly adheres to the [Conventional Commits](https://www.conventionalcommits.org/) specification, enforced by review. It buys a history that reads at a glance — what kind of change, to which part of the repository — and release notes that are easy to write from it. Nothing is generated from the messages: there is no release, changelog or publish automation, and the changelog is written by hand.
 
-**Where changelog entries come from.** A pull request that changes observable behaviour — a new option, a changed result, a format change, a fix a user could notice — adds its own line under `## [Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md), in the same pull request, written for someone who wants to know what changed for them rather than as the commit subject repeated. That rule is what keeps the file honest: without it the changelog becomes something someone reconstructs at release time. Documentation, test and tooling changes that a user of the packages would not notice add no line.
+**Where changelog entries come from.** A pull request that changes observable behaviour — a new option, a changed result, a format change, a fix a user could notice — adds its own line under `## [Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md), in the same pull request, written for someone who wants to know what changed for them rather than as the commit subject repeated. `[Unreleased]` sits above the prettier-ignore range that freezes the shipped entries, so `format:check` sees the line (see [Formatting](#formatting)). That rule is what keeps the file honest: without it the changelog becomes something someone reconstructs at release time. Documentation, test and tooling changes that a user of the packages would not notice add no line.
 
 Please ensure your PR titles and commit messages follow this format:
 

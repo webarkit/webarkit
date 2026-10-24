@@ -13,8 +13,8 @@
     "test:examples": "vitest run --root examples",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "check:contract": "node scripts/check-contract-sync.mjs",
-    "format": "prettier --write \"packages/*/src/**/*.ts\" \"packages/*/test/**/*.ts\" \"packages/*/bin/*.mjs\" \"scripts/*.mjs\"",
-    "format:check": "prettier --check \"packages/*/src/**/*.ts\" \"packages/*/test/**/*.ts\" \"packages/*/bin/*.mjs\" \"scripts/*.mjs\"",
+    "format": "npm run format:check -- --write",
+    "format:check": "prettier --check \"packages/*/src/**/*.ts\" \"packages/*/test/**/*.ts\" \"packages/*/bin/*.mjs\" \"scripts/*.mjs\" \"examples/js/**/*.mjs\" \"examples/test/**/*.mjs\" \"**/*.md\"",
     "lint": "npm run lint --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present"
   },
