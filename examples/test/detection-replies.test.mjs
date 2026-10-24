@@ -212,6 +212,23 @@ describe("routeReply", () => {
         expect(route.message).toMatch(/job 1 of run 1/);
     });
 
+    // #120 (RR5): the test above uses a job consumed while the run was live. A job whose reply
+    // arrived and was held for the next frame is discarded at Stop too, but it was answered: a
+    // second reply to it is no late reply, and fails the worker.
+    it("fails a reply to a job that was answered and held when its run ended", () => {
+        const a = newRun(1);
+        const held = post(a);
+        a.policy.arrive({});
+        held.arrivedAtMs = 120;
+        a.jobInFlight = null;
+        end(a);
+        held.outcome = "discardedAtStop"; // as the page's endRun marks its held job
+        const route = routeReply(result(a, held), { liveRunId: null, runsById: byId(a) });
+        expect(route).toMatchObject({ kind: "fail", run: a });
+        expect(route.message).toMatch(/job 1 of run 1, which ended with no such job unanswered/);
+        expect(a.staleReplies).toBe(0);
+    });
+
     it("leaves every run's accounting as it was when a late reply is routed and counted", () => {
         const a = newRun(1);
         const discarded = post(a);

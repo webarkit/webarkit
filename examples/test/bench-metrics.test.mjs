@@ -28,6 +28,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { Worker } from "node:worker_threads";
 import { describe, expect, it } from "vitest";
 import {
     accountingError,
@@ -83,6 +84,46 @@ import {
     unlockedResidualMs,
     unwrapMediaTimes,
 } from "../js/bench-metrics.mjs";
+
+/**
+ * `bench-metrics.mjs`'s export `name` called with `args` on a worker thread,
+ * which is ended after `ms`: `{ timedOut: false, threw }` (the message it
+ * threw, `null` when it returned) or `{ timedOut: true }`. A call that never
+ * returns blocks only that thread, so this one's timer still fires (#120, T3).
+ */
+function onThread(name, args, ms) {
+    const worker = new Worker(
+        `const { parentPort, workerData } = require("node:worker_threads");
+        import(workerData.url).then((m) => {
+            let threw = null;
+            try { m[workerData.name](...workerData.args); } catch (e) { threw = e.message; }
+            parentPort.postMessage({ timedOut: false, threw });
+        });`,
+        {
+            eval: true,
+            workerData: {
+                url: new URL("../js/bench-metrics.mjs", import.meta.url).href,
+                name,
+                args,
+            },
+        },
+    );
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            worker.terminate();
+            resolve({ timedOut: true });
+        }, ms);
+        worker.once("message", (m) => {
+            clearTimeout(timer);
+            worker.terminate();
+            resolve(m);
+        });
+        worker.once("error", (e) => {
+            clearTimeout(timer);
+            reject(e);
+        });
+    });
+}
 
 describe("percentile", () => {
     it("takes the sample at rank ⌊p/100 · n⌋, as the page always has", () => {
@@ -939,11 +980,48 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
     it("refuses a clip duration, bin size or loop count that cannot be read", () => {
         expect(() => unwrapMediaTimes(run, 0)).toThrow(/clipDurationS/);
         expect(() => trackTimeShare(run, { clipDurationS: NaN })).toThrow(/clipDurationS/);
-        expect(() => trackTimeShare(run, { clipDurationS: D, binMs: 0 })).toThrow(/binMs/);
+        // binMs 0: the next test, on a thread of its own.
         expect(() => trackTimeShare(run, { clipDurationS: D, loopCount: 0 })).toThrow(/loopCount/);
         expect(() => countedLoopFrames(run, { clipDurationS: D, firstLoop: -1 })).toThrow(
             /firstLoop/,
         );
+    });
+
+    // #120 (T3): without the bin-size check, binMs 0 makes a loop's bins infinite, and
+    // trackTimeShare never returns. Called here, that hung the suite rather than failing it:
+    // vitest's timeout is a timer on the thread that runs the test, which the loop never hands
+    // back. So the call runs on a worker thread, ended at a deadline this thread can still keep.
+    it("refuses a bin size of 0 within a deadline, rather than binning forever", async () => {
+        const r = await onThread("trackTimeShare", [run, { clipDurationS: D, binMs: 0 }], 10_000);
+        expect(r.timedOut, "trackTimeShare's bin-size check: binMs 0 still ran after 10 s").toBe(
+            false,
+        );
+        expect(r.threw).toMatch(/^binMs must be a positive number, got 0$/);
+    }, 30_000);
+
+    // #120 (C1, C3, C4, C6): a fractional loop count, an infinite duration or bin, and a duration
+    // given with no frame to read it against each passed one of these checks.
+    it("refuses a fractional loop count, an infinite duration or bin size, with or without frames", () => {
+        expect(
+            () => countedLoopFrames(run, { clipDurationS: D, firstLoop: 1.5 }),
+            "countedLoops took firstLoop 1.5",
+        ).toThrow(/^firstLoop must be a whole number/);
+        expect(
+            () => trackTimeShare(run, { clipDurationS: D, loopCount: 2.5 }),
+            "countedLoops took loopCount 2.5",
+        ).toThrow(/^loopCount must be a whole number/);
+        expect(
+            () => trackTimeShare(run, { clipDurationS: Infinity }),
+            "checkClipDuration took an infinite clipDurationS",
+        ).toThrow(/^clipDurationS must be a positive number/);
+        expect(
+            () => trackTimeShare(run, { clipDurationS: D, binMs: Infinity }),
+            "trackTimeShare took an infinite binMs",
+        ).toThrow(/^binMs must be a positive number/);
+        expect(
+            () => unwrapMediaTimes([], 0),
+            "unwrapMediaTimes took clipDurationS 0 with no frame to read it against",
+        ).toThrow(/^clipDurationS must be a positive number/);
     });
 
     // #95, Task 4: called without options, both threw a bare TypeError from destructuring
@@ -2485,6 +2563,25 @@ describe("bundleManifestRefusal: what --packages bundle refuses in the build's m
         expect(bundleManifestRefusal({ head: "668d6fa", clean: true })).toBeNull();
         expect(bundleManifestRefusal({ head: "668d6fa", clean: false })).toBeNull();
     });
+
+    // #120 (BM2, BM4, BM8): only `{ head: null, clean: false }` was refused in a test, so a
+    // manifest with no head at all, or a null head beside `clean: true`, could pass; at the
+    // command line that brought back #113's TypeError in place of this refusal.
+    it("refuses a manifest that records no head, and a null head whatever its clean flag says", () => {
+        for (const manifest of [
+            { clean: true, bundle: { sha256: "ab" } },
+            { head: null, clean: true, bundle: { sha256: "ab" } },
+        ]) {
+            expect(
+                bundleManifestRefusal(manifest),
+                `bundleManifestRefusal took ${JSON.stringify(manifest)}`,
+            ).toEqual(
+                expect.stringMatching(
+                    /needs a manifest whose commit is known: .*git could not describe the tree/,
+                ),
+            );
+        }
+    });
 });
 
 describe("startRefusal names the target file it was given", () => {
@@ -2992,6 +3089,17 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
         ["a bundled run that names no clip", { bundledClip: null }, /^source bundled.*no clip/],
         ["a run with no counted loops", { loops: null }, /^loops none: .*\?loops=4/],
         ["a run of one counted loop", { loops: { firstLoop: 1, loopCount: 1 } }, /^loops 1–1: /],
+        // #120 (G4b): the loops' first counted loop is read, not only their number.
+        [
+            "a run that counts its warm-up loop",
+            { loops: { firstLoop: 0, loopCount: 4 } },
+            /^loops 0–3: /,
+        ],
+        [
+            "loops that record no first loop",
+            { loops: { loopCount: 4 } },
+            /^loops .*: a session run counts loops 1–4/,
+        ],
         [
             "a run with no place in the order",
             { run: run({ order: null }) },
@@ -3042,6 +3150,12 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
             { runSummary: { trackTimeShare: { share: null, complete: false } } },
             /^trackTimeShare is not complete: /,
         ],
+        // #120 (G8b): completeness the export does not record is a gap, as `false` is.
+        [
+            "a tracking run whose lock record says nothing of completeness",
+            { runSummary: { trackTimeShare: { share: 0.4 } } },
+            /^trackTimeShare is not complete: /,
+        ],
         [
             "a worker run whose accounting does not balance",
             { detection: { path: "worker", accounting: { ...BALANCED, requests: 5 } } },
@@ -3067,6 +3181,12 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
             { tracker: options({ minTrackedPatches: 42 }) },
             /^tracker option minTrackedPatches 42, not its default 8: /,
         ],
+        // #120 (G12c): an option the record lacks is a gap, never a pass.
+        [
+            "a tracker option the record lacks",
+            { tracker: options({ minTrackedPatches: undefined }) },
+            /^tracker option minTrackedPatches none, not its default 8: /,
+        ],
         ["a tracking run with no tracker options", { tracker: null }, /^tracker options none: /],
         [
             "another scene keypoint budget",
@@ -3077,6 +3197,12 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
             "another processing box",
             { processingBox: { width: 360, height: 360 } },
             /^processingBox 360×360, not the page's default 480×360/,
+        ],
+        // #120 (G14b): the box's height is read too, as the runbook's `&procHeight=270` showed.
+        [
+            "another processing box height",
+            { processingBox: { width: 480, height: 270 } },
+            /^processingBox 480×270, not the page's default 480×360/,
         ],
         // An export that records none of these is a gap, never a pass.
         ["an export that records no target", { target: undefined }, /^target none: /],
@@ -3116,6 +3242,8 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
             "trackerOptions.minPatchZncc",
             { trackerOptions: { ...DEFAULTS.trackerOptions, minPatchZncc: undefined } },
         ],
+        // #120 (CD3): a side that is not a finite number is refused as a missing one.
+        ["processingBox.width", { processingBox: { width: NaN, height: 360 } }],
     ])("refuses a caller that does not give the default %s", (name, o) => {
         const lacking = sessionExport({ maxKeypoints: undefined, target: undefined });
         const defaults = { ...DEFAULTS, ...o };
@@ -3164,6 +3292,15 @@ describe("sessionDefaults, and M3's committed exports read by them", () => {
             trackerOptions: trackerDefaults(p),
         });
         expect(() => sessionDefaults({})).toThrow(TypeError);
+    });
+
+    // #120 (TD2): a keypoint budget that is not a finite number is refused as an absent one.
+    it("refuses a package whose DEFAULT_MAX_SCENE_KEYPOINTS is not a finite number", async () => {
+        const p = await pkg();
+        expect(
+            () => sessionDefaults({ ...p, DEFAULT_MAX_SCENE_KEYPOINTS: NaN }),
+            "sessionDefaults took DEFAULT_MAX_SCENE_KEYPOINTS NaN",
+        ).toThrow(/^sessionDefaults: the tracker package exports no DEFAULT_MAX_SCENE_KEYPOINTS$/);
     });
 
     it("read every committed M3 export as a session run, and --transfer's plan takes them all", async () => {
