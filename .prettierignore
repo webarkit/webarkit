@@ -6,12 +6,38 @@ node_modules/
 # packages/nft-tracker/scripts/generate-fixtures.mjs and compared byte for byte
 # by both codecs; released versions there are frozen under the specification's
 # §8.3. Formatting anything in it would rewrite files a test exists to hold
-# still.
+# still. That holds for its Markdown too: `fixtures/nft-target/README.md` stays
+# out with the directory.
 fixtures/
 examples/targets/
 
-# Not in the agreed scope of the reformat, and each for its own reason:
 # `examples/` is demo pages where the HTML and its inline script are read
-# together, and `docs/benchmarks/` is machine-written measurement data.
-examples/
+# together, so the pages stay out, with the targets, images and videos beside
+# them. The modules under `js/` and the tests under `test/` are plain code that
+# `npm test` runs, and the README is Markdown like any other: those three are
+# checked.
+examples/*
+!examples/js/
+!examples/test/
+!examples/README.md
+
+# Out as a whole: the ADRs, whose accepted decisions are never edited in place,
+# the specifications, and `docs/benchmarks/`: machine-written measurement data,
+# and the record that is cited by line number, so a reformat would move what
+# the citations point at.
 docs/
+
+# The root README, deliberately (#82). Its wording is the maintainer's
+# (AGENTS.md, "Conventions"), and prettier would pad the packages table to the
+# width of its longest row, about 1,300 characters, leaving the source
+# unreadable while the rendered page is unchanged. It is not frozen with range
+# markers instead, because it is edited in the middle, where a range would hide
+# every edit from the check. Anchored, so only the root one.
+/README.md
+
+# Claude Code's own worktrees, when it makes them inside the checkout. Each is
+# a whole second copy of the repository, kept out of git only by
+# `.git/info/exclude`, which prettier does not read; without this line
+# `"**/*.md"` reaches into them, and `npm run format` rewrites another
+# session's files.
+.claude/worktrees/

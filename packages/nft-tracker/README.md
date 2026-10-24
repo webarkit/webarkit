@@ -62,7 +62,7 @@ type EncodeResult =
 
 `encode` is the **canonical** writer of §7.3: the same target always produces
 the same bytes, and it validates the target against every rule a reader
-applies *before* writing anything — so it never emits a file its own reader
+applies _before_ writing anything — so it never emits a file its own reader
 would reject, and never coerces a value to make it serialisable. On failure
 `detail` names the offending field path, e.g. `descriptorSets[1].params.seed`.
 
@@ -71,7 +71,7 @@ would reject, and never coerces a value to make it serialisable. On failure
 `decode` accepts a bare `ArrayBuffer` **or any view of one**:
 
 ```ts
-decode(buffer);                    // the whole allocation
+decode(buffer); // the whole allocation
 decode(new Uint8Array(buffer, 3)); // a file embedded at an unaligned offset
 ```
 
@@ -86,14 +86,14 @@ path would be unreachable.
 
 The defaults of §6.4, all overridable per call:
 
-| Limit | Default |
-|---|---|
-| `maxFileBytes` | 64 MiB |
-| `maxManifestBytes` | 1 MiB |
-| `maxLevels` | 32 |
-| `maxKeypoints` | 1 000 000 |
-| `maxDescriptorSets` | 16 |
-| `maxPatchSize` | 64 |
+| Limit               | Default   |
+| ------------------- | --------- |
+| `maxFileBytes`      | 64 MiB    |
+| `maxManifestBytes`  | 1 MiB     |
+| `maxLevels`         | 32        |
+| `maxKeypoints`      | 1 000 000 |
+| `maxDescriptorSets` | 16        |
+| `maxPatchSize`      | 64        |
 
 ```ts
 decode(bytes, { limits: { maxKeypoints: 50_000 } });
@@ -151,21 +151,21 @@ the package, so without it `-o examples/targets/pinball.wnft` would land in
 resolves against npm's `INIT_CWD` instead, and falls back to the cwd when it is
 unset, which is exactly the case where the cwd is already the right answer.
 
-| Option | Default | What it decides |
-|---|---|---|
-| `-o`, `--out` | *required* | where the `.wnft` goes |
-| `--levels` | 8 | pyramid levels searched on the reference image |
-| `--keypoints` | `levels * 260` | total keypoint budget |
-| `--scale-step` | `2^(1/3)` | size ratio between levels; must be `> 1` |
-| `--physical-size` | unknown | `<W>x<H>` in millimetres, both `> 0` (§5.3). Left out, model-plane units stay level-0 pixels (§3) |
-| `--max-side` | 640 | cap on the image's longer side |
-| `--seed` | 0 | RNG seed, recorded in `info.compiler` and enforced during the build |
-| `--name` | the image's base name | `info.name` |
-| `--patches` | 48 | tracking-patch budget; `0` compiles a detection-only target with no `patches` section. 64 until M3's tuning pass: 48 cut the tracking step 21–29% on the reference device without losing lock ([`docs/benchmarks`](../../docs/benchmarks/README.md), round 2) |
-| `--patch-size` | 16 | patch edge `P`, at least 3 |
-| `--patch-levels` | 3 | how many of the finest pyramid levels patches may come from |
-| `--patch-min-score` | 25 | minimum Shi–Tomasi score, (grey levels / level-0 px)² |
-| `--patch-spacing` | `0.75 * sqrt(W * H / patches)` | minimum distance between patch centres, level-0 px (62 on pinball at the default budget) |
+| Option              | Default                        | What it decides                                                                                                                                                                                                                                               |
+| ------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-o`, `--out`       | _required_                     | where the `.wnft` goes                                                                                                                                                                                                                                        |
+| `--levels`          | 8                              | pyramid levels searched on the reference image                                                                                                                                                                                                                |
+| `--keypoints`       | `levels * 260`                 | total keypoint budget                                                                                                                                                                                                                                         |
+| `--scale-step`      | `2^(1/3)`                      | size ratio between levels; must be `> 1`                                                                                                                                                                                                                      |
+| `--physical-size`   | unknown                        | `<W>x<H>` in millimetres, both `> 0` (§5.3). Left out, model-plane units stay level-0 pixels (§3)                                                                                                                                                             |
+| `--max-side`        | 640                            | cap on the image's longer side                                                                                                                                                                                                                                |
+| `--seed`            | 0                              | RNG seed, recorded in `info.compiler` and enforced during the build                                                                                                                                                                                           |
+| `--name`            | the image's base name          | `info.name`                                                                                                                                                                                                                                                   |
+| `--patches`         | 48                             | tracking-patch budget; `0` compiles a detection-only target with no `patches` section. 64 until M3's tuning pass: 48 cut the tracking step 21–29% on the reference device without losing lock ([`docs/benchmarks`](../../docs/benchmarks/README.md), round 2) |
+| `--patch-size`      | 16                             | patch edge `P`, at least 3                                                                                                                                                                                                                                    |
+| `--patch-levels`    | 3                              | how many of the finest pyramid levels patches may come from                                                                                                                                                                                                   |
+| `--patch-min-score` | 25                             | minimum Shi–Tomasi score, (grey levels / level-0 px)²                                                                                                                                                                                                         |
+| `--patch-spacing`   | `0.75 * sqrt(W * H / patches)` | minimum distance between patch centres, level-0 px (62 on pinball at the default budget)                                                                                                                                                                      |
 
 Three of those deserve a word.
 
@@ -173,7 +173,7 @@ Three of those deserve a word.
 level-0 pixels, so a page that draws them over the image it loaded must cap that
 image the same way. 640 is the demos' own cap, which is why it is the default.
 
-**`--seed` changes no target *data* today, and is not decorative.** Keep the two
+**`--seed` changes no target _data_ today, and is not decorative.** Keep the two
 apart, because the file is not the data:
 
 - **The target data is unaffected.** No stage of the compile draws randomness,
@@ -186,7 +186,7 @@ What makes the file reviewable as a diff is not that the seed is inert, it is
 that everything is: fixed image, fixed options, fixed bytes, no clock
 (`info.createdAt` is deliberately never written).
 
-The seed is *enforced* rather than merely stored: the build runs with
+The seed is _enforced_ rather than merely stored: the build runs with
 `Math.random` replaced by a seeded generator and the script reports the number
 of draws (`0`, so far). A backend that starts drawing therefore stays
 reproducible instead of quietly making every recompile a new file — and when
@@ -237,7 +237,7 @@ answers **two** questions rather than one:
   when it is not, and any §6.2 warnings when it is.
 - **Can a backend use it?** §6.3 selection against a real backend's
   `capabilities`. This is the half worth having, because **a valid file can be
-  unusable**: `NO_USABLE_DESCRIPTORS` is an outcome of *selection*, not of
+  unusable**: `NO_USABLE_DESCRIPTORS` is an outcome of _selection_, not of
   decoding — §8.1 exempts it by name from "one fixture per error code", because
   no file produces it on its own. If a target decodes cleanly and still never
   tracks, this is the first thing to run.
@@ -264,11 +264,11 @@ section gives:
 npm run validate-target -w @webarkit/nft-tracker -- examples/targets/pinball.wnft
 ```
 
-| Option | What it does |
-|---|---|
+| Option          | What it does                                                   |
+| --------------- | -------------------------------------------------------------- |
 | `--decode-only` | check the file against the specification only; load no backend |
-| `--json` | the same verdict, machine-readable |
-| `-h`, `--help` | usage |
+| `--json`        | the same verdict, machine-readable                             |
+| `-h`, `--help`  | usage                                                          |
 
 **Exit status:** `0` every file valid and usable, `1` any file invalid or
 unusable, `2` bad usage. The three are kept apart on purpose — a bad
@@ -281,12 +281,12 @@ Three things in the output are worth knowing:
 
 - **`skipped`** lines are §6.3 working. A candidate that fails the
   descriptor-width probe is skipped and selection moves on to the next; a
-  target whose first set is the wrong width and whose second fits is *usable*.
+  target whose first set is the wrong width and whose second fits is _usable_.
 - **`UNKNOWN`** is not `NO`. It means no candidate could be confirmed because a
   probe would not run — a check that did not happen, reported as such rather
   than dressed up as a pass. It still exits non-zero.
 - **`PRODUCER_MISMATCH`** is a warning and never changes the exit status. The
-  probe checks descriptor *shape*; two backends can agree on shape and still
+  probe checks descriptor _shape_; two backends can agree on shape and still
   compute different bits, and this is the only signal that they might (§6.3,
   ADR-0001's contract gaps).
 
@@ -312,11 +312,11 @@ refused it — see **External detection** below; `"conditioning"` when the
 conditioning signal, in its refusing state, refused a detection's homography
 — see **The conditioning signal** below), every result carries:
 
-| `state` | Meaning | `quality`, in `[0, 1]` |
-|---|---|---|
-| `"DETECT"` | Pose from the detection pipeline (`detect`/`describe`/`match`) | `numInliers / numMatches` |
-| `"TRACK"` | Pose from patch tracking: `numMatches` are the patch correspondences fitted, `numInliers` those the fit kept, `sceneKeypoints` is empty | Sum of the robust fit's weights ÷ patches passed to `alignPatch` this frame |
-| `"LOST"` | No pose (`ok: false`; `reason` says why) | `0` |
+| `state`    | Meaning                                                                                                                                 | `quality`, in `[0, 1]`                                                      |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `"DETECT"` | Pose from the detection pipeline (`detect`/`describe`/`match`)                                                                          | `numInliers / numMatches`                                                   |
+| `"TRACK"`  | Pose from patch tracking: `numMatches` are the patch correspondences fitted, `numInliers` those the fit kept, `sceneKeypoints` is empty | Sum of the robust fit's weights ÷ patches passed to `alignPatch` this frame |
+| `"LOST"`   | No pose (`ok: false`; `reason` says why)                                                                                                | `0`                                                                         |
 
 **The state machine.** A frame without a lock runs detection, and a detection
 that succeeds locks the tracker on its homography. A frame with a lock predicts
@@ -444,24 +444,24 @@ checks them but never detects with them: only what the worker passes
 the tracker was given, or its detections are not the ones the tracker would
 have made in the default mode.
 
-| Option | Default | What it bounds |
-|---|---|---|
-| `detectionOnly` | `false` | Never track |
-| `externalDetection` | `false` | Never detect: the application hands detections to `process` |
-| `sceneLevels` | 1 | Pyramid levels `detect` searches in the frame; an integer ≥ 1 |
-| `maxSceneKeypoints` | 300 | `detect`'s keypoint budget in the frame; an integer ≥ 1 |
-| `ratio` | 0.8 | `match`'s ratio test; in `(0, 1]` |
-| `ransacThreshold` | 4 px | `estimateHomography`'s inlier threshold; finite and > 0 |
-| `maxFrameLevels` | 4 | Frame pyramid levels; fewer are built when the patches start on fewer (one on the camera path) |
-| `alignMaxIterations`, `alignEpsilon` | 30, 0.01 px | `alignPatch`'s cap and convergence step |
-| `photometric` | `true` | Gain and bias estimated per patch |
-| `tukeyC`, `fitMaxIterations`, `fitEpsilon` | 4 px, 20, 1e-6 px | `robustHomography`'s cutoff, cap and tolerance |
-| `minTrackedPatches` | 8 | Fewest correspondences, and fewest inliers, a frame may fit; up to 12 correspondences the inlier bound refuses before `maxOutlierShare` would, at 13–14 both refuse at the same count |
-| `maxOutlierShare` | 0.45 | Share of correspondences the fit may weigh 0: #64's breakdown |
-| `maxFitRms` | 0.6 px | The fit's weighted RMS residual |
-| `minPatchZncc` | 0.6 | A converged patch's correlation with its window |
-| `conditioning` | `{ mode: "off" }` | The conditioning signal's state: `"off"`, `"report"`, or `"refuse"` with `maxDScale` and `maxDOrth`, both required, numbers ≥ 0, `Infinity` for no bound; a threshold in another state is refused (below) |
-| `clock` | none | `() => ms`, for `timings` |
+| Option                                     | Default           | What it bounds                                                                                                                                                                                            |
+| ------------------------------------------ | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `detectionOnly`                            | `false`           | Never track                                                                                                                                                                                               |
+| `externalDetection`                        | `false`           | Never detect: the application hands detections to `process`                                                                                                                                               |
+| `sceneLevels`                              | 1                 | Pyramid levels `detect` searches in the frame; an integer ≥ 1                                                                                                                                             |
+| `maxSceneKeypoints`                        | 300               | `detect`'s keypoint budget in the frame; an integer ≥ 1                                                                                                                                                   |
+| `ratio`                                    | 0.8               | `match`'s ratio test; in `(0, 1]`                                                                                                                                                                         |
+| `ransacThreshold`                          | 4 px              | `estimateHomography`'s inlier threshold; finite and > 0                                                                                                                                                   |
+| `maxFrameLevels`                           | 4                 | Frame pyramid levels; fewer are built when the patches start on fewer (one on the camera path)                                                                                                            |
+| `alignMaxIterations`, `alignEpsilon`       | 30, 0.01 px       | `alignPatch`'s cap and convergence step                                                                                                                                                                   |
+| `photometric`                              | `true`            | Gain and bias estimated per patch                                                                                                                                                                         |
+| `tukeyC`, `fitMaxIterations`, `fitEpsilon` | 4 px, 20, 1e-6 px | `robustHomography`'s cutoff, cap and tolerance                                                                                                                                                            |
+| `minTrackedPatches`                        | 8                 | Fewest correspondences, and fewest inliers, a frame may fit; up to 12 correspondences the inlier bound refuses before `maxOutlierShare` would, at 13–14 both refuse at the same count                     |
+| `maxOutlierShare`                          | 0.45              | Share of correspondences the fit may weigh 0: #64's breakdown                                                                                                                                             |
+| `maxFitRms`                                | 0.6 px            | The fit's weighted RMS residual                                                                                                                                                                           |
+| `minPatchZncc`                             | 0.6               | A converged patch's correlation with its window                                                                                                                                                           |
+| `conditioning`                             | `{ mode: "off" }` | The conditioning signal's state: `"off"`, `"report"`, or `"refuse"` with `maxDScale` and `maxDOrth`, both required, numbers ≥ 0, `Infinity` for no bound; a threshold in another state is refused (below) |
+| `clock`                                    | none              | `() => ms`, for `timings`                                                                                                                                                                                 |
 
 **The conditioning signal** ([#104](https://github.com/webarkit/webarkit/issues/104),
 M4's step 2). Two quantities read on a fit's homography under `K` before the
@@ -567,14 +567,14 @@ weights, the iteration cap, the convergence test, what counts as singular and
 why, and its measured outlier breakdown; and for `predictHomography` what
 velocity means for a homography, and the first frames after a lock.
 
-| Export | What it does | Status |
-|---|---|---|
-| `selectPatches` | Compile time: the target's pyramid → the §5.7 `patches` table; `compile-target` writes it | **implemented** |
-| `buildFramePyramid` | A grey pyramid of the frame (and of the target, at compile time) | **implemented** |
-| `alignPatch` | Aligns one patch in the frame by IC-LK → a `PatchObservation` | **implemented** |
-| `robustHomography` | IRLS with Tukey's biweight over the patch correspondences → `H` and per-patch weights. Deterministic: starts from the prediction, no RANSAC | **implemented** |
-| `predictHomography` | Constant-velocity prediction of the next frame's `H`: the last frame-to-frame motion, applied once more | **implemented** |
-| `levelScale` | `s_l`, a pyramid level's scale, computed the way the backend computes it | **implemented** |
+| Export              | What it does                                                                                                                                | Status          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| `selectPatches`     | Compile time: the target's pyramid → the §5.7 `patches` table; `compile-target` writes it                                                   | **implemented** |
+| `buildFramePyramid` | A grey pyramid of the frame (and of the target, at compile time)                                                                            | **implemented** |
+| `alignPatch`        | Aligns one patch in the frame by IC-LK → a `PatchObservation`                                                                               | **implemented** |
+| `robustHomography`  | IRLS with Tukey's biweight over the patch correspondences → `H` and per-patch weights. Deterministic: starts from the prediction, no RANSAC | **implemented** |
+| `predictHomography` | Constant-velocity prediction of the next frame's `H`: the last frame-to-frame motion, applied once more                                     | **implemented** |
+| `levelScale`        | `s_l`, a pyramid level's scale, computed the way the backend computes it                                                                    | **implemented** |
 
 The rules every implementation keeps are stated once, in that file's header:
 §3 coordinates, pure and deterministic with no RNG, explicit failures instead
@@ -605,14 +605,14 @@ measurement behind it, is in [`align_patch.ts`](./src/tracking/align_patch.ts);
 the suites `test/tracking/align_patch_*.test.ts` re-measure them. In short,
 for 8 × 8 pinball patches whose level matches the frame's scale:
 
-| | Measured |
-|---|---|
-| Clean warps (frontal, rotated 30°, tilted) | median 0.022 px, worst 0.063 px |
-| Sensor noise σ = 4 / 8 grey levels, plus blur | median 0.070 / 0.082 px |
-| Converging from a prediction 3 / 4 / 8 px off | 97% / 89% / 37% (twice as far for a patch seen at twice its scale) |
-| Prediction's rotation off by 10° / scale by 10% | 94% / 100% converge |
-| Gain 0.6–1.3, bias ±40, compensated | as clean, and 96% converge from 3 px off; uncompensated, errors grow 14× to over 2000× (2.2× for a change pivoting at the patches' mean grey level) |
-| A wrong convergence, beyond the basin | level-3 patches: told by `residual / gain`, at least 6.1 grey levels against at most 3.8 for a right one (on a half-contrast print); level-0 patches, sharper than the frame: the two overlap |
+|                                                 | Measured                                                                                                                                                                                      |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Clean warps (frontal, rotated 30°, tilted)      | median 0.022 px, worst 0.063 px                                                                                                                                                               |
+| Sensor noise σ = 4 / 8 grey levels, plus blur   | median 0.070 / 0.082 px                                                                                                                                                                       |
+| Converging from a prediction 3 / 4 / 8 px off   | 97% / 89% / 37% (twice as far for a patch seen at twice its scale)                                                                                                                            |
+| Prediction's rotation off by 10° / scale by 10% | 94% / 100% converge                                                                                                                                                                           |
+| Gain 0.6–1.3, bias ±40, compensated             | as clean, and 96% converge from 3 px off; uncompensated, errors grow 14× to over 2000× (2.2× for a change pivoting at the patches' mean grey level)                                           |
+| A wrong convergence, beyond the basin           | level-3 patches: told by `residual / gain`, at least 6.1 grey levels against at most 3.8 for a right one (on a half-contrast print); level-0 patches, sharper than the frame: the two overlap |
 
 Their cost, in Node on a development machine, is measured by
 `scripts/bench-tracking.mjs` (`npm run build` first): at the 270×360
@@ -640,7 +640,7 @@ whole corpus and `tests/real_target.rs` over the compiled pinball target.
 
 `test/wnft_roundtrip.test.ts` closes the loop the format exists for: a real
 image through `buildTargetFromImage`, `encode`, `decode` and into `NftTracker`,
-asserted to return the *same* numbers as the tracker driven straight from the
+asserted to return the _same_ numbers as the tracker driven straight from the
 in-memory target. A file in between has to be invisible.
 
 ```bash

@@ -8,6 +8,7 @@ model: inherit
 You review changes in the webarkit monorepo that touch `packages/nft-tracker`, `crates/wnft-format`, the NFT target format, or the examples that use them. You never edit, create or delete files, and you never commit, push or open PRs.
 
 Before reviewing, read:
+
 - `AGENTS.md`
 - `docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md`
 - `docs/specs/nft-target-format.md`

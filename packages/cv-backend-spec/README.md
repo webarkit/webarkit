@@ -34,7 +34,7 @@ WASM-specific types: each backend converts internally at its own boundary.
 ## Capabilities and negotiation
 
 Backends are interchangeable because they share these signatures — but only as
-far as they share *capabilities*. The moment one backend has a descriptor
+far as they share _capabilities_. The moment one backend has a descriptor
 another lacks, signatures stop being enough, so what a backend implements is
 part of the contract:
 
@@ -60,12 +60,12 @@ to turn silent failures into loud ones:
   descriptor it does happen to have — choosing a fallback is the caller's
   decision, made against `capabilities`:
 
-  ```ts
-  const preferred: DescriptorKind[] = ["teblid", "freak", "orb"];
-  const kind =
-    preferred.find((k) => cv.capabilities.descriptors.includes(k)) ??
-    cv.capabilities.defaultDescriptor;
-  ```
+    ```ts
+    const preferred: DescriptorKind[] = ["teblid", "freak", "orb"];
+    const kind =
+        preferred.find((k) => cv.capabilities.descriptors.includes(k)) ??
+        cv.capabilities.defaultDescriptor;
+    ```
 
 - **`match` rejects descriptor sets that cannot be compared**, throwing
   `DescriptorMismatchError` when the `kind` or `norm` differ. This guards the
@@ -105,12 +105,12 @@ they don't belong in it.
 import type { CvBackend } from "@webarkit/cv-backend-spec";
 
 async function run(createBackend: () => Promise<CvBackend>) {
-  const cv = await createBackend(); // e.g. from @webarkit/jsfeat-next-cv-backend
-  const kps = cv.detect(frame);
-  const { descriptors } = cv.detectAndCompute
-    ? cv.detectAndCompute(frame)
-    : { descriptors: cv.describe(frame, kps) };
-  // ...
+    const cv = await createBackend(); // e.g. from @webarkit/jsfeat-next-cv-backend
+    const kps = cv.detect(frame);
+    const { descriptors } = cv.detectAndCompute
+        ? cv.detectAndCompute(frame)
+        : { descriptors: cv.describe(frame, kps) };
+    // ...
 }
 ```
 
@@ -126,7 +126,7 @@ back and then reused.
 **`estimateHomography` is the one exception, and it is named rather than left
 out** — in a contract, an omission reads as a permission. RANSAC draws minimal
 sets at random, so it is not a function of its arguments alone. It becomes pure
-*for a given RNG* as soon as one can be injected
+_for a given RNG_ as soon as one can be injected
 ([#24](https://github.com/webarkit/webarkit/issues/24)), and joins the check
 then. Nothing else is exempt: `filterMatches` and `detectAndCompute` are
 optional, not impure.
@@ -143,8 +143,8 @@ expect(violations).toEqual([]);
 // And refuse a vacuous pass: an image yielding no keypoints yields no
 // descriptors and no matches, and every comparison then trivially succeeds.
 expect(coverage.keypoints).toBeGreaterThan(0);
-expect(coverage.decoyDiffers).toBe(true);  // the intervening call saw other pixels
-expect(coverage.poseGood).toBe(true);      // the pose probe decomposed something
+expect(coverage.decoyDiffers).toBe(true); // the intervening call saw other pixels
+expect(coverage.poseGood).toBe(true); // the pose probe decomposed something
 ```
 
 It calls each of the three twice on identical inputs **with an unrelated call

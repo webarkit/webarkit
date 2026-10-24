@@ -34,11 +34,13 @@
  * - **Rust** — `rustfmt` on a `.rs` under `crates/`. About 200 ms, and its
  *   output is what `cargo fmt --all --check` asks for, so hook and CI cannot
  *   disagree.
- * - **TypeScript and `.mjs`** — prettier, through its Node API rather than the
- *   CLI, which avoids a second process and reads `.prettierrc.json` and
- *   `.prettierignore` exactly as `npm run format` does. Scope is therefore the
- *   repository's, not this file's opinion of it: a path prettier ignores is
- *   left alone here too.
+ * - **TypeScript, `.mjs` and Markdown** — prettier, through its Node API rather
+ *   than the CLI, which avoids a second process and reads `.prettierrc.json`
+ *   and `.prettierignore` exactly as `npm run format` does. Scope is therefore
+ *   the repository's, not this file's opinion of it: a path prettier ignores is
+ *   left alone here too, which is what keeps the hook off `docs/`, `fixtures/`
+ *   and the root `README.md`, and leaves `CHANGELOG.md`'s shipped entries to
+ *   their prettier-ignore range.
  *
  * Formatting only, never linting. `cargo clippy --workspace --all-targets`
  * takes seconds and would dominate a session if it ran after every edit; it
@@ -188,7 +190,7 @@ async function main() {
         done();
     }
 
-    if (/\.(ts|mts|cts|mjs|cjs|js)$/.test(absolute)) {
+    if (/\.(ts|mts|cts|mjs|cjs|js|md)$/.test(absolute)) {
         await formatWithPrettier(absolute, shown);
     }
     done();

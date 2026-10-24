@@ -56,12 +56,15 @@ const HOOK = join(ROOT, ".claude", "hooks", "format-on-edit.mjs");
 
 const TS = join(ROOT, "packages", "nft-tracker", "src", "detection.ts");
 const RS = join(ROOT, "crates", "wnft-format", "src", "known.rs");
-const IGNORED = join(ROOT, "examples", "js", "pinball-shared.mjs");
+const MD = join(ROOT, "packages", "nft-tracker", "README.md");
+// The root README is the one `.prettierignore` entry that is anchored, so it is
+// the one a mistake there would let through.
+const IGNORED = join(ROOT, "README.md");
 
 const read = (p) => readFileSync(p, "utf8");
 const write = (p, s) => writeFileSync(p, s);
 
-const ORIGINAL = new Map([TS, RS, IGNORED].map((p) => [p, read(p)]));
+const ORIGINAL = new Map([TS, RS, MD, IGNORED].map((p) => [p, read(p)]));
 const restore = () => {
     for (const [p, s] of ORIGINAL) write(p, s);
 };
@@ -123,23 +126,31 @@ write(RS, `${ORIGINAL.get(RS)}\n\nfn    _scratch( ) ->u8{let  x=1;x}\n`);
 }
 restore();
 
-// --- scope -------------------------------------------------------------------
-
-write(IGNORED, `${ORIGINAL.get(IGNORED)}\n\nexport const _scratch   =    {a:1,   b:2};\n`);
+write(MD, `${ORIGINAL.get(MD)}\n*   scratch item\n`);
 {
-    const r = run(edited("examples/js/pinball-shared.mjs"));
+    const r = run(edited("packages/nft-tracker/README.md"));
     check(
-        "leaves a .prettierignore'd path alone",
-        r.status === 0 && r.stdout === "" && read(IGNORED).includes("{a:1,   b:2}"),
+        "formats an in-scope .md with prettier",
+        r.status === 0 &&
+            r.stdout.startsWith("prettier:") &&
+            read(MD).includes("\n- scratch item\n"),
         `exit=${r.status}`,
     );
 }
 restore();
 
+// --- scope -------------------------------------------------------------------
+
+write(IGNORED, `${ORIGINAL.get(IGNORED)}\n*   scratch item\n`);
 {
-    const r = run(edited("AGENTS.md"));
-    check("ignores Markdown", r.status === 0 && r.stdout === "", `exit=${r.status}`);
+    const r = run(edited("README.md"));
+    check(
+        "leaves a .prettierignore'd path alone",
+        r.status === 0 && r.stdout === "" && read(IGNORED).includes("*   scratch item"),
+        `exit=${r.status}`,
+    );
 }
+restore();
 
 // --- rule 2: the repository boundary, on resolved paths ----------------------
 

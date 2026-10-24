@@ -234,7 +234,9 @@ describe("routeReply", () => {
     it("routes ready, and an error that names no job, to the init in progress; fails any other type", () => {
         const none = { liveRunId: null, runsById: new Map() };
         expect(routeReply({ type: "ready", targetSha256: "ab" }, none)).toEqual({ kind: "init" });
-        expect(routeReply({ type: "error", message: "bad target" }, none)).toEqual({ kind: "init" });
+        expect(routeReply({ type: "error", message: "bad target" }, none)).toEqual({
+            kind: "init",
+        });
         const odd = routeReply({ type: "progress" }, none);
         expect(odd.kind).toBe("fail");
         expect(odd.message).toMatch(/unknown type: progress/);
@@ -274,7 +276,9 @@ describe("failedRuns", () => {
         const c = ended(2);
         expect(failedRuns(failed, { liveRun: null, lastRun: c })).toEqual([c]);
         expect(failedRuns(live(4), { liveRun: null, lastRun: null })).toEqual([]);
-        expect(failedRuns(null, { liveRun: null, lastRun: ended(5, { path: "sync" }) })).toEqual([]);
+        expect(failedRuns(null, { liveRun: null, lastRun: ended(5, { path: "sync" }) })).toEqual(
+            [],
+        );
         // No run at all: nothing to fail, and the page only shows the failure.
         expect(failedRuns(null, { liveRun: null, lastRun: null })).toEqual([]);
     });

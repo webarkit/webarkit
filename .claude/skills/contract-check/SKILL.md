@@ -43,7 +43,7 @@ essentially always. It exists to enumerate the union; the union is the
 contract. Add or remove the member there, then re-run — leg 2 will now fail
 too, which is the point.
 
-**Leg 2 — `known.ts` and `known.rs` disagree.** Decide which side the *contract*
+**Leg 2 — `known.ts` and `known.rs` disagree.** Decide which side the _contract_
 supports, then fix the other. A family the contract defines belongs in both. A
 family it does not — `"hamming2"` is the standing example, named in §5.6's
 prose but absent from `DescriptorNorm` — belongs in neither, and a set using it

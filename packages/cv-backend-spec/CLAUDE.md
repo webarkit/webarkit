@@ -17,9 +17,9 @@ repository-wide rules in the root `AGENTS.md` still apply on top of it.
   that is wrong, and widening the contract to accommodate one backend is how a
   neutral interface quietly becomes a description of that backend.
 - "Add support for X" splits two ways, and guessing wrong wastes a session.
-  A new *option, field or method* that backends negotiate through
+  A new _option, field or method_ that backends negotiate through
   `capabilities` belongs here, as an ordinary issue and PR — that is what
-  #24 and #39–#42 are. A new *implementation* of something the contract
+  #24 and #39–#42 are. A new _implementation_ of something the contract
   already expresses belongs in a backend package. Only the first touches this
   package at all.
 - A new member of `DescriptorKind` or `DescriptorNorm` is the one addition with
