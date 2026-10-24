@@ -70,8 +70,10 @@ export interface IJsonViolation {
  * Check (b). A string is ill-formed when a high surrogate is not followed by a
  * low one, or a low one stands alone.
  *
- * Written out rather than taken from `String.prototype.isWellFormed`, which
- * needs Node 20 while this package's `engines` floor is Node 18.
+ * Written out rather than taken from `String.prototype.isWellFormed` when the
+ * repository's `engines` floor was Node 18, which lacks it. The floor has
+ * since risen and `isWellFormed` is available, but it is not adopted: replacing
+ * this check would be a change to the codec, with its own review.
  */
 export function hasUnpairedSurrogate(s: string): boolean {
     for (let i = 0; i < s.length; i += 1) {
