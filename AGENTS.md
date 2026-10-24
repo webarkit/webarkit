@@ -10,7 +10,7 @@
 
 ## Environment & commands
 
-- **Node:** version pinned in [`.nvmrc`](./.nvmrc) (currently v24.21.0); `package.json` sets a floor of `>=18`. **Package manager:** npm 9+ (for [workspaces](https://docs.npmjs.com/cli/v9/using-npm/workspaces)).
+- **Node:** version pinned in [`.nvmrc`](./.nvmrc) (currently v24.21.0); `package.json` sets a floor of `>=22.12`. **Package manager:** npm 9+ (for [workspaces](https://docs.npmjs.com/cli/v9/using-npm/workspaces)).
     - **Aligned to the record on 2026-10-14.** The pin had read v24.18.0 since 2026-09-03, when CI was added. M4's round 0 was built outside it, on v24.21.0, as its exports' manifests record (`provenance.manifest.toolchain`). Its eight exports are evidence against that build, so the pin moved to the build, not the build to the pin. Why the toolchain must then hold for the rest of the campaign: [M4's plan](./docs/benchmarks/README.md), "The instrument, the subject and the inputs", item 5.
     - **What CI ran until then: v24.18.0.** CI reads the pin (`actions/setup-node`, `node-version-file`). On `37dc6d4` itself, CI run 38400892197 resolved `.nvmrc` as 24.18.0 at 12:55Z on 2026-10-13, and round 0's build of the same commit ran v24.21.0 at 13:37Z.
     - **The difference had been seen and accepted before.** Four agent plans in `docs/superpowers/plans/`, dated 2026-09-11 to 2026-09-27, record a local node other than the pin: v24.20.0, then v24.21.0. One of them says CI still used v24.18.0. Each accepted the difference because the major matched and `package.json`'s floor is `>=18`. What changed on 2026-10-14 is that a campaign's toolchain became part of what it measures.

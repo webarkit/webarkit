@@ -20,7 +20,7 @@
     "clean": "npm run clean --workspaces --if-present"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.12"
   },
   "devDependencies": {
     "esbuild": "0.28.2",
