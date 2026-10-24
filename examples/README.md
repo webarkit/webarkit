@@ -630,6 +630,29 @@ refresh. Committed on purpose, for the same reason: a `.wnft` that changed
 silently would make the demo and the Rust suite disagree about what the
 repository means by "the pinball target".
 
+### Candidate targets: `targets/tuning/`
+
+`bench-nft.html?targetFile=tuning/<name>.wnft` loads a target from
+`targets/tuning/` in place of `targets/pinball.wnft`. The directory is
+git-ignored: what is in it is never committed, and a run on it is never a
+session run.
+
+One file there is written by the repository:
+**`targets/tuning/unknown-chunk.wnft`**, which the bench page's checks load
+(`npm run check:page`, [#120](https://github.com/webarkit/webarkit/issues/120)).
+It is `targets/pinball.wnft` with one more chunk, of a type no reader knows
+(`XTRA`), so it decodes to the same target, 48 patches, with one warning,
+`UNKNOWN_CHUNK_SKIPPED`. That warning is what the checks look for on the worker
+path. [`scripts/unknown-chunk-target.mjs`](../scripts/unknown-chunk-target.mjs)
+writes it, decodes it with the codec's own reader and refuses anything else,
+and checks that `pinball.wnft`'s SHA-256 is unchanged. `npm run check:page`
+runs it first; on its own:
+
+```bash
+npm run build
+node scripts/unknown-chunk-target.mjs
+```
+
 ## Shared code: `js/pinball-shared.mjs`
 
 Both demos need the same two pieces — `toGray` (any drawable source to the
