@@ -946,6 +946,31 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
         );
     });
 
+    // #120 (C1, C3, C4, C6): a fractional loop count, an infinite duration or bin, and a duration
+    // given with no frame to read it against each passed one of these checks.
+    it("refuses a fractional loop count, an infinite duration or bin size, with or without frames", () => {
+        expect(
+            () => countedLoopFrames(run, { clipDurationS: D, firstLoop: 1.5 }),
+            "countedLoops took firstLoop 1.5",
+        ).toThrow(/^firstLoop must be a whole number/);
+        expect(
+            () => trackTimeShare(run, { clipDurationS: D, loopCount: 2.5 }),
+            "countedLoops took loopCount 2.5",
+        ).toThrow(/^loopCount must be a whole number/);
+        expect(
+            () => trackTimeShare(run, { clipDurationS: Infinity }),
+            "checkClipDuration took an infinite clipDurationS",
+        ).toThrow(/^clipDurationS must be a positive number/);
+        expect(
+            () => trackTimeShare(run, { clipDurationS: D, binMs: Infinity }),
+            "trackTimeShare took an infinite binMs",
+        ).toThrow(/^binMs must be a positive number/);
+        expect(
+            () => unwrapMediaTimes([], 0),
+            "unwrapMediaTimes took clipDurationS 0 with no frame to read it against",
+        ).toThrow(/^clipDurationS must be a positive number/);
+    });
+
     // #95, Task 4: called without options, both threw a bare TypeError from destructuring
     // `undefined`, where a missing clip duration is refused by name.
     it("refuses a call without options as one without a clip duration, by name", () => {
@@ -2485,6 +2510,25 @@ describe("bundleManifestRefusal: what --packages bundle refuses in the build's m
         expect(bundleManifestRefusal({ head: "668d6fa", clean: true })).toBeNull();
         expect(bundleManifestRefusal({ head: "668d6fa", clean: false })).toBeNull();
     });
+
+    // #120 (BM2, BM4, BM8): only `{ head: null, clean: false }` was refused in a test, so a
+    // manifest with no head at all, or a null head beside `clean: true`, could pass; at the
+    // command line that brought back #113's TypeError in place of this refusal.
+    it("refuses a manifest that records no head, and a null head whatever its clean flag says", () => {
+        for (const manifest of [
+            { clean: true, bundle: { sha256: "ab" } },
+            { head: null, clean: true, bundle: { sha256: "ab" } },
+        ]) {
+            expect(
+                bundleManifestRefusal(manifest),
+                `bundleManifestRefusal took ${JSON.stringify(manifest)}`,
+            ).toEqual(
+                expect.stringMatching(
+                    /needs a manifest whose commit is known: .*git could not describe the tree/,
+                ),
+            );
+        }
+    });
 });
 
 describe("startRefusal names the target file it was given", () => {
@@ -2992,6 +3036,17 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
         ["a bundled run that names no clip", { bundledClip: null }, /^source bundled.*no clip/],
         ["a run with no counted loops", { loops: null }, /^loops none: .*\?loops=4/],
         ["a run of one counted loop", { loops: { firstLoop: 1, loopCount: 1 } }, /^loops 1–1: /],
+        // #120 (G4b): the loops' first counted loop is read, not only their number.
+        [
+            "a run that counts its warm-up loop",
+            { loops: { firstLoop: 0, loopCount: 4 } },
+            /^loops 0–3: /,
+        ],
+        [
+            "loops that record no first loop",
+            { loops: { loopCount: 4 } },
+            /^loops .*: a session run counts loops 1–4/,
+        ],
         [
             "a run with no place in the order",
             { run: run({ order: null }) },
@@ -3042,6 +3097,12 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
             { runSummary: { trackTimeShare: { share: null, complete: false } } },
             /^trackTimeShare is not complete: /,
         ],
+        // #120 (G8b): completeness the export does not record is a gap, as `false` is.
+        [
+            "a tracking run whose lock record says nothing of completeness",
+            { runSummary: { trackTimeShare: { share: 0.4 } } },
+            /^trackTimeShare is not complete: /,
+        ],
         [
             "a worker run whose accounting does not balance",
             { detection: { path: "worker", accounting: { ...BALANCED, requests: 5 } } },
@@ -3067,6 +3128,12 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
             { tracker: options({ minTrackedPatches: 42 }) },
             /^tracker option minTrackedPatches 42, not its default 8: /,
         ],
+        // #120 (G12c): an option the record lacks is a gap, never a pass.
+        [
+            "a tracker option the record lacks",
+            { tracker: options({ minTrackedPatches: undefined }) },
+            /^tracker option minTrackedPatches none, not its default 8: /,
+        ],
         ["a tracking run with no tracker options", { tracker: null }, /^tracker options none: /],
         [
             "another scene keypoint budget",
@@ -3077,6 +3144,12 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
             "another processing box",
             { processingBox: { width: 360, height: 360 } },
             /^processingBox 360×360, not the page's default 480×360/,
+        ],
+        // #120 (G14b): the box's height is read too, as the runbook's `&procHeight=270` showed.
+        [
+            "another processing box height",
+            { processingBox: { width: 480, height: 270 } },
+            /^processingBox 480×270, not the page's default 480×360/,
         ],
         // An export that records none of these is a gap, never a pass.
         ["an export that records no target", { target: undefined }, /^target none: /],
@@ -3116,6 +3189,8 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
             "trackerOptions.minPatchZncc",
             { trackerOptions: { ...DEFAULTS.trackerOptions, minPatchZncc: undefined } },
         ],
+        // #120 (CD3): a side that is not a finite number is refused as a missing one.
+        ["processingBox.width", { processingBox: { width: NaN, height: 360 } }],
     ])("refuses a caller that does not give the default %s", (name, o) => {
         const lacking = sessionExport({ maxKeypoints: undefined, target: undefined });
         const defaults = { ...DEFAULTS, ...o };
@@ -3164,6 +3239,15 @@ describe("sessionDefaults, and M3's committed exports read by them", () => {
             trackerOptions: trackerDefaults(p),
         });
         expect(() => sessionDefaults({})).toThrow(TypeError);
+    });
+
+    // #120 (TD2): a keypoint budget that is not a finite number is refused as an absent one.
+    it("refuses a package whose DEFAULT_MAX_SCENE_KEYPOINTS is not a finite number", async () => {
+        const p = await pkg();
+        expect(
+            () => sessionDefaults({ ...p, DEFAULT_MAX_SCENE_KEYPOINTS: NaN }),
+            "sessionDefaults took DEFAULT_MAX_SCENE_KEYPOINTS NaN",
+        ).toThrow(/^sessionDefaults: the tracker package exports no DEFAULT_MAX_SCENE_KEYPOINTS$/);
     });
 
     it("read every committed M3 export as a session run, and --transfer's plan takes them all", async () => {

@@ -153,6 +153,52 @@ describe("provenanceRefusal", () => {
         expect(provenanceRefusal(m, o, session)).toMatch(why);
     });
 
+    // #120 (PF3, PF4, PF5, PF6, PF12): each of these passed with every row above green. A refusal
+    // that went missing fails as an assertion naming provenanceFindings, not as a null `toMatch`.
+    it.each([
+        [
+            "a manifest that records no head",
+            Object.fromEntries(Object.entries(manifest).filter(([k]) => k !== "head")),
+            observed,
+            /git could not describe the tree/,
+        ],
+        [
+            "a manifest built without git that says its tree is clean",
+            { ...manifest, head: null, clean: true },
+            observed,
+            /git could not describe the tree/,
+        ],
+        [
+            "a manifest that records no clean flag",
+            { ...manifest, clean: undefined },
+            observed,
+            /built from a dirty tree/,
+        ],
+        [
+            "a manifest whose clean flag is not a boolean",
+            { ...manifest, clean: "true" },
+            observed,
+            /built from a dirty tree/,
+        ],
+        [
+            "a bundle that could not be fetched at Start",
+            manifest,
+            { ...observed, bundleSha256: null },
+            /served bundle is not the one built/,
+        ],
+        [
+            "a response the browser may store and revalidate (no-cache)",
+            manifest,
+            { ...observed, cacheControl: { "examples/js/a.mjs": "no-cache" } },
+            /lets the browser cache: examples\/js\/a\.mjs \(no-cache\)/,
+        ],
+    ])("refuses a session run on %s", (what, m, o, why) => {
+        expect(
+            provenanceRefusal(m, o, session),
+            `provenanceFindings let a session run start on ${what}`,
+        ).toEqual(expect.stringMatching(why));
+    });
+
     it("passes responses that carry no-store, among other directives", () => {
         const cacheControl = {
             "examples/js/a.mjs": "no-store",
