@@ -28,6 +28,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { Worker } from "node:worker_threads";
 import { describe, expect, it } from "vitest";
 import {
     accountingError,
@@ -83,6 +84,46 @@ import {
     unlockedResidualMs,
     unwrapMediaTimes,
 } from "../js/bench-metrics.mjs";
+
+/**
+ * `bench-metrics.mjs`'s export `name` called with `args` on a worker thread,
+ * which is ended after `ms`: `{ timedOut: false, threw }` (the message it
+ * threw, `null` when it returned) or `{ timedOut: true }`. A call that never
+ * returns blocks only that thread, so this one's timer still fires (#120, T3).
+ */
+function onThread(name, args, ms) {
+    const worker = new Worker(
+        `const { parentPort, workerData } = require("node:worker_threads");
+        import(workerData.url).then((m) => {
+            let threw = null;
+            try { m[workerData.name](...workerData.args); } catch (e) { threw = e.message; }
+            parentPort.postMessage({ timedOut: false, threw });
+        });`,
+        {
+            eval: true,
+            workerData: {
+                url: new URL("../js/bench-metrics.mjs", import.meta.url).href,
+                name,
+                args,
+            },
+        },
+    );
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            worker.terminate();
+            resolve({ timedOut: true });
+        }, ms);
+        worker.once("message", (m) => {
+            clearTimeout(timer);
+            worker.terminate();
+            resolve(m);
+        });
+        worker.once("error", (e) => {
+            clearTimeout(timer);
+            reject(e);
+        });
+    });
+}
 
 describe("percentile", () => {
     it("takes the sample at rank ⌊p/100 · n⌋, as the page always has", () => {
@@ -939,12 +980,24 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
     it("refuses a clip duration, bin size or loop count that cannot be read", () => {
         expect(() => unwrapMediaTimes(run, 0)).toThrow(/clipDurationS/);
         expect(() => trackTimeShare(run, { clipDurationS: NaN })).toThrow(/clipDurationS/);
-        expect(() => trackTimeShare(run, { clipDurationS: D, binMs: 0 })).toThrow(/binMs/);
+        // binMs 0: the next test, on a thread of its own.
         expect(() => trackTimeShare(run, { clipDurationS: D, loopCount: 0 })).toThrow(/loopCount/);
         expect(() => countedLoopFrames(run, { clipDurationS: D, firstLoop: -1 })).toThrow(
             /firstLoop/,
         );
     });
+
+    // #120 (T3): without the bin-size check, binMs 0 makes a loop's bins infinite, and
+    // trackTimeShare never returns. Called here, that hung the suite rather than failing it:
+    // vitest's timeout is a timer on the thread that runs the test, which the loop never hands
+    // back. So the call runs on a worker thread, ended at a deadline this thread can still keep.
+    it("refuses a bin size of 0 within a deadline, rather than binning forever", async () => {
+        const r = await onThread("trackTimeShare", [run, { clipDurationS: D, binMs: 0 }], 10_000);
+        expect(r.timedOut, "trackTimeShare's bin-size check: binMs 0 still ran after 10 s").toBe(
+            false,
+        );
+        expect(r.threw).toMatch(/^binMs must be a positive number, got 0$/);
+    }, 30_000);
 
     // #120 (C1, C3, C4, C6): a fractional loop count, an infinite duration or bin, and a duration
     // given with no frame to read it against each passed one of these checks.
