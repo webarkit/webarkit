@@ -593,7 +593,7 @@ compiler used a box filter in Node. Measured on these images: 2067 keypoints and
 99 matches built here, 2062 and 91 from the file. Both lock on, and the
 recovered pose differs between them by less than it differs between two reloads
 of _either_ one — RANSAC draws its minimal sample from `Math.random`, and the
-contract has no seed to pass it (webarkit/webarkit#24), so inlier counts and
+demo passes no `RansacOptions.rng` (webarkit/webarkit#24), so inlier counts and
 translations move a little on every run regardless of where the target came
 from.
 
