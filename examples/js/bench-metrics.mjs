@@ -375,8 +375,7 @@ export const DEFINITIONS = Object.freeze({
         "A worker run's replies from the worker to its own jobs that arrived after the run ended, discarded and never handed in. Each is to a job the run discarded at its end, already counted in discardedAtStop, and one per such job, whose record then carries lateReplyAtMs (the reply's arrival), so staleReplies ≤ discardedAtStop. Counted on the run the reply names, whenever it arrives, between runs or during a later run, never on another run; the export records the count as it stood when the export was taken. A reply naming a run the page never had, a job the run did not discard unanswered, or one whose late reply was already counted, fails the worker instead.",
     detectionUse:
         "Per frame, what became of detection, from NftTracker's result: needsDetection (the frame ended without a lock and the tracker has externalDetection: an application is asked for a detection), detectionUse (internal: the tracker detected on this frame; consumed: a detection computed elsewhere was handed to process and used; ignored: one was handed in while a lock held; none: neither; null: the stateless pipeline, and any export older than the field, which read as M2's tracker: its own detection on every frame that is not TRACK), detectionLatencyMs (this frame's timestamp minus the consumed detection's, else null), detectionInFlight (a worker's detection was in flight when process ran) and detectedAt ({ timestampMs, mediaTimeSeconds, framesAgo }, the frame the used detection was computed on: this frame, with framesAgo 0, for an internal one, and the frame the worker was given for a consumed one, framesAgo processed frames back; null when none was used).",
-    trackTimeShare:
-        `The share of video time with a confirmed lock, over whole loops of the clip, on a fixed grid of media time: { share, perLoop, binMs, loops: [first, last], complete }, from every frame's state and mediaTimeSeconds. Media time is unwrapped onto one timeline, loop k covering [k·D, (k + 1)·D), D being the clip's duration, and the run's first pass is loop 0, a warm-up that is not counted: loops 1 to 4 are. A D shorter than the clip would lay the loops over each other, so a frame whose media time is past D by more than 1 ms is refused, not read, as is a step back in media time that is not the clip restarting (loopWraps, read with D); one past D by at most 1 ms, rounding, stands at D, across the wrap after it too. A frame whose media time is not a finite number is refused. Bin j of loop k starts at k·D + j·binMs (binMs ${TRACK_TIME_BIN_MS}) and takes the state of the most recent processed frame at or before its start, held across a loop wrap; share = bins in TRACK ÷ all bins, and perLoop is each counted loop's own. A DETECT frame's pose is an unconfirmed detection and counts as no lock. It reads all the run's frames, not only the counted loops': the frame before a loop supplies the state its first bins take, and a frame of the loop after the last closes it. Deleting a frame whose state equals both its neighbours' cannot change it, so a schedule that processes more frames, a worker's waiting ones, does not move it as it moves trackShare, which counts processed frames. complete is false, and share and perLoop null, unless a frame stands at or before the first bin and one at or after the start of the loop after the last; a summary given no counted loops has null.`,
+    trackTimeShare: `The share of video time with a confirmed lock, over whole loops of the clip, on a fixed grid of media time: { share, perLoop, binMs, loops: [first, last], complete }, from every frame's state and mediaTimeSeconds. Media time is unwrapped onto one timeline, loop k covering [k·D, (k + 1)·D), D being the clip's duration, and the run's first pass is loop 0, a warm-up that is not counted: loops 1 to 4 are. A D shorter than the clip would lay the loops over each other, so a frame whose media time is past D by more than 1 ms is refused, not read, as is a step back in media time that is not the clip restarting (loopWraps, read with D); one past D by at most 1 ms, rounding, stands at D, across the wrap after it too. A frame whose media time is not a finite number is refused. Bin j of loop k starts at k·D + j·binMs (binMs ${TRACK_TIME_BIN_MS}) and takes the state of the most recent processed frame at or before its start, held across a loop wrap; share = bins in TRACK ÷ all bins, and perLoop is each counted loop's own. A DETECT frame's pose is an unconfirmed detection and counts as no lock. It reads all the run's frames, not only the counted loops': the frame before a loop supplies the state its first bins take, and a frame of the loop after the last closes it. Deleting a frame whose state equals both its neighbours' cannot change it, so a schedule that processes more frames, a worker's waiting ones, does not move it as it moves trackShare, which counts processed frames. complete is false, and share and perLoop null, unless a frame stands at or before the first bin and one at or after the start of the loop after the last; a summary given no counted loops has null.`,
     detectionLocks:
         "{ n, confirmed, refused, reacquisitions, reacquisitionsAtLoopWrap }: the locks the tracker set from a detection, by one rule for the synchronous and the worker modes, from each frame's state, detectionUse, reason, tracking and trackLoss. A lock is set on a DETECT frame that ran the tracker's own detection (detectionUse internal; an export older than the field reads every DETECT frame so), and on a frame that consumed a detection (consumed) and is TRACK or has the reason unconfirmed. Its first step is the tracking step that carries the detection's pose to a frame: the next frame's (its tracking not null) after the tracker's own detection, the same frame's after a consumed one. n: the locks whose first step is in the window; confirmed: those whose first step returned TRACK; refused: the rest, per that step's trackLoss (in a worker run, the stale refusals), a step that records none under (none), which the current tracker never produces. reacquisitions: the locks set after an earlier frame of the window had a pose, other than on the first frame after a loop wrap, which reacquisitionsAtLoopWrap counts apart: the jump there is the clip's. On a synchronous run n and confirmed equal firstSteps.n and firstSteps.confirmed, and both reacquisitions keys those of the same names, which stay under their own definitions.",
     firstStepLatency:
@@ -435,7 +434,8 @@ export function isLoopWrap(prev, cur, clipDurationS = null, frame = null) {
     const before = prev.mediaTimeSeconds;
     const m = cur.mediaTimeSeconds;
     if (!(m < before)) return false;
-    const skipped = clipDurationS === null ? null : clipDurationS - Math.min(before, clipDurationS) + m;
+    const skipped =
+        clipDurationS === null ? null : clipDurationS - Math.min(before, clipDurationS) + m;
     const why =
         m < 0
             ? "it is before the clip's start"
@@ -1132,7 +1132,8 @@ export function compareExports(first, second) {
     if (common.size === 0) refuse("there is no media time both runs posed, so no frame to compare");
     // Each run's loops from all its frames: the frames both posed can skip a wrap's neighbours.
     const include = (f) => common.has(mediaKey(f.mediaTimeSeconds));
-    const jitter = (e) => cornerJitter(e.frames, { include, clipDurationS: e.clipDurationS ?? null });
+    const jitter = (e) =>
+        cornerJitter(e.frames, { include, clipDurationS: e.clipDurationS ?? null });
     return {
         commonMediaTimes: common.size,
         first: jitter(first),
@@ -1345,7 +1346,8 @@ const OVERRIDE_DOMAINS = Object.freeze({
  */
 export function parseTrackerOverrides(raw) {
     const options = {};
-    if (raw === null || raw === undefined || String(raw).trim() === "") return { ok: true, options };
+    if (raw === null || raw === undefined || String(raw).trim() === "")
+        return { ok: true, options };
     for (const part of String(raw).split(",")) {
         const pair = part.trim();
         const colon = pair.indexOf(":");
@@ -1433,7 +1435,9 @@ export function startRefusal({
 }) {
     if (!MODES.includes(mode)) return `Unknown mode "${mode}": choose one of ${MODES.join(", ")}.`;
     if (!target) {
-        return loadFailure ? `${file} could not be loaded (${loadFailure}).` : `${file} is not loaded.`;
+        return loadFailure
+            ? `${file} could not be loaded (${loadFailure}).`
+            : `${file} is not loaded.`;
     }
     if (detection === "worker") {
         if (mode !== "tracking") return "?detection=worker runs in tracking mode only.";
@@ -1441,7 +1445,8 @@ export function startRefusal({
             return "?detection=worker needs the .wnft target: the worker decodes its bytes.";
         }
     }
-    if (loops !== null && source === "webcam") return "?loops= needs a looping clip, not the webcam.";
+    if (loops !== null && source === "webcam")
+        return "?loops= needs a looping clip, not the webcam.";
     return mode === "tracking" ? trackabilityError(target.db, minTrackedPatches) : null;
 }
 
@@ -1474,18 +1479,24 @@ export function startRefusal({
 export function provenanceFindings(manifest, observed, { detection = "sync" } = {}) {
     // Without a manifest there is nothing to compare; every other finding is
     // independent of the rest, and each is named with its remedy.
-    if (!manifest) return "Provenance: no manifest (examples/dist/provenance.json). To fix: run `npm run build`.";
+    if (!manifest)
+        return "Provenance: no manifest (examples/dist/provenance.json). To fix: run `npm run build`.";
     const found = [];
     const add = (reason, remedy) => found.push({ reason, remedy });
-    if (observed.manifestChanged) add("the manifest changed since the page loaded", "reload the page");
+    if (observed.manifestChanged)
+        add("the manifest changed since the page loaded", "reload the page");
     const rebuild = "commit, run `npm run build`, and reload";
     if (manifest.head == null) {
         // scripts/build-provenance.mjs without git: no commit, and the tree not known to be clean.
-        add("built where git could not describe the tree, so its commit and cleanliness are unknown", `in a git checkout, ${rebuild}`);
+        add(
+            "built where git could not describe the tree, so its commit and cleanliness are unknown",
+            `in a git checkout, ${rebuild}`,
+        );
     } else if (manifest.clean !== true) {
         add(`built from a dirty tree (${(manifest.dirtyPaths ?? []).join(", ")})`, rebuild);
     }
-    if (observed.bundleSha256 !== manifest.bundle?.sha256) add("the served bundle is not the one built", rebuild);
+    if (observed.bundleSha256 !== manifest.bundle?.sha256)
+        add("the served bundle is not the one built", rebuild);
     const served = manifest.served ?? {};
     // Every served file, whichever arm loads it: session runs come in pairs,
     // and a worker-side file that differs invalidates the pair even when the
@@ -1494,12 +1505,15 @@ export function provenanceFindings(manifest, observed, { detection = "sync" } = 
     if (stale.length > 0) add(`served files differ from the build: ${stale.join(", ")}`, rebuild);
     const loaded = observed.loaded ?? [];
     const unlisted = loaded.filter((p) => p !== manifest.bundle?.path && !(p in served));
-    if (unlisted.length > 0) add(`modules loaded that the manifest does not list: ${unlisted.join(", ")}`, rebuild);
+    if (unlisted.length > 0)
+        add(`modules loaded that the manifest does not list: ${unlisted.join(", ")}`, rebuild);
     // Every module this arm loads must be seen loading, the bundle included: a
     // module missing from the timeline cannot be checked for the cache either.
     // The page's own modules on both arms; the worker's in a worker run.
     const arm = detection === "worker" ? ["page", "both", "worker"] : ["page", "both"];
-    const needed = Object.keys(served).filter((p) => /\.m?js$/.test(p) && arm.includes(served[p].side));
+    const needed = Object.keys(served).filter(
+        (p) => /\.m?js$/.test(p) && arm.includes(served[p].side),
+    );
     const unseen = [manifest.bundle?.path, ...needed].filter((p) => p && !loaded.includes(p));
     if (unseen.length > 0) {
         add(
@@ -1510,15 +1524,23 @@ export function provenanceFindings(manifest, observed, { detection = "sync" } = 
     const noStore = "serve with Cache-Control: no-store (npx http-server -c-1) and reload";
     const unfetched = observed.unfetched ?? [];
     if (unfetched.length > 0) {
-        add(`run from the HTTP cache (a hit, or a 304), so what ran is unknown: ${unfetched.join(", ")}`, noStore);
+        add(
+            `run from the HTTP cache (a hit, or a 304), so what ran is unknown: ${unfetched.join(", ")}`,
+            noStore,
+        );
     }
     // What the server says now: a response that lets the browser store it can
     // be the next run's stale code. Absent headers are as permissive as any.
     const cacheable = Object.entries(observed.cacheControl ?? {})
         .filter(([, value]) => !/(^|,)\s*no-store\s*(,|$)/i.test(value ?? ""))
         .map(([path, value]) => `${path} (${value ?? "no Cache-Control"})`);
-    if (cacheable.length > 0) add(`the server lets the browser cache: ${cacheable.join(", ")}`, noStore);
-    if (observed.timelineFull) add("the resource-timing buffer overflowed, so later loads went unrecorded", "reload the page");
+    if (cacheable.length > 0)
+        add(`the server lets the browser cache: ${cacheable.join(", ")}`, noStore);
+    if (observed.timelineFull)
+        add(
+            "the resource-timing buffer overflowed, so later loads went unrecorded",
+            "reload the page",
+        );
     if (found.length === 0) return null;
     const remedies = [...new Set(found.map((f) => f.remedy))];
     return `Provenance: ${found.map((f) => f.reason).join("; ")}. To fix: ${remedies.join("; ")}.`;
@@ -1534,7 +1556,8 @@ export function provenanceFindings(manifest, observed, { detection = "sync" } = 
  * so.
  */
 export function bundleManifestRefusal(manifest) {
-    if (!manifest) return "--packages bundle needs examples/dist/provenance.json: run `npm run build`";
+    if (!manifest)
+        return "--packages bundle needs examples/dist/provenance.json: run `npm run build`";
     if (manifest.head == null) {
         return "--packages bundle needs a manifest whose commit is known: examples/dist/provenance.json was built where git could not describe the tree (head null). To fix: in a git checkout, commit, and run `npm run build`";
     }
@@ -1777,7 +1800,9 @@ export function sessionRunGaps(e, defaults) {
     }
     const order = e?.run?.order;
     if (!(Number.isInteger(order) && order >= 1)) {
-        gaps.push(`run.order ${shown(order)}: a session run has its place in the session's order (?run=)`);
+        gaps.push(
+            `run.order ${shown(order)}: a session run has its place in the session's order (?run=)`,
+        );
     }
     if (e?.run?.endedBy !== "done") {
         gaps.push(
@@ -1856,7 +1881,8 @@ function checkSessionDefaults(defaults, caller) {
     if (defaults?.processingBox == null) missing.push("processingBox");
     else {
         for (const side of ["width", "height"]) {
-            if (!Number.isFinite(defaults.processingBox[side])) missing.push(`processingBox.${side}`);
+            if (!Number.isFinite(defaults.processingBox[side]))
+                missing.push(`processingBox.${side}`);
         }
     }
     if (!Number.isFinite(defaults?.maxKeypoints)) missing.push("maxKeypoints");
@@ -1908,7 +1934,9 @@ export const PAGE_PROCESSING_BOX = Object.freeze({ width: 480, height: 360 });
  */
 export function sessionDefaults(pkg) {
     if (!Number.isFinite(pkg?.DEFAULT_MAX_SCENE_KEYPOINTS)) {
-        throw new TypeError("sessionDefaults: the tracker package exports no DEFAULT_MAX_SCENE_KEYPOINTS");
+        throw new TypeError(
+            "sessionDefaults: the tracker package exports no DEFAULT_MAX_SCENE_KEYPOINTS",
+        );
     }
     return {
         targetFile: DEFAULT_TARGET_FILE,
@@ -1933,7 +1961,8 @@ function transferSkip(e, clips) {
         return `it did not run on a bundled clip (source ${e.source}, clip ${e.bundledClip ?? "(none)"})`;
     }
     const path = exportDetectionPath(e);
-    if (!DETECTION_PATHS.includes(path)) return `its detection path ${path} is neither sync nor worker`;
+    if (!DETECTION_PATHS.includes(path))
+        return `its detection path ${path} is neither sync nor worker`;
     return null;
 }
 
@@ -2061,7 +2090,8 @@ export function transferPlan(files, { clips, sha256, defaults }) {
     for (const [clip, { sync, worker }] of present) {
         for (const { name, e } of [...worker, ...sync]) {
             const protocol = e.protocol;
-            if (protocol == null) return refuse(`${clip}: ${name} is not a session run (no protocol record)`);
+            if (protocol == null)
+                return refuse(`${clip}: ${name} is not a session run (no protocol record)`);
             if (protocol.sessionRun !== true) {
                 const gaps =
                     Array.isArray(protocol.gaps) && protocol.gaps.length > 0
@@ -2100,7 +2130,8 @@ export function transferPlan(files, { clips, sha256, defaults }) {
                       : p.stepMs === null
                         ? "no tracking step (no trackerTimings.trackMs on a TRACK frame)"
                         : null;
-            if (lacks) return refuse(`${clip}: the ${path} exports (${p.files.join(", ")}) give ${lacks}`);
+            if (lacks)
+                return refuse(`${clip}: the ${path} exports (${p.files.join(", ")}) give ${lacks}`);
         }
         planned.push(profiles);
     }

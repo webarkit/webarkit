@@ -55,7 +55,10 @@ export function fitSize(sourceW, sourceH, maxWidth, maxHeight) {
     const scale = maxHeight
         ? Math.min(1, maxWidth / sourceW, maxHeight / sourceH)
         : Math.min(1, maxWidth / Math.max(sourceW, sourceH));
-    return { width: Math.max(1, Math.round(sourceW * scale)), height: Math.max(1, Math.round(sourceH * scale)) };
+    return {
+        width: Math.max(1, Math.round(sourceW * scale)),
+        height: Math.max(1, Math.round(sourceH * scale)),
+    };
 }
 
 /**

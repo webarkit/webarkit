@@ -68,7 +68,10 @@ export function routeReply(data, { liveRunId, runsById }) {
     if (type === "ready" || (type === "error" && data.jobId === undefined)) return { kind: "init" };
     const fail = (run, message) => ({ kind: "fail", run, message });
     if (type !== "result" && type !== "error") {
-        return fail(null, `The detection worker sent a message of an unknown type: ${String(type)}.`);
+        return fail(
+            null,
+            `The detection worker sent a message of an unknown type: ${String(type)}.`,
+        );
     }
     const run = runsById.get(data.runId);
     if (run === undefined) {
@@ -79,7 +82,10 @@ export function routeReply(data, { liveRunId, runsById }) {
     }
     if (run.id === liveRunId) {
         if (type === "error") {
-            return fail(run, `The detection worker could not detect on job ${data.jobId}: ${data.message}`);
+            return fail(
+                run,
+                `The detection worker could not detect on job ${data.jobId}: ${data.message}`,
+            );
         }
         const job = run.jobInFlight;
         if (job === null || job.jobId !== data.jobId) {
@@ -114,7 +120,9 @@ export function routeReply(data, { liveRunId, runsById }) {
  */
 export function countLateReply(route, arrivedAtMs) {
     if (!Number.isFinite(arrivedAtMs)) {
-        throw new TypeError(`countLateReply needs the reply's arrival time, got ${String(arrivedAtMs)}`);
+        throw new TypeError(
+            `countLateReply needs the reply's arrival time, got ${String(arrivedAtMs)}`,
+        );
     }
     route.job.lateReplyAtMs = arrivedAtMs;
     route.run.staleReplies++;

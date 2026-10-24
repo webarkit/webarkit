@@ -25,7 +25,6 @@
  *
  */
 
-
 /**
  * The glossary's staleness check (#102, Part 2). `docs/benchmarks/glossary.md`
  * records the `METRICS_VERSION` it was written against and lists every key of

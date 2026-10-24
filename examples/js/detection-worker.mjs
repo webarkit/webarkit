@@ -44,11 +44,21 @@
  * answered or after it failed, is one such failure.
  */
 
-import { createJsfeatNextBackend, decode, detectTarget, prepareDetection } from "../dist/webarkit-packages.mjs";
+import {
+    createJsfeatNextBackend,
+    decode,
+    detectTarget,
+    prepareDetection,
+} from "../dist/webarkit-packages.mjs";
 import { sha256Hex } from "./bench-metrics.mjs";
 import { prepareWorkerDetection, runWorkerDetection } from "./detection-worker-core.mjs";
 
-const PREPARE_DEPS = { createBackend: createJsfeatNextBackend, decode, prepareDetection, sha256Hex };
+const PREPARE_DEPS = {
+    createBackend: createJsfeatNextBackend,
+    decode,
+    prepareDetection,
+    sha256Hex,
+};
 // The same clock the backend's stage timings read, so `workerMs.total` and the
 // stages it contains are on one timeline.
 const RUN_DEPS = { detectTarget, now: () => performance.now() };
@@ -64,7 +74,11 @@ self.onmessage = async ({ data }) => {
             // target of an earlier one.
             state = null;
             state = await prepareWorkerDetection(data, PREPARE_DEPS);
-            self.postMessage({ type: "ready", targetSha256: state.targetSha256, warnings: state.warnings });
+            self.postMessage({
+                type: "ready",
+                targetSha256: state.targetSha256,
+                warnings: state.warnings,
+            });
         } else if (type === "detect") {
             if (state === null) throw new Error("detect before init: the worker has no target");
             self.postMessage(runWorkerDetection(state, data, RUN_DEPS));

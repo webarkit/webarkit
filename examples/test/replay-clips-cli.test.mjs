@@ -244,14 +244,18 @@ describe("replay-clips.mjs command line", () => {
                 }),
             });
             expect(stopped.status).toBe(1);
-            expect(stopped.stderr).toMatch(/sync-1\.json is not a session run: run\.endedBy stopped: by hand/);
+            expect(stopped.stderr).toMatch(
+                /sync-1\.json is not a session run: run\.endedBy stopped: by hand/,
+            );
             expect(stopped.stderr.trim().split("\n")).toHaveLength(1);
             const none = transfer({
                 "worker-1.json": worker({ protocol: undefined }),
                 "sync-1.json": pageExport("sync", { protocol: session }),
             });
             expect(none.status).toBe(1);
-            expect(none.stderr).toMatch(/worker-1\.json is not a session run \(no protocol record\)/);
+            expect(none.stderr).toMatch(
+                /worker-1\.json is not a session run \(no protocol record\)/,
+            );
             expect(none.stderr.trim().split("\n")).toHaveLength(1);
             // #95: a record that says sessionRun is recomputed, with the tracker's own defaults.
             // These exports record none of the fields the rule reads, so it is not borne out.

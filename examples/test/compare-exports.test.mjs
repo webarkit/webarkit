@@ -87,7 +87,16 @@ describe("compareExports", () => {
     // #96: the loops are read off each run's own frames, not off the posed frames both share,
     // which can skip a wrap's neighbours, as when the target is out of view at the clip's end.
     it("reads each run's loops from all its frames, so a wrap no posed frame is beside still counts", () => {
-        const frames = [at(10.5), at(11.0), lost(11.5), lost(11.9), lost(0.05), lost(0.5), at(1.0), at(1.5)];
+        const frames = [
+            at(10.5),
+            at(11.0),
+            lost(11.5),
+            lost(11.9),
+            lost(0.05),
+            lost(0.5),
+            at(1.0),
+            at(1.5),
+        ];
         const r = compareExports(run(frames), run(frames, { mode: "stateless" }));
         expect(r.commonMediaTimes).toBe(4);
         // Two windows of two frames each, at 10–11 s of loop 0 and 1–2 s of loop 1: neither
@@ -103,7 +112,9 @@ describe("compareExports", () => {
         expect(() => compareExports(run(frames), run(frames))).not.toThrow();
         expect(() =>
             compareExports(run(frames, { clipDurationS: 12 }), run(frames, { clipDurationS: 12 })),
-        ).toThrow(/^frame 2: media time 0\.4 s, after 11\.3 s, is not the clip restarting: it skips 1\.1 s/);
+        ).toThrow(
+            /^frame 2: media time 0\.4 s, after 11\.3 s, is not the clip restarting: it skips 1\.1 s/,
+        );
     });
 
     it("matches media times to the microsecond, not to the last bit", () => {

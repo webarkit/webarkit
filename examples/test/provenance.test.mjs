@@ -25,7 +25,6 @@
  *
  */
 
-
 /**
  * The provenance check (#110, §4–5): Start's refusal, decided by
  * `provenanceRefusal`; the manifest `npm run build` writes, against the files
@@ -52,7 +51,10 @@ describe("provenanceRefusal", () => {
         clean: true,
         dirtyPaths: [],
         bundle: { path: "examples/dist/webarkit-packages.mjs", sha256: "b" },
-        served: { "examples/bench-nft.html": { sha256: "h" }, "examples/js/a.mjs": { sha256: "a" } },
+        served: {
+            "examples/bench-nft.html": { sha256: "h" },
+            "examples/js/a.mjs": { sha256: "a" },
+        },
     };
     const observed = {
         manifestChanged: false,
@@ -68,37 +70,116 @@ describe("provenanceRefusal", () => {
 
     it.each([
         ["no manifest", null, observed, /^Provenance: no manifest/],
-        ["a manifest changed since page load", manifest, { ...observed, manifestChanged: true }, /changed since the page loaded/],
-        ["a dirty tree", { ...manifest, clean: false, dirtyPaths: ["examples/js/a.mjs"] }, observed, /dirty tree \(examples\/js\/a\.mjs\)/],
-        ["another bundle", manifest, { ...observed, bundleSha256: "x" }, /served bundle is not the one built/],
-        ["a served file that differs", manifest, { ...observed, served: { ...observed.served, "examples/js/a.mjs": "x" } }, /differ from the build: examples\/js\/a\.mjs/],
-        ["a served file that could not be fetched", manifest, { ...observed, served: { "examples/bench-nft.html": "h" } }, /differ from the build: examples\/js\/a\.mjs/],
-        ["a module the manifest does not list", manifest, { ...observed, loaded: [...observed.loaded, "examples/js/z.mjs"] }, /does not list: examples\/js\/z\.mjs/],
+        [
+            "a manifest changed since page load",
+            manifest,
+            { ...observed, manifestChanged: true },
+            /changed since the page loaded/,
+        ],
+        [
+            "a dirty tree",
+            { ...manifest, clean: false, dirtyPaths: ["examples/js/a.mjs"] },
+            observed,
+            /dirty tree \(examples\/js\/a\.mjs\)/,
+        ],
+        [
+            "another bundle",
+            manifest,
+            { ...observed, bundleSha256: "x" },
+            /served bundle is not the one built/,
+        ],
+        [
+            "a served file that differs",
+            manifest,
+            { ...observed, served: { ...observed.served, "examples/js/a.mjs": "x" } },
+            /differ from the build: examples\/js\/a\.mjs/,
+        ],
+        [
+            "a served file that could not be fetched",
+            manifest,
+            { ...observed, served: { "examples/bench-nft.html": "h" } },
+            /differ from the build: examples\/js\/a\.mjs/,
+        ],
+        [
+            "a module the manifest does not list",
+            manifest,
+            { ...observed, loaded: [...observed.loaded, "examples/js/z.mjs"] },
+            /does not list: examples\/js\/z\.mjs/,
+        ],
         // Blind conditions (#110, A5): the check cannot see what ran, so it refuses.
-        ["a module run from the HTTP cache", manifest, { ...observed, unfetched: ["examples/js/a.mjs"] }, /run from the HTTP cache \(a hit, or a 304\).*examples\/js\/a\.mjs.*no-store/],
-        ["a response the browser may store", manifest, { ...observed, cacheControl: { "examples/js/a.mjs": "max-age=3600", "examples/bench-nft.html": "no-store" } }, /lets the browser cache: examples\/js\/a\.mjs \(max-age=3600\)\. To fix: serve with Cache-Control: no-store/],
-        ["a response with no Cache-Control at all", manifest, { ...observed, cacheControl: { "examples/js/a.mjs": null } }, /lets the browser cache: examples\/js\/a\.mjs \(no Cache-Control\)/],
-        ["a full resource timeline", manifest, { ...observed, timelineFull: true }, /buffer overflowed.*To fix: reload the page\.$/],
-        ["a bundle missing from the timeline", manifest, { ...observed, loaded: ["examples/js/a.mjs"] }, /not in the page's resource timeline.*examples\/dist\/webarkit-packages\.mjs/],
-        ["a manifest built without git", { ...manifest, head: null, clean: false }, observed, /git could not describe the tree.*To fix: in a git checkout, commit/],
+        [
+            "a module run from the HTTP cache",
+            manifest,
+            { ...observed, unfetched: ["examples/js/a.mjs"] },
+            /run from the HTTP cache \(a hit, or a 304\).*examples\/js\/a\.mjs.*no-store/,
+        ],
+        [
+            "a response the browser may store",
+            manifest,
+            {
+                ...observed,
+                cacheControl: {
+                    "examples/js/a.mjs": "max-age=3600",
+                    "examples/bench-nft.html": "no-store",
+                },
+            },
+            /lets the browser cache: examples\/js\/a\.mjs \(max-age=3600\)\. To fix: serve with Cache-Control: no-store/,
+        ],
+        [
+            "a response with no Cache-Control at all",
+            manifest,
+            { ...observed, cacheControl: { "examples/js/a.mjs": null } },
+            /lets the browser cache: examples\/js\/a\.mjs \(no Cache-Control\)/,
+        ],
+        [
+            "a full resource timeline",
+            manifest,
+            { ...observed, timelineFull: true },
+            /buffer overflowed.*To fix: reload the page\.$/,
+        ],
+        [
+            "a bundle missing from the timeline",
+            manifest,
+            { ...observed, loaded: ["examples/js/a.mjs"] },
+            /not in the page's resource timeline.*examples\/dist\/webarkit-packages\.mjs/,
+        ],
+        [
+            "a manifest built without git",
+            { ...manifest, head: null, clean: false },
+            observed,
+            /git could not describe the tree.*To fix: in a git checkout, commit/,
+        ],
     ])("refuses a session run on %s", (_, m, o, why) => {
         expect(provenanceRefusal(m, o, session)).toMatch(why);
     });
 
     it("passes responses that carry no-store, among other directives", () => {
-        const cacheControl = { "examples/js/a.mjs": "no-store", "examples/bench-nft.html": "no-cache, no-store, must-revalidate" };
+        const cacheControl = {
+            "examples/js/a.mjs": "no-store",
+            "examples/bench-nft.html": "no-cache, no-store, must-revalidate",
+        };
         expect(provenanceRefusal(manifest, { ...observed, cacheControl }, session)).toBeNull();
     });
 
     it("names every reason at once, each remedy once", () => {
-        const refusal = provenanceRefusal({ ...manifest, clean: false }, { ...observed, bundleSha256: "x" }, session);
-        expect(refusal).toMatch(/dirty tree.*; the served bundle.*To fix: commit, run `npm run build`, and reload\.$/);
+        const refusal = provenanceRefusal(
+            { ...manifest, clean: false },
+            { ...observed, bundleSha256: "x" },
+            session,
+        );
+        expect(refusal).toMatch(
+            /dirty tree.*; the served bundle.*To fix: commit, run `npm run build`, and reload\.$/,
+        );
         expect(refusal.match(/npm run build/g)).toHaveLength(1);
     });
 
     it("names every other finding beside a changed manifest, with every remedy", () => {
         const cacheControl = { "examples/js/a.mjs": "max-age=3600" };
-        const refusal = provenanceRefusal(manifest, { ...observed, manifestChanged: true, cacheControl }, session);
+        const refusal = provenanceRefusal(
+            manifest,
+            { ...observed, manifestChanged: true, cacheControl },
+            session,
+        );
         expect(refusal).toMatch(/changed since the page loaded; the server lets the browser cache/);
         expect(refusal).toMatch(/To fix: reload the page; serve with Cache-Control: no-store/);
     });
@@ -117,7 +198,9 @@ describe("provenanceRefusal", () => {
         expect(provenanceRefusal(null, observed, { sessionRun: false })).toBeNull();
         const mismatch = { ...observed, bundleSha256: "x" };
         expect(provenanceRefusal(manifest, mismatch, { sessionRun: false })).toBeNull();
-        expect(provenanceFindings(manifest, mismatch)).toMatch(/served bundle is not the one built/);
+        expect(provenanceFindings(manifest, mismatch)).toMatch(
+            /served bundle is not the one built/,
+        );
         expect(provenanceFindings(manifest, observed)).toBeNull();
     });
 
@@ -134,12 +217,26 @@ describe("provenanceRefusal", () => {
         };
         const seen = {
             ...observed,
-            served: { ...observed.served, "examples/js/p.mjs": "p", "examples/js/w.mjs": "w", "examples/js/both.mjs": "o", "examples/js/entry.mjs": "e" },
-            loaded: [...observed.loaded, "examples/js/p.mjs", "examples/js/w.mjs", "examples/js/both.mjs"],
+            served: {
+                ...observed.served,
+                "examples/js/p.mjs": "p",
+                "examples/js/w.mjs": "w",
+                "examples/js/both.mjs": "o",
+                "examples/js/entry.mjs": "e",
+            },
+            loaded: [
+                ...observed.loaded,
+                "examples/js/p.mjs",
+                "examples/js/w.mjs",
+                "examples/js/both.mjs",
+            ],
         };
         const worker = { sessionRun: true, detection: "worker" };
         const sync = { sessionRun: true, detection: "sync" };
-        const without = (...paths) => ({ ...seen, loaded: seen.loaded.filter((p) => !paths.includes(p)) });
+        const without = (...paths) => ({
+            ...seen,
+            loaded: seen.loaded.filter((p) => !paths.includes(p)),
+        });
 
         it("starts when every module the run loads was seen loading; the bundled entry is never required", () => {
             expect(provenanceRefusal(sides, seen, worker)).toBeNull();
@@ -147,8 +244,14 @@ describe("provenanceRefusal", () => {
         });
 
         it("refuses a worker run blind to a worker-side module, worker or both", () => {
-            const refusal = provenanceRefusal(sides, without("examples/js/w.mjs", "examples/js/both.mjs"), worker);
-            expect(refusal).toMatch(/cannot be seen: examples\/js\/w\.mjs, examples\/js\/both\.mjs/);
+            const refusal = provenanceRefusal(
+                sides,
+                without("examples/js/w.mjs", "examples/js/both.mjs"),
+                worker,
+            );
+            expect(refusal).toMatch(
+                /cannot be seen: examples\/js\/w\.mjs, examples\/js\/both\.mjs/,
+            );
             expect(refusal).toMatch(/To fix: run it in a browser that records module loads/);
             expect(refusal).not.toMatch(/npm run build/);
         });
@@ -163,7 +266,9 @@ describe("provenanceRefusal", () => {
             ["the bundle", "examples/dist/webarkit-packages.mjs"],
         ])("refuses either arm blind to %s", (_, path) => {
             for (const arm of [sync, worker]) {
-                expect(provenanceRefusal(sides, without(path), arm)).toMatch(new RegExp(`cannot be seen: ${path.replace(/[./]/g, "\\$&")}`));
+                expect(provenanceRefusal(sides, without(path), arm)).toMatch(
+                    new RegExp(`cannot be seen: ${path.replace(/[./]/g, "\\$&")}`),
+                );
             }
         });
     });
@@ -183,7 +288,10 @@ describe("the manifest npm run build writes", () => {
     const whyStale = () => {
         const git = (...args) => {
             try {
-                return execFileSync("git", args, { cwd: fileURLToPath(ROOT), encoding: "utf8" }).trim();
+                return execFileSync("git", args, {
+                    cwd: fileURLToPath(ROOT),
+                    encoding: "utf8",
+                }).trim();
             } catch {
                 return null;
             }
@@ -205,13 +313,21 @@ describe("the manifest npm run build writes", () => {
      */
     const expectHash = (path, h) => {
         const onDisk = sha256(path);
-        expect(h, h === onDisk ? undefined : `${path}: the manifest's hash is not the file's\n${whyStale()}`).toBe(onDisk);
+        expect(
+            h,
+            h === onDisk
+                ? undefined
+                : `${path}: the manifest's hash is not the file's\n${whyStale()}`,
+        ).toBe(onDisk);
     };
 
     it("hashes the files on disk, the bundle and jsfeat-next's included (rebuild after an edit)", () => {
         expect(manifest.schema).toBe("webarkit-bench-provenance/1");
         expect(manifest.head).toMatch(/^[0-9a-f]{40}$/);
-        for (const [path, { sha256: h }] of Object.entries({ ...manifest.sources, ...manifest.served })) {
+        for (const [path, { sha256: h }] of Object.entries({
+            ...manifest.sources,
+            ...manifest.served,
+        })) {
             expectHash(path, h);
         }
         expectHash(manifest.bundle.path, manifest.bundle.sha256);
@@ -227,14 +343,18 @@ describe("the manifest npm run build writes", () => {
             expect(sources.some((s) => s.startsWith(`packages/${p}/src/`))).toBe(true);
         }
         expect(sources).toContain("package-lock.json");
-        expect(Object.fromEntries(Object.entries(manifest.served).map(([p, e]) => [p, e.side]))).toEqual(SERVED);
+        expect(
+            Object.fromEntries(Object.entries(manifest.served).map(([p, e]) => [p, e.side])),
+        ).toEqual(SERVED);
     });
 });
 
 describe("SERVED", () => {
     /** The relative modules `text` imports, as repository paths, `from` being the importer's. */
     const imports = (text, from) =>
-        [...text.matchAll(/\b(?:from|import)\s*["'](\.\.?\/[^"']+)["']/g)].map((m) => new URL(m[1], new URL(from, ROOT)).href.slice(ROOT.href.length));
+        [...text.matchAll(/\b(?:from|import)\s*["'](\.\.?\/[^"']+)["']/g)].map((m) =>
+            new URL(m[1], new URL(from, ROOT)).href.slice(ROOT.href.length),
+        );
     /** Every module reachable from `roots` by relative imports, the bundle left out. */
     const closure = (roots) => {
         const seen = new Set();
@@ -251,10 +371,16 @@ describe("SERVED", () => {
     it("is the page, the bundle's entry, and every module each arm imports, on the side that imports it", () => {
         const page = bytes("examples/bench-nft.html").toString();
         const pageSide = closure(imports(page, "examples/bench-nft.html"));
-        const workerSide = closure([`examples/${page.match(/const WORKER_MODULE = "([^"]+)";/)[1]}`]);
-        const expected = { "examples/bench-nft.html": "page", "examples/js/packages-bundle.mjs": "bundled" };
+        const workerSide = closure([
+            `examples/${page.match(/const WORKER_MODULE = "([^"]+)";/)[1]}`,
+        ]);
+        const expected = {
+            "examples/bench-nft.html": "page",
+            "examples/js/packages-bundle.mjs": "bundled",
+        };
         for (const p of new Set([...pageSide, ...workerSide])) {
-            expected[p] = pageSide.has(p) && workerSide.has(p) ? "both" : pageSide.has(p) ? "page" : "worker";
+            expected[p] =
+                pageSide.has(p) && workerSide.has(p) ? "both" : pageSide.has(p) ? "page" : "worker";
         }
         expect(SERVED).toEqual(expected);
     });

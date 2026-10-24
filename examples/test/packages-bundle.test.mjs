@@ -25,7 +25,6 @@
  *
  */
 
-
 /**
  * The bench page's shared bundle (#110, §1–2): one artifact both detection
  * arms load, the page through its import map and the worker by URL. What is
@@ -55,7 +54,8 @@ describe("the shared package bundle", () => {
     it("exports every name of the three packages: export * dropped none", async () => {
         const bundle = Object.keys(await import(BUNDLE.href)).sort();
         const names = [];
-        for (const p of PACKAGES) names.push(...Object.keys(await import(`../../packages/${p}/dist/index.js`)));
+        for (const p of PACKAGES)
+            names.push(...Object.keys(await import(`../../packages/${p}/dist/index.js`)));
         // A name two packages share would be dropped from the bundle, silently.
         expect(new Set(names).size).toBe(names.length);
         expect(bundle).toEqual(names.sort());
@@ -63,7 +63,9 @@ describe("the shared package bundle", () => {
 
     it("is what the page's import map and the worker load, by one URL", () => {
         const page = read("../bench-nft.html");
-        const map = JSON.parse(page.match(/<script type="importmap">([\s\S]*?)<\/script>/)[1]).imports;
+        const map = JSON.parse(
+            page.match(/<script type="importmap">([\s\S]*?)<\/script>/)[1],
+        ).imports;
         expect(Object.keys(map).sort()).toEqual(PACKAGES.map((p) => `@webarkit/${p}`).sort());
         const pageUrl = new URL("http://host/examples/bench-nft.html");
         for (const target of Object.values(map)) {
@@ -71,10 +73,16 @@ describe("the shared package bundle", () => {
         }
         expect(page).toMatch(/const WORKER_MODULE = "js\/detection-worker\.mjs";/);
         const worker = read("../js/detection-worker.mjs");
-        const specifiers = [...worker.matchAll(/^import [^;]* from "([^"]+)";$/gm)].map((m) => m[1]);
-        expect(specifiers.filter((s) => !s.startsWith("./"))).toEqual(["../dist/webarkit-packages.mjs"]);
+        const specifiers = [...worker.matchAll(/^import [^;]* from "([^"]+)";$/gm)].map(
+            (m) => m[1],
+        );
+        expect(specifiers.filter((s) => !s.startsWith("./"))).toEqual([
+            "../dist/webarkit-packages.mjs",
+        ]);
         const workerUrl = new URL("js/detection-worker.mjs", pageUrl);
-        expect(new URL("../dist/webarkit-packages.mjs", workerUrl).pathname).toBe("/examples/dist/webarkit-packages.mjs");
+        expect(new URL("../dist/webarkit-packages.mjs", workerUrl).pathname).toBe(
+            "/examples/dist/webarkit-packages.mjs",
+        );
     });
 
     it("is built by the provenance script, with esbuild pinned exactly", () => {
