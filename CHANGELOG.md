@@ -24,6 +24,8 @@ release pull request's body and the GitHub Release's notes.
   the backend and `--decode-only`, instead of failing at startup. A test runs the tool with the
   backend made unresolvable by a resolution hook.
 
+<!-- prettier-ignore-start -->
+
 ## [0.5.1] - 2026-10-23
 
 The "M4 campaign" milestone ([milestone 7](https://github.com/webarkit/webarkit/milestone/7)),
@@ -425,3 +427,5 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 [0.3.0]: https://github.com/webarkit/webarkit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/webarkit/webarkit/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/webarkit/webarkit/releases/tag/v0.1.0
+
+<!-- prettier-ignore-end -->
