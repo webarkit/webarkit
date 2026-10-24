@@ -33,17 +33,60 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+    cpSync,
+    mkdirSync,
+    mkdtempSync,
+    readFileSync,
+    rmSync,
+    symlinkSync,
+    writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const SCRIPT = fileURLToPath(new URL("../../scripts/replay-clips.mjs", import.meta.url));
+const REPO = fileURLToPath(new URL("../../", import.meta.url));
 
 function run(...args) {
     const r = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8", timeout: 60000 });
     return { status: r.status, stderr: r.stderr };
+}
+
+/**
+ * The script run from a temporary copy of the repository's layout whose
+ * examples/dist holds `dist` (name → contents) and nothing else, so that a test
+ * can hand `--packages bundle` a manifest without touching the examples/dist
+ * the other tests read. The script finds examples/ beside its own real path,
+ * so scripts/ is copied; examples/js, examples/targets and packages/ are
+ * linked (a junction on Windows), and removing the copy removes the links, not
+ * what they point at.
+ */
+function runInTree(dist, ...args) {
+    const root = mkdtempSync(join(tmpdir(), "replay-clips-tree-"));
+    try {
+        cpSync(join(REPO, "scripts"), join(root, "scripts"), { recursive: true });
+        mkdirSync(join(root, "examples", "dist"), { recursive: true });
+        for (const dir of ["examples/js", "examples/targets", "packages"]) {
+            symlinkSync(join(REPO, dir), join(root, dir), "junction");
+        }
+        for (const [name, body] of Object.entries(dist)) {
+            writeFileSync(join(root, "examples", "dist", name), body);
+        }
+        const r = spawnSync(
+            process.execPath,
+            [join(root, "scripts", "replay-clips.mjs"), ...args],
+            {
+                encoding: "utf8",
+                timeout: 60000,
+            },
+        );
+        return { status: r.status, stderr: r.stderr };
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
 }
 
 /**
@@ -153,6 +196,109 @@ describe("replay-clips.mjs command line", () => {
             expect(r.stderr, other[0]).toMatch(new RegExp(`--transfer.*${other[0]}`));
             expect(r.stderr.trim().split("\n"), other[0]).toHaveLength(1);
         }
+    });
+
+    // #120 (RO2, RO3, RO7, RO9): each usage check could go with every test green. Where the
+    // command would otherwise go on to decode the clips, `--options minTrackedPatches:100` adds a
+    // later refusal that stops it before any clip is decoded, so a missing check shows as the
+    // wrong line, never as a run that needs ffmpeg.
+    it.each([
+        ["--seed", ["--seed", "abc"], /^replay-clips: --seed expects an integer/],
+        [
+            "--device-ratio",
+            ["--device-ratio", "0"],
+            /^replay-clips: --device-ratio expects a positive/,
+        ],
+        ["--packages", ["--packages", "foo"], /^replay-clips: --packages expects dist or bundle/],
+    ])("refuses a %s it cannot read, in one usage line", (flag, given, why) => {
+        const r = run(...given, "--options", "minTrackedPatches:100");
+        expect(r.stderr, `the ${flag} check`).toMatch(why);
+        expect(r.status, `the ${flag} check`).toBe(2);
+        expect(r.stderr.trim().split("\n")).toHaveLength(1);
+    });
+
+    it("refuses --sequence with --options, in one usage line", () => {
+        const r = run("--sequence", "export.json", "--options", "minTrackedPatches:6");
+        expect(r.stderr, "the --sequence and --options check").toMatch(
+            /^replay-clips: --sequence replays an export with its own recorded options/,
+        );
+        expect(r.status).toBe(2);
+        expect(r.stderr.trim().split("\n")).toHaveLength(1);
+    });
+
+    // #120 (RS1): an export sequenceRefusal refuses is refused before its clip is decoded.
+    it("refuses to replay a worker run's export as a sequence, naming the file", () => {
+        const dir = mkdtempSync(join(tmpdir(), "replay-clips-sequence-"));
+        try {
+            const file = join(dir, "worker-1.json");
+            writeFileSync(file, JSON.stringify(pageExport("worker")));
+            const r = run("--sequence", file);
+            expect(r.stderr, "sequenceRefusal at --sequence").toMatch(
+                /^cannot replay .*worker-1\.json: it is a worker-detection run/,
+            );
+            expect(r.status).toBe(1);
+            expect(r.stderr.trim().split("\n")).toHaveLength(1);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    // #120 (RB1, RB2): no test ran `--packages bundle`. A manifest it cannot read, and one
+    // built where git could not describe the tree, are refused by name before the header reads
+    // `head`: without the refusal, #113's TypeError at the header came back.
+    describe("--packages bundle's refusals of the build's manifest", () => {
+        const bundle = readFileSync(join(REPO, "examples/dist/webarkit-packages.mjs"));
+        const manifest = (o) =>
+            JSON.stringify({
+                schema: "webarkit-bench-provenance/1",
+                head: null,
+                clean: false,
+                dirtyPaths: [],
+                bundle: {
+                    path: "examples/dist/webarkit-packages.mjs",
+                    sha256: createHash("sha256").update(bundle).digest("hex"),
+                },
+                ...o,
+            });
+
+        it("refuses a manifest built where git could not describe the tree, by name", () => {
+            for (const o of [
+                { head: null, clean: false },
+                { head: null, clean: true },
+            ]) {
+                const r = runInTree(
+                    { "provenance.json": manifest(o), "webarkit-packages.mjs": bundle },
+                    "--packages",
+                    "bundle",
+                );
+                expect(r.stderr, "bundleManifestRefusal at --packages bundle").toMatch(
+                    /^replay-clips: --packages bundle needs a manifest whose commit is known: .*\(head null\)/,
+                );
+                expect(r.status, JSON.stringify(o)).toBe(2);
+                expect(r.stderr.trim().split("\n")).toHaveLength(1);
+            }
+        });
+
+        // The later refusal again stops a command whose manifest check went, before any decode.
+        it("refuses a manifest that is missing or is not JSON, by name", () => {
+            for (const dist of [
+                { "webarkit-packages.mjs": bundle },
+                { "provenance.json": '{"head": ', "webarkit-packages.mjs": bundle },
+            ]) {
+                const r = runInTree(
+                    dist,
+                    "--packages",
+                    "bundle",
+                    "--options",
+                    "minTrackedPatches:100",
+                );
+                expect(r.stderr, "the unreadable manifest at --packages bundle").toMatch(
+                    /^replay-clips: --packages bundle needs examples\/dist\/provenance\.json: run `npm run build`/,
+                );
+                expect(r.status).toBe(2);
+                expect(r.stderr.trim().split("\n")).toHaveLength(1);
+            }
+        });
     });
 
     it("refuses a directory it cannot read, as a usage error", () => {
