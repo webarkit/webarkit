@@ -128,8 +128,9 @@ against the specification, with a §6.2 error code when it is not. **Can a
 backend use it?** by running §6.3's descriptor-set selection against a real
 backend's capabilities — because a perfectly valid file can still be unusable,
 and decoding alone never says so. Exit `0` valid and usable, `1` neither, `2`
-bad usage; `--decode-only` checks the file without loading a backend, `--json`
-for scripts.
+bad usage or no backend to run the usability pass with (not built yet);
+`--decode-only` checks the file without loading a backend, `--json` for
+scripts.
 
 ### What it buys you
 
