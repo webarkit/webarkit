@@ -57,7 +57,7 @@ accidentally depends on `std` still builds for the host without the feature).
 
 §6.4 requires resource limits on untrusted input — file size, manifest size,
 levels, keypoints, descriptor sets, patch size and count — to be enforced
-*and* to be configurable. `DEFAULT_LIMITS` is a reasonable ceiling for files
+_and_ to be configurable. `DEFAULT_LIMITS` is a reasonable ceiling for files
 from an untrusted source; an application that generates its own targets and
 knows they are larger can raise specific fields:
 
@@ -106,7 +106,7 @@ dropped), but the resulting target then carries none at all, and §5.1
 requires at least one, so the writer refuses to re-emit it. The second is
 §7.3's check-(c) asymmetry: a reader accepts an integer-valued number
 outside ±(2^53 − 1) written with a fraction or exponent (e.g. `1e21`, which
-is not an integer *literal*), but the canonical writer refuses to re-emit
+is not an integer _literal_), but the canonical writer refuses to re-emit
 any such value wherever it appears in `params` or `info`, because another
 implementation might render it as a bare integer literal that every
 conforming reader rejects. Any encode failure whose code is not

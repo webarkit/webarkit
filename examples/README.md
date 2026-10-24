@@ -107,11 +107,11 @@ pipeline right against two known images first is what made the webcam demo's
 own parameters (resolution, keypoint cap, pyramid depth) measurable rather than
 guessed — see its own section below.
 
-**Architecture.** The `CvBackend` contract is deliberately *stateless*, and a
+**Architecture.** The `CvBackend` contract is deliberately _stateless_, and a
 webcam demo is where that boundary actually gets tested: does the pipeline
 still make sense called fresh every tick, with nothing carried over? The answer
 turned out to be yes, with one caveat (see the known limitation below) — but a
-*tracker* (which target, when to re-detect, what to do when tracking is lost,
+_tracker_ (which target, when to re-detect, what to do when tracking is lost,
 how to smooth the pose over time) is still the high-level AR layer's job, not
 either example's. Neither demo attempts it.
 
@@ -183,11 +183,11 @@ told apart from the one run before it.
 Three modes, selected before pressing Start (or with `?mode=`):
 
 - **stateless pipeline** (`stateless`) — the same inline `detect → describe →
-  match → estimateHomography → poseFromHomography` calls as the static demo,
+match → estimateHomography → poseFromHomography` calls as the static demo,
   against `@webarkit/nft-tracker`'s own `DEFAULT_SCENE_LEVELS` /
   `DEFAULT_MAX_SCENE_KEYPOINTS` / `DEFAULT_RATIO` / `DEFAULT_RANSAC_THRESHOLD`.
 - **NftTracker, detection-only** (`detection-only`) — `tracker.process(frame,
-  timestampMs)` with `detectionOnly: true`: M1 of
+timestampMs)` with `detectionOnly: true`: M1 of
   [ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md),
   every frame detected from scratch, the same pipeline as the stateless mode
   and expected to report the same match and inlier counts. Exports made before
@@ -262,7 +262,7 @@ loop by default — two runs then measure
 different content, not just different code paths, which defeats the point of
 comparing them. The **"start at (s)"** field (either video source; a webcam
 has no timeline to seek) seeks there before the first tick, so running it once
-for each mode with the same value gives two runs over the same *starting*
+for each mode with the same value gives two runs over the same _starting_
 point. The export carries `startAtSeconds` (`null` for a webcam run) precisely
 so a downloaded report can be checked to have actually started from the same
 point, rather than trusted on the assumption that the field was set the same
@@ -270,7 +270,7 @@ way both times.
 
 **A shared `startAt` is not a shared frame sequence, though.**
 `requestVideoFrameCallback` fires once per frame the browser actually
-*presents*, and a main thread busy for longer than the clip's own frame
+_presents_, and a main thread busy for longer than the clip's own frame
 interval (real here: `total`'s own p50 sits close to a ~25fps clip's ~40ms
 budget) makes the browser coalesce to the latest decoded frame, skipping
 whichever ones went stale while it was blocked. Two modes cost a slightly
@@ -555,7 +555,7 @@ processing box (480×360, fitted with aspect preserved — a 16:9 source like
 this one actually lands at 480×270, not 480×360; the export's
 `processingResolution` records that real size, not the configured box) by a
 comfortable margin — downscaling further would start constraining what a
-*higher* processing resolution could be benchmarked against later. The table
+_higher_ processing resolution could be benchmarked against later. The table
 clip is left at its native 1080×1920 rather than downscaled to match, since
 after the rotation incident above the priority was verifying orientation over
 minimizing size a second time; revisit if its ~2.3 MB becomes a real problem.
@@ -580,7 +580,7 @@ can reach the page:
 - **`targets/pinball.wnft`** — a target compiled once, offline, from the very
   same `images/pinball.jpg`, committed, and `decode`d here.
 
-Everything after that point is identical for both, because a decoded target *is*
+Everything after that point is identical for both, because a decoded target _is_
 a target. That is the whole claim of the file format, and the selector is the
 demo's way of showing it rather than asserting it — `packages/nft-tracker`'s
 `test/wnft_roundtrip.test.ts` is the assertion.
@@ -592,12 +592,12 @@ from the same pixels. This page builds its grey image with
 compiler used a box filter in Node. Measured on these images: 2067 keypoints and
 99 matches built here, 2062 and 91 from the file. Both lock on, and the
 recovered pose differs between them by less than it differs between two reloads
-of *either* one — RANSAC draws its minimal sample from `Math.random`, and the
+of _either_ one — RANSAC draws its minimal sample from `Math.random`, and the
 contract has no seed to pass it (webarkit/webarkit#24), so inlier counts and
 translations move a little on every run regardless of where the target came
 from.
 
-What *does* separate the two is the **"target prepared in"** row, which the page
+What _does_ separate the two is the **"target prepared in"** row, which the page
 times apart from the per-frame **"pipeline"** row precisely so the difference is
 visible: building the target here costs the page an order of magnitude more than
 loading it does.

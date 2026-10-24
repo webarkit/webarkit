@@ -7,19 +7,19 @@ Thank you for your interest in contributing to `webarkit`! By following these gu
 To contribute to the project, please follow these steps:
 
 1. **Sync with the `dev` branch**: Ensure your local copy is up to date before starting new work.
-   ```powershell
-   git checkout dev
-   git pull origin dev
-   ```
+    ```powershell
+    git checkout dev
+    git pull origin dev
+    ```
 2. **Create a new branch**: Create a descriptive branch starting from `dev`.
-   ```powershell
-   git checkout -b your-branch-name
-   ```
+    ```powershell
+    git checkout -b your-branch-name
+    ```
 3. **Develop and Test**: Make your changes and ensure they pass all tests (see the [Testing](#testing) section).
 4. **Submit the Pull Request**: Open a PR against the `dev` branch of the main repository.
 5. **Name the issues it addresses, and close them after the merge**: The pull request's description names each issue it addresses (`#NNN`), which puts a reference on the issue. Whoever merges then closes each one with a comment naming the pull request or the commit that did the work. An issue closed for another reason (not planned, a duplicate, superseded) gets a comment saying what decided it.
 
-   Closing keywords (`Closes #NNN`, `Fixes #NNN`) are not used. GitHub honours them for pull requests into the default branch, `master`, and for commit messages that reach it; every pull request here targets `dev`, so in a pull request's description they close nothing and link nothing: [#99](https://github.com/webarkit/webarkit/pull/99)'s description says "Closes #72", and it linked nothing. Avoid them even in prose that denies them: GitHub matches the token and not the sentence, so "does not close #NNN" reads as `close #NNN`. In a pull request into `dev` that closes nothing, but in a commit message it fires when the commit reaches `master`, which is how [#11](https://github.com/webarkit/webarkit/issues/11) was closed — so write "#NNN stays open" rather than naming the keyword at all.
+    Closing keywords (`Closes #NNN`, `Fixes #NNN`) are not used. GitHub honours them for pull requests into the default branch, `master`, and for commit messages that reach it; every pull request here targets `dev`, so in a pull request's description they close nothing and link nothing: [#99](https://github.com/webarkit/webarkit/pull/99)'s description says "Closes #72", and it linked nothing. Avoid them even in prose that denies them: GitHub matches the token and not the sentence, so "does not close #NNN" reads as `close #NNN`. In a pull request into `dev` that closes nothing, but in a commit message it fires when the commit reaches `master`, which is how [#11](https://github.com/webarkit/webarkit/issues/11) was closed — so write "#NNN stays open" rather than naming the keyword at all.
 
 > **Important**: All PRs must be made against the `dev` branch. The `master` branch is reserved exclusively for stable releases.
 
@@ -28,36 +28,37 @@ To contribute to the project, please follow these steps:
 Releases are cut by @kalwalt, from `dev` into `master`: the release pull request is the one pull request that targets `master`. Steps 1 and 3–4 are what the `v0.2.0` and `v0.3.0` releases did, with the gates CI runs today. Steps 2, 5 and 6 are new with ADR-0002 and [#72](https://github.com/webarkit/webarkit/issues/72).
 
 1. **Check that `dev` is green**: CI's gates must pass on `dev` before the release is opened. To run them locally:
-   ```powershell
-   npm install
-   npm run build
-   npm run typecheck
-   npm run format:check
-   npm run check:contract
-   npm test
-   cargo test --workspace
-   cargo fmt --all --check
-   cargo clippy --workspace --all-targets -- -D warnings
-   rustup target add thumbv7em-none-eabihf   # once
-   cargo build -p wnft-format --no-default-features --target thumbv7em-none-eabihf
-   ```
+    ```powershell
+    npm install
+    npm run build
+    npm run typecheck
+    npm run format:check
+    npm run check:contract
+    npm test
+    cargo test --workspace
+    cargo fmt --all --check
+    cargo clippy --workspace --all-targets -- -D warnings
+    rustup target add thumbv7em-none-eabihf   # once
+    cargo build -p wnft-format --no-default-features --target thumbv7em-none-eabihf
+    ```
 2. **Close the changelog entry**: In [`CHANGELOG.md`](CHANGELOG.md), rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, add its compare link at the foot of the file, and open a fresh, empty `## [Unreleased]` above it. The section should already be complete: every pull request that changed behaviour added its own line to `[Unreleased]` when it landed (see [Commit Message Conventions](#commit-message-conventions)), so this step edits a heading, not a history. **A shipped changelog entry is never amended:** a released note records what was claimed at the time, as an accepted ADR's decision is never edited in place (`AGENTS.md`, "Design records"); a later qualification goes in the next version's entry.
 3. **Open the release pull request**:
-   * It goes from `dev` into `master`.
-   * It is titled `chore(release): vX.Y.Z — <milestone>`, for example [`chore(release): v0.3.0 — M2 complete`](https://github.com/webarkit/webarkit/pull/74). `release` is the one scope that names no part of the repository.
-   * Its body is the release notes, and the release notes **are** that version's changelog entry: paste the section from step 2, whole. The changelog is the source, because it is reviewed line by line as each change lands, and the pull request body is a copy of it; nothing is written twice, and the two cannot drift.
-   * It is merged with a merge commit.
+    - It goes from `dev` into `master`.
+    - It is titled `chore(release): vX.Y.Z — <milestone>`, for example [`chore(release): v0.3.0 — M2 complete`](https://github.com/webarkit/webarkit/pull/74). `release` is the one scope that names no part of the repository.
+    - Its body is the release notes, and the release notes **are** that version's changelog entry: paste the section from step 2, whole. The changelog is the source, because it is reviewed line by line as each change lands, and the pull request body is a copy of it; nothing is written twice, and the two cannot drift.
+    - It is merged with a merge commit.
 4. **Tag the merge commit**: After the merge, @kalwalt puts an annotated tag on the **merge commit**, not on the tip of `dev`. The tag's message repeats the pull request's title without `chore(release): `. `v0.2.0` and `v0.3.0` are both annotated tags on the merge commits of [#45](https://github.com/webarkit/webarkit/pull/45) and [#74](https://github.com/webarkit/webarkit/pull/74).
-   ```powershell
-   git tag -a vX.Y.Z -m "vX.Y.Z — <milestone>" merge-commit-sha
-   git push origin vX.Y.Z
-   ```
+    ```powershell
+    git tag -a vX.Y.Z -m "vX.Y.Z — <milestone>" merge-commit-sha
+    git push origin vX.Y.Z
+    ```
 5. **Create the GitHub Release**: On that tag, in the web interface, @kalwalt creates a GitHub Release titled like the tag's message, with the same notes as the pull request's body. `v0.1.0`, `v0.2.0` and `v0.3.0` get theirs retroactively, from their entries in `CHANGELOG.md`.
 6. **Versions**: The package versions match the release tag; [ADR-0002](docs/adr/0002-lockstep-versioning.md) records why. Every manifest, the exact pins between the packages and both lockfiles are raised on `dev` before the release pull request is opened, and `npm run check:contract` fails when any of them disagrees. Nothing checks them against the tag itself.
 
 What the project does **not** do today:
-* It publishes nothing to npm or crates.io.
-* It generates nothing: the changelog, the release notes and the GitHub Release are written by hand, from the same text.
+
+- It publishes nothing to npm or crates.io.
+- It generates nothing: the changelog, the release notes and the GitHub Release are written by hand, from the same text.
 
 ### Release gates
 
@@ -109,22 +110,22 @@ Before submitting a commit or a Pull Request, it is essential to verify that the
 
 This is an npm-workspaces monorepo — run these from the repo root; they cover both `@webarkit/cv-backend-spec` and `@webarkit/cv-backend-jsfeatnext`:
 
-* **Install dependencies** (first time, or after pulling changes to `package-lock.json`):
-  ```powershell
-  npm install
-  ```
-* **Build** (also verifies the packages compile against each other):
-  ```powershell
-  npm run build
-  ```
-* **Type check** (`src/` and `test/` in every workspace):
-  ```powershell
-  npm run typecheck
-  ```
-* **Run tests**:
-  ```powershell
-  npm test
-  ```
+- **Install dependencies** (first time, or after pulling changes to `package-lock.json`):
+    ```powershell
+    npm install
+    ```
+- **Build** (also verifies the packages compile against each other):
+    ```powershell
+    npm run build
+    ```
+- **Type check** (`src/` and `test/` in every workspace):
+    ```powershell
+    npm run typecheck
+    ```
+- **Run tests**:
+    ```powershell
+    npm test
+    ```
 
 These are exactly the checks CI runs on every push and pull request (see `.github/workflows/CI.yml`). If you add a new feature, make sure to include appropriate tests in the relevant package's `test/` directory (Vitest, e.g. `packages/cv-backend-jsfeatnext/test/*.test.ts`).
 
@@ -139,28 +140,32 @@ Please ensure your PR titles and commit messages follow this format:
 `<type>(<optional scope>): <description>`
 
 ### 1. Allowed Types
-* **`feat`**: A new feature.
-* **`fix`**: A bug fix.
-* **`docs`**: Documentation-only changes.
-* **`refactor`**: A code change that neither fixes a bug nor adds a feature (e.g., restructuring).
-* **`test`**: Adding missing tests or correcting existing ones.
-* **`chore`**: Changes to the build process, dependencies, or auxiliary tools.
-* **`ci`**: Changes to CI configuration or workflows.
+
+- **`feat`**: A new feature.
+- **`fix`**: A bug fix.
+- **`docs`**: Documentation-only changes.
+- **`refactor`**: A code change that neither fixes a bug nor adds a feature (e.g., restructuring).
+- **`test`**: Adding missing tests or correcting existing ones.
+- **`chore`**: Changes to the build process, dependencies, or auxiliary tools.
+- **`ci`**: Changes to CI configuration or workflows.
 
 ### 2. Project-Specific Scopes
+
 To help categorize changes, use one of the following scopes when a change is confined to one part of the repo:
-* **`cv-backend-spec`**: The `CvBackend` contract package — interfaces, types, capability negotiation.
-* **`cv-backend-jsfeatnext`**: The jsfeatNext implementation of that contract.
-* **`examples`**: The demo pages exercising the contract.
-* **`ci`**: The GitHub Actions workflow.
+
+- **`cv-backend-spec`**: The `CvBackend` contract package — interfaces, types, capability negotiation.
+- **`cv-backend-jsfeatnext`**: The jsfeatNext implementation of that contract.
+- **`examples`**: The demo pages exercising the contract.
+- **`ci`**: The GitHub Actions workflow.
 
 Omit the scope for changes spanning the whole repo (root README, `AGENTS.md`, root `package.json`, etc.).
 
 ### 3. Examples
-* `feat(cv-backend-jsfeatnext): add descriptor selection support`
-* `fix(cv-backend-spec): correct capability negotiation for filterMatches`
-* `docs: update README with ecosystem overview`
-* `chore(ci): add CI workflow`
+
+- `feat(cv-backend-jsfeatnext): add descriptor selection support`
+- `fix(cv-backend-spec): correct capability negotiation for filterMatches`
+- `docs: update README with ecosystem overview`
+- `chore(ci): add CI workflow`
 
 If your PR introduces a breaking change, please include `BREAKING CHANGE:` in the footer or append a `!` after the type/scope (e.g., `feat(cv-backend-spec)!: change the estimateHomography return shape`).
 
@@ -169,8 +174,9 @@ If your PR introduces a breaking change, please include `BREAKING CHANGE:` in th
 Before creating a new issue, please search the [existing issues](https://github.com/webarkit/webarkit/issues) to see if it has already been reported.
 
 When creating an issue, please provide as much information as possible:
-* **For Bug Reports**: Include a clear description of the bug, steps to reproduce it, the expected behavior, and any relevant error messages or logs.
-* **For Feature Requests**: Explain the purpose of the feature, why it is needed, and how it should work.
+
+- **For Bug Reports**: Include a clear description of the bug, steps to reproduce it, the expected behavior, and any relevant error messages or logs.
+- **For Feature Requests**: Explain the purpose of the feature, why it is needed, and how it should work.
 
 ## Reporting Bugs and Feature Requests
 

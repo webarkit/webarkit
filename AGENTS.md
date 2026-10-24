@@ -11,22 +11,22 @@
 ## Environment & commands
 
 - **Node:** version pinned in [`.nvmrc`](./.nvmrc) (currently v24.21.0); `package.json` sets a floor of `>=18`. **Package manager:** npm 9+ (for [workspaces](https://docs.npmjs.com/cli/v9/using-npm/workspaces)).
-  - **Aligned to the record on 2026-10-14.** The pin had read v24.18.0 since 2026-09-03, when CI was added. M4's round 0 was built outside it, on v24.21.0, as its exports' manifests record (`provenance.manifest.toolchain`). Its eight exports are evidence against that build, so the pin moved to the build, not the build to the pin. Why the toolchain must then hold for the rest of the campaign: [M4's plan](./docs/benchmarks/README.md), "The instrument, the subject and the inputs", item 5.
-  - **What CI ran until then: v24.18.0.** CI reads the pin (`actions/setup-node`, `node-version-file`). On `37dc6d4` itself, CI run 38400892197 resolved `.nvmrc` as 24.18.0 at 12:55Z on 2026-10-13, and round 0's build of the same commit ran v24.21.0 at 13:37Z.
-  - **The difference had been seen and accepted before.** Four agent plans in `docs/superpowers/plans/`, dated 2026-09-11 to 2026-09-27, record a local node other than the pin: v24.20.0, then v24.21.0. One of them says CI still used v24.18.0. Each accepted the difference because the major matched and `package.json`'s floor is `>=18`. What changed on 2026-10-14 is that a campaign's toolchain became part of what it measures.
+    - **Aligned to the record on 2026-10-14.** The pin had read v24.18.0 since 2026-09-03, when CI was added. M4's round 0 was built outside it, on v24.21.0, as its exports' manifests record (`provenance.manifest.toolchain`). Its eight exports are evidence against that build, so the pin moved to the build, not the build to the pin. Why the toolchain must then hold for the rest of the campaign: [M4's plan](./docs/benchmarks/README.md), "The instrument, the subject and the inputs", item 5.
+    - **What CI ran until then: v24.18.0.** CI reads the pin (`actions/setup-node`, `node-version-file`). On `37dc6d4` itself, CI run 38400892197 resolved `.nvmrc` as 24.18.0 at 12:55Z on 2026-10-13, and round 0's build of the same commit ran v24.21.0 at 13:37Z.
+    - **The difference had been seen and accepted before.** Four agent plans in `docs/superpowers/plans/`, dated 2026-09-11 to 2026-09-27, record a local node other than the pin: v24.20.0, then v24.21.0. One of them says CI still used v24.18.0. Each accepted the difference because the major matched and `package.json`'s floor is `>=18`. What changed on 2026-10-14 is that a campaign's toolchain became part of what it measures.
 - Install: `npm install` — resolves and symlinks every workspace package, no publish step needed to develop against them together.
-- Build: `npm run build` — runs [`scripts/build-provenance.mjs`](./scripts/build-provenance.mjs), which builds `@webarkit/cv-backend-spec`, **then** `@webarkit/cv-backend-jsfeatnext`, **then** `@webarkit/nft-tracker`, **then** bundles the three into `examples/dist/webarkit-packages.mjs` with esbuild — the bench page's shared bundle, which both its detection arms load, because a module worker does not read the page's import map — and **then** writes `examples/dist/provenance.json`, the manifest the page checks at Start ([#110](https://github.com/webarkit/webarkit/issues/110)) — in that order. The script runs the packages' build itself so that no bundle is made from a `dist/` it did not just build. That order is load-bearing, not incidental — but the chain is not simply "each on the previous", and the difference is the architecture showing through. `cv-backend-jsfeatnext`'s build type-checks against the spec's freshly-built `dist/`. `nft-tracker`'s build needs the **spec's** `dist/` and *not* the backend's: its `src/` may not import a backend at all (ADR-0001, point 2), so it compiles fine with `cv-backend-jsfeatnext/dist` deleted — the injected-backend rule made visible in the build graph. What does need the backend built is `nft-tracker`'s **typecheck**, which widens the program to `test/`, where a real backend is injected; that step runs after `build`. npm's own default (alphabetical) workspace build order broke this once already (see commit `109caaf`) — don't "simplify" this into a bare `npm run build --workspaces`.
+- Build: `npm run build` — runs [`scripts/build-provenance.mjs`](./scripts/build-provenance.mjs), which builds `@webarkit/cv-backend-spec`, **then** `@webarkit/cv-backend-jsfeatnext`, **then** `@webarkit/nft-tracker`, **then** bundles the three into `examples/dist/webarkit-packages.mjs` with esbuild — the bench page's shared bundle, which both its detection arms load, because a module worker does not read the page's import map — and **then** writes `examples/dist/provenance.json`, the manifest the page checks at Start ([#110](https://github.com/webarkit/webarkit/issues/110)) — in that order. The script runs the packages' build itself so that no bundle is made from a `dist/` it did not just build. That order is load-bearing, not incidental — but the chain is not simply "each on the previous", and the difference is the architecture showing through. `cv-backend-jsfeatnext`'s build type-checks against the spec's freshly-built `dist/`. `nft-tracker`'s build needs the **spec's** `dist/` and _not_ the backend's: its `src/` may not import a backend at all (ADR-0001, point 2), so it compiles fine with `cv-backend-jsfeatnext/dist` deleted — the injected-backend rule made visible in the build graph. What does need the backend built is `nft-tracker`'s **typecheck**, which widens the program to `test/`, where a real backend is injected; that step runs after `build`. npm's own default (alphabetical) workspace build order broke this once already (see commit `109caaf`) — don't "simplify" this into a bare `npm run build --workspaces`.
 - Typecheck: `npm run typecheck` — `tsc` across `src/` **and** `test/` in every workspace (separate from build, which only checks `src/`).
 - **Test:** `npm test` — Vitest across every workspace, then over `examples/test/` (`npm run test:examples`): the bench page's logic lives in `examples/js/bench-metrics.mjs`, and `examples/` is not a workspace, so the root declares `vitest` for it.
 - These four are exactly what the `build-and-test` job in [`.github/workflows/CI.yml`](./.github/workflows/CI.yml) runs on every push and pull request. Do not claim a change is verified without actually running them.
 - **Contract sync:** `npm run check:contract` — the contract's `DescriptorKind`/`DescriptorNorm`/`DetectorKind` unions, the TypeScript codec's `known.ts` lists and the Rust codec's `known.rs` lists must agree, and both codecs must claim the same format and container version. Reads source text: no build, no install, no Rust toolchain. It is its own CI job (`contract-sync`) because what it checks belongs to neither toolchain — see the Conventions note below for why no test suite can catch it.
 - **Rust:** stable, 1.85 or newer (edition 2024); the crates live in a Cargo workspace at the repository root (`members = ["crates/*"]`), beside the npm workspaces. The two toolchains share this repository and the `fixtures/` corpus and nothing else — there is no build ordering between them.
-  - Test: `cargo test --workspace`
-  - Format: `cargo fmt --all --check`
-  - Lint: `cargo clippy --workspace --all-targets -- -D warnings`
-  - `no_std` check: `cargo build -p wnft-format --no-default-features --target thumbv7em-none-eabihf` — a bare-metal target, because a crate that accidentally depends on `std` still builds for the *host* with `--no-default-features`. Install it once with `rustup target add thumbv7em-none-eabihf`.
-  - These four are exactly what the `rust` job in [`.github/workflows/CI.yml`](./.github/workflows/CI.yml) runs. Do not claim a change is verified without actually running them.
-  - Fuzzing (§8.4) is **not** in CI: it needs nightly and has no natural stopping point. See [`crates/wnft-format/README.md`](./crates/wnft-format/README.md).
+    - Test: `cargo test --workspace`
+    - Format: `cargo fmt --all --check`
+    - Lint: `cargo clippy --workspace --all-targets -- -D warnings`
+    - `no_std` check: `cargo build -p wnft-format --no-default-features --target thumbv7em-none-eabihf` — a bare-metal target, because a crate that accidentally depends on `std` still builds for the _host_ with `--no-default-features`. Install it once with `rustup target add thumbv7em-none-eabihf`.
+    - These four are exactly what the `rust` job in [`.github/workflows/CI.yml`](./.github/workflows/CI.yml) runs. Do not claim a change is verified without actually running them.
+    - Fuzzing (§8.4) is **not** in CI: it needs nightly and has no natural stopping point. See [`crates/wnft-format/README.md`](./crates/wnft-format/README.md).
 
 ## Architecture — read this before editing
 
@@ -51,20 +51,20 @@
   campaign must read the same target. Its exports record the hash as
   `target.sha256`, and its plan checks it (M4's: validity rule 3 in
   `docs/benchmarks/README.md`).
-  - **"Do not recompile it" is the practical advice, not the rule.** A
-    recompile to byte-identical output harms nothing; swapping the file
-    from a backup is no recompile and harms everything. So the rule is on
-    the file's state, which a check can read, not on an action, which can
-    only be promised.
-  - **When a campaign is open:** from its first device run until its last
-    device exports are committed. M4's opened with its pre-flight run of
-    2026-10-13.
-  - **Its history:** a rule on this file has held since 2026-09-30, when
-    the maintainer set it for M3's campaign as "not recompiled". It was
-    written here on 2026-10-14, because M4's plan holds that no document
-    outside this repository and its issues is a source for any session, so
-    an unwritten rule does not bind. It was restated on the file's state
-    the same day.
+    - **"Do not recompile it" is the practical advice, not the rule.** A
+      recompile to byte-identical output harms nothing; swapping the file
+      from a backup is no recompile and harms everything. So the rule is on
+      the file's state, which a check can read, not on an action, which can
+      only be promised.
+    - **When a campaign is open:** from its first device run until its last
+      device exports are committed. M4's opened with its pre-flight run of
+      2026-10-13.
+    - **Its history:** a rule on this file has held since 2026-09-30, when
+      the maintainer set it for M3's campaign as "not recompiled". It was
+      written here on 2026-10-14, because M4's plan holds that no document
+      outside this repository and its issues is a source for any session, so
+      an unwritten rule does not bind. It was restated on the file's state
+      the same day.
 - **`fixtures/nft-target/` is generated, shared, and read-only for Rust.** The TypeScript generator produces it; `crates/wnft-format` consumes it and MUST NEVER regenerate it. A second implementation that rebuilt the corpus from its own writer would be checking itself against itself, and §8.2 item 4 would prove nothing. See [`fixtures/nft-target/README.md`](./fixtures/nft-target/README.md).
 
 ## Test assets

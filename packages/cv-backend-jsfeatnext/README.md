@@ -31,7 +31,7 @@ if (cv.filterMatches) matches = cv.filterMatches(matches, queryView, trainView);
 
 const h = cv.estimateHomography(src, dst, { threshold: 3 });
 if (h.ok) {
-  const pose = cv.poseFromHomography(h.H, intrinsics(frame.width, frame.height));
+    const pose = cv.poseFromHomography(h.H, intrinsics(frame.width, frame.height));
 }
 ```
 
@@ -92,7 +92,7 @@ is wider than that band, so consecutive levels can straddle it and match at
 neither.
 
 Pass `levels: 1` when the scale is already known — a tracking loop that has
-locked on, say. It is markedly cheaper, and it is also *more precise*: a
+locked on, say. It is markedly cheaper, and it is also _more precise_: a
 keypoint found on a coarse level is scaled back up, so sub-pixel error there
 becomes whole pixels at level 0.
 
