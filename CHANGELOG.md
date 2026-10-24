@@ -14,6 +14,16 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`validate-target --decode-only` and `--help` load no backend**
+  ([#75](https://github.com/webarkit/webarkit/issues/75)). The tool imported
+  `@webarkit/cv-backend-jsfeatnext` statically, so both failed with `ERR_MODULE_NOT_FOUND`
+  where the backend was not built, against what `--help` and the READMEs promise. The backend is
+  now imported only by the full mode, which, when it cannot load it, exits 2 with a message naming
+  the backend and `--decode-only`, instead of failing at startup. A test runs the tool with the
+  backend made unresolvable by a resolution hook.
+
 ## [0.5.1] - 2026-10-23
 
 The "M4 campaign" milestone ([milestone 7](https://github.com/webarkit/webarkit/milestone/7)),

@@ -15,7 +15,8 @@ Needs `npm run build` first — the script imports the built `dist/`. Several
 files at once are fine. `--json` for machine-readable output, `--decode-only`
 to check the file against the specification without loading a backend.
 
-Exit: `0` valid and usable, `1` invalid or unusable, `2` bad usage.
+Exit: `0` valid and usable, `1` invalid or unusable, `2` bad usage, or a
+backend that could not be loaded for the usability pass (not built yet).
 
 ## It answers two questions, and they are not the same one
 
