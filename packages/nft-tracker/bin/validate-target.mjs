@@ -61,9 +61,15 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import process from "node:process";
 
-import { createJsfeatNextBackend } from "@webarkit/cv-backend-jsfeatnext";
-
 import { chooseDescriptorSet, decode } from "../dist/index.js";
+
+/**
+ * The backend is imported **dynamically**, and only by the mode that uses it
+ * (#75). A static import is resolved and evaluated before any of this module's
+ * code runs, so it made every invocation load the backend, `--decode-only` and
+ * `--help` included, and fail where the backend is not built.
+ */
+const BACKEND = "@webarkit/cv-backend-jsfeatnext";
 
 const USAGE = `usage: validate-target <file.wnft> [more.wnft ...] [options]
 
@@ -73,8 +79,35 @@ const USAGE = `usage: validate-target <file.wnft> [more.wnft ...] [options]
   -h, --help          this text
 
 exit: 0 every file valid (and usable, unless --decode-only), 1 otherwise,
-      2 bad usage
+      2 bad usage, or no backend to run the usability pass with
 `;
+
+/**
+ * A backend that cannot be loaded is not a verdict on any file, so it must not
+ * exit 1, and it is not bad usage, so it must not print the usage text. It
+ * exits 2, the code it shares with bad usage, with a message saying what to do
+ * and the resolution error itself: `ERR_MODULE_NOT_FOUND` is also what a
+ * missing dependency *of* the backend raises, and the message must not hide
+ * which specifier was actually missing.
+ */
+class BackendUnavailable extends Error {}
+
+async function loadBackend() {
+    let mod;
+    try {
+        mod = await import(BACKEND);
+    } catch (error) {
+        if (error?.code === "ERR_MODULE_NOT_FOUND") {
+            throw new BackendUnavailable(
+                `cannot load ${BACKEND} for the usability pass (is it built? run \`npm run build\`), ` +
+                    `or pass --decode-only to check the file against the specification alone\n` +
+                    `  ${error.message}`,
+            );
+        }
+        throw error;
+    }
+    return mod.createJsfeatNextBackend();
+}
 
 /**
  * Where the user actually typed the command, as `compile-target.mjs` computes
@@ -373,7 +406,7 @@ async function main(argv) {
         return 0;
     }
 
-    const cv = args.decodeOnly ? null : await createJsfeatNextBackend();
+    const cv = args.decodeOnly ? null : await loadBackend();
 
     const results = [];
     let bad = 0;
@@ -406,6 +439,6 @@ main(process.argv.slice(2))
     })
     .catch((error) => {
         console.error(`validate-target: ${error instanceof Error ? error.message : error}`);
-        console.error(`\n${USAGE}`);
+        if (!(error instanceof BackendUnavailable)) console.error(`\n${USAGE}`);
         process.exitCode = EXIT_USAGE;
     });

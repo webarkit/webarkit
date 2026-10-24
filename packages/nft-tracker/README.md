@@ -272,7 +272,10 @@ npm run validate-target -w @webarkit/nft-tracker -- examples/targets/pinball.wnf
 
 **Exit status:** `0` every file valid and usable, `1` any file invalid or
 unusable, `2` bad usage. The three are kept apart on purpose — a bad
-command line is not a bad target.
+command line is not a bad target. A backend that cannot be loaded for the
+usability pass (not built yet) also exits `2`, with a message saying so and no
+usage text: it is no verdict on the file either. `--decode-only` and `--help`
+never load it.
 
 Three things in the output are worth knowing:
 

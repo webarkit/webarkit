@@ -58,17 +58,31 @@ interface Run {
     readonly stdout: string;
 }
 
+/**
+ * Loaded with `--import`, it makes `@webarkit/cv-backend-jsfeatnext`
+ * unresolvable in the spawned process only (#75). See `hooks.mjs` beside it.
+ */
+const NO_BACKEND = new URL("./fixtures/no-backend/register.mjs", import.meta.url).href;
+
 function run(...args: string[]): Run {
+    return runWith([], ...args);
+}
+
+function runWithoutBackend(...args: string[]): Run & { readonly stderr: string } {
+    return runWith(["--import", NO_BACKEND], ...args);
+}
+
+function runWith(nodeArgs: string[], ...args: string[]): Run & { readonly stderr: string } {
     try {
-        const stdout = execFileSync(process.execPath, [SCRIPT, ...args], {
+        const stdout = execFileSync(process.execPath, [...nodeArgs, SCRIPT, ...args], {
             cwd: REPO_ROOT,
             encoding: "utf8",
             stdio: ["ignore", "pipe", "pipe"],
         });
-        return { status: 0, stdout };
+        return { status: 0, stdout, stderr: "" };
     } catch (error) {
-        const e = error as { status?: number; stdout?: string };
-        return { status: e.status ?? -1, stdout: e.stdout ?? "" };
+        const e = error as { status?: number; stdout?: string; stderr?: string };
+        return { status: e.status ?? -1, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
     }
 }
 
@@ -237,5 +251,48 @@ describe("validate-target", () => {
         expect(r.status).toBe(1);
         expect(r.stdout).toContain("usable      yes");
         expect(r.stdout).toContain("usable      NO");
+    });
+});
+
+/**
+ * #75: `--decode-only` and `--help` promise to load no backend, so they must
+ * work where the backend cannot be resolved. In this repository the backend is
+ * always built, so a test without the hook passes whether or not the promise
+ * holds; these run with the backend genuinely unavailable.
+ */
+describe("validate-target without a loadable backend (#75)", () => {
+    it("--decode-only still checks the file, and exits 0", () => {
+        const r = runWithoutBackend("--decode-only", PINBALL);
+        expect(r.status).toBe(0);
+        expect(r.stdout).toContain("decode      ok, format");
+        expect(r.stdout).not.toMatch(/^\s+usable\s+/m);
+    });
+
+    it("--help still prints the usage, and exits 0", () => {
+        const r = runWithoutBackend("--help");
+        expect(r.status).toBe(0);
+        expect(r.stdout).toContain("usage: validate-target");
+    });
+
+    // The control: the full mode needs the backend, so it must fail here. If it
+    // passed, the hook would not be removing the backend, and the two tests
+    // above would pass vacuously. It asserts only that the mode fails, so it
+    // holds against the tool before #75's fix as well as after.
+    it("the full mode fails (the control: the hook removes the backend)", () => {
+        const r = runWithoutBackend(PINBALL);
+        expect(r.status).not.toBe(0);
+        expect(r.stdout).not.toContain("usable      yes");
+    });
+
+    it("the full mode names the backend, and exits 2 rather than 1", () => {
+        const r = runWithoutBackend(PINBALL);
+        // Not 1: a missing backend is no verdict on the file, and 1 says the
+        // file failed. 2 is the code it shares with bad usage.
+        expect(r.status).toBe(2);
+        expect(r.stdout).not.toContain("usable      yes");
+        expect(r.stderr).toContain("cannot load @webarkit/cv-backend-jsfeatnext");
+        expect(r.stderr).toContain("--decode-only");
+        // Not bad usage either, so no usage text.
+        expect(r.stderr).not.toContain("usage: validate-target");
     });
 });
