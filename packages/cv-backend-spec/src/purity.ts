@@ -68,11 +68,10 @@
  *
  * **`estimateHomography` is not probed, and that is a decision, not an
  * oversight.** It samples randomly, so it is the contract's one deliberate
- * exception to purity. It becomes pure *for a given RNG* the moment one can be
- * injected ([#24](https://github.com/webarkit/webarkit/issues/24)), and should
- * join this check then, with the RNG fixed. Until it does, a caller wanting
- * determinism from it has to pin the seed itself — which is exactly what it
- * cannot do yet.
+ * exception to purity. It is pure *for a given RNG* on a backend that declares
+ * `deterministicRansac` and is passed `RansacOptions.rng`
+ * ([#24](https://github.com/webarkit/webarkit/issues/24)), and should join this
+ * check with the RNG fixed. It has not joined it yet.
  */
 
 import type {
@@ -96,8 +95,8 @@ export interface PurityViolation {
      * `estimateHomography` is absent on purpose, and the absence is the one
      * thing here worth stating rather than leaving to inference: it samples
      * randomly, so it is the contract's single deliberate exception to purity.
-     * Once an RNG can be injected (#24) it becomes pure *for a given RNG*, and
-     * belongs in this list with that RNG fixed.
+     * With an injected RNG (#24) it is pure *for a given RNG*, and belongs in
+     * this list with that RNG fixed; it has not been added yet.
      */
     readonly method: "detect" | "describe" | "match" | "poseFromHomography";
     /** What differed, precisely enough to start debugging from. */

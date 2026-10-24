@@ -168,6 +168,9 @@ const CAPABILITIES: BackendCapabilities = {
     // No geometric match filter yet. GMS is tracked separately; until it
     // exists, `filterMatches` is omitted entirely and this stays empty.
     matchFilters: [],
+    // `RansacOptions.rng` reaches `ransac_params_t`, whose `rng` is the only
+    // source `find_homography` samples from (#24).
+    deterministicRansac: true,
 };
 
 /** Wraps a `GrayImage`'s pixels in a jsfeatNext single-channel matrix. */
@@ -508,11 +511,14 @@ export class JsfeatNextBackend implements CvBackend {
             to.push({ x: dst[i * 2], y: dst[i * 2 + 1], score: 0, level: 0, angle: -1 });
         }
 
+        // An absent `rng` reaches the constructor as `undefined`, which takes
+        // its default, `() => Math.random()`: the behaviour before #24.
         const params = new jsfeatNext.ransac_params_t(
             4,
             options?.threshold ?? 3,
             0.5,
             options?.confidence ?? 0.99,
+            options?.rng,
         );
         const maxIterations = options?.maxIterations ?? 1000;
 

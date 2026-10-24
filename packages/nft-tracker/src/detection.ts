@@ -364,9 +364,9 @@ export function prepareDetection(
  * posts to a worker (ADR-0001 point 7).
  *
  * The one random choice is RANSAC's minimal-sample draw inside
- * `estimateHomography`, below the contract and not yet seedable through it
- * (webarkit/webarkit#24); everything else is a pure function of its
- * arguments.
+ * `estimateHomography`, below the contract. It is seedable through
+ * `RansacOptions.rng` since webarkit/webarkit#24, but `detectTarget` does not
+ * pass one yet; everything else is a pure function of its arguments.
  */
 export function detectTarget(
     cv: CvBackend,

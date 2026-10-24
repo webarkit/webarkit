@@ -233,6 +233,21 @@ export interface RansacOptions {
     threshold?: number; // reprojection threshold in pixels
     maxIterations?: number;
     confidence?: number; // 0..1
+    /**
+     * Uniform source in [0, 1), used for RANSAC sampling. Absent means the
+     * backend picks its own.
+     *
+     * A backend that honours it declares
+     * {@link BackendCapabilities.deterministicRansac}, and then draws from it
+     * and from nothing else: the same inputs with an RNG in the same state
+     * give the same {@link HomographyResult}. A backend that does not honour
+     * it ignores it, as it would any unknown option. That is deliberately not
+     * the "unsupported explicit request throws" rule: the result is a valid
+     * fit either way, only its reproducibility differs, and the capability is
+     * where a caller that needs it finds out
+     * ([#24](https://github.com/webarkit/webarkit/issues/24)).
+     */
+    rng?: () => number;
 }
 
 /**
@@ -262,6 +277,11 @@ export interface BackendCapabilities {
      * {@link CvBackend.filterMatches} is not implemented.
      */
     readonly matchFilters: readonly MatchFilterKind[];
+    /**
+     * `true` when {@link CvBackend.estimateHomography} honours
+     * {@link RansacOptions.rng}. Absent means `false`: the option is ignored.
+     */
+    readonly deterministicRansac?: boolean;
 }
 
 /**
@@ -279,9 +299,10 @@ export interface BackendCapabilities {
  * **{@link CvBackend.estimateHomography} is the one exception**, and it is
  * named here rather than left out, because in a contract an omission reads as a
  * permission. It samples randomly — RANSAC draws minimal sets — so it is not a
- * function of its arguments alone. It becomes pure *for a given RNG* as soon as
- * one can be injected, which is what
- * [#24](https://github.com/webarkit/webarkit/issues/24) is for; until then a
+ * function of its arguments alone. It is pure *for a given RNG* where one can be
+ * injected: {@link RansacOptions.rng}, honoured by a backend that declares
+ * {@link BackendCapabilities.deterministicRansac}
+ * ([#24](https://github.com/webarkit/webarkit/issues/24)). Without one, a
  * caller that needs reproducibility from it cannot get it, and that is a known
  * gap rather than licence to be non-deterministic elsewhere.
  *

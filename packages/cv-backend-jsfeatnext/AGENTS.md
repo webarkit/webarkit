@@ -36,7 +36,8 @@ change, it changes with a new measurement attached.
 ## Capability negotiation must stay honest
 
 `capabilities` in `src/jsfeatnext_backend.ts` currently declares
-`detectors: ["fast"]`, `descriptors: ["orb"]`, `matchFilters: []`.
+`detectors: ["fast"]`, `descriptors: ["orb"]`, `matchFilters: []`,
+`deterministicRansac: true` (`RansacOptions.rng` reaches `ransac_params_t`, #24).
 
 **Never add an entry the API cannot actually reach.** `matchFilters` is empty
 because `filterMatches` is not implemented here — that empty array is a true

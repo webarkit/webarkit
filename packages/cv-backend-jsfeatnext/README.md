@@ -49,7 +49,7 @@ the other — is confined here.
 ```ts
 cv.capabilities;
 // { name: 'jsfeatnext', detectors: ['fast'], descriptors: ['orb'],
-//   defaultDescriptor: 'orb', matchFilters: [] }
+//   defaultDescriptor: 'orb', matchFilters: [], deterministicRansac: true }
 ```
 
 Two of those deserve a note, because they are narrower than what jsfeatNext can
@@ -131,6 +131,15 @@ being reduced — see [webarkit/webarkit#11](https://github.com/webarkit/webarki
 for the full methodology. At sub-millisecond added cost per restart, three
 restarts stay negligible next to a 30fps frame budget — correctness insurance
 with no cost the caller has to opt into or even know about.
+
+**`estimateHomography` honours `RansacOptions.rng`**, and `capabilities`
+declares `deterministicRansac: true`. The function is handed to jsfeatNext's
+`ransac_params_t` as its RNG, the only source `find_homography` samples from,
+and all three restarts draw from it in turn: with an RNG in the same state, the
+same inputs give the same result, and `Math.random` is not read. Without one,
+the call is what it was before
+([#24](https://github.com/webarkit/webarkit/issues/24)): `ransac_params_t`'s
+default, `() => Math.random()`.
 
 **Returned arrays belong to the caller.** Every typed array is copied out.
 jsfeatNext reuses its scratch matrices between calls, so handing back views

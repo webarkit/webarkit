@@ -14,6 +14,13 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+### Added
+
+- **`RansacOptions.rng` and the `deterministicRansac` capability**
+  ([#24](https://github.com/webarkit/webarkit/issues/24)), additive: an optional uniform source in
+  [0, 1) for `estimateHomography`'s RANSAC sampling, honoured by `cv-backend-jsfeatnext`, which
+  declares `deterministicRansac: true`; without it, behaviour is unchanged.
+
 ### Fixed
 
 - **`validate-target --decode-only` and `--help` load no backend**
