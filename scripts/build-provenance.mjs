@@ -106,6 +106,7 @@ export const SERVED = {
     "examples/js/instrument-backend.mjs": "both",
     "examples/js/packages-bundle.mjs": "bundled",
     "examples/js/pinball-shared.mjs": "page",
+    "examples/js/run-lifecycle.mjs": "page",
 };
 
 const git = (...args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8" });
