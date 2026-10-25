@@ -307,9 +307,9 @@ describe("match", () => {
  * A correspondence set with a known homography and a controlled outlier
  * fraction, sized like the pinball demo's real case (~95 points, ~67% true
  * inliers under threshold-4 noise, rest pure noise). A synthetic PRNG rather
- * than Math.random so the SET is reproducible across runs -- RANSAC's own
- * internal sampling is still random, which is exactly what the test below
- * needs to exercise.
+ * than Math.random so the SET is reproducible across runs. RANSAC's own
+ * sampling is a separate source: the test below seeds it itself, trial by
+ * trial, through `RansacOptions.rng`.
  */
 function noisyCorrespondences(n: number, inlierFrac: number, seed: number) {
     let state = seed;
@@ -368,8 +368,10 @@ describe("estimateHomography restarts against a bad RANSAC draw (issue #96 follo
     // `ransac()` (webarkit/webarkit#11) -- find_homography refits the winning
     // hypothesis over its full inlier set and reclassifies against that refit
     // model, which recovers much of what a mediocre minimal sample misses.
-    // This test is what would catch a regression back to raw ransac(), or
-    // back to a single attempt.
+    // This test is meant to catch a regression back to a single attempt, or
+    // back to raw ransac(). Under the seeds below, only the single-attempt
+    // regression has been measured (the table in the test); the raw-ransac()
+    // case has not been re-measured under them.
     it("never returns a severely degenerate model across many independent runs", () => {
         // 200 trials, each drawing from its own seeded RNG: trial `seed` passes
         // `rng: mulberry32(seed)`, seeds 1 to 200 (#24's `RansacOptions.rng`).
@@ -406,9 +408,11 @@ describe("estimateHomography restarts against a bad RANSAC draw (issue #96 follo
         for (let seed = 1; seed <= 200; seed++) {
             const h = cv.estimateHomography(src, dst, { threshold: 4, rng: mulberry32(seed) });
             expect(h.ok, `seed ${seed}`).toBe(true);
-            // 70% of the true inlier count: comfortably above what a bad draw
-            // produces (measured: 4) and comfortably below normal runs
-            // (measured: 57-64), so this cannot pass by accident.
+            // 70% of the true inlier count (45 of 64). Under these seeds, at 3
+            // restarts every trial gives 64, 19 above the floor. At 1 restart
+            // the six failing seeds give 7, 7, 4, 44, 4 and 4: five are far
+            // below it, but seed 80's 44 is only one below, so the floor is
+            // not comfortably above every bad draw.
             expect(h.numInliers, `seed ${seed}`).toBeGreaterThanOrEqual(Math.round(nInliers * 0.7));
         }
     });
