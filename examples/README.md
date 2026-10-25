@@ -669,7 +669,9 @@ pyramid probe and the desktop replay share — no DOM, tested in
 `examples/test/` by the root `npm test`. `scripts/compare-bench.mjs` and
 `scripts/replay-clips.mjs` (a desktop pre-flight that replays the bundled
 clips through the tracker; ffmpeg needed) import it too, so a comparison or a
-replay means by each name what the page does.
+replay means by each name what the page does. Its code lives in the
+`js/bench-*.mjs` modules beside it, one per concern (#98), which it re-exports
+under the names it has always exported: import from `js/bench-metrics.mjs`.
 
 ## Images
 
