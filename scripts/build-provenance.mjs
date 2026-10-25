@@ -87,7 +87,18 @@ export const CLEAN_PATHS = [
  */
 export const SERVED = {
     "examples/bench-nft.html": "page",
+    "examples/js/bench-definitions.mjs": "both",
+    "examples/js/bench-detection.mjs": "both",
+    "examples/js/bench-export-checks.mjs": "both",
+    "examples/js/bench-frames.mjs": "both",
+    "examples/js/bench-locks.mjs": "both",
+    "examples/js/bench-loops.mjs": "both",
     "examples/js/bench-metrics.mjs": "both",
+    "examples/js/bench-params.mjs": "both",
+    "examples/js/bench-probe-replay.mjs": "both",
+    "examples/js/bench-provenance.mjs": "both",
+    "examples/js/bench-stats.mjs": "both",
+    "examples/js/bench-summary.mjs": "both",
     "examples/js/detection-policy.mjs": "page",
     "examples/js/detection-replies.mjs": "page",
     "examples/js/detection-worker-core.mjs": "worker",
