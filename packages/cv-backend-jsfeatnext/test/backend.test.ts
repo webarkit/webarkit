@@ -339,6 +339,17 @@ function noisyCorrespondences(n: number, inlierFrac: number, seed: number) {
     return { src, dst, nInliers };
 }
 
+/** `ransac_rng.test.ts`'s mulberry32, inlined: one test file does not import another. */
+function mulberry32(seed: number): () => number {
+    let a = seed >>> 0;
+    return () => {
+        a = (a + 0x6d2b79f5) >>> 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
 describe("estimateHomography restarts against a bad RANSAC draw (issue #96 follow-up)", () => {
     // What this pins down: jsfeatNext's motion_estimator.ransac shrinks its
     // remaining iteration budget the moment it finds an IMPROVING hypothesis,
@@ -360,30 +371,45 @@ describe("estimateHomography restarts against a bad RANSAC draw (issue #96 follo
     // This test is what would catch a regression back to raw ransac(), or
     // back to a single attempt.
     it("never returns a severely degenerate model across many independent runs", () => {
-        // 200 trials, not 25: a short loop would only catch a regression back
-        // to a single-attempt call about half the time.
+        // 200 trials, each drawing from its own seeded RNG: trial `seed` passes
+        // `rng: mulberry32(seed)`, seeds 1 to 200 (#24's `RansacOptions.rng`).
+        // That keeps the breadth of 200 different draws and makes them the
+        // same draws on every run, so the test passes or fails, never by
+        // chance. A failing trial names its seed, and reproduces from the
+        // message alone (#120).
         //
-        // History (see webarkit/webarkit#11 for the full methodology): this
-        // comment originally claimed "the chance of missing every bad draw is
-        // under 1%", a figure measured at RANSAC_RESTARTS = 1 and never
-        // rechecked after RESTARTS was bumped to 3. Corrected once already to
-        // "~6-7% flake chance per run", measured for raw ransac() restarted 3
-        // times (1/3000 trial-level failures, 1/15 blocks, worst observed 38
-        // of 64). Since then estimateHomography switched from restarting
-        // ransac() to restarting find_homography() (still RESTARTS = 3): the
-        // same worktree A/B harness measured 0/3000 trial-level failures --
-        // every one of 3000 trials landed on the true 64-inlier model. That is
-        // an empirical result over a large but finite sample, not a proof the
-        // failure mode is impossible, so this test stays at 200 trials as the
-        // regression guard rather than being deleted as unnecessary.
+        // Why 200 and not 25 -- the history, from when every trial drew from
+        // an unseeded Math.random (see webarkit/webarkit#11 for the full
+        // methodology): a short loop would only have caught a regression back
+        // to a single-attempt call about half the time. This comment
+        // originally claimed "the chance of missing every bad draw is under
+        // 1%", a figure measured at RANSAC_RESTARTS = 1 and never rechecked
+        // after RESTARTS was bumped to 3. Corrected once to "~6-7% flake
+        // chance per run", measured for raw ransac() restarted 3 times (1/3000
+        // trial-level failures, 1/15 blocks, worst observed 38 of 64). After
+        // estimateHomography switched from restarting ransac() to restarting
+        // find_homography() (still RESTARTS = 3), the same worktree A/B
+        // harness measured 0/3000 trial-level failures. Unseeded, the test
+        // still failed once (5 inliers against >= 45) in about 25 full
+        // `npm test` runs during #120's check.
+        //
+        // What these 200 seeds see, on this input and threshold (2026-10-25):
+        //
+        //   RANSAC_RESTARTS  trials below 45 inliers            smallest numInliers
+        //   3 (today)        0                                  64
+        //   1                6: seeds 24, 63, 79, 80, 126, 160  4
+        //
+        // So the seeds pass on the code as it is and fail on a regression to
+        // a single attempt, both deterministically. Over seeds 1 to 1000 it is
+        // 0 trials at 3 restarts and 28 at 1.
         const { src, dst, nInliers } = noisyCorrespondences(95, 0.67, 42);
-        for (let trial = 0; trial < 200; trial++) {
-            const h = cv.estimateHomography(src, dst, { threshold: 4 });
-            expect(h.ok).toBe(true);
+        for (let seed = 1; seed <= 200; seed++) {
+            const h = cv.estimateHomography(src, dst, { threshold: 4, rng: mulberry32(seed) });
+            expect(h.ok, `seed ${seed}`).toBe(true);
             // 70% of the true inlier count: comfortably above what a bad draw
             // produces (measured: 4) and comfortably below normal runs
             // (measured: 57-64), so this cannot pass by accident.
-            expect(h.numInliers).toBeGreaterThanOrEqual(Math.round(nInliers * 0.7));
+            expect(h.numInliers, `seed ${seed}`).toBeGreaterThanOrEqual(Math.round(nInliers * 0.7));
         }
     });
 });
