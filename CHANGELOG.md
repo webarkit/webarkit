@@ -20,6 +20,13 @@ release pull request's body and the GitHub Release's notes.
   ([#24](https://github.com/webarkit/webarkit/issues/24)), additive: an optional uniform source in
   [0, 1) for `estimateHomography`'s RANSAC sampling, honoured by `cv-backend-jsfeatnext`, which
   declares `deterministicRansac: true`; without it, behaviour is unchanged.
+- **The stall check is a tested module, with its command**
+  ([#117](https://github.com/webarkit/webarkit/issues/117)): `stallCheck` in
+  `examples/js/bench-stall.mjs`, and `node scripts/stall-check.mjs <export.json>`. Its logic is
+  moved in unchanged from the copy embedded in M3's record (SHA-256 `cccb475b…`), and reproduces
+  that copy's result, field for field, and its output and exit code, on every committed export.
+  Each arm is tested passing and failing, and the verdict over every committed export with frames
+  is pinned. The record's copy stays as the record of what ran.
 
 ### Fixed
 
