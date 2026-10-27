@@ -207,28 +207,38 @@ function findChrome() {
  * Runs in the page before its own scripts: records what the checks read and
  * keeps what they inject faults through. Changes nothing the page does,
  * unless `fabricatedWrap` arms that fault: then the first frame callback
- * whose `mediaTime` is at least `fromS` into the clip, and at least `beforeEndS`
- * before its end, receives `mediaTime: toS` instead, and every other frame is
- * untouched. What that frame carried is kept, as `fabricatedWrap.replacedS`.
+ * after a delivered frame whose `mediaTime` was at least `fromS` into the clip,
+ * and at least `beforeEndS` before its end, receives `mediaTime: toS` instead,
+ * and every other frame is untouched. The condition is on the previous
+ * delivered frame, not the replaced one, because that is the time
+ * `advanceLoop` compares against: a first frame replaced would have no
+ * earlier time, and no step back would be seen. Delivered means as the page's
+ * callback received it, after any replacement. Kept: the previous delivered
+ * time, as `fabricatedWrap.replacedAfterS`, and what the replaced frame
+ * carried, as `fabricatedWrap.replacedS`.
  */
 function instrument({ fabricatedWrap = null } = {}) {
     const pc = { workers: [], exports: [], startClicks: [], console: [], fabricatedWrap };
     window.__pageCheck = pc;
     if (fabricatedWrap) {
         const requestVideoFrameCallback = HTMLVideoElement.prototype.requestVideoFrameCallback;
+        let deliveredS;
         HTMLVideoElement.prototype.requestVideoFrameCallback = function (callback) {
             const video = this;
             return requestVideoFrameCallback.call(this, function (now, metadata) {
                 const { fromS, beforeEndS, toS } = fabricatedWrap;
-                const m = metadata?.mediaTime;
+                const previousS = deliveredS;
                 if (
                     fabricatedWrap.replacedS === undefined &&
-                    m >= fromS &&
-                    m <= video.duration - beforeEndS
+                    previousS >= fromS &&
+                    previousS <= video.duration - beforeEndS
                 ) {
-                    fabricatedWrap.replacedS = m;
+                    fabricatedWrap.replacedAfterS = previousS;
+                    fabricatedWrap.replacedS = metadata?.mediaTime;
+                    deliveredS = toS;
                     return callback.call(this, now, { ...metadata, mediaTime: toS });
                 }
+                deliveredS = metadata?.mediaTime;
                 return callback.call(this, now, metadata);
             });
         };
@@ -455,7 +465,10 @@ async function syncLoopsRun(browser, base) {
  * wrap is more than 0.5 s; without it, a step back of more than 0.5 s reads as
  * the clip restarting, and the run would end `done` a loop early. So the page's
  * refusal is seen whole: `advanceLoop` given the duration, its throw, and
- * `tick` turning that into a failed run.
+ * `tick` turning that into a failed run. The frame replaced is the one after a
+ * delivered frame at least 1.5 s into the clip and 1 s before its end, so the
+ * step is always back from a time the page has read: replacing the first
+ * frame of a run that started late would show no step at all.
  */
 async function syncFabricatedWrap(browser, base) {
     const names = [
@@ -472,10 +485,13 @@ async function syncFabricatedWrap(browser, base) {
             await check(names[0], async () => {
                 const status = await p.read.status();
                 const error = await p.read.error();
-                const replacedS = await p.page.evaluate(
-                    () => window.__pageCheck.fabricatedWrap.replacedS,
+                const { replacedAfterS, replacedS } = await p.page.evaluate(
+                    () => window.__pageCheck.fabricatedWrap,
                 );
-                const fault = `the frame replaced carried ${replacedS ?? "(none replaced)"} s`;
+                const fault =
+                    replacedS === undefined
+                        ? "(none replaced)"
+                        : `the frame replaced carried ${replacedS} s, after a delivered ${replacedAfterS} s`;
                 expect(status === "failed", `status "${status}", error line "${error}"; ${fault}`);
                 const cause = error.split("\n\n")[0];
                 expect(
