@@ -2559,9 +2559,84 @@ describe("bundleManifestRefusal: what --packages bundle refuses in the build's m
         for (const r of [bundleManifestRefusal(null), blind]) expect(r).not.toMatch(/\n/);
     });
 
+    const HEAD = "0123456789abcdef0123456789abcdef01234567";
     it("takes a manifest that names its commit, clean or not: the header says which", () => {
-        expect(bundleManifestRefusal({ head: "668d6fa", clean: true })).toBeNull();
-        expect(bundleManifestRefusal({ head: "668d6fa", clean: false })).toBeNull();
+        expect(bundleManifestRefusal({ head: HEAD, clean: true, dirtyPaths: [] })).toBeNull();
+        expect(
+            bundleManifestRefusal({ head: HEAD, clean: false, dirtyPaths: ["examples/js/a.mjs"] }),
+        ).toBeNull();
+        expect(
+            bundleManifestRefusal({
+                head: "0123456789abcdef".repeat(4),
+                clean: true,
+                dirtyPaths: [],
+            }),
+        ).toBeNull();
+    });
+
+    // #119: `head: ""` passed, and the replay's header read "built at , clean"; `clean` was
+    // never compared with `dirtyPaths`. A dirty manifest that agrees with itself is still taken.
+    it.each([
+        ["an empty head", { head: "" }, /head "" is not a full commit/],
+        ["a short head", { head: "668d6fa" }, /head "668d6fa" is not a full commit/],
+        ["a head that is not hex", { head: "z".repeat(40) }, /head "z{40}" is not a full commit/],
+        [
+            "a head one digit too long",
+            { head: `${HEAD}0` },
+            /head "[0-9a-f]{41}" is not a full commit/,
+        ],
+        [
+            "an upper-case head",
+            { head: HEAD.toUpperCase() },
+            /head "[0-9A-F]{40}" is not a full commit/,
+        ],
+        [
+            "a clean flag beside dirty paths",
+            { dirtyPaths: ["examples/js/a.mjs"] },
+            /says its tree is clean, but lists dirty paths \(examples\/js\/a\.mjs\)/,
+        ],
+        [
+            "a clean flag beside dirty paths that are not a list",
+            { dirtyPaths: "examples/js/a.mjs" },
+            /provenance\.json's dirtyPaths "examples\/js\/a\.mjs" is not a list/,
+        ],
+        [
+            "a clean flag beside no list of dirty paths",
+            { dirtyPaths: undefined },
+            /provenance\.json records no dirtyPaths list/,
+        ],
+        [
+            "a dirty flag beside no dirty path, from a git build",
+            { clean: false },
+            /says its tree is dirty, but lists no dirty path/,
+        ],
+        [
+            "a clean flag that is not a boolean",
+            { clean: "yes" },
+            /provenance\.json's clean flag "yes" is not a boolean/,
+        ],
+        ["no clean flag", { clean: undefined }, /provenance\.json records no clean flag/],
+        [
+            "a dirty flag beside no list of dirty paths",
+            { clean: false, dirtyPaths: undefined },
+            /provenance\.json records no dirtyPaths list/,
+        ],
+        [
+            "a dirty flag beside dirty paths that are not a list",
+            { clean: false, dirtyPaths: "examples/js/a.mjs" },
+            /provenance\.json's dirtyPaths "examples\/js\/a\.mjs" is not a list/,
+        ],
+    ])("refuses a manifest with %s, as hand-edited or broken", (_, o, why) => {
+        const manifest = { head: HEAD, clean: true, dirtyPaths: [], ...o };
+        const r = bundleManifestRefusal(manifest);
+        expect(r, `bundleManifestRefusal took ${JSON.stringify(manifest)}`).toMatch(why);
+        expect(r).toMatch(
+            /^--packages bundle needs a manifest that a build wrote: examples\/dist\/provenance\.json/,
+        );
+        expect(r).toMatch(
+            /, so it was hand-edited or written by a broken build\. To fix: run `npm run build`$/,
+        );
+        expect(r).not.toMatch(/\n/);
     });
 
     // #120 (BM2, BM4, BM8): only `{ head: null, clean: false }` was refused in a test, so a
@@ -3042,6 +3117,7 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
             startedAtIso: "2026-10-01T10:00:00.000Z",
             endedAtIso: "2026-10-01T10:01:00.000Z",
             endedBy: "done",
+            failure: null,
         },
         ticks: 1512,
         windowSize: 1512,
@@ -3116,6 +3192,18 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
             "an export that says nothing of its end",
             { run: run({ endedBy: undefined }) },
             /^run\.endedBy none: /,
+        ],
+        // #119 (PG15): without failRun's `endedBy = "failed"`, a run that failed at its own end
+        // exported `done` beside its failure, and no gap named it.
+        [
+            "a run that failed, though it says done",
+            { run: run({ failure: "The run failed on frame 384: probe-end-throw" }) },
+            /^run\.failure "The run failed on frame 384: probe-end-throw": a session run did not fail/,
+        ],
+        [
+            "a run record that says nothing of a failure",
+            { run: run({ failure: undefined }) },
+            /^run\.failure not recorded: /,
         ],
         [
             "a window that lost frames",
@@ -3349,7 +3437,7 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
     });
     const SESSION_FIELDS = Object.freeze({
         loops: { firstLoop: 1, loopCount: 4 },
-        run: { order: 1, endedBy: "done" },
+        run: { order: 1, endedBy: "done", failure: null },
         ticks: 1512,
         windowSize: 1512,
         runSummary: { trackTimeShare: { share: 0.5, complete: true } },
@@ -3707,7 +3795,7 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
         it.each(["worker", "sync"])(
             "refuses a %s export recorded as a session run that the rule, recomputed, does not bear out",
             (path) => {
-                const stopped = { run: { order: 1, endedBy: "stopped" } };
+                const stopped = { run: { order: 1, endedBy: "stopped", failure: null } };
                 const worker = workerExport(path === "worker" ? stopped : {});
                 const sync = pageExport("sync", syncFrames(), path === "sync" ? stopped : {});
                 const r = refusal([worker, sync]);
@@ -3717,6 +3805,27 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
                     /records a session run, but recomputed from the export it has gaps: run\.endedBy stopped: [^;]*$/,
                 );
                 expect(r).not.toMatch(/\n/);
+            },
+        );
+
+        // #119 (PG15): the recompute read `endedBy` alone, so a failed run that said done passed.
+        it.each(["worker", "sync"])(
+            "refuses a %s export recorded as a session run that says done beside a failure",
+            (path) => {
+                const failed = {
+                    run: {
+                        order: 1,
+                        endedBy: "done",
+                        failure: "The run failed on frame 384: probe-end-throw",
+                    },
+                };
+                const worker = workerExport(path === "worker" ? failed : {});
+                const sync = pageExport("sync", syncFrames(), path === "sync" ? failed : {});
+                const r = refusal([worker, sync]);
+                expect(r).toMatch(path === "worker" ? /export-0\.json/ : /export-1\.json/);
+                expect(r).toMatch(
+                    /records a session run, but recomputed from the export it has gaps: run\.failure "The run failed on frame 384: probe-end-throw": [^;]*$/,
+                );
             },
         );
 

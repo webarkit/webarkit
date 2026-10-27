@@ -102,7 +102,8 @@ export const SESSION_LOOPS = Object.freeze({ firstLoop: 1, loopCount: 4 });
  *
  * A session run is a tracking or a stateless run of a bundled clip, over one
  * warm-up loop and {@link SESSION_LOOPS}' counted ones, with its place in the
- * session's order (`run.order`), that ended itself (`run.endedBy` `done`) with
+ * session's order (`run.order`), that ended itself (`run.endedBy` `done`) and
+ * did not fail (`run.failure` null, read whatever `endedBy` says: #119) with
  * every frame it processed still in its window (`ticks`, a whole number, equal
  * to `windowSize`); it records its detection path (`detection.path`, sync or
  * worker: an export without one is not read as a synchronous run's here); a
@@ -154,6 +155,21 @@ export function sessionRunGaps(e, defaults) {
         gaps.push(
             `run.endedBy ${shown(e?.run?.endedBy)}: a session run ends itself on the first frame after its counted loops (done)`,
         );
+    }
+    // Read beside endedBy, not through it (#119): `failRun` setting `endedBy` is all that kept
+    // a run that failed at its own end from exporting `done`. A missing run record is named
+    // above, twice; a record without the field is a gap, never a pass.
+    if (e?.run) {
+        const failure = e.run.failure;
+        if (failure === undefined) {
+            gaps.push(
+                "run.failure not recorded: a session run records that it did not fail (null)",
+            );
+        } else if (failure !== null) {
+            gaps.push(
+                `run.failure ${JSON.stringify(failure)}: a session run did not fail, whatever its endedBy says`,
+            );
+        }
     }
     // Both absent would compare equal: the evidence that no frame was lost must be there.
     if (!(Number.isInteger(e?.ticks) && e.ticks === e?.windowSize)) {

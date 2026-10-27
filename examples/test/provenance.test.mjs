@@ -153,6 +153,83 @@ describe("provenanceRefusal", () => {
         expect(provenanceRefusal(m, o, session)).toMatch(why);
     });
 
+    // #119: Start read `head` only for null, so `head: ""` passed, and it read `clean` alone, so
+    // `clean: true` beside a non-empty `dirtyPaths` passed. No build writes either.
+    it.each([
+        ["an empty head", { ...manifest, head: "" }, /the manifest's head "" is not a full commit/],
+        [
+            "a short head",
+            { ...manifest, head: "0123456" },
+            /the manifest's head "0123456" is not a full commit/,
+        ],
+        [
+            "a head that is not hex",
+            { ...manifest, head: "z".repeat(40) },
+            /the manifest's head "z{40}" is not a full commit/,
+        ],
+        [
+            "a head one digit too long",
+            { ...manifest, head: `${manifest.head}0` },
+            /the manifest's head "[0-9a-f]{41}" is not a full commit/,
+        ],
+        [
+            "an upper-case head",
+            { ...manifest, head: manifest.head.toUpperCase() },
+            /the manifest's head "[0-9A-F]{40}" is not a full commit/,
+        ],
+        [
+            "a clean flag beside dirty paths",
+            { ...manifest, dirtyPaths: ["examples/js/a.mjs"] },
+            /the manifest says its tree is clean, but lists dirty paths \(examples\/js\/a\.mjs\)/,
+        ],
+        [
+            "a clean flag beside no list of dirty paths",
+            { ...manifest, dirtyPaths: undefined },
+            /the manifest records no dirtyPaths list/,
+        ],
+        [
+            "a dirty flag beside no dirty path, from a git build",
+            { ...manifest, clean: false },
+            /the manifest says its tree is dirty, but lists no dirty path/,
+        ],
+        [
+            "a clean flag that is not a boolean",
+            { ...manifest, clean: "yes" },
+            /the manifest's clean flag "yes" is not a boolean/,
+        ],
+        ["no clean flag", { ...manifest, clean: undefined }, /the manifest records no clean flag/],
+        [
+            "a dirty flag beside no list of dirty paths",
+            { ...manifest, clean: false, dirtyPaths: undefined },
+            /the manifest records no dirtyPaths list/,
+        ],
+        [
+            "a dirty flag beside dirty paths that are not a list",
+            { ...manifest, clean: false, dirtyPaths: "examples/js/a.mjs" },
+            /the manifest's dirtyPaths "examples\/js\/a\.mjs" is not a list/,
+        ],
+    ])("refuses a session run on a manifest with %s, as hand-edited or broken", (_, m, why) => {
+        const r = provenanceRefusal(m, observed, session);
+        expect(r, `provenanceFindings took ${JSON.stringify(m)}`).toMatch(why);
+        expect(r).toMatch(
+            /, so it was hand-edited or written by a broken build\. To fix: run `npm run build`\.$/,
+        );
+    });
+
+    it("lets a session run start on a full commit hash, SHA-1's or SHA-256's", () => {
+        for (const head of [manifest.head, "0123456789abcdef".repeat(4)]) {
+            expect(provenanceRefusal({ ...manifest, head }, observed, session)).toBeNull();
+        }
+    });
+
+    // The build without git writes head null, clean false and dirtyPaths []: a dirty flag beside
+    // no dirty path, which is its own finding, never the flags' disagreement.
+    it("reads a manifest built without git as such, not as one whose flags disagree", () => {
+        const r = provenanceRefusal({ ...manifest, head: null, clean: false }, observed, session);
+        expect(r).toMatch(/git could not describe the tree/);
+        expect(r).not.toMatch(/hand-edited|dirty tree/);
+    });
+
     // #120 (PF3, PF4, PF5, PF6, PF12): each of these passed with every row above green. A refusal
     // that went missing fails as an assertion naming provenanceFindings, not as a null `toMatch`.
     it.each([
@@ -168,17 +245,18 @@ describe("provenanceRefusal", () => {
             observed,
             /git could not describe the tree/,
         ],
+        // These two pinned "built from a dirty tree" until #119; the flags check now answers first.
         [
             "a manifest that records no clean flag",
             { ...manifest, clean: undefined },
             observed,
-            /built from a dirty tree/,
+            /the manifest records no clean flag, so it was hand-edited/,
         ],
         [
             "a manifest whose clean flag is not a boolean",
             { ...manifest, clean: "true" },
             observed,
-            /built from a dirty tree/,
+            /the manifest's clean flag "true" is not a boolean, so it was hand-edited/,
         ],
         [
             "a bundle that could not be fetched at Start",
@@ -209,7 +287,7 @@ describe("provenanceRefusal", () => {
 
     it("names every reason at once, each remedy once", () => {
         const refusal = provenanceRefusal(
-            { ...manifest, clean: false },
+            { ...manifest, clean: false, dirtyPaths: ["examples/js/a.mjs"] },
             { ...observed, bundleSha256: "x" },
             session,
         );
