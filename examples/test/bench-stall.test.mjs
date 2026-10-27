@@ -27,12 +27,14 @@
 
 // The stall check (#117): each arm passed and failed on a synthetic export,
 // then the verdict over every committed export with frames, as the M3 record's
-// check-committed.mjs reads them, and the command on two of them.
+// check-committed.mjs reads them, and the command on two of them. Last, where
+// its monotonicity arm and `isLoopWrap` read a step back alike, and where not.
 
 import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { countLoopWraps, isLoopWrap } from "../js/bench-metrics.mjs";
 import {
     BOUND_MS,
     CLIP_S,
@@ -414,5 +416,135 @@ describe("scripts/stall-check.mjs", () => {
                 /^FAIL gaps: frame \d+: a gap of 866\.7 ms in media time, above 500 ms$/,
             ),
         ]);
+    });
+});
+
+// #117 asks whether the monotonicity arm stays or defers to `isLoopWrap`. Both
+// read a step back in media time, `prev` then `cur`, as the clip restarting or
+// not. Neither rule changes here: these tests pin where they agree and every
+// input on which they do not, derived from the two codes, and that the
+// committed corpus holds none of the latter.
+describe("the monotonicity arm against isLoopWrap, with the clip's duration", () => {
+    /** Whether the arm reads `prev` then `cur` as the clip restarting. */
+    const armAccepts = (prev, cur) =>
+        !stallCheck(exportOf([prev, cur])).fails.some((l) => l.startsWith("monotonicity:"));
+    /** Whether `isLoopWrap` does, with the clip's duration; a refusal is a throw. */
+    const wrapAccepts = (prev, cur) => {
+        try {
+            return isLoopWrap({ mediaTimeSeconds: prev }, { mediaTimeSeconds: cur }, D);
+        } catch (e) {
+            expect(e).toBeInstanceOf(RangeError);
+            return false;
+        }
+    };
+    const both = (prev, cur) => [armAccepts(prev, cur), wrapAccepts(prev, cur)];
+
+    describe("agree", () => {
+        it("on the clip restarting", () => {
+            expect(both(11.9375, 0)).toEqual([true, true]);
+            expect(both(11.9, 0.1)).toEqual([true, true]);
+        });
+
+        it("on a gap across the wrap of exactly 0.5 s", () => {
+            expect(both(11.75, 0.25)).toEqual([true, true]);
+            expect(both(11.5, 0)).toEqual([true, true]);
+        });
+
+        it("on a frame a little past the clip's end, then one near its start", () => {
+            expect(both(12.0005, 0.4)).toEqual([true, true]);
+        });
+
+        it("on a step back within the clip, or one that skips more than 0.5 s across the wrap", () => {
+            expect(both(6, 5.5)).toEqual([false, false]);
+            expect(both(0.4, 0.1)).toEqual([false, false]);
+            expect(both(11.6, 0.2)).toEqual([false, false]);
+        });
+
+        it("on a step back to more than 0.5 s into the clip, from within it", () => {
+            expect(both(11.9375, 0.5625)).toEqual([false, false]);
+        });
+    });
+
+    describe("disagree", () => {
+        it("(1) a step back to before the clip's start: the arm accepts, isLoopWrap refuses", () => {
+            // 12 - 11.9 + (-0.1) ≈ 0: no gap across the wrap at all.
+            expect(both(11.9, -0.1)).toEqual([true, false]);
+        });
+
+        it("(2) a step back to more than 0.5 s in, from past the clip's end: the arm accepts, isLoopWrap refuses", () => {
+            // 12 - 12.7 + 0.6 = -0.1 s across the wrap; isLoopWrap refuses cur
+            // more than 0.5 s into the clip first, and caps prev at the clip's end.
+            expect(both(12.7, 0.6)).toEqual([true, false]);
+        });
+
+        it("(3) a gap across the wrap within TIME_EPS_S above 0.5 s: the arm refuses, isLoopWrap accepts", () => {
+            // From within the clip: the skip is 0.5 s plus 0.5 ns.
+            expect(both(11.5, 5e-10)).toEqual([false, true]);
+            // From past its end, cur within TIME_EPS_S of 0.5 s: isLoopWrap reads
+            // the skip as cur alone, the arm as cur less the 0.2 ns past the end.
+            expect(both(12 + 2e-10, 0.5 + 5e-10)).toEqual([false, true]);
+        });
+
+        it("(4) after a refused step back: the arm counts a loop and reads on, isLoopWrap throws", () => {
+            const e = exportOf([6, 5.5, 5.5625]);
+            const r = stallCheck(e);
+            expect(armsFailed(r)).toContain("monotonicity");
+            expect(r.loops).toBe(1);
+            expect(() => countLoopWraps(e.frames, { clipDurationS: D })).toThrow(RangeError);
+        });
+
+        it("(5) with no clip duration: the arm reads no step back, isLoopWrap reads it by its size", () => {
+            const e = { frames: [11.9, 0.1].map((t) => ({ mediaTimeSeconds: t })) };
+            expect(stallCheck(e).fails).toEqual([
+                "no clip duration or no frames to read (undefined, 2 frames)",
+            ]);
+            expect(isLoopWrap(e.frames[0], e.frames[1])).toBe(true);
+        });
+    });
+
+    it("agree on every step back in the committed exports", () => {
+        /** Whether `isLoopWrap` reads the step back as a wrap, with `clip` or none. */
+        const wraps = (prev, cur, clip) => {
+            try {
+                return isLoopWrap(prev, cur, clip);
+            } catch {
+                return false;
+            }
+        };
+        let steps = 0;
+        let fallback = 0;
+        let unread = 0;
+        for (const name of readdirSync(BENCHMARKS).filter((f) => f.endsWith(".json"))) {
+            const e = JSON.parse(readFileSync(`${BENCHMARKS}${name}`, "utf8"));
+            if (!Array.isArray(e.frames) || e.frames.length < 2) continue;
+            const clip = e.clipDurationS ?? CLIP_S[e.bundledClip];
+            for (let i = 1; i < e.frames.length; i++) {
+                const [prev, cur] = [e.frames[i - 1], e.frames[i]];
+                if (!(cur.mediaTimeSeconds < prev.mediaTimeSeconds)) continue;
+                const at = `${name} frame ${i}`;
+                if (!(clip > 0)) {
+                    // (5): the six acquisition tests on clips of their own, each
+                    // stepping back once, from its clip's end to its start.
+                    unread++;
+                    expect(wraps(prev, cur, null), at).toBe(true);
+                    continue;
+                }
+                steps++;
+                const arm = !stallCheck({ clipDurationS: clip, frames: [prev, cur] }).fails.some(
+                    (l) => l.startsWith("monotonicity:"),
+                );
+                expect([arm, wraps(prev, cur, clip)], at).toEqual([true, true]);
+                // The arm takes an older export's duration from CLIP_S; the
+                // page's readers of a wrap pass `clipDurationS`, which such an
+                // export does not record, so they read it with none.
+                if (e.clipDurationS === undefined) {
+                    fallback++;
+                    expect(wraps(prev, cur, null), at).toBe(true);
+                }
+            }
+        }
+        expect(steps).toBe(257);
+        expect(fallback).toBe(127);
+        expect(unread).toBe(6);
     });
 });
