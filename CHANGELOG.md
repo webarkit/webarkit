@@ -30,6 +30,17 @@ release pull request's body and the GitHub Release's notes.
   now imported only by the full mode, which, when it cannot load it, exits 2 with a message naming
   the backend and `--decode-only`, instead of failing at startup. A test runs the tool with the
   backend made unresolvable by a resolution hook.
+- **The bench page refuses a second run while one is pending or live, and keeps the first failure
+  cause on its error line** ([#166](https://github.com/webarkit/webarkit/issues/166), found on
+  review of [#165](https://github.com/webarkit/webarkit/pull/165); the code is now in
+  `examples/js/run-lifecycle.mjs`, [#179](https://github.com/webarkit/webarkit/pull/179)). Two
+  defects. A second run could start while the first was in its provenance check: the probe stayed
+  enabled, and its end enabled Start with that start still pending. Now Start and the probe are off
+  from Start's click until its run is live, or the start is refused or fails. A later failure
+  replaced the first cause on the error line. Now the line keeps the first cause until Start clears
+  it, and each later failure is recorded on its own run. This makes true the `[0.5.0]` sentence "A
+  later failure no longer replaces the first on the error line", which `[0.5.1]` records as not
+  describing the shipped behaviour.
 
 <!-- prettier-ignore-start -->
 
