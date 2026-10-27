@@ -3096,6 +3096,7 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
             startedAtIso: "2026-10-01T10:00:00.000Z",
             endedAtIso: "2026-10-01T10:01:00.000Z",
             endedBy: "done",
+            failure: null,
         },
         ticks: 1512,
         windowSize: 1512,
@@ -3170,6 +3171,18 @@ describe("sessionRunGaps: what keeps an export from being a session run", () => 
             "an export that says nothing of its end",
             { run: run({ endedBy: undefined }) },
             /^run\.endedBy none: /,
+        ],
+        // #119 (PG15): without failRun's `endedBy = "failed"`, a run that failed at its own end
+        // exported `done` beside its failure, and no gap named it.
+        [
+            "a run that failed, though it says done",
+            { run: run({ failure: "The run failed on frame 384: probe-end-throw" }) },
+            /^run\.failure "The run failed on frame 384: probe-end-throw": a session run did not fail/,
+        ],
+        [
+            "a run record that says nothing of a failure",
+            { run: run({ failure: undefined }) },
+            /^run\.failure not recorded: /,
         ],
         [
             "a window that lost frames",
@@ -3403,7 +3416,7 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
     });
     const SESSION_FIELDS = Object.freeze({
         loops: { firstLoop: 1, loopCount: 4 },
-        run: { order: 1, endedBy: "done" },
+        run: { order: 1, endedBy: "done", failure: null },
         ticks: 1512,
         windowSize: 1512,
         runSummary: { trackTimeShare: { share: 0.5, complete: true } },
@@ -3761,7 +3774,7 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
         it.each(["worker", "sync"])(
             "refuses a %s export recorded as a session run that the rule, recomputed, does not bear out",
             (path) => {
-                const stopped = { run: { order: 1, endedBy: "stopped" } };
+                const stopped = { run: { order: 1, endedBy: "stopped", failure: null } };
                 const worker = workerExport(path === "worker" ? stopped : {});
                 const sync = pageExport("sync", syncFrames(), path === "sync" ? stopped : {});
                 const r = refusal([worker, sync]);
@@ -3771,6 +3784,27 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
                     /records a session run, but recomputed from the export it has gaps: run\.endedBy stopped: [^;]*$/,
                 );
                 expect(r).not.toMatch(/\n/);
+            },
+        );
+
+        // #119 (PG15): the recompute read `endedBy` alone, so a failed run that said done passed.
+        it.each(["worker", "sync"])(
+            "refuses a %s export recorded as a session run that says done beside a failure",
+            (path) => {
+                const failed = {
+                    run: {
+                        order: 1,
+                        endedBy: "done",
+                        failure: "The run failed on frame 384: probe-end-throw",
+                    },
+                };
+                const worker = workerExport(path === "worker" ? failed : {});
+                const sync = pageExport("sync", syncFrames(), path === "sync" ? failed : {});
+                const r = refusal([worker, sync]);
+                expect(r).toMatch(path === "worker" ? /export-0\.json/ : /export-1\.json/);
+                expect(r).toMatch(
+                    /records a session run, but recomputed from the export it has gaps: run\.failure "The run failed on frame 384: probe-end-throw": [^;]*$/,
+                );
             },
         );
 
