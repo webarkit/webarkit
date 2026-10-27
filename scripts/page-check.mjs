@@ -46,18 +46,27 @@
  * - worker mode with a `.wnft` that does not load (#95, Task 6): the failure's
  *   cause is named, and Start stays disabled;
  * - a synchronous Start on a `.wnft` that does not load: the refusal names its
- *   404, and is the outcome of the click.
+ *   404, and is the outcome of the click;
+ * - and the page guards #120 found untested (part A): a sync run without
+ *   `?loops=`, with the same fabricated step back, refused at Download; the
+ *   `protocol` of the `?loops=1` and worker exports; Start under a `?tracker=`
+ *   it cannot read; Start's provenance check on a `?run=1` session run, under
+ *   nine faults, one per Start; a worker run whose detection post throws; and
+ *   the worker failing while the source starts, at the page's first Start.
  *
  * Nothing in the page is changed. Faults are injected from outside, through
  * the DevTools protocol, before the page's own scripts run: the page's
  * `Worker` is kept so that an `ErrorEvent` can be dispatched on it, the
- * video's frame callback is wrapped, in one scenario only, so that one frame's
+ * video's frame callback is wrapped, in two scenarios only, so that one frame's
  * `mediaTime` can be replaced, an
  * export's `Blob` is kept as `URL.createObjectURL` receives it, `console.warn`
  * and `console.error` are recorded, and the promise of Start's click handler
  * is kept, so that the outcome of a click is read when the handler has
- * finished, not at a fixed time. Every wait is on a condition, with a
- * deadline; no fixed sleep decides a check.
+ * finished, not at a fixed time. A worker's `postMessage`, a media element's
+ * `play()`, `fetch` and `performance.getEntriesByType` are wrapped too, and
+ * pass everything through until a check arms their fault ({@link instrument}).
+ * Every wait is on a condition, with a deadline; no fixed sleep decides a
+ * check.
  *
  * Serves the repository's `examples/` itself, on a free port of 127.0.0.1,
  * with `Cache-Control: no-store`, at `/examples/` so that the page's
@@ -216,9 +225,31 @@ function findChrome() {
  * callback received it, after any replacement. Kept: the previous delivered
  * time, as `fabricatedWrap.replacedAfterS`, and what the replaced frame
  * carried, as `fabricatedWrap.replacedS`.
+ *
+ * The other faults are armed later, by a check, in `window.__pageCheck.faults`
+ * (#120, part A), and each wrapper passes everything through while its own is
+ * unset:
+ * - `detectPost`, a message: the next `detect` job posted to a worker throws
+ *   it, and the fault is spent;
+ * - `workerFailsOnPlay`, a message: the next `play()` of a media element first
+ *   fails the page's worker, an `ErrorEvent` with it and the worker
+ *   terminated, as a worker's uncaught error arrives; then the fault is spent;
+ * - `fetch`, `{ path, appendByte, cacheControl }`: the response to a `fetch`
+ *   of `path`, as served, with a space appended to its body or its
+ *   `Cache-Control` replaced;
+ * - `timeline`, `{ type, path, set, remove, add }`: what
+ *   `performance.getEntriesByType(type)` returns, with the entry of `path`
+ *   given `set`'s fields, or removed, or with `add` appended.
  */
 function instrument({ fabricatedWrap = null } = {}) {
-    const pc = { workers: [], exports: [], startClicks: [], console: [], fabricatedWrap };
+    const pc = {
+        workers: [],
+        exports: [],
+        startClicks: [],
+        console: [],
+        fabricatedWrap,
+        faults: {},
+    };
     window.__pageCheck = pc;
     if (fabricatedWrap) {
         const requestVideoFrameCallback = HTMLVideoElement.prototype.requestVideoFrameCallback;
@@ -249,6 +280,63 @@ function instrument({ fabricatedWrap = null } = {}) {
             super(...args);
             pc.workers.push(this);
         }
+        postMessage(message, ...rest) {
+            const thrown = pc.faults.detectPost;
+            if (thrown && message?.type === "detect") {
+                pc.faults.detectPost = null;
+                throw new Error(thrown);
+            }
+            return super.postMessage(message, ...rest);
+        }
+    };
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+        const message = pc.faults.workerFailsOnPlay;
+        if (message) {
+            pc.faults.workerFailsOnPlay = null;
+            pc.workers[0].dispatchEvent(new ErrorEvent("error", { message }));
+            pc.workers[0].terminate();
+        }
+        return play.call(this);
+    };
+    const fetch = window.fetch;
+    window.fetch = async function (...args) {
+        const fault = pc.faults.fetch;
+        if (!fault) return fetch.apply(this, args);
+        const response = await fetch.apply(this, args);
+        const { path, appendByte, cacheControl } = fault;
+        if (new URL(response.url).pathname !== path) return response;
+        let body = await response.arrayBuffer();
+        if (appendByte) {
+            // A space: the manifest, so changed, still parses.
+            const longer = new Uint8Array(body.byteLength + 1).fill(0x20);
+            longer.set(new Uint8Array(body));
+            body = longer.buffer;
+        }
+        const headers = new Headers(response.headers);
+        if (cacheControl) headers.set("Cache-Control", cacheControl);
+        const faulted = new Response(body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers,
+        });
+        // A constructed Response has no URL, and the page names a file by it.
+        Object.defineProperty(faulted, "url", { value: response.url });
+        return faulted;
+    };
+    const getEntriesByType = Performance.prototype.getEntriesByType;
+    Performance.prototype.getEntriesByType = function (type) {
+        const entries = getEntriesByType.call(this, type);
+        const fault = pc.faults.timeline;
+        if (fault?.type !== type) return entries;
+        const out = entries.flatMap((e) =>
+            new URL(e.name).pathname !== fault.path
+                ? [e]
+                : fault.remove
+                  ? []
+                  : [{ ...e.toJSON(), ...fault.set }],
+        );
+        return fault.add ? [...out, fault.add] : out;
     };
     const createObjectURL = URL.createObjectURL;
     URL.createObjectURL = function (object) {
@@ -325,6 +413,7 @@ async function openPage(browser, base, query, faults = {}) {
         status: () => page.evaluate(() => document.getElementById("status")?.textContent ?? ""),
         error: () => page.evaluate(() => document.getElementById("error").textContent),
         startDisabled: () => page.evaluate(() => document.getElementById("start").disabled),
+        stopDisabled: () => page.evaluate(() => document.getElementById("stop").disabled),
         console: () => page.evaluate(() => window.__pageCheck.console),
         exports: () => page.evaluate(() => window.__pageCheck.exports.length),
         lastExport: async () =>
@@ -364,11 +453,49 @@ async function openPage(browser, base, query, faults = {}) {
             'status "ready" with Start enabled',
         );
     const click = (id) => page.evaluate((id) => document.getElementById(id).click(), id);
+    /** Clicks Start, enabled, and waits for that click's handler to finish: its outcome is what the handler left. */
+    const clickStart = async () => {
+        expect(
+            !(await read.startDisabled()),
+            `Start is disabled (status "${await read.status()}")`,
+        );
+        const before = await page.evaluate(() => window.__pageCheck.startClicks.length);
+        await click("start");
+        await waitFor(
+            async (before) => {
+                const clicks = window.__pageCheck.startClicks;
+                if (clicks.length === before) return false;
+                await clicks.at(-1);
+                return true;
+            },
+            CLICK_MS,
+            "end of Start's click handler",
+            before,
+        );
+    };
     const close = () => context.close();
-    return { page, pageErrors, read, waitFor, waitReady, click, close };
+    return { page, pageErrors, read, waitFor, waitReady, click, clickStart, close };
 }
 
 const isTime = (text) => /^\d+\.\d{2}$/.test(text);
+
+/**
+ * An export of a run without `?run=` says it is not a session run (#120,
+ * PG20): its `protocol` is `{ sessionRun: false, gaps }`, and the gaps
+ * include the missing `run.order`, whatever else keeps it from one. That is
+ * the export's sense (`sessionRunGaps`): Start's provenance check holds any
+ * `?loops=` or `?run=` run to a session run's code, so the `?loops=1` run is
+ * one there, and its export is not one here.
+ */
+function notASessionRun(e) {
+    const { sessionRun, gaps } = e.protocol ?? {};
+    expect(
+        sessionRun === false &&
+            Array.isArray(gaps) &&
+            gaps.some((g) => g.startsWith("run.order none: ")),
+        `protocol ${JSON.stringify(e.protocol)}`,
+    );
+}
 
 /** A sync `?loops=1` run on the bundled wall clip: a `?loops=` run is the one that reads loop wraps. */
 const SYNC_LOOPS_QUERY = "mode=tracking&target=wnft&clip=pinball-bench.mp4&loops=1&window=2000";
@@ -382,6 +509,21 @@ const waitRunEnd = (p) =>
         "end of the run",
     );
 
+/** Waits for a live run to have at least `n` frames in its window. */
+const waitFrames = (p, n) =>
+    p.waitFor(
+        (n) => {
+            const row = [...document.querySelectorAll("#stats dt")].find(
+                (dt) => dt.textContent === "window",
+            );
+            const frames = /^(\d+) \//.exec(row?.nextElementSibling?.textContent ?? "");
+            return frames && Number(frames[1]) >= n;
+        },
+        RUN_MS,
+        `${n} frames`,
+        n,
+    );
+
 /** A sync `?loops=1` run on the bundled wall clip, which ends itself. */
 async function syncLoopsRun(browser, base) {
     const names = [
@@ -389,6 +531,7 @@ async function syncLoopsRun(browser, base) {
         "sync ?loops=1 run: the stage table has every stage, timed",
         "sync ?loops=1 run: its stats read trackTimeShare over loop 1",
         "sync ?loops=1 run: the export says done, and its summaryMs has every stage over the counted loops",
+        "sync ?loops=1 run: the export's protocol says it is not a session run, and why",
     ];
     await scenario(names, async (check) => {
         const p = await openPage(browser, base, SYNC_LOOPS_QUERY);
@@ -452,6 +595,8 @@ async function syncLoopsRun(browser, base) {
                 );
                 expect(bad.length === 0, `summaryMs stages without p50/p95/max: ${bad.join(", ")}`);
             });
+            // One counted loop, not four, and no ?run=: what keeps it from a session's (#120, PG20).
+            await check(names[4], async () => notASessionRun(await p.read.lastExport()));
         } finally {
             await p.close();
         }
@@ -520,6 +665,62 @@ async function syncFabricatedWrap(browser, base) {
 }
 
 /**
+ * A sync run without `?loops=`, with the same fabricated step back (#120,
+ * PG21): no loop is counted while it runs, so the run goes on, and stopped,
+ * it is the Download that reads the step, by the clip's duration, and refuses
+ * the export in one line, rather than throw out of the click.
+ */
+async function syncFabricatedWrapNoLoops(browser, base) {
+    const names = [
+        "sync run without ?loops=, a fabricated step back to 0.2 s mid-clip: Download refuses it across the wrap, in one line",
+    ];
+    await scenario(names, async (check) => {
+        const p = await openPage(
+            browser,
+            base,
+            "mode=tracking&target=wnft&clip=pinball-bench.mp4&window=2000",
+            { fabricatedWrap: { fromS: 1.5, beforeEndS: 1, toS: 0.2 } },
+        );
+        try {
+            await p.waitReady();
+            await p.click("start");
+            // Running, the replaced frame processed (its callback runs as it is
+            // replaced), and 60 frames in the window. The refusal reads only the
+            // replaced frame and the one before it, so none need follow it.
+            await p.waitFor(
+                () => window.__pageCheck.fabricatedWrap.replacedS !== undefined,
+                RUN_MS,
+                "replaced frame",
+            );
+            await waitFrames(p, 60);
+            await p.click("stop");
+            await check(names[0], async () => {
+                const status = await p.read.status();
+                expect(status === "stopped", `status "${status}" after Stop`);
+                await p.click("download");
+                const error = await p.read.error();
+                const exported = await p.read.exports();
+                expect(exported === 0, `Download exported the run (${exported} exports)`);
+                expect(
+                    error.startsWith("Not exported: ") &&
+                        error.includes(" is not the clip restarting: it skips ") &&
+                        error.includes(" across the wrap (clipDurationS ") &&
+                        !error.includes("\n"),
+                    `error line "${error}"`,
+                );
+                expect(
+                    (await p.read.status()) === "stopped",
+                    `status "${await p.read.status()}" after Download`,
+                );
+                expect(p.pageErrors.length === 0, `page errors: ${p.pageErrors.join(" | ")}`);
+            });
+        } finally {
+            await p.close();
+        }
+    });
+}
+
+/**
  * A worker run on the unknown-chunk target, stopped and exported; then, on
  * the same page, the worker failing twice after that run ended.
  */
@@ -527,6 +728,7 @@ async function workerRunThenFailures(browser, base) {
     const names = [
         "Task 1: the worker's decoder warning reaches the page",
         "worker run: stopped by the user, and exported with its accounting balanced",
+        "worker run: the export's protocol says it is not a session run, and why",
         "worker failure after the run ended: the run fails, and the error line names the cause",
         "worker failure: Start stays disabled",
         "later worker error: logged, and the error line keeps the first cause",
@@ -593,6 +795,8 @@ async function workerRunThenFailures(browser, base) {
                 );
                 expect(e.frames.length >= 30, `${e.frames.length} frames`);
             });
+            // Stopped by hand, with no ?loops= and no ?run= (#120, PG20).
+            await check(names[2], async () => notASessionRun(await p.read.lastExport()));
             // The worker fails after the run ended: an ErrorEvent on it, as a
             // worker's uncaught error arrives. Its handler runs inside
             // dispatchEvent, so the page has settled when this returns.
@@ -603,7 +807,7 @@ async function workerRunThenFailures(browser, base) {
                     );
                 }, message);
             await fail(first);
-            await check(names[2], async () => {
+            await check(names[3], async () => {
                 const status = await p.read.status();
                 const error = await p.read.error();
                 expect(status === "failed", `status "${status}", error line "${error}"`);
@@ -612,11 +816,11 @@ async function workerRunThenFailures(browser, base) {
                     `error line "${error}"`,
                 );
             });
-            await check(names[3], async () => {
+            await check(names[4], async () => {
                 expect(await p.read.startDisabled(), "Start is enabled");
             });
             await fail(second);
-            await check(names[4], async () => {
+            await check(names[5], async () => {
                 const line = `error: The detection worker failed again, after "${firstMessage}": ${WORKER_WHERE} failed: ${second}.`;
                 const seen = await p.read.console();
                 expect(seen.includes(line), `no "${line}" among [${seen.join(" | ")}]`);
@@ -626,7 +830,7 @@ async function workerRunThenFailures(browser, base) {
                     `error line "${error}"`,
                 );
             });
-            await check(names[5], async () => {
+            await check(names[6], async () => {
                 await p.click("download");
                 const error = await p.read.error();
                 const exported = await p.read.exports();
@@ -717,6 +921,264 @@ async function syncAbsentTarget(browser, base) {
     });
 }
 
+/**
+ * Start with a URL parameter the page cannot read (#120, PG1): refused with
+ * the parameter's own error, which the page showed at load, and no run
+ * starts. Read without it, `?tracker=` would run the tracker's defaults under
+ * a URL that names an override.
+ */
+async function syncParamRefusal(browser, base) {
+    const names = [
+        "Start under a ?tracker= the page cannot read: refused with the parameter's error, and no run starts",
+    ];
+    await scenario(names, async (check) => {
+        const p = await openPage(
+            browser,
+            base,
+            "mode=tracking&target=wnft&clip=pinball-bench.mp4&tracker=minTrackedPatches:abc",
+        );
+        try {
+            await p.waitReady();
+            const shown = await p.read.error();
+            await p.clickStart();
+            await check(names[0], async () => {
+                expect(
+                    shown.startsWith("?tracker=: minTrackedPatches"),
+                    `error line at load "${shown}"`,
+                );
+                const status = await p.read.status();
+                const error = await p.read.error();
+                expect(
+                    status === "failed" && error === shown,
+                    `status "${status}", error line "${error}"`,
+                );
+                expect(await p.read.stopDisabled(), "Stop is enabled: a run started");
+            });
+        } finally {
+            await p.close();
+        }
+    });
+}
+
+/**
+ * Start's provenance check on a session run (#110, §5; #120, PG4, PG5, PG5b,
+ * PG6b, PG6c, PG7, PG8, PG9, PG10, PG33, PG34): a sync `?run=1` page with no `?loops=`, so a session run by its
+ * `?run=` alone, and one fault per Start, each undone when the click's handler
+ * has finished. Unfaulted, the build being clean, Start would start the run,
+ * so each refusal is its own fault's, and the check reads it whole: the
+ * refusal's one finding, before its remedy. The overflow is last: the page
+ * keeps it for good, as it does a real one.
+ */
+async function syncProvenanceFaults(browser, base) {
+    const bundle = "examples/dist/webarkit-packages.mjs";
+    const module = "examples/js/run-lifecycle.mjs";
+    const outside = "https://outside.page-check.invalid/module.mjs";
+    const cache = "run from the HTTP cache (a hit, or a 304), so what ran is unknown";
+    const resource = (fields) => ({ timeline: { type: "resource", ...fields } });
+    const starts = [
+        {
+            name: "sync ?run=1 Start, the served bundle's bytes changed: refused, the bundle not the one built",
+            fault: { fetch: { path: `/${bundle}`, appendByte: true } },
+            finding: "the served bundle is not the one built",
+        },
+        {
+            name: "sync ?run=1 Start, the manifest's bytes changed since the page loaded: refused, naming that",
+            fault: { fetch: { path: "/examples/dist/provenance.json", appendByte: true } },
+            finding: "the manifest changed since the page loaded",
+        },
+        {
+            name: "sync ?run=1 Start, the bundle served cacheable: refused, naming its Cache-Control",
+            fault: { fetch: { path: `/${bundle}`, cacheControl: "max-age=3600" } },
+            finding: `the server lets the browser cache: ${bundle} (max-age=3600)`,
+        },
+        {
+            name: "sync ?run=1 Start, the bundle's timeline entry a cache hit (transferSize 0): refused, run from the cache",
+            fault: resource({ path: `/${bundle}`, set: { transferSize: 0 } }),
+            finding: `${cache}: ${bundle}`,
+        },
+        {
+            name: "sync ?run=1 Start, a module's timeline entry a 304 (encodedBodySize 0): refused, run from the cache",
+            fault: resource({ path: `/${module}`, set: { encodedBodySize: 0 } }),
+            finding: `${cache}: ${module}`,
+        },
+        {
+            name: "sync ?run=1 Start, the page's navigation entry a cache hit: refused, run from the cache",
+            fault: {
+                timeline: {
+                    type: "navigation",
+                    path: "/examples/bench-nft.html",
+                    set: { transferSize: 0 },
+                },
+            },
+            finding: `${cache}: examples/bench-nft.html`,
+        },
+        {
+            name: "sync ?run=1 Start, a module loaded from outside the repository: refused, as one the manifest does not list",
+            fault: resource({
+                add: {
+                    name: outside,
+                    initiatorType: "script",
+                    transferSize: 1300,
+                    encodedBodySize: 1000,
+                    responseStatus: 200,
+                },
+            }),
+            finding: `modules loaded that the manifest does not list: ${outside}`,
+        },
+        {
+            name: "sync ?run=1 Start, the bundle missing from the timeline: refused, as not seen loading",
+            fault: resource({ path: `/${bundle}`, remove: true }),
+            finding: `modules this run loads are not in the page's resource timeline, so what ran cannot be seen: ${bundle}`,
+        },
+        {
+            name: "sync ?run=1 Start, the resource-timing buffer overflowed: refused, naming the overflow",
+            overflow: true,
+            finding: "the resource-timing buffer overflowed, so later loads went unrecorded",
+        },
+    ];
+    await scenario(
+        starts.map((s) => s.name),
+        async (check) => {
+            const p = await openPage(
+                browser,
+                base,
+                "mode=tracking&target=wnft&clip=pinball-bench.mp4&run=1&window=2000",
+            );
+            try {
+                await p.waitReady();
+                for (const start of starts) {
+                    await check(start.name, async () => {
+                        await p.page.evaluate((start) => {
+                            if (start.overflow)
+                                performance.dispatchEvent(new Event("resourcetimingbufferfull"));
+                            else window.__pageCheck.faults = start.fault;
+                        }, start);
+                        try {
+                            await p.clickStart();
+                        } finally {
+                            await p.page.evaluate(() => {
+                                window.__pageCheck.faults = {};
+                            });
+                        }
+                        const status = await p.read.status();
+                        const error = await p.read.error();
+                        expect(
+                            status === "failed" &&
+                                error.startsWith(`Provenance: ${start.finding}. To fix: `),
+                            `status "${status}", error line "${error}"`,
+                        );
+                        expect(await p.read.stopDisabled(), "Stop is enabled: a run started");
+                    });
+                }
+            } finally {
+                await p.close();
+            }
+        },
+    );
+}
+
+/** The bundled wall clip on the worker path, on the committed target. */
+const WORKER_QUERY =
+    "mode=tracking&target=wnft&detection=worker&clip=pinball-bench.mp4&window=2000";
+
+/**
+ * A worker run whose detection post throws (#120, PG18): the frame's own
+ * guard on the worker path fails the run on that frame, rather than leave the
+ * loop dead with the run live and no error shown.
+ */
+async function workerDetectPostThrows(browser, base) {
+    const names = [
+        "worker run, a detection job's post throws: the run fails on that frame, naming the cause",
+        "worker run whose post threw: Start stays disabled, and Download is refused, naming the cause",
+    ];
+    const thrown = "page-check: the detection job's post threw";
+    await scenario(names, async (check) => {
+        const p = await openPage(browser, base, WORKER_QUERY);
+        try {
+            await p.waitReady();
+            await p.click("start");
+            // Armed with frames in the window: a run failed on its first frame
+            // has none, and its Download stays disabled, refusing nothing. The
+            // next frame without a lock posts, and the clip's first frames have
+            // none, so the fault fires within a frame or two of being armed.
+            await waitFrames(p, 30);
+            await p.page.evaluate((thrown) => {
+                window.__pageCheck.faults.detectPost = thrown;
+            }, thrown);
+            await waitRunEnd(p);
+            let cause;
+            await check(names[0], async () => {
+                const status = await p.read.status();
+                const error = await p.read.error();
+                cause = error.split("\n\n")[0];
+                expect(
+                    status === "failed" &&
+                        new RegExp(`^The worker path failed on frame \\d+: ${thrown}$`).test(
+                            cause,
+                        ) &&
+                        error.endsWith(
+                            "\n\nThe run stopped, and it will not be exported. Reload the page to run again.",
+                        ),
+                    `status "${status}", error line "${error}"`,
+                );
+            });
+            await check(names[1], async () => {
+                expect(await p.read.startDisabled(), "Start is enabled");
+                await p.click("download");
+                const error = await p.read.error();
+                const exported = await p.read.exports();
+                expect(exported === 0, `Download exported the failed run (${exported} exports)`);
+                expect(error === `Not exported: ${cause}`, `error line "${error}"`);
+            });
+        } finally {
+            await p.close();
+        }
+    });
+}
+
+/**
+ * The worker failing while the source starts, after `workerReady`, at the
+ * page's first Start (#120, PG23): no run is live for the failure to fail, and
+ * none has run for it to attach to, so Start's own check is the only guard,
+ * and the run does not start. The fault is the source's `play()`, which Start
+ * awaits after `workerReady`: armed after the page is ready, it always lands in
+ * that window.
+ */
+async function workerFailsWhileSourceStarts(browser, base) {
+    const names = [
+        "worker failing while the source starts, at the first Start: the run does not start, and the error line names the failure",
+    ];
+    const message = "page-check: the worker failed while the source started";
+    await scenario(names, async (check) => {
+        const p = await openPage(browser, base, WORKER_QUERY);
+        try {
+            await p.waitReady();
+            await p.page.evaluate((message) => {
+                window.__pageCheck.faults.workerFailsOnPlay = message;
+            }, message);
+            await p.clickStart();
+            await check(names[0], async () => {
+                const spent = await p.page.evaluate(
+                    () => window.__pageCheck.faults.workerFailsOnPlay === null,
+                );
+                expect(spent, "the source's play() was not called: the fault never fired");
+                const status = await p.read.status();
+                const error = await p.read.error();
+                expect(
+                    status === "failed" &&
+                        error ===
+                            `${WORKER_WHERE} failed: ${message}.\n\nThe run did not start, and nothing was exported. Reload the page to run again.`,
+                    `status "${status}", error line "${error}"`,
+                );
+                expect(await p.read.stopDisabled(), "Stop is enabled: a run started");
+                expect(await p.read.startDisabled(), "Start is enabled");
+            });
+        } finally {
+            await p.close();
+        }
+    });
+}
+
 async function main() {
     const t0 = Date.now();
     for (const file of ["dist/webarkit-packages.mjs", "dist/provenance.json"]) {
@@ -754,9 +1216,14 @@ async function main() {
         await cdp.send("Browser.setDownloadBehavior", { behavior: "deny" });
         await syncLoopsRun(browser, base);
         await syncFabricatedWrap(browser, base);
+        await syncFabricatedWrapNoLoops(browser, base);
         await workerRunThenFailures(browser, base);
         await workerAbsentTarget(browser, base);
         await syncAbsentTarget(browser, base);
+        await syncParamRefusal(browser, base);
+        await syncProvenanceFaults(browser, base);
+        await workerDetectPostThrows(browser, base);
+        await workerFailsWhileSourceStarts(browser, base);
     } finally {
         await browser?.close();
         server.close();

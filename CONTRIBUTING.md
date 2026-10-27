@@ -131,7 +131,7 @@ This is an npm-workspaces monorepo — run these from the repo root; they cover 
     npm run check:page
     ```
     It needs three things the others do not:
-    - **A build first, from a committed tree.** Its first check is a `?loops=1` run, which is a session run, and the page refuses a session run on provenance when the manifest was built from a tree with uncommitted changes. That check then fails, and shows the page's provenance line. Commit, run `npm run build`, then the checks.
+    - **A build first, from a committed tree.** Its first check is a `?loops=1` run, which is a session run, as are its `?run=1` provenance checks, and the page refuses a session run on provenance when the manifest was built from a tree with uncommitted changes. Those checks then fail, and show the page's provenance line. Commit, run `npm run build`, then the checks.
     - **Google Chrome**, found at its usual install path, or named by `CHROME_PATH`. Not Chromium: the bundled clips are H.264. `CHROME_ARGS` adds flags to Chrome's command line, such as `--no-sandbox` where the sandbox cannot start.
     - **Node 22.12 or newer**, which `puppeteer-core` requires. The version `.nvmrc` pins qualifies, and the root `engines` floor is 22.12 for the same reason.
 
