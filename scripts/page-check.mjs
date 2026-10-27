@@ -34,6 +34,9 @@
  *
  * - a synchronous `?loops=1` run that ends itself `done`, with its stage table
  *   and its export's `summaryMs`;
+ * - the same run with one frame's media time a fabricated step back to 0.2 s,
+ *   mid-clip (#115): the page refuses it as the clip restarting, by the clip's
+ *   duration (#96), and the run fails on that frame, its export saying so;
  * - a worker run, stopped by hand and exported, on a target whose decoding
  *   warns (#95, Task 1: the worker's decoder warnings reach the page);
  * - on the same page, the worker failing after that run ended (#95, Qodo's
@@ -47,7 +50,9 @@
  *
  * Nothing in the page is changed. Faults are injected from outside, through
  * the DevTools protocol, before the page's own scripts run: the page's
- * `Worker` is kept so that an `ErrorEvent` can be dispatched on it, an
+ * `Worker` is kept so that an `ErrorEvent` can be dispatched on it, the
+ * video's frame callback is wrapped, in one scenario only, so that one frame's
+ * `mediaTime` can be replaced, an
  * export's `Blob` is kept as `URL.createObjectURL` receives it, `console.warn`
  * and `console.error` are recorded, and the promise of Start's click handler
  * is kept, so that the outcome of a click is read when the handler has
@@ -200,11 +205,44 @@ function findChrome() {
 
 /**
  * Runs in the page before its own scripts: records what the checks read and
- * keeps what they inject faults through. Changes nothing the page does.
+ * keeps what they inject faults through. Changes nothing the page does,
+ * unless `fabricatedWrap` arms that fault: then the first frame callback
+ * after a delivered frame whose `mediaTime` was at least `fromS` into the clip,
+ * and at least `beforeEndS` before its end, receives `mediaTime: toS` instead,
+ * and every other frame is untouched. The condition is on the previous
+ * delivered frame, not the replaced one, because that is the time
+ * `advanceLoop` compares against: a first frame replaced would have no
+ * earlier time, and no step back would be seen. Delivered means as the page's
+ * callback received it, after any replacement. Kept: the previous delivered
+ * time, as `fabricatedWrap.replacedAfterS`, and what the replaced frame
+ * carried, as `fabricatedWrap.replacedS`.
  */
-function instrument() {
-    const pc = { workers: [], exports: [], startClicks: [], console: [] };
+function instrument({ fabricatedWrap = null } = {}) {
+    const pc = { workers: [], exports: [], startClicks: [], console: [], fabricatedWrap };
     window.__pageCheck = pc;
+    if (fabricatedWrap) {
+        const requestVideoFrameCallback = HTMLVideoElement.prototype.requestVideoFrameCallback;
+        let deliveredS;
+        HTMLVideoElement.prototype.requestVideoFrameCallback = function (callback) {
+            const video = this;
+            return requestVideoFrameCallback.call(this, function (now, metadata) {
+                const { fromS, beforeEndS, toS } = fabricatedWrap;
+                const previousS = deliveredS;
+                if (
+                    fabricatedWrap.replacedS === undefined &&
+                    previousS >= fromS &&
+                    previousS <= video.duration - beforeEndS
+                ) {
+                    fabricatedWrap.replacedAfterS = previousS;
+                    fabricatedWrap.replacedS = metadata?.mediaTime;
+                    deliveredS = toS;
+                    return callback.call(this, now, { ...metadata, mediaTime: toS });
+                }
+                deliveredS = metadata?.mediaTime;
+                return callback.call(this, now, metadata);
+            });
+        };
+    }
     const NativeWorker = window.Worker;
     window.Worker = class extends NativeWorker {
         constructor(...args) {
@@ -272,13 +310,16 @@ function expect(ok, message) {
     if (!ok) throw new Error(message);
 }
 
-/** A fresh page, in its own browser context, with the instrumentation in place, at `query`. */
-async function openPage(browser, base, query) {
+/**
+ * A fresh page, in its own browser context, with the instrumentation in place
+ * (given `faults`, see {@link instrument}), at `query`.
+ */
+async function openPage(browser, base, query, faults = {}) {
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
     const pageErrors = [];
     page.on("pageerror", (e) => pageErrors.push(e.message));
-    await page.evaluateOnNewDocument(instrument);
+    await page.evaluateOnNewDocument(instrument, faults);
     await page.goto(`${base}/examples/bench-nft.html?${query}`, { waitUntil: "load" });
     const read = {
         status: () => page.evaluate(() => document.getElementById("status")?.textContent ?? ""),
@@ -324,10 +365,22 @@ async function openPage(browser, base, query) {
         );
     const click = (id) => page.evaluate((id) => document.getElementById(id).click(), id);
     const close = () => context.close();
-    return { page, read, waitFor, waitReady, click, close };
+    return { page, pageErrors, read, waitFor, waitReady, click, close };
 }
 
 const isTime = (text) => /^\d+\.\d{2}$/.test(text);
+
+/** A sync `?loops=1` run on the bundled wall clip: a `?loops=` run is the one that reads loop wraps. */
+const SYNC_LOOPS_QUERY = "mode=tracking&target=wnft&clip=pinball-bench.mp4&loops=1&window=2000";
+
+/** Waits for a run to end, whichever way: done, stopped or failed. */
+const waitRunEnd = (p) =>
+    p.waitFor(
+        () =>
+            ["done", "stopped", "failed"].includes(document.getElementById("status")?.textContent),
+        RUN_MS,
+        "end of the run",
+    );
 
 /** A sync `?loops=1` run on the bundled wall clip, which ends itself. */
 async function syncLoopsRun(browser, base) {
@@ -338,22 +391,11 @@ async function syncLoopsRun(browser, base) {
         "sync ?loops=1 run: the export says done, and its summaryMs has every stage over the counted loops",
     ];
     await scenario(names, async (check) => {
-        const p = await openPage(
-            browser,
-            base,
-            "mode=tracking&target=wnft&clip=pinball-bench.mp4&loops=1&window=2000",
-        );
+        const p = await openPage(browser, base, SYNC_LOOPS_QUERY);
         try {
             await p.waitReady();
             await p.click("start");
-            await p.waitFor(
-                () =>
-                    ["done", "stopped", "failed"].includes(
-                        document.getElementById("status")?.textContent,
-                    ),
-                RUN_MS,
-                "end of the run",
-            );
+            await waitRunEnd(p);
             await check(names[0], async () => {
                 const status = await p.read.status();
                 expect(
@@ -409,6 +451,67 @@ async function syncLoopsRun(browser, base) {
                     ["p50", "p95", "max"].some((k) => !Number.isFinite(e.summaryMs[s][k])),
                 );
                 expect(bad.length === 0, `summaryMs stages without p50/p95/max: ${bad.join(", ")}`);
+            });
+        } finally {
+            await p.close();
+        }
+    });
+}
+
+/**
+ * The same sync `?loops=1` run, with one frame's media time a fabricated step
+ * back to 0.2 s, mid-clip (#115). 0.2 s is within 0.5 s of the start, so only
+ * the clip's duration refuses it (#96): with the duration, the skip across the
+ * wrap is more than 0.5 s; without it, a step back of more than 0.5 s reads as
+ * the clip restarting, and the run would end `done` a loop early. So the page's
+ * refusal is seen whole: `advanceLoop` given the duration, its throw, and
+ * `tick` turning that into a failed run. The frame replaced is the one after a
+ * delivered frame at least 1.5 s into the clip and 1 s before its end, so the
+ * step is always back from a time the page has read: replacing the first
+ * frame of a run that started late would show no step at all.
+ */
+async function syncFabricatedWrap(browser, base) {
+    const names = [
+        "sync ?loops=1 run, a fabricated step back to 0.2 s mid-clip: the run fails on that frame, its export says so, and nothing escapes the frame callback",
+    ];
+    await scenario(names, async (check) => {
+        const p = await openPage(browser, base, SYNC_LOOPS_QUERY, {
+            fabricatedWrap: { fromS: 1.5, beforeEndS: 1, toS: 0.2 },
+        });
+        try {
+            await p.waitReady();
+            await p.click("start");
+            await waitRunEnd(p);
+            await check(names[0], async () => {
+                const status = await p.read.status();
+                const error = await p.read.error();
+                const { replacedAfterS, replacedS } = await p.page.evaluate(
+                    () => window.__pageCheck.fabricatedWrap,
+                );
+                const fault =
+                    replacedS === undefined
+                        ? "(none replaced)"
+                        : `the frame replaced carried ${replacedS} s, after a delivered ${replacedAfterS} s`;
+                expect(status === "failed", `status "${status}", error line "${error}"; ${fault}`);
+                const cause = error.split("\n\n")[0];
+                expect(
+                    /^The run failed on frame \d+: media time 0\.2 s, /.test(cause) &&
+                        cause.includes(" is not the clip restarting: it skips ") &&
+                        cause.includes(" across the wrap (clipDurationS "),
+                    `error line "${error}"; ${fault}`,
+                );
+                const before = await p.read.exports();
+                await p.click("download");
+                expect(
+                    (await p.read.exports()) === before + 1,
+                    `Download exported nothing: "${await p.read.error()}"`,
+                );
+                const e = await p.read.lastExport();
+                expect(
+                    e.run?.endedBy === "failed" && e.run.failure === cause,
+                    `run ${JSON.stringify(e.run)}, error line's cause "${cause}"`,
+                );
+                expect(p.pageErrors.length === 0, `page errors: ${p.pageErrors.join(" | ")}`);
             });
         } finally {
             await p.close();
@@ -650,6 +753,7 @@ async function main() {
         const cdp = await browser.target().createCDPSession();
         await cdp.send("Browser.setDownloadBehavior", { behavior: "deny" });
         await syncLoopsRun(browser, base);
+        await syncFabricatedWrap(browser, base);
         await workerRunThenFailures(browser, base);
         await workerAbsentTarget(browser, base);
         await syncAbsentTarget(browser, base);
