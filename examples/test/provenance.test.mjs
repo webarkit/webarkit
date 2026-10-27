@@ -185,12 +185,28 @@ describe("provenanceRefusal", () => {
         [
             "a clean flag beside no list of dirty paths",
             { ...manifest, dirtyPaths: undefined },
-            /the manifest says its tree is clean, but its dirtyPaths is not a list \(none\)/,
+            /the manifest records no dirtyPaths list/,
         ],
         [
             "a dirty flag beside no dirty path, from a git build",
             { ...manifest, clean: false },
             /the manifest says its tree is dirty, but lists no dirty path/,
+        ],
+        [
+            "a clean flag that is not a boolean",
+            { ...manifest, clean: "yes" },
+            /the manifest's clean flag "yes" is not a boolean/,
+        ],
+        ["no clean flag", { ...manifest, clean: undefined }, /the manifest records no clean flag/],
+        [
+            "a dirty flag beside no list of dirty paths",
+            { ...manifest, clean: false, dirtyPaths: undefined },
+            /the manifest records no dirtyPaths list/,
+        ],
+        [
+            "a dirty flag beside dirty paths that are not a list",
+            { ...manifest, clean: false, dirtyPaths: "examples/js/a.mjs" },
+            /the manifest's dirtyPaths "examples\/js\/a\.mjs" is not a list/,
         ],
     ])("refuses a session run on a manifest with %s, as hand-edited or broken", (_, m, why) => {
         const r = provenanceRefusal(m, observed, session);
@@ -229,17 +245,18 @@ describe("provenanceRefusal", () => {
             observed,
             /git could not describe the tree/,
         ],
+        // These two pinned "built from a dirty tree" until #119; the flags check now answers first.
         [
             "a manifest that records no clean flag",
             { ...manifest, clean: undefined },
             observed,
-            /built from a dirty tree/,
+            /the manifest records no clean flag, so it was hand-edited/,
         ],
         [
             "a manifest whose clean flag is not a boolean",
             { ...manifest, clean: "true" },
             observed,
-            /built from a dirty tree/,
+            /the manifest's clean flag "true" is not a boolean, so it was hand-edited/,
         ],
         [
             "a bundle that could not be fetched at Start",

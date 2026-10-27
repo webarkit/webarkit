@@ -39,26 +39,34 @@ const FULL_COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 /**
  * Why a git build's manifest cannot be what `scripts/build-provenance.mjs`
  * wrote, as a clause whose subject is `subject`, or `null` (#119): a `head`
- * that is not a full commit hash, or a `clean` that disagrees with
- * `dirtyPaths` (`clean: true` beside a non-empty or absent list, `clean: false`
- * beside an empty one). Such a manifest was hand-edited or written by a broken
- * build, so neither flag can be read. Read only after `head` null: the build
- * without git writes `clean: false` beside an empty `dirtyPaths`, which is not
- * a disagreement here but its own finding.
+ * that is not a full commit hash, a `clean` that is not a boolean, a
+ * `dirtyPaths` that is not a list, whatever `clean` says, or a `clean` that
+ * disagrees with `dirtyPaths` (`clean: true` beside a non-empty list,
+ * `clean: false` beside an empty one). A git build always writes a boolean and
+ * a list, so such a manifest was hand-edited or written by a broken build, and
+ * neither flag can be read. Read only after `head` null: the build without git
+ * writes `clean: false` beside an empty `dirtyPaths`, which is not a
+ * disagreement here but its own finding.
  */
 function manifestFlagsError(manifest, subject) {
     const { head, clean, dirtyPaths } = manifest;
     if (typeof head !== "string" || !FULL_COMMIT.test(head))
         return `${subject}'s head ${JSON.stringify(head)} is not a full commit hash`;
-    if (clean === true && !Array.isArray(dirtyPaths)) {
-        return `${subject} says its tree is clean, but its dirtyPaths is not a list (${JSON.stringify(dirtyPaths) ?? "none"})`;
-    }
+    if (clean === undefined) return `${subject} records no clean flag`;
+    if (typeof clean !== "boolean")
+        return `${subject}'s clean flag ${shown(clean)} is not a boolean`;
+    if (dirtyPaths === undefined) return `${subject} records no dirtyPaths list`;
+    if (!Array.isArray(dirtyPaths))
+        return `${subject}'s dirtyPaths ${shown(dirtyPaths)} is not a list`;
     if (clean === true && dirtyPaths.length > 0)
         return `${subject} says its tree is clean, but lists dirty paths (${dirtyPaths.join(", ")})`;
-    if (clean === false && Array.isArray(dirtyPaths) && dirtyPaths.length === 0)
+    if (clean === false && dirtyPaths.length === 0)
         return `${subject} says its tree is dirty, but lists no dirty path`;
     return null;
 }
+
+/** A manifest's value as a refusal quotes it: as JSON, or as JavaScript prints it when JSON cannot. */
+const shown = (v) => JSON.stringify(v) ?? String(v);
 
 /** The end of every refusal {@link manifestFlagsError} gives a reason for. */
 const BROKEN_MANIFEST = "so it was hand-edited or written by a broken build";

@@ -2596,14 +2596,35 @@ describe("bundleManifestRefusal: what --packages bundle refuses in the build's m
             /says its tree is clean, but lists dirty paths \(examples\/js\/a\.mjs\)/,
         ],
         [
-            "a clean flag beside no list of dirty paths",
+            "a clean flag beside dirty paths that are not a list",
             { dirtyPaths: "examples/js/a.mjs" },
-            /says its tree is clean, but its dirtyPaths is not a list \("examples\/js\/a\.mjs"\)/,
+            /provenance\.json's dirtyPaths "examples\/js\/a\.mjs" is not a list/,
+        ],
+        [
+            "a clean flag beside no list of dirty paths",
+            { dirtyPaths: undefined },
+            /provenance\.json records no dirtyPaths list/,
         ],
         [
             "a dirty flag beside no dirty path, from a git build",
             { clean: false },
             /says its tree is dirty, but lists no dirty path/,
+        ],
+        [
+            "a clean flag that is not a boolean",
+            { clean: "yes" },
+            /provenance\.json's clean flag "yes" is not a boolean/,
+        ],
+        ["no clean flag", { clean: undefined }, /provenance\.json records no clean flag/],
+        [
+            "a dirty flag beside no list of dirty paths",
+            { clean: false, dirtyPaths: undefined },
+            /provenance\.json records no dirtyPaths list/,
+        ],
+        [
+            "a dirty flag beside dirty paths that are not a list",
+            { clean: false, dirtyPaths: "examples/js/a.mjs" },
+            /provenance\.json's dirtyPaths "examples\/js\/a\.mjs" is not a list/,
         ],
     ])("refuses a manifest with %s, as hand-edited or broken", (_, o, why) => {
         const manifest = { head: HEAD, clean: true, dirtyPaths: [], ...o };

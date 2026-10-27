@@ -45,9 +45,9 @@ release pull request's body and the GitHub Release's notes.
   is one that did not fail** ([#119](https://github.com/webarkit/webarkit/issues/119)). Two
   conditions no guard read. Start and `replay-clips --packages bundle` read the manifest's `head`
   only for null, so `head: ""` passed, and neither compared `clean` with `dirtyPaths`. Both now
-  refuse a `head` that is not a full commit hash, and a `clean` that disagrees with `dirtyPaths`,
-  as a manifest hand-edited or written by a broken build; a manifest built without git keeps its
-  own refusal. `sessionRunGaps`, and so `--transfer`'s recompute, read `run.endedBy` alone, so
+  refuse a `head` that is not a full commit hash, a `clean` that is not a boolean, a `dirtyPaths`
+  that is not a list, and a `clean` that disagrees with `dirtyPaths`, as a manifest hand-edited or
+  written by a broken build; a manifest built without git keeps its own refusal. `sessionRunGaps`, and so `--transfer`'s recompute, read `run.endedBy` alone, so
   only `failRun`'s `endedBy = "failed"` kept a failed run from counting. A run whose `run.failure`
   is set, or not recorded, is now a gap, whatever `endedBy` says. Neither changes what the
   committed exports say. The two stale comments beside `WRAP_BOUND_S` now point at
