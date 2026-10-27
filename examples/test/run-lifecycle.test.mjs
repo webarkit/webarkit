@@ -644,6 +644,19 @@ describe("a start pending or live (#166, defect 1)", () => {
         expect(page.startButton.disabled).toBe(true);
         expect(page.probeButton.disabled).toBe(false);
     });
+
+    it("keeps the probe and Start off when a run fails through stopRun during a pending start", () => {
+        const { lc, page } = harness();
+        const ended = start(lc);
+        lc.stopRun("stopped");
+        lc.beginStart(false);
+        // A worker failure fails the last ended run, through stopRun (failedRuns, failRun).
+        lc.workerFailed("The detection worker failed: probe.");
+        expect(ended.endedBy).toBe("failed");
+        expect(lc.startPending).not.toBeNull();
+        expect(page.probeButton.disabled).toBe(true);
+        expect(page.startButton.disabled).toBe(true);
+    });
 });
 
 describe("the error line keeps the first failure's cause (#166, defect 2)", () => {
