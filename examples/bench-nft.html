@@ -663,6 +663,7 @@
         probeButton,
         downloadButton,
         showError,
+        clearError,
         setStatusText,
         stopLoop,
         stopSource,
@@ -675,6 +676,13 @@
         newRun,
         endRun,
         startAllowed,
+        probeAllowed,
+        settleControls,
+        beginStart,
+        clearPendingStart,
+        endStart,
+        clearErrorLine,
+        showCause,
         stopRun,
         failRun,
         initWorker,
@@ -956,10 +964,9 @@
       // A run not yet ended when the page is hidden lost visibility, and so
       // does one whose Start is still being checked (DEFINITIONS.lostVisibility):
       // reported, not gating (#110, A4).
-      let startPending = null;
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState !== "hidden") return;
-        if (startPending) startPending.lostVisibility = true;
+        if (runLifecycle.startPending) runLifecycle.startPending.lostVisibility = true;
         for (const run of runs.values()) if (run.endedBy === null) run.lostVisibility = true;
       });
 
@@ -1773,7 +1780,7 @@
       async function runPyramidProbe() {
         probeButton.disabled = true;
         startButton.disabled = true;
-        clearError();
+        clearErrorLine();
         try {
           const rows = [];
           for (const [width, height] of PROBE_SIZES) {
@@ -1813,8 +1820,7 @@
         } catch (e) {
           showError(e.message);
         } finally {
-          probeButton.disabled = false;
-          startButton.disabled = !startAllowed();
+          settleControls();
         }
       }
 
@@ -1905,7 +1911,7 @@
         probeButton.addEventListener("click", runPyramidProbe);
 
         startButton.addEventListener("click", async () => {
-          clearError();
+          clearErrorLine();
           // The target is checked before any source starts, so a refusal
           // starts no camera or clip, commits nothing, and is not blamed on
           // the source.
@@ -1930,21 +1936,28 @@
             showError(refusal);
             return;
           }
-          startButton.disabled = true;
-          // From Start, before the run exists: a hide during the check below counts.
-          startPending = { lostVisibility: document.visibilityState === "hidden" };
+          // From Start, before the run exists: a hide during the check below
+          // counts. Start and the probe are off until this start is over.
+          const pending = beginStart(document.visibilityState === "hidden");
           // Before the worker and the source: a session run (?loops= or ?run=)
           // starts only on code the manifest attests (#110, §5).
-          const provenance = await checkProvenance(TUNING.loops !== null || TUNING.run !== null);
+          let provenance;
+          try {
+            provenance = await checkProvenance(TUNING.loops !== null || TUNING.run !== null);
+          } catch (e) {
+            // Start stays off, as it did when this threw unhandled; the probe is as it was.
+            clearPendingStart();
+            probeButton.disabled = !probeAllowed();
+            showError(e.message);
+            return;
+          }
           if (provenance.refusal) {
-            startPending = null;
+            endStart();
             showError(provenance.refusal);
-            startButton.disabled = !startAllowed();
             return;
           }
           const run = newRun();
-          run.lostVisibility ||= startPending.lostVisibility;
-          startPending = null;
+          run.lostVisibility ||= pending.lostVisibility;
           run.provenance = provenance;
           // Read once, before the source starts: the worker's `init` must be
           // for the budget the tracker runs.
@@ -1953,7 +1966,8 @@
             try {
               await workerReady(maxKeypoints);
             } catch (e) {
-              showError(e.message);
+              endStart();
+              showCause(e.message);
               return;
             }
           }
@@ -2020,6 +2034,8 @@
             stopButton.disabled = false;
             probeButton.disabled = true;
             run.startedAtIso = new Date().toISOString();
+            // runBenchmark makes the run live before it awaits anything.
+            clearPendingStart();
             runBenchmark(cv, target.db, mode, windowSize, maxKeypoints, box, run);
           } catch (e) {
             if (runLifecycle.liveRun) endRun(runLifecycle.liveRun);
@@ -2051,8 +2067,7 @@
             // first tick ever ran.
             running = false;
             stopButton.disabled = true;
-            startButton.disabled = !startAllowed();
-            probeButton.disabled = false;
+            endStart();
           }
         });
 

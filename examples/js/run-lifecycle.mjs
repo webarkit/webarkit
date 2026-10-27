@@ -56,7 +56,8 @@ import { countLateReply, failedRuns, routeReply } from "./detection-replies.mjs"
  *   `ransacThreshold`, which `init` sends with the scene keypoint budget;
  * - `startButton`, `stopButton`, `probeButton` and `downloadButton`: their
  *   `disabled` is set;
- * - `showError`, `setStatusText`, `stopLoop` and `stopSource`: the page's;
+ * - `showError`, `clearError`, `setStatusText`, `stopLoop` and `stopSource`:
+ *   the page's;
  * - `historyLength` and `pageHidden`: the window's frame count, and whether
  *   the page is hidden now.
  *
@@ -80,6 +81,7 @@ export function createRunLifecycle({
     probeButton,
     downloadButton,
     showError,
+    clearError,
     setStatusText,
     stopLoop,
     stopSource,
@@ -111,6 +113,21 @@ export function createRunLifecycle({
         pendingInit: null,
         failure: null,
     };
+    /**
+     * A Start from its click until its run is live, or until it is refused or
+     * fails (#166): the page's `startPending`, which the lifecycle holds so that
+     * Start and the probe can read it. It spans the provenance check and the
+     * source's start, both awaited after the run is created, so a run that
+     * exists but is not yet live is still pending. `lostVisibility` is set on
+     * it by the page's `visibilitychange`.
+     */
+    let pendingStart = null;
+    /**
+     * The failure message the error line shows, while nothing has cleared the
+     * line (`clearErrorLine`), or `null`. A failure after it leaves the line
+     * as it is (`failRun`); each failure still records its own on its run.
+     */
+    let causeOnLine = null;
 
     /**
      * A run's record, exported with its frames: an id (a worker's reply names
@@ -171,12 +188,62 @@ export function createRunLifecycle({
         downloadButton.disabled = historyLength() === 0;
     }
 
-    /** Whether Start may be pressed: always in a synchronous run; in worker mode, while the worker has not failed. */
+    /**
+     * Whether Start may be pressed: never while a start is pending or a run is
+     * live (#166); otherwise always in a synchronous run, and in worker mode
+     * while the worker has not failed.
+     */
     function startAllowed() {
+        if (pendingStart !== null || liveRun !== null) return false;
         return (
             DETECTION_PATH !== "worker" ||
             (detectionWorker.worker !== null && detectionWorker.failure === null)
         );
+    }
+
+    /** Whether the probe may be enabled: not while a start is pending or a run is live (#166). */
+    function probeAllowed() {
+        return pendingStart === null && liveRun === null;
+    }
+
+    /**
+     * Sets Start and the probe as the lifecycle allows them now: `startAllowed`
+     * and `probeAllowed`. The page calls it wherever it used to set them from
+     * the worker alone, so that no path can enable one during a pending start
+     * or a live run.
+     */
+    function settleControls() {
+        probeButton.disabled = !probeAllowed();
+        startButton.disabled = !startAllowed();
+    }
+
+    /**
+     * Start's click: the start is pending, and Start and the probe are off
+     * until it is refused, fails or its run goes live. Returns the pending
+     * record, whose `lostVisibility` the page reads.
+     */
+    function beginStart(lostVisibility) {
+        pendingStart = { lostVisibility };
+        startButton.disabled = true;
+        probeButton.disabled = true;
+        return pendingStart;
+    }
+
+    /** The pending start is over, and its run is about to go live. The buttons stay as they are: the run's own are set when it starts. */
+    function clearPendingStart() {
+        pendingStart = null;
+    }
+
+    /** The pending start is refused or failed: it is over, and the controls are set as `settleControls` sets them. */
+    function endStart() {
+        pendingStart = null;
+        settleControls();
+    }
+
+    /** Empties the error line and forgets the cause it showed, so a later failure is shown (`failRun`). */
+    function clearErrorLine() {
+        causeOnLine = null;
+        clearError();
     }
 
     /**
@@ -192,8 +259,7 @@ export function createRunLifecycle({
         stopLoop();
         stopSource();
         stopButton.disabled = true;
-        startButton.disabled = !startAllowed();
-        probeButton.disabled = false;
+        settleControls();
         setStatusText(status);
     }
 
@@ -211,6 +277,12 @@ export function createRunLifecycle({
      * `afterEnd` is a worker run whose worker failed after the run had ended
      * (`workerFailed`): it fails all the same, so that its export is refused,
      * and says so rather than that it stopped.
+     *
+     * The error line keeps the first cause (#166): once it shows a failure's
+     * message, a later failure leaves the line as it is, and records its own
+     * `failure` on its run. The line is forgotten only when the page clears it
+     * (`clearErrorLine`, which Start calls at its click, before it makes a run),
+     * so a failure of a new run after a Start is shown.
      */
     function failRun(run, message, { afterEnd = false } = {}) {
         if (run.failure !== null) return;
@@ -219,13 +291,25 @@ export function createRunLifecycle({
         const worker = run.path === "worker";
         if (worker) detectionWorker.failure ??= message;
         stopRun("failed");
-        showError(
+        showCause(
             afterEnd
                 ? `${message}\n\nThe worker failed after the run ended, so the run cannot show it was clean, and it will not be exported. Reload the page to run again.`
                 : worker
                   ? `${message}\n\nThe run stopped, and it will not be exported. Reload the page to run again.`
                   : `${message}\n\nThe run stopped. Its export stays possible, and is not a session run.`,
         );
+    }
+
+    /**
+     * Shows a failure's text on the error line, and records it as the cause the
+     * line shows, unless the line already shows one (#166). Every path that puts
+     * a failure's cause on the line goes through here, so no later failure can
+     * replace the first, whichever path showed it.
+     */
+    function showCause(text) {
+        if (causeOnLine !== null) return;
+        causeOnLine = text;
+        showError(text);
     }
 
     /**
@@ -324,7 +408,7 @@ export function createRunLifecycle({
         for (const r of failing) failRun(r, message, { afterEnd: r !== liveRun });
         if (failing.length > 0) return;
         if (!pending) {
-            if (first) showError(message);
+            if (first) showCause(message);
             else
                 console.error(
                     `The detection worker failed again, after "${detectionWorker.failure}": ${message}`,
@@ -495,11 +579,21 @@ export function createRunLifecycle({
         set lastRun(run) {
             lastRun = run;
         },
+        get startPending() {
+            return pendingStart;
+        },
         runs,
         detectionWorker,
         newRun,
         endRun,
         startAllowed,
+        probeAllowed,
+        settleControls,
+        beginStart,
+        clearPendingStart,
+        endStart,
+        clearErrorLine,
+        showCause,
         stopRun,
         failRun,
         initWorker,

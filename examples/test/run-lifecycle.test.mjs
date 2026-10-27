@@ -75,6 +75,9 @@ function harness({ path = "worker", loops = null, hidden = false, frames = 3 } =
             page.error = message;
             page.statuses.push("failed");
         },
+        clearError: () => {
+            page.error = "";
+        },
         setStatusText: (text) => page.statuses.push(text),
         stopLoop: () => page.stopLoop++,
         stopSource: () => page.stopSource++,
@@ -568,5 +571,161 @@ describe("advanceLoop (PG19)", () => {
         // Without the duration this would read as a wrap: back more than 0.5 s, near the start.
         expect(() => advanceLoop(loop, 0.1, 10)).toThrow(/is not the clip restarting/);
         expect(loop.index).toBe(0);
+    });
+});
+
+describe("a start pending or live (#166, defect 1)", () => {
+    it.each(["worker", "sync"])(
+        "%s: refuses Start while a start is pending, and the probe's re-enable leaves both off",
+        (path) => {
+            const { lc, page } = harness({ path });
+            lc.beginStart(false);
+            expect([page.startButton.disabled, page.probeButton.disabled]).toEqual([true, true]);
+            expect(lc.startAllowed()).toBe(false);
+            expect(lc.probeAllowed()).toBe(false);
+            lc.settleControls();
+            expect([page.startButton.disabled, page.probeButton.disabled]).toEqual([true, true]);
+        },
+    );
+
+    it.each(["worker", "sync"])(
+        "%s: refuses Start while a run is live, and the probe's re-enable leaves both off",
+        (path) => {
+            const { lc, page } = harness({ path });
+            start(lc);
+            expect(lc.startAllowed()).toBe(false);
+            expect(lc.probeAllowed()).toBe(false);
+            lc.settleControls();
+            expect([page.startButton.disabled, page.probeButton.disabled]).toEqual([true, true]);
+        },
+    );
+
+    it("keeps a start pending from its run's creation until the run is live", () => {
+        const { lc, page } = harness();
+        lc.beginStart(false);
+        const run = lc.newRun();
+        lc.lastRun = run;
+        expect(lc.startPending).not.toBeNull();
+        expect(lc.startAllowed()).toBe(false);
+        lc.clearPendingStart();
+        expect(lc.startPending).toBeNull();
+        lc.liveRun = run;
+        expect(lc.startAllowed()).toBe(false);
+        lc.stopRun("stopped");
+        expect(lc.startAllowed()).toBe(true);
+        expect(page.startButton.disabled).toBe(false);
+        expect(page.probeButton.disabled).toBe(false);
+    });
+
+    it("allows Start again after a refused start, and after a synchronous run ends", () => {
+        const sync = harness({ path: "sync" });
+        sync.lc.beginStart(false);
+        sync.lc.endStart();
+        expect([sync.page.startButton.disabled, sync.page.probeButton.disabled]).toEqual([
+            false,
+            false,
+        ]);
+        const run = start(sync.lc);
+        sync.lc.stopRun("stopped");
+        expect(run.endedBy).toBe("stopped");
+        expect(sync.page.startButton.disabled).toBe(false);
+
+        const worker = harness();
+        worker.lc.beginStart(false);
+        worker.lc.endStart();
+        expect(worker.page.startButton.disabled).toBe(false);
+    });
+
+    it("keeps Start off after a refused start when the worker has failed", () => {
+        const { lc, page } = harness();
+        lc.detectionWorker.failure = "it failed";
+        lc.beginStart(false);
+        lc.endStart();
+        expect(page.startButton.disabled).toBe(true);
+        expect(page.probeButton.disabled).toBe(false);
+    });
+
+    it("keeps the probe and Start off when a run fails through stopRun during a pending start", () => {
+        const { lc, page } = harness();
+        const ended = start(lc);
+        lc.stopRun("stopped");
+        lc.beginStart(false);
+        // A worker failure fails the last ended run, through stopRun (failedRuns, failRun).
+        lc.workerFailed("The detection worker failed: probe.");
+        expect(ended.endedBy).toBe("failed");
+        expect(lc.startPending).not.toBeNull();
+        expect(page.probeButton.disabled).toBe(true);
+        expect(page.startButton.disabled).toBe(true);
+    });
+});
+
+describe("the error line keeps the first failure's cause (#166, defect 2)", () => {
+    it("keeps the first cause when a later run fails, and gives that run its own failure", () => {
+        const { lc, page } = harness();
+        const first = start(lc);
+        lc.failRun(first, "The worker path failed on frame 46: probe");
+        const shown = page.error;
+        const second = start(lc);
+        lc.stopRun("stopped");
+        lc.failRun(second, "The worker path failed on frame 47: other", { afterEnd: true });
+        expect(page.error).toBe(shown);
+        expect(page.error).toBe(
+            "The worker path failed on frame 46: probe\n\nThe run stopped, and it will not be exported. Reload the page to run again.",
+        );
+        expect(first.failure).toBe("The worker path failed on frame 46: probe");
+        expect(second.failure).toBe("The worker path failed on frame 47: other");
+        expect(second.endedBy).toBe("failed");
+    });
+
+    it("shows a new run's cause after a synchronous failure and a new Start", () => {
+        const { lc, page } = harness({ path: "sync" });
+        const first = start(lc);
+        lc.failRun(first, "The run failed on frame 52: probe-frame-throw");
+        // As the page's Start does, before it makes a run.
+        lc.clearErrorLine();
+        const second = start(lc);
+        lc.failRun(second, "The run failed on frame 9: again");
+        expect(page.error).toBe(
+            "The run failed on frame 9: again\n\nThe run stopped. Its export stays possible, and is not a session run.",
+        );
+        expect(first.failure).toBe("The run failed on frame 52: probe-frame-throw");
+    });
+
+    it("keeps an init failure's cause when a clean run's worker then fails", async () => {
+        const { lc, page } = harness();
+        const clean = start(lc);
+        lc.stopRun("stopped");
+        lc.beginStart(false);
+        // A new Start with another budget sends init; the worker answers with an error.
+        const ready = lc.initWorker(500);
+        lc.settleInit({ type: "error", message: "bad chunk" });
+        await expect(ready).rejects.toThrow(
+            `The detection worker could not prepare ${WHERE_TARGET}: bad chunk`,
+        );
+        // As the page's workerReady catch does.
+        lc.endStart();
+        lc.showCause(`The detection worker could not prepare ${WHERE_TARGET}: bad chunk`);
+        const shown = page.error;
+        // The worker then fails: failedRuns gives back the clean run that ended.
+        lc.workerFailed("The detection worker (examples/js/detection-worker.mjs) failed: probe.");
+        expect(clean.endedBy).toBe("failed");
+        expect(clean.failure).toBe(
+            "The detection worker (examples/js/detection-worker.mjs) failed: probe.",
+        );
+        expect(page.error).toBe(shown);
+        expect(
+            page.error.startsWith(`The detection worker could not prepare ${WHERE_TARGET}`),
+        ).toBe(true);
+    });
+
+    it("keeps a first worker failure on the line when a later failRun reaches it", () => {
+        const { lc, page } = harness();
+        lc.workerFailed("first");
+        expect(page.error).toBe("first");
+        const later = start(lc);
+        lc.stopRun("stopped");
+        lc.failRun(later, "later", { afterEnd: true });
+        expect(page.error).toBe("first");
+        expect(later.failure).toBe("later");
     });
 });
