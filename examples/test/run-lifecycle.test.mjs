@@ -622,7 +622,8 @@ describe("a start pending or live (#166, defect 1)", () => {
         sync.lc.beginStart(false);
         sync.lc.endStart();
         expect([sync.page.startButton.disabled, sync.page.probeButton.disabled]).toEqual([
-            false, false,
+            false,
+            false,
         ]);
         const run = start(sync.lc);
         sync.lc.stopRun("stopped");
