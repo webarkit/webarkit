@@ -482,7 +482,10 @@ const isTime = (text) => /^\d+\.\d{2}$/.test(text);
 /**
  * An export of a run without `?run=` says it is not a session run (#120,
  * PG20): its `protocol` is `{ sessionRun: false, gaps }`, and the gaps
- * include the missing `run.order`, whatever else keeps it from one.
+ * include the missing `run.order`, whatever else keeps it from one. That is
+ * the export's sense (`sessionRunGaps`): Start's provenance check holds any
+ * `?loops=` or `?run=` run to a session run's code, so the `?loops=1` run is
+ * one there, and its export is not one here.
  */
 function notASessionRun(e) {
     const { sessionRun, gaps } = e.protocol ?? {};
@@ -682,7 +685,8 @@ async function syncFabricatedWrapNoLoops(browser, base) {
             await p.waitReady();
             await p.click("start");
             // Running, the replaced frame processed (its callback runs as it is
-            // replaced), and frames past it in the window.
+            // replaced), and 60 frames in the window. The refusal reads only the
+            // replaced frame and the one before it, so none need follow it.
             await p.waitFor(
                 () => window.__pageCheck.fabricatedWrap.replacedS !== undefined,
                 RUN_MS,
@@ -957,8 +961,8 @@ async function syncParamRefusal(browser, base) {
 }
 
 /**
- * Start's provenance check on a session run (#110, §5; #120, PG4–PG10, PG33,
- * PG34): a sync `?run=1` page with no `?loops=`, so a session run by its
+ * Start's provenance check on a session run (#110, §5; #120, PG4, PG5, PG5b,
+ * PG6b, PG6c, PG7, PG8, PG9, PG10, PG33, PG34): a sync `?run=1` page with no `?loops=`, so a session run by its
  * `?run=` alone, and one fault per Start, each undone when the click's handler
  * has finished. Unfaulted, the build being clean, Start would start the run,
  * so each refusal is its own fault's, and the check reads it whole: the
@@ -1094,7 +1098,9 @@ async function workerDetectPostThrows(browser, base) {
             await p.waitReady();
             await p.click("start");
             // Armed with frames in the window: a run failed on its first frame
-            // has none, and its Download stays disabled, refusing nothing.
+            // has none, and its Download stays disabled, refusing nothing. The
+            // next frame without a lock posts, and the clip's first frames have
+            // none, so the fault fires within a frame or two of being armed.
             await waitFrames(p, 30);
             await p.page.evaluate((thrown) => {
                 window.__pageCheck.faults.detectPost = thrown;
