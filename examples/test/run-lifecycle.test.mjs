@@ -690,4 +690,42 @@ describe("the error line keeps the first failure's cause (#166, defect 2)", () =
         );
         expect(first.failure).toBe("The run failed on frame 52: probe-frame-throw");
     });
+
+    it("keeps an init failure's cause when a clean run's worker then fails", async () => {
+        const { lc, page } = harness();
+        const clean = start(lc);
+        lc.stopRun("stopped");
+        lc.beginStart(false);
+        // A new Start with another budget sends init; the worker answers with an error.
+        const ready = lc.initWorker(500);
+        lc.settleInit({ type: "error", message: "bad chunk" });
+        await expect(ready).rejects.toThrow(
+            `The detection worker could not prepare ${WHERE_TARGET}: bad chunk`,
+        );
+        // As the page's workerReady catch does.
+        lc.endStart();
+        lc.showCause(`The detection worker could not prepare ${WHERE_TARGET}: bad chunk`);
+        const shown = page.error;
+        // The worker then fails: failedRuns gives back the clean run that ended.
+        lc.workerFailed("The detection worker (examples/js/detection-worker.mjs) failed: probe.");
+        expect(clean.endedBy).toBe("failed");
+        expect(clean.failure).toBe(
+            "The detection worker (examples/js/detection-worker.mjs) failed: probe.",
+        );
+        expect(page.error).toBe(shown);
+        expect(
+            page.error.startsWith(`The detection worker could not prepare ${WHERE_TARGET}`),
+        ).toBe(true);
+    });
+
+    it("keeps a first worker failure on the line when a later failRun reaches it", () => {
+        const { lc, page } = harness();
+        lc.workerFailed("first");
+        expect(page.error).toBe("first");
+        const later = start(lc);
+        lc.stopRun("stopped");
+        lc.failRun(later, "later", { afterEnd: true });
+        expect(page.error).toBe("first");
+        expect(later.failure).toBe("later");
+    });
 });

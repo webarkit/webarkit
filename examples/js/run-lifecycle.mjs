@@ -291,13 +291,25 @@ export function createRunLifecycle({
         const worker = run.path === "worker";
         if (worker) detectionWorker.failure ??= message;
         stopRun("failed");
+        showCause(
+            afterEnd
+                ? `${message}\n\nThe worker failed after the run ended, so the run cannot show it was clean, and it will not be exported. Reload the page to run again.`
+                : worker
+                  ? `${message}\n\nThe run stopped, and it will not be exported. Reload the page to run again.`
+                  : `${message}\n\nThe run stopped. Its export stays possible, and is not a session run.`,
+        );
+    }
+
+    /**
+     * Shows a failure's text on the error line, and records it as the cause the
+     * line shows, unless the line already shows one (#166). Every path that puts
+     * a failure's cause on the line goes through here, so no later failure can
+     * replace the first, whichever path showed it.
+     */
+    function showCause(text) {
         if (causeOnLine !== null) return;
-        causeOnLine = afterEnd
-            ? `${message}\n\nThe worker failed after the run ended, so the run cannot show it was clean, and it will not be exported. Reload the page to run again.`
-            : worker
-              ? `${message}\n\nThe run stopped, and it will not be exported. Reload the page to run again.`
-              : `${message}\n\nThe run stopped. Its export stays possible, and is not a session run.`;
-        showError(causeOnLine);
+        causeOnLine = text;
+        showError(text);
     }
 
     /**
@@ -396,7 +408,7 @@ export function createRunLifecycle({
         for (const r of failing) failRun(r, message, { afterEnd: r !== liveRun });
         if (failing.length > 0) return;
         if (!pending) {
-            if (first) showError(message);
+            if (first) showCause(message);
             else
                 console.error(
                     `The detection worker failed again, after "${detectionWorker.failure}": ${message}`,
@@ -581,6 +593,7 @@ export function createRunLifecycle({
         clearPendingStart,
         endStart,
         clearErrorLine,
+        showCause,
         stopRun,
         failRun,
         initWorker,

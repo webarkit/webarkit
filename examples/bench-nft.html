@@ -682,6 +682,7 @@
         clearPendingStart,
         endStart,
         clearErrorLine,
+        showCause,
         stopRun,
         failRun,
         initWorker,
@@ -1966,7 +1967,7 @@
               await workerReady(maxKeypoints);
             } catch (e) {
               endStart();
-              showError(e.message);
+              showCause(e.message);
               return;
             }
           }
