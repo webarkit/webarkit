@@ -41,6 +41,17 @@ release pull request's body and the GitHub Release's notes.
   it, and each later failure is recorded on its own run. This makes true the `[0.5.0]` sentence "A
   later failure no longer replaces the first on the error line", which `[0.5.1]` records as not
   describing the shipped behaviour.
+- **The bench page and the replay refuse a manifest whose flags no build writes, and a session run
+  is one that did not fail** ([#119](https://github.com/webarkit/webarkit/issues/119)). Two
+  conditions no guard read. Start and `replay-clips --packages bundle` read the manifest's `head`
+  only for null, so `head: ""` passed, and neither compared `clean` with `dirtyPaths`. Both now
+  refuse a `head` that is not a full commit hash, and a `clean` that disagrees with `dirtyPaths`,
+  as a manifest hand-edited or written by a broken build; a manifest built without git keeps its
+  own refusal. `sessionRunGaps`, and so `--transfer`'s recompute, read `run.endedBy` alone, so
+  only `failRun`'s `endedBy = "failed"` kept a failed run from counting. A run whose `run.failure`
+  is set, or not recorded, is now a gap, whatever `endedBy` says. Neither changes what the
+  committed exports say. The two stale comments beside `WRAP_BOUND_S` now point at
+  [#114](https://github.com/webarkit/webarkit/issues/114); its value is unchanged.
 
 <!-- prettier-ignore-start -->
 
