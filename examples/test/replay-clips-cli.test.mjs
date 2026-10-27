@@ -279,6 +279,26 @@ describe("replay-clips.mjs command line", () => {
             }
         });
 
+        // #119: `head: ""` ran, and the header read "built at , clean". The later refusal again
+        // stops a command whose manifest check went, before any decode.
+        it("refuses a manifest whose head is not a commit, by name", () => {
+            const r = runInTree(
+                {
+                    "provenance.json": manifest({ head: "", clean: true }),
+                    "webarkit-packages.mjs": bundle,
+                },
+                "--packages",
+                "bundle",
+                "--options",
+                "minTrackedPatches:100",
+            );
+            expect(r.stderr, "bundleManifestRefusal at --packages bundle").toMatch(
+                /^replay-clips: --packages bundle needs a manifest that a build wrote: .*head "" is not a full commit hash/,
+            );
+            expect(r.status).toBe(2);
+            expect(r.stderr.trim().split("\n")).toHaveLength(1);
+        });
+
         // The later refusal again stops a command whose manifest check went, before any decode.
         it("refuses a manifest that is missing or is not JSON, by name", () => {
             for (const dist of [

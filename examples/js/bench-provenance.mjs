@@ -33,6 +33,36 @@
  * re-exports every name here, under the same name.
  */
 
+/** A full commit hash, as `git rev-parse HEAD` prints it: SHA-1's 40 hex digits, or SHA-256's 64. */
+const FULL_COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
+/**
+ * Why a git build's manifest cannot be what `scripts/build-provenance.mjs`
+ * wrote, as a clause whose subject is `subject`, or `null` (#119): a `head`
+ * that is not a full commit hash, or a `clean` that disagrees with
+ * `dirtyPaths` (`clean: true` beside a non-empty or absent list, `clean: false`
+ * beside an empty one). Such a manifest was hand-edited or written by a broken
+ * build, so neither flag can be read. Read only after `head` null: the build
+ * without git writes `clean: false` beside an empty `dirtyPaths`, which is not
+ * a disagreement here but its own finding.
+ */
+function manifestFlagsError(manifest, subject) {
+    const { head, clean, dirtyPaths } = manifest;
+    if (typeof head !== "string" || !FULL_COMMIT.test(head))
+        return `${subject}'s head ${JSON.stringify(head)} is not a full commit hash`;
+    if (clean === true && !Array.isArray(dirtyPaths)) {
+        return `${subject} says its tree is clean, but its dirtyPaths is not a list (${JSON.stringify(dirtyPaths) ?? "none"})`;
+    }
+    if (clean === true && dirtyPaths.length > 0)
+        return `${subject} says its tree is clean, but lists dirty paths (${dirtyPaths.join(", ")})`;
+    if (clean === false && Array.isArray(dirtyPaths) && dirtyPaths.length === 0)
+        return `${subject} says its tree is dirty, but lists no dirty path`;
+    return null;
+}
+
+/** The end of every refusal {@link manifestFlagsError} gives a reason for. */
+const BROKEN_MANIFEST = "so it was hand-edited or written by a broken build";
+
 /**
  * What the provenance check found wrong, in one line with its remedies, or
  * `null` (#110, §5). `manifest` is `examples/dist/provenance.json` as fetched
@@ -69,12 +99,15 @@ export function provenanceFindings(manifest, observed, { detection = "sync" } = 
     if (observed.manifestChanged)
         add("the manifest changed since the page loaded", "reload the page");
     const rebuild = "commit, run `npm run build`, and reload";
+    const flagsError = manifest.head == null ? null : manifestFlagsError(manifest, "the manifest");
     if (manifest.head == null) {
         // scripts/build-provenance.mjs without git: no commit, and the tree not known to be clean.
         add(
             "built where git could not describe the tree, so its commit and cleanliness are unknown",
             `in a git checkout, ${rebuild}`,
         );
+    } else if (flagsError) {
+        add(`${flagsError}, ${BROKEN_MANIFEST}`, "run `npm run build`");
     } else if (manifest.clean !== true) {
         add(`built from a dirty tree (${(manifest.dirtyPaths ?? []).join(", ")})`, rebuild);
     }
@@ -135,14 +168,19 @@ export function provenanceFindings(manifest, observed, { detection = "sync" } = 
  * read), in one line with its remedy, or `null` when it can. A manifest built
  * where git could not describe the tree (`head` null, which #111 made
  * possible) is refused: its commit is unknown, so the replay could not name
- * the code it ran. A dirty tree is not refused here: the replay's header says
- * so.
+ * the code it ran. So is one whose flags no build writes (#119), as at Start.
+ * A dirty tree that its manifest records consistently is not refused here: the
+ * replay's header says so.
  */
 export function bundleManifestRefusal(manifest) {
     if (!manifest)
         return "--packages bundle needs examples/dist/provenance.json: run `npm run build`";
     if (manifest.head == null) {
         return "--packages bundle needs a manifest whose commit is known: examples/dist/provenance.json was built where git could not describe the tree (head null). To fix: in a git checkout, commit, and run `npm run build`";
+    }
+    const flagsError = manifestFlagsError(manifest, "examples/dist/provenance.json");
+    if (flagsError) {
+        return `--packages bundle needs a manifest that a build wrote: ${flagsError}, ${BROKEN_MANIFEST}. To fix: run \`npm run build\``;
     }
     return null;
 }

@@ -2559,9 +2559,63 @@ describe("bundleManifestRefusal: what --packages bundle refuses in the build's m
         for (const r of [bundleManifestRefusal(null), blind]) expect(r).not.toMatch(/\n/);
     });
 
+    const HEAD = "0123456789abcdef0123456789abcdef01234567";
     it("takes a manifest that names its commit, clean or not: the header says which", () => {
-        expect(bundleManifestRefusal({ head: "668d6fa", clean: true })).toBeNull();
-        expect(bundleManifestRefusal({ head: "668d6fa", clean: false })).toBeNull();
+        expect(bundleManifestRefusal({ head: HEAD, clean: true, dirtyPaths: [] })).toBeNull();
+        expect(
+            bundleManifestRefusal({ head: HEAD, clean: false, dirtyPaths: ["examples/js/a.mjs"] }),
+        ).toBeNull();
+        expect(
+            bundleManifestRefusal({
+                head: "0123456789abcdef".repeat(4),
+                clean: true,
+                dirtyPaths: [],
+            }),
+        ).toBeNull();
+    });
+
+    // #119: `head: ""` passed, and the replay's header read "built at , clean"; `clean` was
+    // never compared with `dirtyPaths`. A dirty manifest that agrees with itself is still taken.
+    it.each([
+        ["an empty head", { head: "" }, /head "" is not a full commit/],
+        ["a short head", { head: "668d6fa" }, /head "668d6fa" is not a full commit/],
+        ["a head that is not hex", { head: "z".repeat(40) }, /head "z{40}" is not a full commit/],
+        [
+            "a head one digit too long",
+            { head: `${HEAD}0` },
+            /head "[0-9a-f]{41}" is not a full commit/,
+        ],
+        [
+            "an upper-case head",
+            { head: HEAD.toUpperCase() },
+            /head "[0-9A-F]{40}" is not a full commit/,
+        ],
+        [
+            "a clean flag beside dirty paths",
+            { dirtyPaths: ["examples/js/a.mjs"] },
+            /says its tree is clean, but lists dirty paths \(examples\/js\/a\.mjs\)/,
+        ],
+        [
+            "a clean flag beside no list of dirty paths",
+            { dirtyPaths: "examples/js/a.mjs" },
+            /says its tree is clean, but its dirtyPaths is not a list \("examples\/js\/a\.mjs"\)/,
+        ],
+        [
+            "a dirty flag beside no dirty path, from a git build",
+            { clean: false },
+            /says its tree is dirty, but lists no dirty path/,
+        ],
+    ])("refuses a manifest with %s, as hand-edited or broken", (_, o, why) => {
+        const manifest = { head: HEAD, clean: true, dirtyPaths: [], ...o };
+        const r = bundleManifestRefusal(manifest);
+        expect(r, `bundleManifestRefusal took ${JSON.stringify(manifest)}`).toMatch(why);
+        expect(r).toMatch(
+            /^--packages bundle needs a manifest that a build wrote: examples\/dist\/provenance\.json/,
+        );
+        expect(r).toMatch(
+            /, so it was hand-edited or written by a broken build\. To fix: run `npm run build`$/,
+        );
+        expect(r).not.toMatch(/\n/);
     });
 
     // #120 (BM2, BM4, BM8): only `{ head: null, clean: false }` was refused in a test, so a
