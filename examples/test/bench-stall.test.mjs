@@ -31,7 +31,9 @@
 // its monotonicity arm and `isLoopWrap` read a step back alike, and where not.
 
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { countLoopWraps, isLoopWrap } from "../js/bench-metrics.mjs";
@@ -388,13 +390,51 @@ describe("stallCheck over the committed exports", () => {
 });
 
 describe("scripts/stall-check.mjs", () => {
-    const run = (name) => {
-        const r = spawnSync(process.execPath, [SCRIPT, `${BENCHMARKS}${name}`], {
+    const exec = (...args) => {
+        const r = spawnSync(process.execPath, [SCRIPT, ...args], {
             encoding: "utf8",
             timeout: 60000,
         });
-        return { status: r.status, lines: r.stdout.trim().split("\n") };
+        return { status: r.status, stdout: r.stdout, stderr: r.stderr };
     };
+    const run = (name) => {
+        const { status, stdout } = exec(`${BENCHMARKS}${name}`);
+        return { status, lines: stdout.trim().split("\n") };
+    };
+    const dir = mkdtempSync(join(tmpdir(), "stall-check-"));
+    const write = (name, text) => {
+        const p = join(dir, name);
+        writeFileSync(p, text);
+        return p;
+    };
+    /** Exit 2, one line on stderr, no stack trace and no verdict: the check never ran. */
+    const refused = ({ status, stdout, stderr }, line) => {
+        expect(status).toBe(2);
+        expect(stdout).toBe("");
+        expect(stderr.trim().split("\n")).toEqual([expect.stringMatching(line)]);
+        expect(stderr).not.toMatch(/\n\s+at /);
+    };
+
+    it("exits 2 with a usage line when given no export", () => {
+        refused(exec(), /^usage: node scripts\/stall-check\.mjs <export\.json>$/);
+    });
+
+    it("exits 2 naming the path on a file it cannot read", () => {
+        refused(exec(join(dir, "missing.json")), /^cannot read .*missing\.json: ENOENT/);
+    });
+
+    it("exits 2 naming the path on a file that is not JSON", () => {
+        refused(exec(write("bad.json", "{ not json")), /^cannot parse .*bad\.json as JSON: /);
+    });
+
+    it("exits 1 on an export it parses but cannot read: a completed check that fails", () => {
+        const { status, stdout } = exec(write("empty.json", "{}"));
+        expect(status).toBe(1);
+        expect(stdout.trim().split("\n")).toEqual([
+            "FAIL no clip duration or no frames to read (undefined, 0 frames)",
+            "stall check: FAIL",
+        ]);
+    });
 
     it("exits 0 on a passing export, its last line PASS", () => {
         const { status, lines } = run("2026-10-13-tab9-m4-preflight-sync-wall.json");

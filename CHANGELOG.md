@@ -24,9 +24,12 @@ release pull request's body and the GitHub Release's notes.
   ([#117](https://github.com/webarkit/webarkit/issues/117)): `stallCheck` in
   `examples/js/bench-stall.mjs`, and `node scripts/stall-check.mjs <export.json>`. Its logic is
   moved in unchanged from the copy embedded in M3's record (SHA-256 `cccb475b…`), and reproduces
-  that copy's result, field for field, and its output and exit code, on every committed export.
-  Each arm is tested passing and failing, and the verdict over every committed export with frames
-  is pinned. The record's copy stays as the record of what ran.
+  that copy's result, field for field, on every committed export. The command reproduces that
+  copy's output and exit code on every committed export, and differs only on input it cannot
+  read, where the record's copy threw: with no path, a file it cannot read or one that is not
+  JSON, it exits 2 with one line and no verdict, since 1 is a check that ran and failed. Each arm
+  is tested passing and failing, and the verdict over every committed export with frames is
+  pinned. The record's copy stays as the record of what ran.
 
 ### Fixed
 

@@ -347,9 +347,11 @@ before `metricsVersion` 1, another clip, another processing size.
 7 (`js/bench-stall.mjs`, #117) over one export: a line with its largest gap
 in media time and the loops it read, a `FAIL` line for each failure — an arm
 can fail more than once, one line a loop or a frame — then `stall check:
-PASS` or `stall check: FAIL`, exit 0 or 1. An export it cannot read (no clip
-duration, fewer than two frames, a media time that is not finite) has no
-first line, and fails. Its four arms
+PASS` or `stall check: FAIL`, exit 0 or 1. An export it parses but cannot
+read (no clip duration, fewer than two frames, a media time that is not
+finite) has no first line, and fails: exit 1. With no path, a file it cannot
+read, or one that is not JSON, there is no check to run: one line on stderr,
+no verdict, exit 2. Its four arms
 — gaps, monotonicity, coverage, cumulative — and where their bounds come
 from are in [the M3 record](../docs/benchmarks/2026-10-01-m3-session-additions.md#a-per-run-check-for-a-stalled-clip),
 which also keeps the copy that ran. The page does not run it.
