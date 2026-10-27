@@ -342,6 +342,20 @@ side by side, on the same footage. It refuses — one line, exit 1 — exports i
 cannot align: a webcam run (its media time is the stream's), an export from
 before `metricsVersion` 1, another clip, another processing size.
 
+**Checking an export for a stalled clip: `scripts/stall-check.mjs`.**
+`node scripts/stall-check.mjs export.json` runs the stall check of M3's step
+7 (`js/bench-stall.mjs`, #117) over one export: a line with its largest gap
+in media time and the loops it read, a `FAIL` line for each failure — an arm
+can fail more than once, one line a loop or a frame — then `stall check:
+PASS` or `stall check: FAIL`, exit 0 or 1. An export it parses but cannot
+read (no clip duration, fewer than two frames, a media time that is not
+finite) has no first line, and fails: exit 1. With no path, a file it cannot
+read, or one that is not JSON, there is no check to run: one line on stderr,
+no verdict, exit 2. Its four arms
+— gaps, monotonicity, coverage, cumulative — and where their bounds come
+from are in [the M3 record](../docs/benchmarks/2026-10-01-m3-session-additions.md#a-per-run-check-for-a-stalled-clip),
+which also keeps the copy that ran. The page does not run it.
+
 **Timing the frame pyramid on the device.** The tracker builds only the
 pyramid levels its patches start on; with `pinball.wnft`'s patches — 47 of
 level 0 and one of level 1, every one seen below its own scale — on the
@@ -672,6 +686,8 @@ clips through the tracker; ffmpeg needed) import it too, so a comparison or a
 replay means by each name what the page does. Its code lives in the
 `js/bench-*.mjs` modules beside it, one per concern (#98), which it re-exports
 under the names it has always exported: import from `js/bench-metrics.mjs`.
+`js/bench-stall.mjs` is apart: it was never part of `bench-metrics.mjs`, and
+the page does not import it, so it is neither re-exported nor served.
 
 ## Images
 
