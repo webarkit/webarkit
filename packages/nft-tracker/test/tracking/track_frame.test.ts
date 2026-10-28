@@ -44,48 +44,38 @@
 // noise and a changed exposure. The numbers each test pins are stated beside
 // it; the whole step is deterministic, so counts are pinned exactly.
 
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import type { GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
-import {
-    alignPatch,
-    buildFramePyramid,
-    decode,
-    DEFAULT_ALIGN_EPSILON,
-    DEFAULT_ALIGN_MAX_ITERATIONS,
-    DEFAULT_FIT_EPSILON,
-    DEFAULT_FIT_MAX_ITERATIONS,
-    DEFAULT_MAX_FIT_RMS,
-    DEFAULT_MAX_FRAME_LEVELS,
-    DEFAULT_MAX_OUTLIER_SHARE,
-    DEFAULT_MIN_PATCH_ZNCC,
-    DEFAULT_MIN_TRACKED_PATCHES,
-    DEFAULT_PHOTOMETRIC,
-    DEFAULT_TUKEY_C,
-} from "../../src/index.js";
-import { PatchOutcome, trackFrame, trackTarget } from "../../src/tracking/track_frame.js";
+import { alignPatch, buildFramePyramid } from "../../src/index.js";
+import { PatchOutcome, trackFrame } from "../../src/tracking/track_frame.js";
 import type {
     TrackFrameOptions,
     TrackFrameResult,
     TrackLoss,
 } from "../../src/tracking/track_frame.js";
-import { PINBALL_STEP, pinballPatches } from "../fixtures/tracking_target.js";
-import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
+import { PINBALL_STEP } from "../../ground-truth/fixtures/tracking_target.js";
 import {
-    mat3Mul,
     project,
     renderWarp,
     rotation,
     scaling,
     translation,
     view,
-} from "../fixtures/warped_frames.js";
+} from "../../ground-truth/fixtures/warped_frames.js";
+import {
+    about,
+    CAMERA,
+    centreRms,
+    image,
+    patches,
+    RENDER,
+    shifts,
+    shippedSweep,
+    shippedSweepErrors,
+    target,
+    VIEWS,
+} from "../../ground-truth/tracking/track_frame_sweep.js";
 
-const image = readPgm(TARGET_FIXTURE);
-const patches = pinballPatches();
-const target = trackTarget(patches, PINBALL_STEP);
-const CAMERA = { width: 270, height: 360 };
 const OPTIONS: TrackFrameOptions = {
     maxFrameLevels: 4,
     align: { maxIterations: 30, epsilon: 0.01, photometric: true },
@@ -95,35 +85,7 @@ const OPTIONS: TrackFrameOptions = {
     maxFitRms: 0.6,
     minPatchZncc: 0.6,
 };
-const VIEWS: Mat3[] = [
-    view({ target: image, frame: CAMERA, scale: 0.45 }),
-    view({
-        target: image,
-        frame: CAMERA,
-        scale: 0.45,
-        angle: (15 * Math.PI) / 180,
-        perspective: [0.0004, -0.0003],
-    }),
-];
-const RENDER = { ...CAMERA, blurPasses: 1, noiseSigma: 2, gain: 0.9, bias: 10, seed: 3 };
 const FRAMES = VIEWS.map((H) => renderWarp(image, H, RENDER));
-
-/** RMS, frame px, between where `A` and `B` put the 64 patch centres. */
-function centreRms(A: Mat3, B: Mat3): number {
-    let s = 0;
-    for (let q = 0; q < patches.count; q++) {
-        const [ax, ay] = project(A, target.centres[2 * q], target.centres[2 * q + 1]);
-        const [bx, by] = project(B, target.centres[2 * q], target.centres[2 * q + 1]);
-        s += (ax - bx) ** 2 + (ay - by) ** 2;
-    }
-    return Math.sqrt(s / patches.count);
-}
-
-/** `E` applied in the frame about the target centre's image: the prediction is `E · truth`. */
-function about(E: Mat3, H: Mat3): Mat3 {
-    const [cx, cy] = project(H, (image.width - 1) / 2, (image.height - 1) / 2);
-    return mat3Mul(mat3Mul(translation(cx, cy), mat3Mul(E, translation(-cx, -cy))), H);
-}
 
 function count(outcomes: Uint8Array, code: number): number {
     return outcomes.reduce((n, o) => n + (o === code ? 1 : 0), 0);
@@ -168,14 +130,6 @@ function expectConsistent(r: TrackFrameResult): void {
         expect(r.quality).toBe(sum / s.attempted);
         expect(s.inliers).toBe(r.weights.filter((w) => w > 0).length);
     }
-}
-
-/** The 16 translations of `d` px, 22.5° apart. */
-function shifts(d: number): Mat3[] {
-    return Array.from({ length: 16 }, (_, k) => {
-        const a = (k * Math.PI) / 8;
-        return translation(d * Math.cos(a), d * Math.sin(a));
-    });
 }
 
 interface Sweep {
@@ -626,87 +580,19 @@ describe("trackFrame", () => {
     });
 });
 
-/**
- * The shipped configuration on this suite's ground truth: the patches of the
- * committed `examples/targets/pinball.wnft`, stepped from the same 137
- * predictions as the judgement's margins above (translations to 8 px in 16
- * directions, roll to ±6°, scale to ±12%), on both views of five renders of
- * this file's kind (seeds 1–5), with the tracker's default options. The
- * fixture above stays at M2's 64 patches on purpose; this block follows
- * compile-target's default and the tracker's, so a change to either that
- * admits a wrong fit fails here. Five renders, not this file's one, because
- * on one render lowering `DEFAULT_MIN_TRACKED_PATCHES` to 7 admits nothing:
- * the wrong fit it admits is on another (found in review). Errors are measured
- * at the fixture's 64 patch centres, as everywhere in this file.
- */
+// #90's sweep on the shipped target is defined in
+// ground-truth/tracking/track_frame_sweep.ts, with its views, renders,
+// predictions, options and verdict; what it returns is asserted here.
 describe("trackFrame with the shipped target's patches", () => {
-    const decoded = decode(
-        new Uint8Array(
-            readFileSync(
-                fileURLToPath(
-                    new URL("../../../../examples/targets/pinball.wnft", import.meta.url),
-                ),
-            ),
-        ),
-    );
-    if (!decoded.ok) throw new Error(`pinball.wnft: ${decoded.error}`);
-    const shipped = trackTarget(decoded.target.patches!, decoded.target.pyramid.scaleStep);
-    // The tracker's own defaults, mapped as its constructor maps them — not
-    // this file's OPTIONS, which pin M2's values for the fixture's tests: a
-    // shipped-configuration test must move when a default does (found in
-    // review: at the file's OPTIONS, lowering DEFAULT_MIN_TRACKED_PATCHES to 7
-    // left this sweep at 8).
-    const SHIPPED_OPTIONS: TrackFrameOptions = {
-        maxFrameLevels: DEFAULT_MAX_FRAME_LEVELS,
-        align: {
-            maxIterations: DEFAULT_ALIGN_MAX_ITERATIONS,
-            epsilon: DEFAULT_ALIGN_EPSILON,
-            photometric: DEFAULT_PHOTOMETRIC,
-        },
-        fit: {
-            maxIterations: DEFAULT_FIT_MAX_ITERATIONS,
-            tukeyC: DEFAULT_TUKEY_C,
-            epsilon: DEFAULT_FIT_EPSILON,
-        },
-        minTrackedPatches: DEFAULT_MIN_TRACKED_PATCHES,
-        maxOutlierShare: DEFAULT_MAX_OUTLIER_SHARE,
-        maxFitRms: DEFAULT_MAX_FIT_RMS,
-        minPatchZncc: DEFAULT_MIN_PATCH_ZNCC,
-    };
-
     it("accepts no wrong fit from 137 predictions on two views of five renders: 788 right, the rest refused", () => {
         // Measured (1,370 steps): 788 right fits, none wrong; the minimum of
         // 8 correspondences never binds on a right fit (at least 11
         // inliers). Lowered to 7 it admits one fit 1.2 px off, to 6 one
         // 17.5 px off, and no right fit either way
         // (docs/benchmarks/README.md, round 4).
-        const deg = (a: number) => (a * Math.PI) / 180;
-        const errors: Mat3[] = [translation(0, 0)];
-        for (const d of [1, 2, 3, 4, 5, 6, 8]) errors.push(...shifts(d));
-        for (const a of [1, 2, 3, 4, 5, 6]) errors.push(rotation(deg(a)), rotation(deg(-a)));
-        for (const f of [1.02, 1.04, 1.06, 1.08, 1.1, 1.12])
-            errors.push(scaling(f), scaling(1 / f));
+        const errors = shippedSweepErrors();
         expect(errors.length).toBe(137);
-        const right: number[] = [];
-        const wrong: number[] = [];
-        for (let seed = 1; seed <= 5; seed++) {
-            const frames = VIEWS.map((H) => renderWarp(image, H, { ...RENDER, seed }));
-            VIEWS.forEach((H, v) => {
-                for (const E of errors) {
-                    const r = trackFrame(
-                        frames[v],
-                        shipped,
-                        null,
-                        about(E, H),
-                        SHIPPED_OPTIONS,
-                        null,
-                    );
-                    if (!r.ok) continue;
-                    if (centreRms(r.H, H) < 0.5) right.push(r.stats.inliers);
-                    else wrong.push(centreRms(r.H, H));
-                }
-            });
-        }
+        const { right, wrong } = shippedSweep();
         expect(wrong).toEqual([]);
         expect(right.length).toBe(788);
         expect(Math.min(...right)).toBeGreaterThanOrEqual(11);

@@ -40,7 +40,7 @@
 import { describe, it, expect } from "vitest";
 import type { GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
 import { crc32 } from "../../src/target/format/crc32.js";
-import { readPgm, TARGET_FIXTURE } from "./pgm.js";
+import { readPgm, TARGET_FIXTURE } from "../../ground-truth/fixtures/pgm.js";
 import {
     IDENTITY,
     mat3Inv,
@@ -50,7 +50,7 @@ import {
     scaling,
     translation,
     view,
-} from "./warped_frames.js";
+} from "../../ground-truth/fixtures/warped_frames.js";
 
 // The generator every tracking measurement is taken on. Each property below
 // is one the measurements rely on: if the generator moved a pixel, blurred

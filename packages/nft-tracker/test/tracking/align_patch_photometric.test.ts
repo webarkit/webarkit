@@ -47,8 +47,8 @@ import type {
     PatchObservation,
 } from "../../src/index.js";
 import { cutPatches, patchCentre, texturedSites } from "../fixtures/patch_table.js";
-import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
-import type { RenderOptions } from "../fixtures/warped_frames.js";
+import { readPgm, TARGET_FIXTURE } from "../../ground-truth/fixtures/pgm.js";
+import type { RenderOptions } from "../../ground-truth/fixtures/warped_frames.js";
 import {
     IDENTITY,
     mat3Mul,
@@ -56,7 +56,7 @@ import {
     renderWarp,
     translation,
     view,
-} from "../fixtures/warped_frames.js";
+} from "../../ground-truth/fixtures/warped_frames.js";
 
 // Gain and bias: the frame's intensity as `gain · patch + bias`, estimated
 // alongside the translation when `photometric` is set.

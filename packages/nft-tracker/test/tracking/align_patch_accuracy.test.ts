@@ -42,8 +42,14 @@ import type { GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
 import { alignPatch, buildFramePyramid, levelScale } from "../../src/index.js";
 import type { FramePyramid, PatchObservation } from "../../src/index.js";
 import { cutPatches, patchCentre, texturedSites } from "../fixtures/patch_table.js";
-import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
-import { mat3Mul, project, renderWarp, translation, view } from "../fixtures/warped_frames.js";
+import { readPgm, TARGET_FIXTURE } from "../../ground-truth/fixtures/pgm.js";
+import {
+    mat3Mul,
+    project,
+    renderWarp,
+    translation,
+    view,
+} from "../../ground-truth/fixtures/warped_frames.js";
 
 // Accuracy on clean warps: the pinball target rendered through a known
 // homography with no noise, blur or photometric change, so the only error

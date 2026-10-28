@@ -46,7 +46,8 @@
   "compilerOptions": {
     "noEmit": true,
     // The base sets rootDir to ./src so the build emits a flat dist/. Nothing
-    // is emitted here, so widen it to take test/ into the program too.
+    // is emitted here, so widen it to take test/ and ground-truth/ into the
+    // program too.
     "rootDir": ".",
     // The test program needs node's types: the codec's conformance and
     // robustness suites read the fixture corpus from disk, and the tracker's
@@ -59,5 +60,5 @@
     // point 7).
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "ground-truth/**/*.ts"]
 }

@@ -57,7 +57,7 @@ jobs:
             # type-checks src/, since that's what's actually published: a real
             # type error confined to test/ would pass a build-only check
             # silently. tsconfig.test.json in each package widens the program
-            # to include test/ too.
+            # to include test/ too (and nft-tracker's ground-truth/).
             - name: Type check (src + test)
               run: npm run typecheck
 

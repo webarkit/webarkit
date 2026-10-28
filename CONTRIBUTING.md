@@ -145,7 +145,7 @@ These are exactly the checks CI runs on every push and pull request (see `.githu
 npm run format
 ```
 
-What is checked: TypeScript under each package's `src/` and `test/`, the scripts under `packages/*/bin/` and `scripts/`, the modules and tests under `examples/js/` and `examples/test/`, and Markdown everywhere except the three places below. Each is kept out in `.prettierignore`, with its reason written beside it:
+What is checked: TypeScript under each package's `src/`, `test/` and `ground-truth/`, the scripts under `packages/*/bin/` and `scripts/`, the modules and tests under `examples/js/` and `examples/test/`, and Markdown everywhere except the three places below. Each is kept out in `.prettierignore`, with its reason written beside it:
 
 - **`docs/`**, as a whole: the ADRs, whose accepted decisions are never edited in place, the specifications, and `docs/benchmarks/`, the measurement record, which is cited by line number.
 - **`fixtures/`**, `fixtures/nft-target/README.md` included: the corpus is generated, and both codecs compare it byte for byte.

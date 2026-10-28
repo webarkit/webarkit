@@ -55,10 +55,10 @@ import type { NftTrackerOptions, TrackResult } from "../src/tracker.js";
 import { detectTarget, prepareDetection } from "../src/detection.js";
 import type { Detection } from "../src/detection.js";
 import type { TargetDb } from "../src/target/types.js";
-import { pinballTrackingTarget } from "./fixtures/tracking_target.js";
-import { readPgm, TARGET_FIXTURE } from "./fixtures/pgm.js";
-import { withSeededRandom } from "./fixtures/seeded_rng.js";
-import { renderWarp, view } from "./fixtures/warped_frames.js";
+import { pinballTrackingTarget } from "../ground-truth/fixtures/tracking_target.js";
+import { readPgm, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
+import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import { renderWarp, view } from "../ground-truth/fixtures/warped_frames.js";
 
 const CAMERA = { width: 270, height: 360 };
 const SEED = 20261021;

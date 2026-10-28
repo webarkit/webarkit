@@ -49,7 +49,7 @@ import type {
     PatchTable,
 } from "../../src/index.js";
 import { cutPatches } from "../fixtures/patch_table.js";
-import { translation } from "../fixtures/warped_frames.js";
+import { translation } from "../../ground-truth/fixtures/warped_frames.js";
 
 // Explicit failures (types.ts, rule 3): every way alignPatch can refuse, and
 // the property that it never throws and never hands back a non-finite number.

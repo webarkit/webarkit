@@ -45,7 +45,9 @@
 // `detectTarget`, under a seed; the tracker's own calls draw nothing, and the
 // tests say so. The frames are the camera path of tracker_state_machine.test.ts,
 // whose helpers are copied here rather than imported, so that file stays
-// exactly as M2 left it.
+// exactly as M2 left it. Since #130 those helpers are in
+// ground-truth/tracker_sequences.ts, which can be imported; the copies stay as
+// written.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import type { CvBackend, GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
@@ -55,10 +57,10 @@ import type { TrackResult } from "../src/tracker.js";
 import { detectTarget, prepareDetection } from "../src/detection.js";
 import type { Detection, DetectionSetup } from "../src/detection.js";
 import type { TargetDb } from "../src/target/types.js";
-import { pinballTrackingTarget } from "./fixtures/tracking_target.js";
-import { readPgm, TARGET_FIXTURE } from "./fixtures/pgm.js";
-import { withSeededRandom } from "./fixtures/seeded_rng.js";
-import { renderWarp, view } from "./fixtures/warped_frames.js";
+import { pinballTrackingTarget } from "../ground-truth/fixtures/tracking_target.js";
+import { readPgm, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
+import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import { renderWarp, view } from "../ground-truth/fixtures/warped_frames.js";
 
 /** The reference device's camera path: 270 × 360 grey frames, the target at about 0.45. */
 const CAMERA = { width: 270, height: 360 };

@@ -42,7 +42,7 @@
 // own helpers would agree with itself whatever they computed.
 
 import type { Mat3, PointArray } from "@webarkit/cv-backend-spec";
-import { mulberry32 } from "../fixtures/seeded_rng.js";
+import { mulberry32 } from "../../ground-truth/fixtures/seeded_rng.js";
 
 /** Row-major product `a · b`. */
 export function mul(a: Mat3, b: Mat3): Mat3 {

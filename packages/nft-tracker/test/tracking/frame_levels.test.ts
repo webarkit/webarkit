@@ -50,9 +50,9 @@ import { alignPatch, buildFramePyramid } from "../../src/index.js";
 import type { FramePyramid, PatchTable } from "../../src/index.js";
 import { preparePatch } from "../../src/tracking/align_patch.js";
 import { frameLevelsFor } from "../../src/tracking/frame_levels.js";
-import { PINBALL_STEP, pinballPatches } from "../fixtures/tracking_target.js";
-import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
-import { renderWarp, view } from "../fixtures/warped_frames.js";
+import { PINBALL_STEP, pinballPatches } from "../../ground-truth/fixtures/tracking_target.js";
+import { readPgm, TARGET_FIXTURE } from "../../ground-truth/fixtures/pgm.js";
+import { renderWarp, view } from "../../ground-truth/fixtures/warped_frames.js";
 
 const image = readPgm(TARGET_FIXTURE);
 const patches = pinballPatches();

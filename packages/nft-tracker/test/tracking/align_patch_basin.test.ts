@@ -43,7 +43,7 @@ import { alignPatch, buildFramePyramid, levelScale } from "../../src/index.js";
 import type { FramePyramid, PatchTable } from "../../src/index.js";
 import { cutPatches, patchCentre, texturedSites } from "../fixtures/patch_table.js";
 import type { PatchSite } from "../fixtures/patch_table.js";
-import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
+import { readPgm, TARGET_FIXTURE } from "../../ground-truth/fixtures/pgm.js";
 import {
     mat3Mul,
     project,
@@ -52,7 +52,7 @@ import {
     scaling,
     translation,
     view,
-} from "../fixtures/warped_frames.js";
+} from "../../ground-truth/fixtures/warped_frames.js";
 
 // The convergence basin — how far off the prediction can be and still
 // converge — measured, not assumed. "Converged" means ok, converged, and
