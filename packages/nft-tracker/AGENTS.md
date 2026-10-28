@@ -111,12 +111,18 @@ Also:
   `crates/wnft-format/tests/real_target.rs` asserts on its contents.
   Recompiling it is a change to that test's expectations, not a refresh: update
   both in one commit, or do not recompile.
-- **The suite's tracking fixture stays at 64 patches.** `test/fixtures/tracking_target.ts`
+- **The suite's tracking fixture stays at 64 patches.** `ground-truth/fixtures/tracking_target.ts`
   is an invariant, not a default: the frozen comparisons in
-  `test/tracking/track_frame.test.ts` and `test/tracker_state_machine.test.ts` are
-  measured against it, so changing it invalidates them. Decided in PR #90, and said
-  where the suite reads it (`test/tracking/track_frame.test.ts:635`); neither is
-  restated here.
+  `test/tracking/track_frame.test.ts` and `test/tracker_state_machine.test.ts`, and
+  #90's ground truth in `ground-truth/`, which measures its errors at the fixture's
+  64 patch centres, are measured against it, so changing it invalidates them.
+  Decided in PR #90, and said where the sweep reads it
+  (`ground-truth/tracking/track_frame_sweep.ts:126`); neither is restated here.
+- **`ground-truth/` holds reference values for measurements, and no unit tests**
+  ([#130](https://github.com/webarkit/webarkit/issues/130)). Its files are a
+  campaign's inputs, frozen and attested by hash while one is open; the
+  assertions on them are in `test/`. Its [README](./ground-truth/README.md) has
+  the rule, the hashes, and how to rerun the probes that read the old paths.
 
 ## `known.ts` is one end of a hand-made link
 
