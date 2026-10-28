@@ -19,8 +19,10 @@ probe does not do that". This probe runs that pipeline.
 
 The computation is
 [`2026-10-28-137-stage1-pipeline-probe.mjs`](./2026-10-28-137-stage1-pipeline-probe.mjs).
-Every figure below is in its stdout, except the pre-probe check's, which are
-labelled as such. Its per-frame rows (one JSONL file per run) and per-run
+Every figure below is in its stdout, except the pre-probe check's and two
+post-run reads of the run's own output files (under "What LOST,
+`trackLoss` and the reacquisitions count here" and "Non-finite held-out
+scores"), each labelled as such. Its per-frame rows (one JSONL file per run) and per-run
 table (`runs.tsv`) go to a run directory and are not committed (`AGENTS.md`,
 "Test assets": desktop replays reproduce from the repository); stdout prints
 their hashes.
@@ -112,7 +114,11 @@ The script's header carries the method in full. In short:
   `!h.ok` into `reason: "no-consensus"` with `numInliers: h.numInliers`
   (`detection.ts`, lines 423 to 431), and the tracker makes that frame LOST
   with no lock (`tracker.ts`, lines 950 to 963; a lock is set only on an ok
-  detection, lines 783 to 785). Nothing else in the pipeline sees the
+  detection, lines 783 to 785). A LOST frame is any frame without a pose,
+  before a first lock or after a lost one alike (#143); in this probe's
+  counted loops every LOST frame is of the second kind (see "What LOST,
+  `trackLoss` and the reacquisitions count here"). Nothing else in the
+  pipeline sees the
   result: `estimateHomography` is called only from `detectTarget`. **So in
   this probe a gate's refusal is counted under `no-consensus`, with 0
   inliers, beside the real RANSAC failures**, and the candidate's real count
@@ -236,6 +242,16 @@ minutes a run. The script's own SHA-256 at those runs is `9a40bd69…`.
 `runs.tsv` and the rows also equal those of the first two full runs, made
 before the review below added printed sections. No figure moved between
 them.
+
+**The stdout hash depends on one line's build.** It was taken with the
+replay's provenance manifest built at `b31635d`. Stdout's line
+`replay-clips' exports: the provenance manifest's bundle, built clean at
+<commit>` prints that manifest's head, and it is the only line that depends
+on it. A run built at another commit reproduces `runs.tsv` and the rows'
+hashes, but not the stdout hash. An independent reproduction (Linux, ffmpeg
+6.1, Node 22.23 and 24.21) found `runs.tsv` and the rows' hashes identical,
+and stdout equal to `19eebb1c…` once that line read `b31635d…`. Built at
+this PR's own commit, the line reads `2ba5aec…`.
 
 **Check 8 passed on every seed**, so **G0 at `b31635d` reproduces the
 comment's eight `jitterPx` values per clip, measured at `37dc6d4`**: 0.124939
@@ -402,7 +418,36 @@ per-frame rows name them.
 No figure here is compared with a tolerance. None exists for a seeded
 desktop replay, and the protocol forbids deriving one from two observations.
 
+### What LOST, `trackLoss` and the reacquisitions count here (#143)
+
+The tracker's LOST state, and `trackLoss`, mark every frame without a pose,
+whatever the cause: a frame before a first lock and a frame after a lost
+lock alike. That conflation is #143's, in the tracker, not this probe's.
+On this corpus it does not enter the counted loops. **Every candidate's
+first lock, on every clip and seed, falls in loop 0, the warm-up**, so in
+loops 1 to 4 no frame is "never acquired". Every counted LOST frame comes
+after a lock was lost, and every counted detection lock is a re-lock.
+
+The latest first-lock frame per candidate over seeds 1 to 8, against each
+clip's frames per loop (per seed in stdout):
+
+| | static (363 a loop) | wall (298) | table (267) |
+|---|---|---|---|
+| G0 | 0 (every seed) | 0 (every seed) | 1 (s3 to s6) |
+| G5 | 0 (every seed) | 2 (s4, s5) | 2 (s6) |
+| G6 | 0 (every seed) | 85 (s2 to s5, s8) | 38 (s3) |
+| G8 | 0 (every seed) | 87 (s4, s6) | 62 (s4) |
+| GH | 0 (every seed) | 85 (s2, s4, s5) | 27 (s2, s8) |
+| GP | 0 (every seed) | 2 (s7) | 4 (s6) |
+
+A post-run read of the 144 per-frame row files agrees: no run never locks.
+Of the 19,348 counted LOST frames, over all runs, 0 come before their run's
+first ok frame.
+
 ### Counts per run, the range over seeds 1 to 8
+
+LOST, `trackLoss` and the reacquisitions in these tables count lost-lock
+frames and re-locks only, as the section above shows (#143).
 
 **Wall clip** (1,192 counted frames a run):
 
@@ -488,6 +533,28 @@ whose median exceeds 4 px.
   subsets are drawn from the returned mask, which is what the contract
   offers.
 
+**Non-finite held-out scores: a defect in the script's serialization, and
+what it reaches.**
+- **The defect.** The script's `heldOut` can return an infinite median, max
+  or mean, when a refit cannot be produced or projects to a non-finite
+  point. `JSON.stringify` writes `Infinity` as `null`. This table's test
+  `!(x.loo[0] <= 4)` then reads a `null` median as passing, where an
+  infinite one fails.
+- **It does not reach GH's in-pipeline decisions.** The wrapper decides on
+  the number before anything is serialized.
+- **It reaches none of this section's figures on this corpus.** A post-run
+  read of the result files finds no scored fit with a null median, max or
+  mean: 0 of 726 on the wall clip, 0 of 644 on the table clip, and none on
+  the static clip, which has no scored fit in the counted loops. An
+  independent verification found the same counts.
+- **The per-frame rows, outside this table, hold one such fit.** It is on
+  the table clip, seed 6, frame 1,337, in loop 5, outside the counted
+  loops: 5 inliers, a held-out median of 3.0 px, and an infinite max and
+  mean. It appears in G0's, G5's, G6's and GP's rows, whose runs coincide
+  up to that frame. GH's own run makes no call on it.
+- **A later script that reuses this code must encode non-finite scores
+  before serializing them.**
+
 ## Stage 2: the declared covariates
 
 Each property below could plausibly invert the sign of a candidate's effect.
@@ -497,12 +564,12 @@ and reported per clip in the script's section "Stage 2's covariates" (seeds
 
 | covariate | computed per frame as | static | wall | table | how it could invert the sign |
 |---|---|---|---|---|---|
-| **the clip's motion** | the four corners' mean displacement since the previous TRACK frame, same loop (px); and G0's detection locks per run | 0.012 / 0.038 / 0.111 px; 0 locks | 0.054 / 1.007 / 2.883 px; 282 to 291 | 0.323 / 0.637 / 1.408 px; 181 to 205 | Without re-detection (static) no candidate can act: the effect is zero by construction, not small. Under fast motion, a refused re-detection lengthens a LOST stretch that a right few-inlier fit would have ended. |
+| **the clip's motion** | the four corners' mean displacement since the previous TRACK frame, same loop (px); and G0's detection locks per run | 0.012 / 0.038 / 0.111 px; 0 locks | 0.054 / 1.007 / 2.883 px; 282 to 291 | 0.323 / 0.637 / 1.408 px; 181 to 205 | Without re-detection (static) no candidate can act: the effect is zero by construction, not small. Under fast motion, a refused re-detection lengthens a LOST stretch after a lost lock (#143's second kind) that a right few-inlier fit would have ended. |
 | **the target's scale in the frame** | the corners' quadrilateral over the frame's area, on TRACK frames | 0.4588 / 0.4631 / 0.4656 | 0.0836 / 0.2038 / 0.3164 | 0.1352 / 0.2272 / 0.5170 | A smaller target yields fewer correspondences on right views too, so a count or score gate refuses right fits, and the cost in `trackTimeShare` can outweigh what it removes. |
 | **the oracle's tilt** | `cv-backend-jsfeatnext`'s `poseFromHomography(H, K)`, the angle whose cosine is R[2][2], on TRACK frames (as #137's body reads it) | 2.85 / 2.88 / 2.94° | 9.10 / 11.60 / 27.38° | 2.84 / 9.27 / 9.71° | A genuine oblique view has fewer inliers and larger held-out errors, so Gk and GH refuse right fits there first. About a tenth of the wall clip's TRACK frames lie above 27.38°, its p90; the table clip's p90 is 9.71°. |
 | **the inliers of the neighbouring TRACK frames** | for each accepted detection, the last TRACK frame before it in the run: its inliers | — (no detection in the counted loops) | 39 at p10, median and p90 in every bucket below 12; 8 / 9 / 26 at 12+ | 39 at every quantile in the 4 and 5 buckets; 10 / 39 / 39 at 6–7; 8 / 11 / 39 at 8–11 | A detection right after a well-tracked stretch is more likely right than one after a weak one. **On this corpus it barely varies:** most detections follow the same last TRACK frame, the end of the clip's tracked stretch. So it cannot define a regime here; declared for a corpus where it can. |
 | **the time since the last TRACK frame** | the same frame: the time from it to the detection (s) | — | 4 inliers: 0.441 / 1.686 / 3.171; 5: 0.120 / 0.722 / 3.171; 6–7: 0.040 / 3.452 / 3.536; 8–11: 3.492 / 3.532 / 3.632; 12+: 0.040 / 0.080 / 0.120 | 4: 0.200 / 0.867 / 1.500; 5: 0.100 / 0.633 / 1.433; 6–7: 0.100 / 1.533 / 1.800; 8–11: 0.100 / 0.133 / 2.003 | A few-inlier detection moments after a loss, with the target still in view, can be right, and refusing it costs a re-lock. One that comes seconds after it is the 4-inlier population #137 describes. Of G0's accepted 4-inlier detections, 200 of 1,550 (wall) and 227 of 918 (table) come within 0.5 s of a TRACK frame. |
-| **the frame schedule** | which frames the tracker sees: every frame (this probe) or the device's scaled step | every frame | every frame | every frame | On the device schedule a refused detection costs more frames of LOST, and #137's comment measured G0's seed ratio there at 3.4 (wall) and 1.9 (table), not 4.8 and 103. **Not measured here**: declared because Stage 3's drafts below name it as a separate regime. |
+| **the frame schedule** | which frames the tracker sees: every frame (this probe) or the device's scaled step | every frame | every frame | every frame | On the device schedule a refused detection costs more frames of LOST (after a lost lock or before a first one: #143 does not tell them apart), and #137's comment measured G0's seed ratio there at 3.4 (wall) and 1.9 (table), not 4.8 and 103. **Not measured here**: declared because Stage 3's drafts below name it as a separate regime. |
 
 The poses behind the camera by bucket are in the same section. Of G0's
 accepted detections, behind the camera:
