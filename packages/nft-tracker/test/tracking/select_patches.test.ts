@@ -53,8 +53,8 @@ import type {
     PatchTable,
     SelectPatchesOptions,
 } from "../../src/index.js";
-import { mulberry32 } from "../fixtures/seeded_rng.js";
-import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
+import { mulberry32 } from "../../ground-truth/fixtures/seeded_rng.js";
+import { readPgm, TARGET_FIXTURE } from "../../ground-truth/fixtures/pgm.js";
 
 // ---------------------------------------------------------------------------
 // Test images and pyramids. None of this is the tracker's pyramid filter:

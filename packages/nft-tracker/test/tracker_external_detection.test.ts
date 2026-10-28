@@ -55,10 +55,10 @@ import type { TrackResult } from "../src/tracker.js";
 import { detectTarget, prepareDetection } from "../src/detection.js";
 import type { Detection, DetectionSetup } from "../src/detection.js";
 import type { TargetDb } from "../src/target/types.js";
-import { pinballTrackingTarget } from "./fixtures/tracking_target.js";
-import { readPgm, TARGET_FIXTURE } from "./fixtures/pgm.js";
-import { withSeededRandom } from "./fixtures/seeded_rng.js";
-import { renderWarp, view } from "./fixtures/warped_frames.js";
+import { pinballTrackingTarget } from "../ground-truth/fixtures/tracking_target.js";
+import { readPgm, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
+import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import { renderWarp, view } from "../ground-truth/fixtures/warped_frames.js";
 
 /** The reference device's camera path: 270 × 360 grey frames, the target at about 0.45. */
 const CAMERA = { width: 270, height: 360 };

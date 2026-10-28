@@ -46,8 +46,11 @@ import {
     prepareDetection,
 } from "../../packages/nft-tracker/dist/index.js";
 import { createJsfeatNextBackend } from "../../packages/cv-backend-jsfeatnext/dist/index.js";
-import { readPgm, TARGET_FIXTURE } from "../../packages/nft-tracker/test/fixtures/pgm.ts";
-import { renderWarp, view } from "../../packages/nft-tracker/test/fixtures/warped_frames.ts";
+import { readPgm, TARGET_FIXTURE } from "../../packages/nft-tracker/ground-truth/fixtures/pgm.ts";
+import {
+    renderWarp,
+    view,
+} from "../../packages/nft-tracker/ground-truth/fixtures/warped_frames.ts";
 import { sha256Hex } from "../js/bench-metrics.mjs";
 import { prepareWorkerDetection, runWorkerDetection } from "../js/detection-worker-core.mjs";
 

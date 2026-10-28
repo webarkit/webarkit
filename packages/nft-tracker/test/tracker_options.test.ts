@@ -49,10 +49,10 @@ import { NftTracker } from "../src/tracker.js";
 import type { NftTrackerOptions, TrackResult } from "../src/tracker.js";
 import { buildTargetFromImage } from "../src/target/build_from_image.js";
 import type { TargetDb } from "../src/target/types.js";
-import { pinballPatches, pinballTrackingTarget } from "./fixtures/tracking_target.js";
-import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "./fixtures/pgm.js";
-import { withSeededRandom } from "./fixtures/seeded_rng.js";
-import { renderWarp, view } from "./fixtures/warped_frames.js";
+import { pinballPatches, pinballTrackingTarget } from "../ground-truth/fixtures/tracking_target.js";
+import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
+import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import { renderWarp, view } from "../ground-truth/fixtures/warped_frames.js";
 
 /** The reference device's camera path: 270 × 360 grey frames, the target at 0.45. */
 const CAMERA = { width: 270, height: 360 };

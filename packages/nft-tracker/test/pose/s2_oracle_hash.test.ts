@@ -73,8 +73,8 @@ import {
 import { decode } from "../../src/target/format/index.js";
 import { trackFrame, trackTarget } from "../../src/tracking/track_frame.js";
 import type { TrackFrameOptions } from "../../src/tracking/track_frame.js";
-import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
-import { renderWarp } from "../fixtures/warped_frames.js";
+import { readPgm, TARGET_FIXTURE } from "../../ground-truth/fixtures/pgm.js";
+import { renderWarp } from "../../ground-truth/fixtures/warped_frames.js";
 import { s1Views } from "./pose_metric.js";
 
 /** acceptance.test.ts's constants, unchanged. */

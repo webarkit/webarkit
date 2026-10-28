@@ -55,7 +55,7 @@
  * webarkit/webarkit#27), the coordinates are already `f32` before they are
  * written, and the descriptor rows are bytes. The one remaining draw is
  * RANSAC's minimal sample, which is why both runs go through
- * `withSeededRandom` with the same seed — see `fixtures/seeded_rng.ts` for
+ * `withSeededRandom` with the same seed — see `ground-truth/fixtures/seeded_rng.ts` for
  * why that has to reach a global today (webarkit/webarkit#24).
  *
  * So an equality failure here is never noise. It means the file lost or
@@ -70,8 +70,8 @@ import { decode, encode } from "../src/target/format/index.js";
 import type { TargetDb } from "../src/target/types.js";
 import { NftTracker } from "../src/tracker.js";
 import type { TrackResult } from "../src/tracker.js";
-import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "./fixtures/pgm.js";
-import { withSeededRandom } from "./fixtures/seeded_rng.js";
+import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
+import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
 
 /** Arbitrary, fixed: any seed works, the same one for both runs is the point. */
 const SEED = 0x5eed;

@@ -38,7 +38,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "./pgm.js";
+import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "../../ground-truth/fixtures/pgm.js";
 
 describe("the committed fixtures are the demo's own images at the demo's own size", () => {
     it("reads the target at 512x640", () => {

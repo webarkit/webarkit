@@ -49,8 +49,8 @@ import type {
 import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
 import { NftTracker } from "../src/tracker.js";
 import { buildTargetFromImage } from "../src/target/build_from_image.js";
-import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "./fixtures/pgm.js";
-import { withSeededRandom } from "./fixtures/seeded_rng.js";
+import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
+import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
 
 /*
  * ---------------------------------------------------------------------------

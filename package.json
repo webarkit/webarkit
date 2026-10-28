@@ -15,7 +15,7 @@
     "check:contract": "node scripts/check-contract-sync.mjs",
     "check:page": "node scripts/page-check.mjs",
     "format": "npm run format:check -- --write",
-    "format:check": "prettier --check \"packages/*/src/**/*.ts\" \"packages/*/test/**/*.ts\" \"packages/*/bin/*.mjs\" \"scripts/*.mjs\" \"examples/js/**/*.mjs\" \"examples/test/**/*.mjs\" \"**/*.md\"",
+    "format:check": "prettier --check \"packages/*/src/**/*.ts\" \"packages/*/test/**/*.ts\" \"packages/*/ground-truth/**/*.ts\" \"packages/*/bin/*.mjs\" \"scripts/*.mjs\" \"examples/js/**/*.mjs\" \"examples/test/**/*.mjs\" \"**/*.md\"",
     "lint": "npm run lint --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present"
   },

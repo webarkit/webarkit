@@ -43,7 +43,7 @@
  *
  * **Why this exists as its own module.** Two things in this repository turn
  * `examples/images/*.jpg` into grey pixels: `bin/compile-target.mjs`, which
- * compiles a `.wnft`, and `test/fixtures/make-fixtures.mjs`, which writes the
+ * compiles a `.wnft`, and `ground-truth/fixtures/make-fixtures.mjs`, which writes the
  * PGM fixtures the tests read. If those two rules ever drifted, a compiled
  * target and the fixtures would disagree about what the same photograph is,
  * and every symptom would appear somewhere else. One definition, imported

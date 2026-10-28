@@ -60,8 +60,8 @@ import {
     prepareDetection,
 } from "../src/index.js";
 import type { DetectTargetOptions, TargetDb } from "../src/index.js";
-import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "./fixtures/pgm.js";
-import { withSeededRandom } from "./fixtures/seeded_rng.js";
+import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
+import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
 
 let cv: CvBackend;
 let target: TargetDb;

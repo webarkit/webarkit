@@ -44,7 +44,7 @@ import { buildFramePyramid, buildTargetFromImage, levelScale } from "../../src/i
 import type { FramePyramidResult, TargetDb } from "../../src/index.js";
 import { pyramidScales, stepVariance } from "../../src/tracking/frame_pyramid.js";
 import { crc32 } from "../../src/target/format/crc32.js";
-import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
+import { readPgm, TARGET_FIXTURE } from "../../ground-truth/fixtures/pgm.js";
 
 const CBRT2 = Math.cbrt(2);
 

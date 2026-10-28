@@ -53,8 +53,8 @@ import { describe, it, expect } from "vitest";
 import type { Mat3 } from "@webarkit/cv-backend-spec";
 import { intrinsics } from "@webarkit/cv-backend-jsfeatnext";
 import { conditioning, conditioningRefuses } from "../../src/pose/conditioning.js";
-import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
-import { view } from "../fixtures/warped_frames.js";
+import { readPgm, TARGET_FIXTURE } from "../../ground-truth/fixtures/pgm.js";
+import { view } from "../../ground-truth/fixtures/warped_frames.js";
 import { expectTableDigits, RECORD_K } from "./conditioning_record.js";
 import { CONDITIONING_FIXTURE } from "./conditioning_fixture.js";
 
