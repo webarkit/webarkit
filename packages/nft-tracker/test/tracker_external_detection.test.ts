@@ -45,7 +45,9 @@
 // `detectTarget`, under a seed; the tracker's own calls draw nothing, and the
 // tests say so. The frames are the camera path of tracker_state_machine.test.ts,
 // whose helpers are copied here rather than imported, so that file stays
-// exactly as M2 left it.
+// exactly as M2 left it. Since #130 those helpers are in
+// ground-truth/tracker_sequences.ts, which can be imported; the copies stay as
+// written.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import type { CvBackend, GrayImage, Mat3 } from "@webarkit/cv-backend-spec";

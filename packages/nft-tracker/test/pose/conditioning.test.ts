@@ -61,7 +61,7 @@ import { CONDITIONING_FIXTURE } from "./conditioning_fixture.js";
 const image = readPgm(TARGET_FIXTURE);
 const CAMERA = { width: 270, height: 360 };
 
-/** The sweep's two views, as `track_frame.test.ts` builds them (its `VIEWS`). */
+/** The sweep's two views, as `ground-truth/tracking/track_frame_sweep.ts` builds them (its `VIEWS`). */
 const VIEW_0 = view({ target: image, frame: CAMERA, scale: 0.45 });
 const VIEW_1 = view({
     target: image,

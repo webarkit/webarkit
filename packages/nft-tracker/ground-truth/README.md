@@ -49,8 +49,10 @@ them here after it closed, so that a frozen input no longer shares a directory,
 or a file, with tests that are free to change.
 
 **The next campaign's plan names these paths as inputs, with their hashes.**
+The table gives each file as #130 left it. Nothing checks it against the files,
+so the plan records the hashes at its own start rather than copying these.
 
-| File                              | SHA-256                                                            | M4's recorded hash, at `37dc6d4`                       |
+| File                              | SHA-256, as #130 left it                                           | M4's recorded hash, at `37dc6d4`                       |
 | --------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------ |
 | `fixtures/tracking_target.ts`     | `9407d82ec31bb4c4510a1b230062d3ed09994de69c4101f4f0f98bca1348209a` | equal, as `test/fixtures/tracking_target.ts`           |
 | `fixtures/warped_frames.ts`       | `0afb9e6dc0bbe7ebf1d9cf264926e837e6ad2bd8b94a4bee9d725afb3d886e97` | equal, as `test/fixtures/warped_frames.ts`             |
@@ -75,14 +77,16 @@ measurement reads:
 - `fixtures/make-fixtures.mjs`, line 45, gives its usage as
   `node packages/nft-tracker/test/fixtures/make-fixtures.mjs`. It is now
   `node packages/nft-tracker/ground-truth/fixtures/make-fixtures.mjs`.
-- `fixtures/tracking_target.ts`, lines 63 to 65, names
+- `fixtures/tracking_target.ts`, lines 62 to 65, names
   `tracker_state_machine.test.ts` and `tracking/track_frame.test.ts` as where
-  the frozen comparisons are measured against it. The unit tests are still
-  there; the ground truth is now in the two modules above.
+  the blocks that decode `examples/targets/pinball.wnft` pin the shipped
+  target on ground truth. Those blocks are now `tracker_sequences.ts` and
+  `tracking/track_frame_sweep.ts`; their assertions stay in the two test
+  files.
 
 The comments moved into the two modules are kept as written too: where one says
-"this file", "above" or "the fixture tests", it means the test file it came
-from.
+"this file", "here", "above" or "the fixture tests", it means the test file it
+came from.
 
 ## Rerunning #160's and #186's probes
 
@@ -90,8 +94,11 @@ The scripts behind the #160 and #186 records
 (`docs/benchmarks/2026-10-21-104-stage1-threshold-derivation.mjs`,
 `docs/benchmarks/2026-10-28-92-stage1-weighing.mjs`) hash the seven files at
 their old paths in `test/`, and import three of them from there. On a tree
-after #130 they stop with `fatal: … no such file`. That is expected: they are
-records of a commit, and are not edited.
+after #130 they stop at their first check, before printing anything:
+`test/tracking/track_frame.test.ts` still exists, split, so it fails with
+`fatal: packages/nft-tracker/test/tracking/track_frame.test.ts: sha256 …, not
+the record's cc6c70bc…`. That is expected: they are records of a commit, and
+are not edited.
 
 To rerun one, read a checkout of a commit before #130, such as `805f1f5`:
 
@@ -102,16 +109,24 @@ node --experimental-transform-types docs/benchmarks/2026-10-21-104-stage1-thresh
 ```
 
 A copy of a script outside the repository reads the checkout that
-`WEBARKIT_ROOT` names, as the scripts' own headers say:
+`WEBARKIT_ROOT` names, as each script says beside its `ROOT`:
 `WEBARKIT_ROOT=../webarkit-805f1f5 node --experimental-transform-types <copy>`.
 
 ## Not here
 
 - **`seeded_rng.ts` is not retired by this move.** It replaces `Math.random`
-  globally, a workaround #24's injectable RNG makes unnecessary; its
-  retirement is separate work ([#24](https://github.com/webarkit/webarkit/issues/24),
-  its comment of 2026-10-24, "Left for later"; and
-  [#151](https://github.com/webarkit/webarkit/issues/151)).
+  globally, a workaround #24's injectable RNG makes unnecessary. Its
+  retirement is left for later in
+  [#24](https://github.com/webarkit/webarkit/issues/24)'s comment of
+  2026-10-24, which says `seeded_rng.ts` "stays until #92 and #130".
+  [#137](https://github.com/webarkit/webarkit/issues/137) lists the global
+  `Math.random` replacements that would go; no open issue is for retiring
+  them.
+  [#151](https://github.com/webarkit/webarkit/issues/151), the per-frame
+  seeding policy, is related work on the same RNG and does not name this file.
 - **The build does not see this directory.** `tsconfig.json` compiles `src/`
-  alone; `tsconfig.test.json` includes `ground-truth/` for the typecheck, and
-  `npm run format:check` covers its `.ts` files.
+  alone; `tsconfig.test.json` includes `ground-truth/` for the typecheck.
+- **Prettier sees the two modules, not `fixtures/`.** `npm run format:check`
+  covers `ground-truth/**/*.ts`, but `.prettierignore`'s `fixtures/` keeps any
+  directory of that name out, as it did under `test/`, so the fixtures stay
+  byte-exact and the format hook cannot rewrite a frozen input.

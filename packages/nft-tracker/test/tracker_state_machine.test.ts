@@ -351,8 +351,9 @@ describe("the shipped target, examples/targets/pinball.wnft, on ground truth", (
             [5, "DTTTT" + "D".repeat(10)],
             [6, "DTTTT" + "D".repeat(10)],
         ];
-        for (const { v, results, truths, states } of shippedVelocitySteps(cv, K)) {
-            const pinned = new Map(expected).get(v);
+        const runs = shippedVelocitySteps(cv, K);
+        for (const [v, pinned] of expected) {
+            const { results, truths, states } = runs.find((r) => r.v === v)!;
             expect(states).toBe(pinned);
             results.forEach((r, i) => {
                 if (r.state === "TRACK") expect(centreRms(r.H!, truths[i])).toBeLessThan(0.13);

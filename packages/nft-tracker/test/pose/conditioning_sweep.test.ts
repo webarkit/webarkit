@@ -62,10 +62,12 @@
 // about any footage, device or K other than the sweep's frames under the
 // record's K.
 //
-// THE DRIVER. The sweep lives in test/tracking/track_frame.test.ts, a frozen
-// input (docs/benchmarks/README.md, "The instrument, the subject and the
-// inputs", item 3), which cannot be imported without running its tests and
-// is not changed here. Its loop is written again below from that file —
+// THE DRIVER. When this was written the sweep lived in
+// test/tracking/track_frame.test.ts, a frozen input (docs/benchmarks/README.md,
+// "The instrument, the subject and the inputs", item 3), which could not be
+// imported without running its tests and was not changed here. It is now
+// ground-truth/tracking/track_frame_sweep.ts (#130), which can be imported;
+// the copy below is kept as written. Its loop is written again below from the test file —
 // the image, the two views, the render settings, `centreRms`, `about`,
 // `shifts`, the 137 predictions, the step and the verdict — as #160's script
 // did under the maintainer's conditional permission, and under the same
