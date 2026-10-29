@@ -37,6 +37,24 @@ release pull request's body and the GitHub Release's notes.
   `provenance.manifest.build` show by themselves whether one producer wrote both manifests. It
   attests an accidental change only, and refuses nothing: neither file is served, so Start does
   not check them. The schema stays `webarkit-bench-provenance/1`.
+- **One Euro filtering of the pose, the rotation in its tangent space, off by default**
+  ([#106](https://github.com/webarkit/webarkit/issues/106)): `NftTrackerOptions` gains
+  `poseFilter`, `{ mode: "off" }` by default (`DEFAULT_POSE_FILTER`), or
+  `{ mode: "one-euro", rotation: { minCutOff, beta }, translation: { minCutOff, beta }, dCutOff }`,
+  where an omitted parameter takes the registered derived value: rotation 1 Hz and `beta` 10,
+  translation 1 Hz and `beta` 0.1, `dCutOff` 1 Hz, exported as `DEFAULT_POSE_FILTER_` constants.
+  When on, `pose` is filtered and `poseSelection.pose` stays the unfiltered pose; nothing else
+  changes. Cutoffs are in Hz and `timestampMs` is read as milliseconds. The filter resets, passing
+  the frame's pose through, on a result that is not `"TRACK"`, on `pose.good === false` and on a
+  timestamp that does not exceed the previous frame's; the next frame seeds it. Derived on #197's
+  probe
+  ([`2026-10-29-106-stage1-pose-filter-probe.md`](./docs/benchmarks/2026-10-29-106-stage1-pose-filter-probe.md))
+  and registered before the implementation
+  ([`2026-10-29-106-stage3-registration.md`](./docs/benchmarks/2026-10-29-106-stage3-registration.md),
+  #198). No device claim, and no rotation lag bound: no committed sequence has a rigid path with
+  rotation. Additive, pre-1.0 and private: `NftTrackerOptions` gains a key, and the index gains
+  the `DEFAULT_POSE_FILTER*` constants and the `PoseFilterOptions` and `PoseFilterLayerOptions`
+  types; the ground-truth module gains the rest and settle paths.
 
 ### Fixed
 

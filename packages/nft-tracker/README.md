@@ -468,6 +468,7 @@ have made in the default mode.
 | `maxFitRms`                                | 0.6 px            | The fit's weighted RMS residual                                                                                                                                                                           |
 | `minPatchZncc`                             | 0.6               | A converged patch's correlation with its window                                                                                                                                                           |
 | `conditioning`                             | `{ mode: "off" }` | The conditioning signal's state: `"off"`, `"report"`, or `"refuse"` with `maxDScale` and `maxDOrth`, both required, numbers ≥ 0, `Infinity` for no bound; a threshold in another state is refused (below) |
+| `poseFilter`                               | `{ mode: "off" }` | One Euro filtering of `pose`: `"off"`, or `"one-euro"` with `rotation`, `translation` (`{ minCutOff, beta }`) and `dCutOff`; an omitted one takes its derived value (below)                               |
 | `clock`                                    | none              | `() => ms`, for `timings`                                                                                                                                                                                 |
 
 **The conditioning signal** ([#104](https://github.com/webarkit/webarkit/issues/104),
@@ -502,6 +503,50 @@ signal's acceptance is `test/pose/conditioning_sweep.test.ts`: on #90's sweep
 no right fit of either target is refused and each of the eight gross wrong
 fits of M2's 64 patches is, read per view at the view's own floors, with
 every figure checked against the derivation's.
+
+**The pose filter** ([#106](https://github.com/webarkit/webarkit/issues/106),
+M5). One Euro filtering (Casiez, Roussel and Vogel, CHI 2012) of each
+result's `pose`, the rotation in its tangent space: the rotation's step is
+`ω = log(R̂ₖ₋₁ᵀ Rₖ)`, filtered as a 3-vector and applied as
+`R̂ₖ = R̂ₖ₋₁ · exp(ω̂)`, so the output is always a rotation; the translation
+is filtered per component by its own layer. **Off by default**
+(`{ mode: "off" }`): `pose` is `poseSelection.pose`, as without the filter.
+**On** (`{ mode: "one-euro", rotation, translation, dCutOff }`): `pose` is
+filtered, and `poseSelection.pose` stays the selected, unfiltered pose; `H`,
+the state and every other field are unchanged, since the filter runs after the
+tracker and feeds nothing back.
+
+- **Units.** Cutoffs are in Hz; `timestampMs` is read as **milliseconds**, the
+  period being the difference of two frames' timestamps divided by 1000. No
+  clock is read, so the output is a function of the frames and their
+  timestamps alone.
+- **Parameters.** Each layer takes `{ minCutOff, beta }`, `minCutOff` finite
+  and > 0, `beta` finite and ≥ 0 (per rad/s for the rotation, per model
+  unit/s for the translation); `dCutOff` is shared. An omitted parameter takes
+  the registered derived value, exported as its `DEFAULT_POSE_FILTER_`
+  constant: rotation 1 Hz and `beta` 10, translation 1 Hz and `beta` 0.1,
+  `dCutOff` 1 Hz. They were derived on #197's probe
+  ([its record](../../docs/benchmarks/2026-10-29-106-stage1-pose-filter-probe.md))
+  by the rule the
+  [registration](../../docs/benchmarks/2026-10-29-106-stage3-registration.md)
+  states, with how close each sits to the bound that selected it. A parameter
+  given with the filter off is a `RangeError`, as a threshold is for
+  `conditioning`.
+- **The reset rule.** The filter resets, and the frame's pose passes through
+  unfiltered, on a result that is not `"TRACK"` — a `"DETECT"` frame does not
+  seed it, the next `"TRACK"` does — on `pose.good === false`, and on a
+  timestamp that does not exceed the previous frame's, whatever that frame
+  was. The frame after a reset seeds the filter with its own pose. The state
+  lives on the tracker: a new tracker starts unseeded.
+- **Known limitations.** `α` is per component of `ω`, as the One Euro library
+  applies it per index, so the rotation's filtering is not invariant to the
+  frame's orientation; the derivative state is kept in the previous
+  estimate's body frame, accepted as a second-order effect at the measured
+  speeds. **No rotation lag bound** is registered: no committed sequence has a
+  rigid path with rotation, so the bounded-lag criteria cover translation
+  only. **No device claim**: no exported value of the bench page is a
+  function of the pose, so the filter is measured on synthetic sequences only.
+  The filter's step is not in `timings`.
 
 **What it survives**, measured on synthetic frames of the camera path (the
 pinball target at 0.45 in 270 × 360; `test/tracking/track_frame.test.ts`,
