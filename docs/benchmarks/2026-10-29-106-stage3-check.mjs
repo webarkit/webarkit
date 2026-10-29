@@ -112,6 +112,13 @@ const VERSIONS = [
     "packages/cv-backend-jsfeatnext/package.json",
     "node_modules/@webarkit/jsfeat-next/package.json",
 ];
+/** The probe's lines the copy keeps byte-identical (the registration, "How each is read, as commands"). */
+const KEPT = [
+    [88, 97],
+    [125, 433],
+    [513, 523],
+    [1006, 1010],
+];
 /** The registration's merge commit (#198): C0's base. */
 const REGISTRATION_MERGE = "12ebed3";
 /** The derived values the `DEFAULT_` constants must equal (the registration, "The derived parameters"). */
@@ -477,6 +484,20 @@ async function main() {
     const baseHead = git(BASE, "rev-parse", "HEAD");
     if (baseHead !== git(ROOT, "rev-parse", `${REGISTRATION_MERGE}^{commit}`)) fatal(`--base is at ${baseHead}, not the registration's merge commit ${REGISTRATION_MERGE}`);
     if (git(ROOT, "status", "--porcelain", "--", "packages", "examples/targets", "node_modules") !== "") fatal("packages/ or the target differ from the commit: the implementation is read from a clean tree");
+    // The copy: the probe's kept ranges, found byte for byte in this file (line endings aside, which a
+    // checkout may convert). Both ways: lines 125 to 433 with so3Log's acos replaced are not found.
+    let copyLine;
+    {
+        const probe = git(ROOT, "show", "0665a96:docs/benchmarks/2026-10-29-106-stage1-pose-filter-probe.mjs").replaceAll("\r\n", "\n").split("\n");
+        const own = readFileSync(fileURLToPath(import.meta.url), "utf8").replaceAll("\r\n", "\n");
+        for (const [from, to] of KEPT) {
+            if (!own.includes(probe.slice(from - 1, to).join("\n"))) fatal(`the copy: the probe's lines ${from} to ${to} are not in this file byte for byte`);
+        }
+        const so3 = probe.slice(124, 433).join("\n");
+        const broken = so3.replace("const theta = Math.acos(c);", "const theta = Math.atan2(Math.sqrt(1 - c * c), c);");
+        if (broken === so3 || own.includes(broken)) fatal("the copy: the perturbed range was found; the check cannot fire");
+        copyLine = `The copy: the probe's lines ${KEPT.map(([f, t]) => `${f} to ${t}`).join(", ")} at 0665a96 are in this file byte for byte — must not fire: did not; lines 125 to 433 with so3Log's acos replaced are not — must fire: fired.`;
+    }
     say("# #106 Stage 3 check: the registered criteria run against the implementation");
     say();
     say("## Step 0: what is read");
@@ -487,6 +508,7 @@ async function main() {
             return `${p.name} ${p.version}`;
         }).join("; "),
     );
+    say(copyLine);
     say(`The implementation: packages/ at tree ${git(ROOT, "rev-parse", "HEAD:packages")}, clean. C0's base: ${baseHead}. Node ${process.version}.`);
     say();
 
@@ -673,7 +695,12 @@ async function main() {
     };
     /** Frames whose `pose` is not their `poseSelection.pose` object. */
     const notIdentical = (results) => results.map((r, i) => (r.ok && r.pose !== r.poseSelection.pose ? i : -1)).filter((i) => i >= 0);
-    const maxAbs = (a, b) => a.reduce((m, v, i) => Math.max(m, Math.abs(v - b[i])), 0);
+    /** The largest |a − b| over the components; a NaN difference is Infinity, so that it never reads as within a bound. */
+    const maxAbs = (a, b) =>
+        a.reduce((m, v, i) => {
+            const d = Math.abs(v - b[i]);
+            return Number.isNaN(d) ? Infinity : Math.max(m, d);
+        }, 0);
     /** Largest |difference| per component kind between two pose streams, and where; a presence mismatch is reported. */
     const comparePoses = (xs, ys) => {
         let r = 0;
@@ -986,11 +1013,41 @@ async function main() {
             });
         }
         if (reportedC === 0) fatal("C4 (c): the module at another beta R reports no frame; the check cannot fire");
+        // Both ways for the comparator itself: a NaN on either side is beyond any bound.
+        const p0 = posesOf(wan.derived).find((p) => p !== null);
+        const nan = { R: p0.R, t: Float64Array.from([p0.t[0], NaN, p0.t[2]]), good: true };
+        if (!(comparePoses([p0], [nan]).t > ROTATION_TOL && comparePoses([nan], [p0]).t > ROTATION_TOL)) fatal("C4: the comparator passed a NaN component; it cannot fire on one");
+        if (comparePoses([p0], [p0]).t !== 0) fatal("C4: the comparator reads a pose against itself as different");
+        c4.push("both ways for the comparator: a pose against itself reads 0; against a copy with one component of t NaN, on either side, Infinity — must exceed: exceeded");
         c4.push(`(a) the joint grid through NftTracker against the copy, twelve settings on the nine: ${text(wa)} (bound 1e-9); the copy against itself: 0`);
         c4.push(`(b) the translation sweep through the module (rotation passing through), twelve settings on the nine: ${text(wb.translation)}`);
         c4.push(`(b) the rotation sweep through the module (translation passing through), twelve settings on the nine: ${text(wb.rotation)}; the copy against itself: 0`);
         c4.push(`(c) the module fed poseSelection.pose against NftTracker's pose, twelve settings on the nine: ${framesC} frames compared, ${notSame} not identical (Object.is on every component)`);
         c4.push(`both ways: (a) NftTracker at ${settingText(JOINT[j10])} against the copy at ${settingText(JOINT[j100])}: ${text(away)} — must exceed: exceeded; (b) the module at translation (1 Hz, beta 0.01) against the copy at (1 Hz, beta 0.1): ${text(awayB.translation)}, at rotation (1 Hz, beta 10) against (1 Hz, beta 100): ${text(awayB.rotation)} — must exceed: exceeded; (c) the module at beta R 100 against NftTracker at 10: ${reportedC} frames reported — must report: reported`);
+    }
+
+    // ---- Ruling B: with the filter on, every field but pose is the absent run's ----------------------
+    // P reads its unfiltered reference on the absent run, which is the same run's poseSelection.pose
+    // only if turning the filter on changes nothing else: this reads that on every filter-on run.
+    const ruleB = [];
+    {
+        const withoutPose = (rs) => rs.map(({ pose, ...fields }) => fields);
+        let runs = 0;
+        let results = 0;
+        for (const s of NINE) {
+            const ons = [["the derived pair", s.derived], ...JOINT.map((p, j) => [settingText(p), s.joint[j]])];
+            for (const [name, on] of ons) {
+                const d = compareRuns(withoutPose(on), withoutPose(s.absent));
+                if (d.length > 0) fatal(`ruling B: ${s.name} at ${name}: a field other than pose differs from the absent run: ${d.join("; ")}`);
+                runs++;
+                results += on.length;
+            }
+        }
+        const r0 = wan.derived.find((r) => r.ok && r.state === "TRACK");
+        const moved = structuredClone(r0);
+        moved.H[0] += 1e-12;
+        if (!compareRuns(withoutPose([moved]), withoutPose([r0])).some((x) => x.startsWith("[0].H[0]:"))) fatal("ruling B: a changed H[0] was not reported; the check cannot fire");
+        ruleB.push(`${runs} filter-on runs (the derived pair and the twelve joint settings, on the nine), ${results} results: every field but pose equal to the absent run's, poseSelection included — must not fire: did not; a result with H[0] moved by 1e-12 is reported — must fire: fired`);
     }
 
     // ---- P, the prediction for the derived pair -----------------------------------------------------
@@ -1058,6 +1115,9 @@ async function main() {
     say();
     say("## C4, fidelity to the probe");
     for (const l of c4) say(`- ${l}`);
+    say();
+    say("## Ruling B, read on every filter-on run (P's unfiltered reference is the absent run's)");
+    for (const l of ruleB) say(`- ${l}`);
     say();
     say(`## P, the prediction for the derived pair (the DEFAULT_ constants checked equal to ${Object.values(DERIVED).join(", ")} before any run)`);
     for (const l of pLines) say(`- ${l}`);

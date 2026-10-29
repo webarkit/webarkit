@@ -38,11 +38,12 @@ registration's merge into `dev`, `12ebed3` (#198), and the probe it rests on,
 - **The implementation's commit:** `1f48231`, whose `packages/` tree is
   `b3f1eb10f4e35cdea029148574354d74ff8683bb`: `f704a97`, the implementation,
   with the review's fixes (a tracker-level test that a `"LOST"` result
-  reaches the filter, and doc comments). The check ran on that tree, clean
-  (the script refuses a `packages/` or target that differs from the
-  commit), built with `npm run build`; the check script and this file were
-  the only uncommitted files. The commit that adds them changes nothing
-  under `packages/`, so the tree is the same at this branch's tip.
+  reaches the filter, and doc comments). The check ran on that tree, built
+  with `npm run build` from it. The script refuses a tracked file under
+  `packages/`, or the target, that differs from the commit; it cannot see
+  ignored build outputs (`dist/`, `node_modules/`), whose hashes Step 0
+  prints instead. The commits after it change nothing under `packages/`,
+  so the tree is the same at this branch's tip.
 - **The check also ran at `f704a97`**, before the review's fixes, twice:
   identical stdouts, SHA-256
   `3d9aae6350d1dd56647b5e59299981532c4af295061e394cef8cc40106666f99`. They
@@ -65,11 +66,15 @@ At the implementation's commit, with the base checkout beside it:
     npm test
     git diff --diff-filter=MD 12ebed3 1f48231 -- packages/*/test examples/test
 
-- **The check's stdout, run twice at `1f48231`:** both 94 lines, SHA-256
-  `2e45b5e938f828ea3a517be2dde87d51186e333f549197cf48ceab6f6f87317e`, equal.
-  Its first run, at `f704a97`, before two lines of its output were reworded
-  (the setting's label, and a frame index printed as `-1` beside a
-  difference of 0), printed the same figures.
+- **The check's stdout, run twice at `1f48231`:** both 99 lines, SHA-256
+  `e79fd9bf6442fba27dcdf0c9528a13bfc658e6b9f66cf398b3f89c3b5b505547`, equal.
+  Two earlier forms of the check printed the same figures: its first run,
+  at `f704a97`, before two lines of its output were reworded (the setting's
+  label, and a frame index printed as `-1` beside a difference of 0); and
+  the form the independent review read, run twice at `1f48231` (94 lines,
+  SHA-256 `2e45b5e938f828ea3a517be2dde87d51186e333f549197cf48ceab6f6f87317e`),
+  from which the revised check's stdout differs only by the three checks it
+  adds (the copy's ranges, the comparator on a `NaN`, and ruling B).
 - **`npm test`:** passes. Before (at `12ebed3`) and after (at `1f48231`):
   `cv-backend-jsfeatnext` 37 and 37; `cv-backend-spec` 27 and 27;
   `nft-tracker` 842 passed and 1 skipped, then 879 passed and 1 skipped (the
@@ -85,13 +90,21 @@ At the implementation's commit, with the base checkout beside it:
 ## The check copy
 
 The check holds a copy of the probe's scratch filter as the registration's
-"How each is read, as commands" requires. A diff of the probe script at
-`0665a96` against the copy, zero lines of context, touches no line of the
-kept ranges (88 to 97, 125 to 433 with `so3Log` in its `acos` form, 513 to
-523, 1006 to 1010): a small script parsed the diff's hunks against those
-ranges and found none inside them, and, both ways, found line 198 when the
-copy's `Math.acos(c)` was replaced by an `atan2` form. The diff itself is in
-the PR's body.
+"How each is read, as commands" requires, and checks it itself, in Step 0:
+the probe's lines 88 to 97, 125 to 433 (with `so3Log` in its `acos` form),
+513 to 523 and 1006 to 1010, read from `0665a96` with `git show`, are each
+found in the check's own source byte for byte, line endings aside; both
+ways, lines 125 to 433 with `Math.acos(c)` replaced by an `atan2` form are
+not. A diff of the probe script against the copy with zero lines of
+context, its hunks mapped to the probe's line numbers, touches none of
+those lines either. The diff itself is in the PR.
+
+The check repeats `run`'s loop where the timestamps are not `i · 33`, with
+one `withSeededRandom(SEED)` around the whole loop, as `run` itself does
+(`tracker_sequences.ts`, `run`). The registration's C2 says "around every
+`process` call"; the loop follows `run`, which that wording describes, and
+is checked to reproduce `run` field for field at `i · 33` before any of its
+results is read.
 
 ## Before any criterion
 
@@ -186,6 +199,14 @@ the PR's body.
   1.58e-2, |Δt| 10.1; the module against the copy one `beta` step away,
   translation |Δt| 10.1, rotation |ΔR| 1.58e-2; (c) with the module at
   `beta R` 100 against the tracker at 10: 232 frames reported.
+- **The comparator reads a `NaN` as beyond any bound**: a difference that
+  is `NaN` counts as infinite, so a `NaN` component on either side cannot
+  pass as within 1e-9. Both ways: a pose against itself reads 0, and
+  against a copy with one component of `t` set to `NaN`, on either side,
+  infinite. (Its first form took the largest difference with `Math.max`,
+  which a `NaN` turns into `NaN` and a comparison with the bound then
+  passes; the independent review found it, and a `NaN`-aware rerun printed
+  the same figures.)
 - **The one allowed source of difference**, the `atan2` form of `so3Log`
   against the copy's `acos`, moves `R` by 1.11e-16 at most: rounding, as
   the registration's estimate said, about seven orders below the bound.
@@ -198,11 +219,24 @@ the PR's body.
   both ways, at and near π
   (`packages/nft-tracker/test/pose/pose_filter.test.ts`).
 
+## Ruling B, read on every filter-on run
+
+The registration's unfiltered reference for P is "the same run's
+`poseSelection.pose`". The check reads it, and the unfiltered errors, on
+the run with the filter absent; the two are the same only if turning the
+filter on changes nothing but `pose`, which no criterion reads by itself
+(C0 compares the absent and off arms). So the check reads it: on all 117
+filter-on runs, the derived pair and the twelve joint settings on the
+nine, **every field but `pose` equals the absent run's**, `poseSelection`
+included. Both ways: a result with `H[0]` moved by 1e-12 is reported.
+
 ## P, the prediction for the derived pair
 
 Read through `NftTracker` with `poseFilter: { mode: "one-euro" }` and every
 parameter omitted, the unfiltered reference being the same run's
-`poseSelection.pose`. Margins are bound minus figure; none is a tie.
+`poseSelection.pose`, equal field for field to the absent run's (above).
+Margins are bound minus figure; none is a tie. P3 is read in whole frames,
+so its tie rule has no case.
 
 - **P1, steadiness at rest: held.** On the rest path's 58 readable rest
   pairs: `d` median filtered **0.0195 px**, unfiltered 0.1245, **ratio
@@ -233,6 +267,40 @@ parameter omitted, the unfiltered reference being the same run's
   15.9196, **difference 0.4789 px** against 0.5 (margin 0.0211), the
   probe's row. Not void. As the registration says, this part is not a
   prediction: C4 (b) makes the module's poses that row's.
+
+## The reviews, and what they changed
+
+Two reviewer subagents read the branch before the PR, briefed with the
+registration and the sources but not this session's reasoning.
+
+- **`nft-reviewer`, on the implementation** (`12ebed3..f704a97`): nothing
+  critical. Important: a timestamp that jumps to `Infinity`, or a period
+  that overflows or underflows, gives a `NaN` pose on an `ok` result,
+  marked `good: true`; the reset rule catches `NaN` and a timestamp that
+  does not increase, not these. It is the probe's arithmetic (script line
+  367) and the registered rule; a guard would change the rule, so it is
+  **documented, not fixed, and left to the maintainer** (the option's doc
+  comment, `process`'s `timestampMs`, the README, the CHANGELOG). Minor,
+  applied in `1f48231`: a tracker-level test that a `"LOST"` result
+  reaches the filter (through `run`, a LOST is always followed by a DETECT,
+  which resets anyway), killing a `process` that returns a LOST result
+  before the filter; and `timestampMs`'s doc comment. Minor, not applied: a
+  misspelt parameter key (`minCutoff`) takes its default silently, as an
+  unknown key does for `conditioning`; the module test's element-wise
+  "must fire" half is written in the test, not the module (C1 reads the
+  copy's own variant).
+- **An independent reviewer, on the check and this addendum** (at
+  `1a2e355`): nothing critical; it reproduced the stdout's SHA-256 and
+  every figure. Two important findings, both places where the check was
+  weaker than the registration, and neither moving a figure on this data
+  (its `NaN`-aware rerun printed the same figures): the pose comparator
+  could not see a `NaN`, and P's unfiltered reference was read on the
+  absent run with nothing checking it equals the filter-on run outside
+  `pose`. Both are fixed in the check, each exercised both ways (above).
+  Minor, applied: the copy's ranges are checked by the check itself rather
+  than by an uncommitted script; the seeding wording of C2 against `run`;
+  the clean-tree guard's reach; P3's tie rule; the CHANGELOG's wording of
+  P4. The stdout's SHA-256 above is the revised check's.
 
 ## What this addendum does not establish
 
