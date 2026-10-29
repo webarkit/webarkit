@@ -1,0 +1,243 @@
+# #106, Stage 3 addendum: the registered criteria run against the implementation (2026-10-29)
+
+**An addendum to
+[`2026-10-29-106-stage3-registration.md`](./2026-10-29-106-stage3-registration.md),
+under its "What a failed criterion means": the results of C0 to C4 and of
+each part of P, read on Part 3's implementation, with the commands, the
+figures and one verdict each.** The registration is not edited. Part 3 is
+[#106](https://github.com/webarkit/webarkit/issues/106)'s implementation of
+the pose filter: the `poseFilter` option of `NftTracker` and
+`packages/nft-tracker/src/pose/pose_filter.ts`. Its basis is the
+registration's merge into `dev`, `12ebed3` (#198), and the probe it rests on,
+[`2026-10-29-106-stage1-pose-filter-probe.md`](./2026-10-29-106-stage1-pose-filter-probe.md)
+(#197, `0665a96`).
+
+**Every criterion held. No part of P is void or refuted.**
+
+| criterion                                          | verdict  | the figure it is read on                                                                       |
+| -------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| the registered paths' digests                      | equal    | rest and settle, registered against the probe's: equal                                         |
+| the `DEFAULT_` constants                           | equal    | 1, 10, 1, 0.1, 1                                                                               |
+| C0, off is off                                     | **held** | 722 results, no field differs from `12ebed3`; `npm test` passes; no existing test file changed |
+| C1, the output is always a rotation                | **held** | largest ‖R̂ᵀR̂ − I‖\_F 2.27e-14, \|det R̂ − 1\| 1.78e-15, over 3,828 + 319 poses                 |
+| C2, it forgets on loss                             | **held** | every pass-through frame's `pose` is its `poseSelection.pose`; timestamp runs within 2.78e-17  |
+| C3, deterministic for a given clock                | **held** | equal digests twice, a different one on i·16.5, the same under throwing clock stubs            |
+| C4, fidelity to the probe                          | **held** | (a) 1.11e-16, (b) 1.11e-16, (c) 0 of 3,828 frames not identical                               |
+| P1, steadiness at rest                             | **held** | ratio 0.1568 (≤ 0.25); `e` difference −0.0004 px (within 0.02)                                 |
+| P2, bounded lag at constant velocity               | **held** | last-frame `e` 0.6824, 0.6821, 0.6806 px against `B(v)` 1.5957, 2.1417, 2.7065                |
+| P3, settling                                       | **held** | a crossing after 1 frame (≤ 15)                                                                |
+| P4, the rotation layer on `wander`                 | **held** | 0.4789 px (≤ 0.5): the probe's row, so not a prediction                                        |
+
+## Step 0: provenance
+
+- **Ref:** `feat/106-pose-filter`, branched from `origin/dev` at
+  **`12ebed3a2cb9e13e2017f10d432635cf53410425`** (#198's merge), after
+  `git fetch origin`. Node v24.21.0, the pin; Windows 11. The session ran on
+  Claude Opus 5.5, with the advisor (Fable 5.1) consulted at the two points
+  the brief named.
+- **The implementation's commit:** `1f48231`, whose `packages/` tree is
+  `b3f1eb10f4e35cdea029148574354d74ff8683bb`: `f704a97`, the implementation,
+  with the review's fixes (a tracker-level test that a `"LOST"` result
+  reaches the filter, and doc comments). The check ran on that tree, clean
+  (the script refuses a `packages/` or target that differs from the
+  commit), built with `npm run build`; the check script and this file were
+  the only uncommitted files. The commit that adds them changes nothing
+  under `packages/`, so the tree is the same at this branch's tip.
+- **The check also ran at `f704a97`**, before the review's fixes, twice:
+  identical stdouts, SHA-256
+  `3d9aae6350d1dd56647b5e59299981532c4af295061e394cef8cc40106666f99`. They
+  differ from the stdout below on two lines of Step 0 only, `tracker.ts`'s
+  hash and the `packages/` tree, and every figure is the same.
+- **C0's base:** a second worktree, detached at `12ebed3`, `npm install` then
+  `npm run build`, passed as `--base`. The script refuses a base at another
+  commit, or unbuilt.
+- **Seen before the check ran:** the registration, the probe's record and
+  stdout figures it cites, and the implementation's own unit tests. No
+  figure of the derived pair on the registered sequences existed before the
+  check's first run.
+
+## The commands
+
+At the implementation's commit, with the base checkout beside it:
+
+    npm run build
+    node docs/benchmarks/2026-10-29-106-stage3-check.mjs --base <checkout of 12ebed3, built>
+    npm test
+    git diff --diff-filter=MD 12ebed3 1f48231 -- packages/*/test examples/test
+
+- **The check's stdout, run twice at `1f48231`:** both 94 lines, SHA-256
+  `2e45b5e938f828ea3a517be2dde87d51186e333f549197cf48ceab6f6f87317e`, equal.
+  Its first run, at `f704a97`, before two lines of its output were reworded
+  (the setting's label, and a frame index printed as `-1` beside a
+  difference of 0), printed the same figures.
+- **`npm test`:** passes. Before (at `12ebed3`) and after (at `1f48231`):
+  `cv-backend-jsfeatnext` 37 and 37; `cv-backend-spec` 27 and 27;
+  `nft-tracker` 842 passed and 1 skipped, then 879 passed and 1 skipped (the
+  37 tests of the two new files); `examples/` 559 and 559.
+- **The `git diff --diff-filter=MD` command prints nothing.** The glob must
+  reach git expanded by the shell, as the registration writes it, unquoted:
+  quoted, `'packages/*/test'` is a git pathspec that matches no file below
+  those directories, so the command prints nothing whatever changed. Both
+  ways, unquoted: the same pathspec lists the two added test files under
+  `--diff-filter=A`, and `805f1f5..12ebed3`, across #130's move of the
+  ground-truth modules out of `test/`, prints the modified test files.
+
+## The check copy
+
+The check holds a copy of the probe's scratch filter as the registration's
+"How each is read, as commands" requires. A diff of the probe script at
+`0665a96` against the copy, zero lines of context, touches no line of the
+kept ranges (88 to 97, 125 to 433 with `so3Log` in its `acos` form, 513 to
+523, 1006 to 1010): a small script parsed the diff's hunks against those
+ranges and found none inside them, and, both ways, found line 198 when the
+copy's `Math.acos(c)` was replaced by an `atan2` form. The diff itself is in
+the PR's body.
+
+## Before any criterion
+
+- **The registered paths are the probe's.** The digest over every frame's
+  width, height, bytes and truth `H`: rest path
+  `dced2286309a4574d58e9784873d80bab1186db303b8d78e7b3a8185e7cd2d0c` and
+  settle path
+  `1137a65904c1ad12d80d0e4ecf9aec4e38647f229e42a32c3c2000def7aaac31`, each
+  equal to the probe's definitions' (lines 513 to 523). Both ways: the
+  probe's rest path with frame 30's shift moved by 1 px gives
+  `387b61f0…`, a different digest.
+- **The `DEFAULT_` constants are the derived values**, 1, 10, 1, 0.1 and
+  1, and `DEFAULT_POSE_FILTER` is a frozen `{ mode: "off" }`; checked before
+  any run.
+- **The unfiltered states** are the probe's: rest `DT×59`, settle
+  `L×13D×24T×43`, `wander` `DT×39`, `leaveAndReturn` `DT×38L×28DLD×24T×13`,
+  `velocityStep` 2 to 4 `DT×14`, 5 and 6 `DT×4D×10`.
+
+## C0, off is off: held
+
+- On the nine sequences and paths, both arms (`poseFilter` absent, and
+  `{ mode: "off" }`) against `run` at `12ebed3` with no options: **722
+  results compared, no field differs** at any level, leaves by `Object.is`.
+- **`pose` is `poseSelection.pose`**, the same object, on all 638 posed
+  results of both arms.
+- `npm test` passes, and no test file existing at `12ebed3` is modified or
+  deleted (above).
+- Both ways: a base result with `pose.t[0]` changed is reported (at
+  `.pose.t[0]`, and at the two places that share the object,
+  `.poseSelection.pose` and the chosen candidate); one with
+  `poseSelection.margin` changed is reported there alone; and a result whose
+  `pose` is a copy of `poseSelection.pose` is reported by the identity check.
+
+## C1, the output is always a rotation: held
+
+- The joint grid's twelve settings on the nine: **3,828 poses**, largest
+  ‖R̂ᵀR̂ − I‖\_F **2.27e-14**, largest |det R̂ − 1| **1.78e-15**, the probe's
+  figures over the same count (bound 1e-9).
+- The derived pair on the nine: 319 poses, the same two largest values.
+- Both ways: the copy's `"elementwise"` variant on `wander` at
+  `ONE_SETTING`: 2.44e-3 and 1.77e-3, beyond the bound.
+
+## C2, it forgets on loss: held
+
+- `leaveAndReturn` at the derived pair: frame 67 (`"DETECT"`, the first
+  posed frame after the loss) and frame 93 (the first `"TRACK"` after it):
+  `pose` is `poseSelection.pose`, the same object.
+- **Every frame the filter passes through**, computed by the check from the
+  results by the rule as ruled: 87 posed frames on the nine, each `pose`
+  identical to its `poseSelection.pose`. Resets by cause: **not `"TRACK"`
+  119**, `pose.good` false 0, timestamp not increasing 0: the probe's 119,
+  every one "not `"TRACK"`".
+- **The cross-reset timestamp case**, on `wander` through `run`'s loop
+  repeated (first checked to reproduce `run` at `i · 33`, every field, with
+  the filter absent and at the derived pair): with frame 1's timestamp
+  repeated (0 ms) and reversed (−33 ms), frames 1 and 2 pass through, and
+  every frame agrees with the copy on the same stream within **2.78e-17**
+  in `R` and 0 in `t`. Every field other than `timestampMs` and `pose`
+  equals the run at `i · 33`, as the registration expected. Both ways: the
+  copy's `"forget-time"` variant filters frame 2 (0.2963 and 0.2571 px from
+  the unfiltered pose).
+- **`pose.good === false`**, on `wander`'s results through the module with
+  frame 20's set to `false`: frames 20 and 21 pass through, output `===`
+  input, and every frame agrees with the copy within 2.78e-17. Both ways:
+  the unchanged stream filters both frames (1.5631 and 1.4366 px from their
+  input).
+- Both ways: the copy's `"no-reset"` variant at `ONE_SETTING` is
+  **3,650.07 px** from the unfiltered pose at frame 67, the probe's figure.
+
+## C3, deterministic for a given clock: held
+
+- `wander` at the derived pair through `NftTracker`: two runs on `i · 33`
+  give the same digest, `1532fd1f…`; a run on `i · 16.5` gives another,
+  `77a7d878…`; and a run with `performance.now` and `Date.now` replaced by
+  throwing stubs, from the tracker's construction to its last `process`
+  call, completes and gives the first digest.
+- Both ways: the copy's `"clock"` variant gives two different digests, and
+  throws under the stubs.
+
+## C4, fidelity to the probe: held
+
+- **(a) The joint grid, through the tracker:** largest |ΔR| **1.11e-16**
+  (`wander`, frame 35, at rotation (1 Hz, beta 1)), largest |Δt| **0**,
+  against the bound 1e-9. `t` is computed by the same operations on both
+  sides, as the registration expected.
+- **(b) The per-layer sweeps, through the module:** the translation sweep,
+  0 and 0; the rotation sweep, |ΔR| 1.11e-16 and |Δt| 0.
+- **(c) The tracker runs the module:** 3,828 frames compared, **0 not
+  identical** under `Object.is`.
+- Both ways: each comparison of the copy against itself reads 0; the
+  tracker at (1 Hz, 10, 0.01) against the copy at (1 Hz, 100, 0.1): |ΔR|
+  1.58e-2, |Δt| 10.1; the module against the copy one `beta` step away,
+  translation |Δt| 10.1, rotation |ΔR| 1.58e-2; (c) with the module at
+  `beta R` 100 against the tracker at 10: 232 frames reported.
+- **The one allowed source of difference**, the `atan2` form of `so3Log`
+  against the copy's `acos`, moves `R` by 1.11e-16 at most: rounding, as
+  the registration's estimate said, about seven orders below the bound.
+- **What C4 cannot see, and the review covers instead:** the module's
+  `so3Log` reads the axis from the symmetric part above `π − 1e-3`, the
+  angle at which the probe's `so3Log` exits rather than read a step. No
+  registered sequence comes near it (the copy would have exited), so C4 is
+  blind to that branch. It is the module's one departure from the copy's
+  lines 224 to 395 besides the `atan2` form, and is tested at unit scale,
+  both ways, at and near π
+  (`packages/nft-tracker/test/pose/pose_filter.test.ts`).
+
+## P, the prediction for the derived pair
+
+Read through `NftTracker` with `poseFilter: { mode: "one-euro" }` and every
+parameter omitted, the unfiltered reference being the same run's
+`poseSelection.pose`. Margins are bound minus figure; none is a tie.
+
+- **P1, steadiness at rest: held.** On the rest path's 58 readable rest
+  pairs: `d` median filtered **0.0195 px**, unfiltered 0.1245, **ratio
+  0.1568** against 0.25 (margin 0.0932); `e` median filtered 0.3219 px,
+  unfiltered 0.3223, **difference −0.0004 px**, within 0.02 (margin
+  0.0196). Not void. The basis points read 0.142 and 0.224, and −0.0003 and
+  +0.0042 px: the pair falls between them on the ratio.
+- **P2, bounded lag at constant velocity: held.** Last moving frame, 14:
+
+  | v px/frame | `P_u(v)` px | `B(v)` px | `e` filtered px | unfiltered | margin |
+  | ---------- | ----------- | --------- | --------------- | ---------- | ------ |
+  | 2          | 0.5957      | 1.5957    | 0.6824          | 0.5957     | 0.9133 |
+  | 3          | 0.6417      | 2.1417    | 0.6821          | 0.4042     | 1.4596 |
+  | 4          | 0.7065      | 2.7065    | 0.6806          | 0.2739     | 2.0258 |
+
+  Not void at any velocity. The basis, `(1 Hz, 100, 0.1)`, read 0.74, 0.73
+  and 0.69 px.
+- **P3, settling: held.** On the settle path from frame 40: the filtered
+  error first falls to or below the unfiltered at frame 41, **a lag of 1
+  frame** against 15 (margin 14). `e` at frame 40: filtered 0.6340 px,
+  unfiltered 0.4270; at frame 79: 0.2995 and 0.3123. Not void: the crossing
+  is not at frame 40 itself. The basis points read 9 and 3 frames, and the
+  translation sweep's `(1 Hz, 0.1)` 8: the pair settles sooner than any of
+  them on this path. That is recorded, not explained.
+- **P4, the rotation layer on `wander`: held, as its basis settles it.**
+  Through the module, rotation (1 Hz, beta 10), translation passing
+  through, over the 39 `"TRACK"` frames: `e` median 16.3985 px against
+  15.9196, **difference 0.4789 px** against 0.5 (margin 0.0211), the
+  probe's row. Not void. As the registration says, this part is not a
+  prediction: C4 (b) makes the module's poses that row's.
+
+## What this addendum does not establish
+
+The registration's list stands: nothing on the device, nothing on the
+bench page or the exports, no rotation lag bound, not the mechanism behind
+the sweeps' cancelling of `R` and `t` noise, nothing at `v ≥ 5` px/frame,
+and no search between or beyond the grid's points. P3's lag of 1 frame is a
+reading on one path, not a property of the pair.

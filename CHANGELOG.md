@@ -51,8 +51,13 @@ release pull request's body and the GitHub Release's notes.
   ([`2026-10-29-106-stage1-pose-filter-probe.md`](./docs/benchmarks/2026-10-29-106-stage1-pose-filter-probe.md))
   and registered before the implementation
   ([`2026-10-29-106-stage3-registration.md`](./docs/benchmarks/2026-10-29-106-stage3-registration.md),
-  #198). No device claim, and no rotation lag bound: no committed sequence has a rigid path with
-  rotation. Additive, pre-1.0 and private: `NftTrackerOptions` gains a key, and the index gains
+  #198). The registered criteria, run on the implementation
+  ([`2026-10-29-106-stage3-addendum.md`](./docs/benchmarks/2026-10-29-106-stage3-addendum.md)):
+  C0 to C4 held, and the prediction P held in all four parts, none void (steadiness ratio 0.1568
+  with the bias −0.0004 px, last-frame errors within `B(v)` at 2, 3 and 4 px/frame, settling in 1
+  frame, the rotation layer 0.4789 px above `wander`'s floor). No device claim, and no rotation
+  lag bound: no committed sequence has a rigid path with rotation. Timestamps must be finite: the
+  reset rule does not catch a jump to `Infinity`. Additive, pre-1.0 and private: `NftTrackerOptions` gains a key, and the index gains
   the `DEFAULT_POSE_FILTER*` constants and the `PoseFilterOptions` and `PoseFilterLayerOptions`
   types; the ground-truth module gains the rest and settle paths.
 
