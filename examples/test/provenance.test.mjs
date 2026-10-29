@@ -460,6 +460,20 @@ describe("the manifest npm run build writes", () => {
         expect(jsfeat.installedVersion).toBe(jsfeat.version);
     });
 
+    it("hashes its producer and the root package.json, which run it (#127)", () => {
+        const build = ["scripts/build-provenance.mjs", "package.json"];
+        expect(Object.keys(manifest.build ?? {}).sort()).toEqual([...build].sort());
+        for (const path of build) {
+            const { sha256: h, blob } = manifest.build[path];
+            expectHash(path, h);
+            const onDisk = execFileSync("git", ["hash-object", path], {
+                cwd: fileURLToPath(ROOT),
+                encoding: "utf8",
+            }).trim();
+            expect(blob, `${path}: the manifest's blob id is not the file's`).toBe(onDisk);
+        }
+    });
+
     it("lists every package source, and served exactly what SERVED names, with its side", () => {
         const sources = Object.keys(manifest.sources);
         for (const p of ["cv-backend-spec", "cv-backend-jsfeatnext", "nft-tracker"]) {
