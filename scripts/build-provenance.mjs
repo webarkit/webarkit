@@ -106,6 +106,7 @@ export const SERVED = {
     "examples/js/bench-params.mjs": "both",
     "examples/js/bench-probe-replay.mjs": "both",
     "examples/js/bench-provenance.mjs": "both",
+    "examples/js/bench-stateless.mjs": "page",
     "examples/js/bench-stats.mjs": "both",
     "examples/js/bench-summary.mjs": "both",
     "examples/js/detection-policy.mjs": "page",

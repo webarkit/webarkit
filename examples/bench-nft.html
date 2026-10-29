@@ -424,9 +424,11 @@
         DEFAULT_RATIO,
         DEFAULT_SCENE_LEVELS,
         DEFAULT_TUKEY_C,
+        MIN_DETECTION_INLIERS,
       } from "@webarkit/nft-tracker";
       import { toGrayTimed } from "./js/pinball-shared.mjs";
       import { instrumentBackend } from "./js/instrument-backend.mjs";
+      import { runStatelessPipeline } from "./js/bench-stateless.mjs";
       import { createRunLifecycle, advanceLoop } from "./js/run-lifecycle.mjs";
       import {
         accountingError,
@@ -760,79 +762,14 @@
         return out;
       }
 
-      /**
-       * The exact steps `NftTracker.process` runs (tracker.ts), written out
-       * inline against the same instrumented backend and the same defaults,
-       * so this page's "stateless pipeline" mode and its "NftTracker" mode
-       * measure the same work through the same calls -- the parity M1 claims,
-       * made checkable rather than assumed. `maxKeypoints` is the one
-       * default this page lets a run override (see `readMaxKeypoints`); the
-       * NftTracker mode receives the same value as `maxSceneKeypoints`.
-       */
-      function runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, timestampMs, maxKeypoints) {
-        const sceneKeypoints = icv.detect(frame, {
-          levels: DEFAULT_SCENE_LEVELS,
-          maxKeypoints,
-        });
-        const sceneDescriptors = icv.describe(frame, sceneKeypoints);
-        let matches = matchPerLevel(icv, sceneDescriptors, targetLevels, DEFAULT_RATIO);
-
-        if (icv.filterMatches && targetKeypoints) {
-          matches = icv.filterMatches(
-            matches,
-            { keypoints: sceneKeypoints, width: frame.width, height: frame.height },
-            { keypoints: targetKeypoints, width: targetDb.meta.widthPx, height: targetDb.meta.heightPx }
-          );
-        }
-
-        if (matches.length < 4) {
-          return {
-            ok: false,
-            reason: "too-few-matches",
-            timestampMs,
-            numMatches: matches.length,
-            numInliers: 0,
-            H: null,
-            pose: null,
-            sceneKeypoints,
-          };
-        }
-
-        const src = new Float64Array(matches.length * 2);
-        const dst = new Float64Array(matches.length * 2);
-        const kp = targetDb.keypoints;
-        for (let i = 0; i < matches.length; i++) {
-          const m = matches[i];
-          src[i * 2] = kp.x[m.trainIdx];
-          src[i * 2 + 1] = kp.y[m.trainIdx];
-          dst[i * 2] = sceneKeypoints[m.queryIdx].x;
-          dst[i * 2 + 1] = sceneKeypoints[m.queryIdx].y;
-        }
-
-        const h = icv.estimateHomography(src, dst, { threshold: DEFAULT_RANSAC_THRESHOLD });
-        if (!h.ok) {
-          return {
-            ok: false,
-            reason: "no-consensus",
-            timestampMs,
-            numMatches: matches.length,
-            numInliers: h.numInliers,
-            H: null,
-            pose: null,
-            sceneKeypoints,
-          };
-        }
-
-        return {
-          ok: true,
-          timestampMs,
-          numMatches: matches.length,
-          numInliers: h.numInliers,
-          H: h.H,
-          pose: icv.poseFromHomography(h.H, K),
-          sceneKeypoints,
-        };
-      }
+      /** What `runStatelessPipeline` (./js/bench-stateless.mjs) takes from the tracker package. */
+      const STATELESS_DEPS = {
+        matchPerLevel,
+        DEFAULT_SCENE_LEVELS,
+        DEFAULT_RATIO,
+        DEFAULT_RANSAC_THRESHOLD,
+        MIN_DETECTION_INLIERS,
+      };
 
       /**
        * The stages the stage table and the export's summaryMs show, in table
@@ -1392,7 +1329,7 @@
           } else {
             result = tracker
               ? tracker.process(frame, t0, null)
-              : runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, t0, maxKeypoints);
+              : runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, t0, maxKeypoints, STATELESS_DEPS);
           }
 
           timings.total = performance.now() - t0;

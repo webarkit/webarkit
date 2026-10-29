@@ -155,6 +155,9 @@
       poseFromHomography</code>, with the backend chosen at construction. Static rather than webcam on purpose — the
       input is fixed, so anything odd on screen is the vision code and not the lighting, the focus, or the frame rate.
       The reprojected outline is the check that matters: if it lands on the target in the scene, every stage agreed.
+      The tracker refuses a detection with fewer than <code>MIN_DETECTION_INLIERS</code> (5) inliers
+      (<a href="https://github.com/webarkit/webarkit/issues/137">#137</a>), which this demo does not apply: the gate is
+      the tracker's policy, not part of the contract.
     </p>
 
     <div class="wrap">
