@@ -51,7 +51,8 @@ registration's merge into `dev`, `12ebed3` (#198), and the probe it rests on,
   hash and the `packages/` tree, and every figure is the same.
 - **C0's base:** a second worktree, detached at `12ebed3`, `npm install` then
   `npm run build`, passed as `--base`. The script refuses a base at another
-  commit, or unbuilt.
+  commit, or without `cv-backend-jsfeatnext/dist/index.js`; it does not
+  check that the base is clean or its build fresh.
 - **Seen before the check ran:** the registration, the probe's record and
   stdout figures it cites, and the implementation's own unit tests. No
   figure of the derived pair on the registered sequences existed before the
@@ -66,12 +67,13 @@ At the implementation's commit, with the base checkout beside it:
     npm test
     git diff --diff-filter=MD 12ebed3 1f48231 -- packages/*/test examples/test
 
-- **The check's stdout, run twice at `1f48231`:** both 99 lines, SHA-256
+- **The check's stdout, run twice** (the check as committed in `74795c6`,
+  on `1f48231`'s `packages/` tree, `b3f1eb10`): both 99 lines, SHA-256
   `e79fd9bf6442fba27dcdf0c9528a13bfc658e6b9f66cf398b3f89c3b5b505547`, equal.
   Two earlier forms of the check printed the same figures: its first run,
   at `f704a97`, before two lines of its output were reworded (the setting's
   label, and a frame index printed as `-1` beside a difference of 0); and
-  the form the independent review read, run twice at `1f48231` (94 lines,
+  the form the independent review read, run twice on the same tree (94 lines,
   SHA-256 `2e45b5e938f828ea3a517be2dde87d51186e333f549197cf48ceab6f6f87317e`),
   from which the revised check's stdout differs only by the three checks it
   adds (the copy's ranges, the comparator on a `NaN`, and ruling B).
@@ -93,7 +95,8 @@ The check holds a copy of the probe's scratch filter as the registration's
 "How each is read, as commands" requires, and checks it itself, in Step 0:
 the probe's lines 88 to 97, 125 to 433 (with `so3Log` in its `acos` form),
 513 to 523 and 1006 to 1010, read from `0665a96` with `git show`, are each
-found in the check's own source byte for byte, line endings aside; both
+found in the check's own source as one contiguous block of text, line
+endings aside (a substring search, not tied to line boundaries); both
 ways, lines 125 to 433 with `Math.acos(c)` replaced by an `atan2` form are
 not. A diff of the probe script against the copy with zero lines of
 context, its hunks mapped to the probe's line numbers, touches none of
@@ -203,10 +206,10 @@ results is read.
   is `NaN` counts as infinite, so a `NaN` component on either side cannot
   pass as within 1e-9. Both ways: a pose against itself reads 0, and
   against a copy with one component of `t` set to `NaN`, on either side,
-  infinite. (Its first form took the largest difference with `Math.max`,
-  which a `NaN` turns into `NaN` and a comparison with the bound then
-  passes; the independent review found it, and a `NaN`-aware rerun printed
-  the same figures.)
+  infinite. (In its first form a `NaN` difference never became the
+  recorded largest, since `NaN > m` is false, so the earlier finite largest
+  stood and was compared with the bound; the independent review found it,
+  and a `NaN`-aware rerun printed the same figures.)
 - **The one allowed source of difference**, the `atan2` form of `so3Log`
   against the copy's `acos`, moves `R` by 1.11e-16 at most: rounding, as
   the registration's estimate said, about seven orders below the bound.
@@ -300,7 +303,12 @@ registration and the sources but not this session's reasoning.
   Minor, applied: the copy's ranges are checked by the check itself rather
   than by an uncommitted script; the seeding wording of C2 against `run`;
   the clean-tree guard's reach; P3's tie rule; the CHANGELOG's wording of
-  P4. The stdout's SHA-256 above is the revised check's.
+  P4. The stdout's SHA-256 above is the revised check's. A second, narrow
+  read by the same reviewer at `74795c6` confirmed the three added checks
+  do what its findings asked, and found three wording points in this file,
+  applied: the range check is a substring search; how a `NaN` escaped the
+  first comparator; and which commit the revised check ran on. It also
+  noted that the clean-tree guard does not reach `--base` (Step 0, above).
 
 ## What this addendum does not establish
 
