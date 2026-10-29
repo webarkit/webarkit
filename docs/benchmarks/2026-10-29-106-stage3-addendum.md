@@ -317,3 +317,46 @@ bench page or the exports, no rotation lag bound, not the mechanism behind
 the sweeps' cancelling of `R` and `t` noise, nothing at `v ≥ 5` px/frame,
 and no search between or beyond the grid's points. P3's lag of 1 frame is a
 reading on one path, not a property of the pair.
+
+## After `7ad93ae`: the maintainer's rulings on #199 (2026-10-30)
+
+**What changed.** The maintainer ruled on the four points #199 put to him.
+Points 1 (`so3Log`'s symmetric-part branch near π) and 3 (a parameter
+given with `mode: "off"` refused) were accepted as they were. Points 2 and 4
+changed the code, in `626db0a`:
+
+- with `poseFilter` in `"one-euro"` mode, a `timestampMs` that is not
+  finite is a contract violation: `process` throws a `RangeError` naming
+  it, before the frame is processed. It is not a reset cause, so the
+  registered reset rule is unchanged, and with the filter off nothing
+  changes (C0). Two finite timestamps whose difference overflows or
+  underflows stay documented, not guarded;
+- a key the option does not read, inside `poseFilter` or its `rotation` or
+  `translation` object, is refused by name. `conditioning` and the other
+  options are unchanged.
+
+Their tests are in `test/tracker_pose_filter.test.ts`, a file this branch
+added; no test file existing at `12ebed3` is modified. The tests were seen
+red first, 3 of 26, then green, each both ways; a guard moved after the
+frame is processed fails the timestamp test.
+
+**Why it cannot move a verdict, and the reading that shows it did not.**
+Every run the check makes uses finite timestamps and only the option's
+documented keys, so neither refusal fires on it. The check, run twice on
+`626db0a`'s `packages/` tree `dfb51d27c445ac1f367fc14bf426b94d7afcfcbc`:
+
+- both stdouts are 99 lines, SHA-256
+  **`76ee2358f4b077513a083bd947d9ecd813ceccf74d5a7d7c4f765d33d274dfa3`**,
+  equal;
+- against the stdout above (`e79fd9bf…`) they differ on two lines of Step 0
+  only, both hashes of what was read: line 11, `tracker.ts`'s SHA-256
+  (`740bf54e…` to `10c283b5…`), and line 20, the `packages/` tree
+  (`b3f1eb10…` to `dfb51d27…`);
+- every other line is the same, so every figure and every verdict above
+  stands.
+
+**The gates at `626db0a`:** `npm run build`, `typecheck`, `format:check`,
+`check:contract` and `check:page` (30 of 30) pass. `npm test` passes with
+`nft-tracker` at 884 passed and 1 skipped (5 more than at `1f48231`), the
+other packages unchanged. `git diff --diff-filter=MD 12ebed3 626db0a --
+packages/*/test examples/test` prints nothing.
