@@ -424,6 +424,7 @@
         DEFAULT_RATIO,
         DEFAULT_SCENE_LEVELS,
         DEFAULT_TUKEY_C,
+        MIN_DETECTION_INLIERS,
       } from "@webarkit/nft-tracker";
       import { toGrayTimed } from "./js/pinball-shared.mjs";
       import { instrumentBackend } from "./js/instrument-backend.mjs";
@@ -762,7 +763,13 @@
       }
 
       /** What `runStatelessPipeline` (./js/bench-stateless.mjs) takes from the tracker package. */
-      const STATELESS_DEPS = { matchPerLevel, DEFAULT_SCENE_LEVELS, DEFAULT_RATIO, DEFAULT_RANSAC_THRESHOLD };
+      const STATELESS_DEPS = {
+        matchPerLevel,
+        DEFAULT_SCENE_LEVELS,
+        DEFAULT_RATIO,
+        DEFAULT_RANSAC_THRESHOLD,
+        MIN_DETECTION_INLIERS,
+      };
 
       /**
        * The stages the stage table and the export's summaryMs show, in table

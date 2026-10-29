@@ -45,7 +45,8 @@
  * NftTracker mode receives the same value as `maxSceneKeypoints`.
  *
  * `deps` is `{ matchPerLevel, DEFAULT_SCENE_LEVELS, DEFAULT_RATIO,
- * DEFAULT_RANSAC_THRESHOLD }`, from `@webarkit/nft-tracker`.
+ * DEFAULT_RANSAC_THRESHOLD, MIN_DETECTION_INLIERS }`, from
+ * `@webarkit/nft-tracker`.
  */
 export function runStatelessPipeline(
     icv,
@@ -56,7 +57,13 @@ export function runStatelessPipeline(
     frame,
     timestampMs,
     maxKeypoints,
-    { matchPerLevel, DEFAULT_SCENE_LEVELS, DEFAULT_RATIO, DEFAULT_RANSAC_THRESHOLD },
+    {
+        matchPerLevel,
+        DEFAULT_SCENE_LEVELS,
+        DEFAULT_RATIO,
+        DEFAULT_RANSAC_THRESHOLD,
+        MIN_DETECTION_INLIERS,
+    },
 ) {
     const sceneKeypoints = icv.detect(frame, {
         levels: DEFAULT_SCENE_LEVELS,
@@ -106,6 +113,21 @@ export function runStatelessPipeline(
         return {
             ok: false,
             reason: "no-consensus",
+            timestampMs,
+            numMatches: matches.length,
+            numInliers: h.numInliers,
+            H: null,
+            pose: null,
+            sceneKeypoints,
+        };
+    }
+    // A fit RANSAC accepted on a minimal sample, which detectTarget refuses
+    // (#137); the parity test (examples/test/bench-stateless.test.mjs) holds
+    // the two to the same answer (#191).
+    if (h.numInliers < MIN_DETECTION_INLIERS) {
+        return {
+            ok: false,
+            reason: "too-few-inliers",
             timestampMs,
             numMatches: matches.length,
             numInliers: h.numInliers,

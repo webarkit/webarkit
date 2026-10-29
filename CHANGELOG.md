@@ -94,6 +94,20 @@ release pull request's body and the GitHub Release's notes.
   an 8-inlier fit 61,615 px wrong on the same path is not caught. The bench page's stateless
   pipeline, an inline copy of the detection steps, still accepts the 4-inlier fits the tracker
   refuses.
+- **The bench page's stateless mode refuses a detection with fewer than `MIN_DETECTION_INLIERS`
+  inliers, as the tracker does** ([#191](https://github.com/webarkit/webarkit/issues/191)). The
+  mode is a copy of the detection steps, not a call to `detectTarget`, so #137's gate left it
+  behind: on a 4-inlier fit it read DETECT, with a pose, where the detection-only tracker read
+  LOST, and three sentences claiming parity between the two were false on such a frame. The mode,
+  moved unchanged into `examples/js/bench-stateless.mjs`, now applies the same gate through the
+  exported constant, refusing the fit as a LOST frame with reason `"too-few-inliers"` and the
+  fit's own count; it still does not call `detectTarget`, so that it times the pipeline's calls
+  stage by stage as before. A parity test feeds it and `detectTarget` the same frame through one
+  stub backend, and the two must agree on an accepted fit of 4 inliers and of 5, a RANSAC failure
+  and too few matches. Stateless exports from before this change and from after it are not
+  comparable on the hand-held clips; `provenance.manifest.served` tells them apart.
+  `METRICS_VERSION` is unchanged: no definition changes, only which frames the mode poses. The
+  static demo is left as the contract's raw pipeline, which does not apply the gate, and says so.
 
 <!-- prettier-ignore-start -->
 
