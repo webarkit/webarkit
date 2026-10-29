@@ -381,3 +381,294 @@ applied:
 One file, this one. No code, no package, lockfile, tsconfig, target or clip
 touched; no export committed. No CHANGELOG line: a registration, no
 behaviour change. No issue commented on, edited or closed.
+
+---
+
+## Addendum, 2026-10-29: the criteria run against G5's implementation
+
+**Recorded on 2026-10-29, after the runs, under Stage 3 ("A criterion that
+fails is never edited. The result is recorded in an addendum beside it").
+Nothing above this line is edited. The implementation is `4432d2a`
+(`fix/137-g5-gate`: the red test `34a9449`, then the gate), branched from
+this registration's merge into `dev`,
+`a071b552466eace18eadbb3d64db09007a8ec8a2` (#190), which is the base
+throughout. Verdicts: C1 held; C2 held; P-G5 (a) refuted on the wall clip
+and held on the table clip; P-G5 (c) refuted on both clips.** A refuted part
+is recorded and changes nothing in the gate.
+
+### Provenance
+
+- **Base:** a detached worktree at `a071b55`, `npm ci && npm run build`; the
+  provenance manifest clean at `a071b55`, bundle
+  `66687a9714ddadce9e16b41b2d1d4b11c1677cd1d8f1cc3d154a56b538efa855`.
+- **Implementation:** the branch's worktree at `4432d2a`, `npm ci && npm run
+  build` from a clean tree; the manifest clean at `4432d2a`, bundle
+  `a07f68068111ca26969af104a65184cf1c05c0023ef07be001d06add48400579`. The
+  hashed inputs that changed, as the registration expects: 
+  `examples/js/bench-definitions.mjs` `b564a07a…`, `packages/nft-tracker/src`
+  `0973297d…` (33 files) and `packages/nft-tracker/dist` `9de4e864…` (33
+  files). Every other input the probe hashes is as at `b31635d`.
+- Node v24.21.0, the pin; ffmpeg 9.0.2 (gyan.dev essentials build); Windows
+  11 Pro, Intel i7-9700, the machine of the registration's Step 0.
+- The scripts, each committed byte-identical with the version whose output
+  is recorded here: the check copy
+  [`2026-10-29-137-stage3-g5-check.mjs`](./2026-10-29-137-stage3-g5-check.mjs)
+  (`fd51039d…`), the comparison
+  [`2026-10-29-137-stage3-g5-compare.mjs`](./2026-10-29-137-stage3-g5-compare.mjs)
+  (`633f33df…`), and the reader of P-G5's runs
+  [`2026-10-29-137-stage3-g5-pg5.mjs`](./2026-10-29-137-stage3-g5-pg5.mjs)
+  (`5961028d…`), which the registration does not name (below, "How P-G5 was
+  read"). The original probe script is `9a40bd69…`, as the probe record
+  gives it.
+
+### C1 and C2: held
+
+**At the base,** as "How C1 and C2 are read" gives it:
+
+    node scripts/replay-clips.mjs --external 70 --seed 1 --packages bundle --out <base replay>
+    node docs/benchmarks/2026-10-28-137-stage1-pipeline-probe.mjs --replay <base replay> --out <base run>
+
+- Every check passed. `runs.tsv`
+  `46db54e2d31a17c9a15f1d3786f4bba87df8916e409b51f951fd4d29455dfe69` and the
+  rows' hashes `0cb5c7504ccd24ca949e84805d4b737c1254a5083dac714c977cfcfe76c970df`:
+  **the probe's recorded output, reproduced.** Stdout, 49,577 bytes, is
+  `d19daae6…`; with its one build-dependent line ("built clean at …") set to
+  `b31635d9d8c4f8d6b60e6befd86ee7687c5c0636`, it is
+  `19eebb1c52c9ea77f2b8a5048f0c33212b28bdc07b240228e7808bce2895897a`, the
+  probe record's stdout, byte for byte.
+
+**At the implementation:**
+
+    node scripts/replay-clips.mjs --external 70 --seed 1 --packages bundle --out <tip replay>
+    WEBARKIT_ROOT=<implementation checkout> node docs/benchmarks/2026-10-29-137-stage3-g5-check.mjs --replay <tip replay> --out <tip run>
+    node docs/benchmarks/2026-10-29-137-stage3-g5-compare.mjs --base <base run> --tip <tip run>
+
+- The check copy's every check passed, check 6 (G0 at seed 1 against
+  `replay-clips.mjs`'s own "every frame, sync" export at `4432d2a`, frame by
+  frame) among them. `runs.tsv` `c04ba2b5…` (24 runs), the rows' hashes
+  `ca94d036…`; stdout `c8718139…`, 16,128 bytes.
+- The comparison (stdout `ee282372…`), the 24 pairs:
+
+| clip | rows, seeds 1–8 | frames under C2's exception | differing frames |
+|---|---|---|---|
+| `pinball-static.mp4` | 17,424 | 0 | **0** |
+| `pinball-bench.mp4` (wall) | 14,304 | 2,317 | **0** |
+| `pinball-bench-table.mp4` (table) | 12,816 | 1,375 | **0** |
+
+  No pair differs on any seed: each of the 24 prints "no differing frame",
+  with the two runs' row counts equal.
+- **C1: held.** 0 differing frames on the static clip, 8 of 8 seeds.
+- **C2: held.** 0 differing frames outside the exception, on every clip and
+  seed.
+- Not a criterion, read beside them (the registration leaves the refusal's
+  own output to the unit test): on all 3,692 exception frames the
+  implementation's row reads `"too-few-inliers"` with 4 inliers where the
+  probe's reads `"no-consensus"` with 0, and no other frame of the 24 runs
+  has the new reason. A scratch count, not committed.
+
+### The check copy: what differs, and what it still says
+
+`diff -u` between the original and the copy shows only the registered lines,
+with one addition: **line 641**, the comment heading check 8's block
+(`// Check 6: #137's comment of 2026-10-16.`), is removed with the block's
+code, lines 642 to 647. Left in, it would label code that no longer exists.
+The PR carries the diff.
+
+- **Check 14 was written twice before its result was read.** Its first form
+  subtracted from the accepted calls the frames the run itself reported as
+  `"too-few-inliers"`. The code review found that this form cannot fire when
+  the gate is missing: a 4-inlier call would end as DETECT, nothing would be
+  subtracted, and the counts would agree. The recorded form derives the
+  refusals the gate must make from the accepted calls (`n < 5`), and requires
+  the frames of those calls and the `"too-few-inliers"` frames to be the same
+  set, each frame carrying its call's count. The first form's tip run produced
+  the same `runs.tsv` and rows as the recorded one (`c04ba2b5…`,
+  `ca94d036…`): only the check changed.
+- **Text the registration does not let the copy change, now stale at the
+  implementation:** the header's "No file under packages/<name>/src/ is
+  changed" (lines 32 and 33); its method items 2 (the `detection.ts` lines
+  it cites have moved), 3 ("G0: never. Today's gate."), 4.6 (the removed
+  check) and 4.7 (check 14's original form); and stdout's first line, "#137
+  Stage 1 pipeline probe: candidates G0". Its printed tables also count the
+  4-inlier fits the backend accepted under "accepted 4", and report 0
+  "refused by the gate", since the wrapper refuses nothing and the tracker
+  does. **No figure here is taken from those tables.**
+
+### The new checking code, exercised both ways
+
+Every case below was run before the result it guards was read, except the
+P-G5 reader's, which were run after its output was first read (its output,
+re-read after them, is identical). Each failing case exited 1 and printed
+nothing to stdout.
+
+| code | must not fire | must fire |
+|---|---|---|
+| the comparison | the base's G5 rows against themselves (as a tip directory): 0 differing frames | one tip row's `state` changed outside the exception (table, s1, frame 40, TRACK → LOST): that frame reported, and only it |
+| | `inliers` and `reason` changed on an exception frame (table, s1, frame 0): no frame reported | a file whose SHA-256 is not its listed one; a run `runs.tsv` does not list; a row without `corners`; an empty listed file; a base `runs.tsv` that is not the probe's recorded one: each refused |
+| the check copy's check 14 | the recorded run at the implementation | (i) a refused call counted as accepted, the registered perturbation, seeds cut to 1, at the implementation: "85 DETECT frames in the counted loops, 204 accepted gate calls less 119 too-few-inliers refusals" (table), as the probe record's perturbation found for G5 (85 and 204); (ii) the gate missing: the copy, its check 1 and 2 hashes set to the base's, run against the base checkout, seeds cut to 1: "frame 267's accepted call has 4 inliers, the frame is DETECT" (table) |
+| the P-G5 reader | the 24 runs, as copied: output identical to the run's | the A and candidate runs swapped; one export's `seed` changed; one export removed; no argument: each refused |
+
+The comparison was hardened after the code review and before the cases above
+were recorded: it now refuses a base `runs.tsv` other than the probe's
+recorded output, a run listed twice, an empty file and a row without an
+integer `k` or one of the compared fields. The recorded comparison is the
+hardened one.
+
+### P-G5: (a) refuted on the wall clip, held on the table clip; (c) refuted on both
+
+**The runs**, all 24 in one session on this machine, one at a time, seeds
+ascending, within a seed A (base), the candidate (implementation), B (base):
+
+    node scripts/replay-clips.mjs --external 70 --seed <n> --packages bundle --out <root>/A/s<n>
+    node scripts/replay-clips.mjs --external 70 --seed <n> --packages bundle --out <root>/tip/s<n>
+    node scripts/replay-clips.mjs --external 70 --seed <n> --packages bundle --out <root>/B/s<n>
+    node docs/benchmarks/2026-10-29-137-stage3-g5-pg5.mjs <root>
+
+From 08:20:49Z to 09:08:14Z, about two minutes a run. No build, test or
+replay ran beside them; two read-only review agents ran git and file reads
+during them.
+
+**How P-G5 was read.** The registration names the fields and the
+arithmetic, not a script. The reader above applies them as written: per run,
+the "device scaled step, sync" export of the wall and the table clip, after
+checking its seed, schedule, clip and packages (the arm's clean bundle at
+its commit); `runSummary.jitterPx`; `runSummary.trackTimeShare.share`,
+complete; `stepMs`. Every export of the 24 runs passed.
+
+**The wall clip** (`pinball-bench.mp4`):
+
+| seed | step A / cand. / B (ms) | `jitterPx` A / cand. / B | `trackTimeShare` A / cand. / B | (c) cand. − A, points |
+|---|---|---|---|---|
+| 1 | 14.22 / 14.32 / 14.39 | 6.6407 / 6.0050 / 6.6407 | 0.4038 / 0.4122 / 0.4038 | +0.84 |
+| 2 | 14.49 / 14.71 / 14.29 | 8.9230 / 6.6986 / 8.9230 | 0.3737 / 0.3988 / 0.3737 | +2.51 |
+| 3 | 14.94 / 14.50 / 14.28 | 22.0665 / 6.5392 / 22.0665 | 0.4139 / 0.3721 / 0.4139 | −4.18 |
+| 4 | 14.26 / 13.91 / 14.32 | 8.4537 / 6.5080 / 8.4537 | 0.4055 / 0.3788 / 0.4055 | −2.68 |
+| 5 | 14.00 / 14.25 / 13.88 | 8.7982 / 8.0522 / 8.7982 | 0.4089 / 0.3687 / 0.4089 | −4.01 |
+| 6 | 13.91 / 14.15 / 14.13 | 7.1132 / 6.4878 / 7.1132 | 0.3838 / 0.3754 / 0.3838 | −0.84 |
+| 7 | 14.18 / 14.19 / 14.39 | 7.7518 / 7.0412 / 7.7518 | 0.3905 / 0.3721 / 0.3905 | −1.84 |
+| 8 | 13.85 / 17.11 / 14.12 | 22.6422 / 9.3241 / 22.6422 | 0.3788 / 0.3754 / 0.3788 | −0.33 |
+
+**The table clip** (`pinball-bench-table.mp4`):
+
+| seed | step A / cand. / B (ms) | `jitterPx` A / cand. / B | `trackTimeShare` A / cand. / B | (c) cand. − A, points |
+|---|---|---|---|---|
+| 1 | 11.71 / 12.10 / 11.71 | 4.6636 / 2.5666 / 4.6636 | 0.7138 / 0.7292 / 0.7138 | +1.54 |
+| 2 | 11.41 / 11.44 / 11.37 | 2.7321 / 2.5468 / 2.7321 | 0.7247 / 0.7413 / 0.7247 | +1.66 |
+| 3 | 12.06 / 11.16 / 11.03 | 3.5533 / 2.5911 / 3.5533 | 0.7039 / 0.7267 / 0.7039 | +2.28 |
+| 4 | 11.24 / 11.44 / 10.92 | 2.5745 / 2.7204 / 2.5745 | 0.7278 / 0.7264 / 0.7278 | −0.14 |
+| 5 | 11.24 / 11.15 / 11.59 | 4.7438 / 2.5849 / 4.7438 | 0.7140 / 0.7261 / 0.7140 | +1.21 |
+| 6 | 11.72 / 11.19 / 11.57 | 2.5351 / 2.5946 / 2.5351 | 0.7525 / 0.7188 / 0.7525 | −3.37 |
+| 7 | 11.19 / 11.30 / 11.59 | 3.4670 / 3.0898 / 3.4670 | 0.7098 / 0.7236 / 0.7098 | +1.38 |
+| 8 | 11.32 / 12.05 / 11.36 | 2.7499 / 2.5746 / 2.7499 | 0.7118 / 0.7385 / 0.7118 | +2.67 |
+
+- **(a), the wall clip: refuted.** The candidate's seed ratio is
+  9.3241 / 6.0050 = **1.55** (1.5527; s8 over s1), above the bound of 1.5,
+  and not within its last digit of it. Not void: the control's own ratio is
+  22.6422 / 6.6407 = 3.41 (s8 over s1), above 1.5, so the bound could tell
+  the gate from no gate. The control's ratio reproduces the 3.4 of #137's
+  comment of 2026-10-16 at `37dc6d4`.
+- **(a), the table clip: held.** The candidate's seed ratio is
+  3.0898 / 2.5468 = **1.21** (1.2132; s7 over s2), against 0.8 × the
+  control's 4.7438 / 2.5351 = 1.87 (1.8712; s5 over s6), that is **1.50**
+  (1.4970). The control's ratio reproduces the comment's 1.9.
+- **(c): refuted on both clips.** On the wall clip seven of eight seeds lie
+  outside ±0.5 points, from −4.18 (s3) to +2.51 (s2); only s8 (−0.33) is
+  within. On the table clip seven of eight lie outside, from −3.37 (s6) to
+  +2.67 (s8); only s4 (−0.14) is within. None is within its last digit of
+  0.50. The differences take both signs on both clips.
+- **The steps.** The candidate's step differs from run A's by more than run
+  B's does on wall seeds 2, 4, 5, 6 and 8 and on table seeds 1, 6 and 8; the
+  largest is wall s8, 17.11 against 13.85 ms. This is a report, not a
+  tolerance, and changes no verdict.
+- **Runs A and B are equal** in every figure (a) and (c) read, on every seed
+  and both clips, though their steps differ by up to 0.66 ms (wall s3) and
+  1.03 ms (table s3). So the repeat found no variation in the control's
+  figures at the steps this session measured. That is one pair of runs per
+  seed: it bounds nothing, and is no tolerance for the candidate's
+  differences.
+- **What (c)'s refutation leaves open, as a conjecture.** On this schedule
+  the frame processed next depends on the current frame's state (the
+  registration's (b)), so a refused detection changes which frames the run
+  processes from then on, and `trackTimeShare` is read over a different set
+  of frames. Whether the movements above come from that divergence, from the
+  candidate's own step, or from the refusals' cost in LOST frames is not
+  measured here.
+
+### The ground-truth sequences, a result beside the criteria
+
+Not a criterion: the registration registers nothing about #90's synthetic
+sequences (`packages/nft-tracker/ground-truth/tracker_sequences.ts`, #130),
+which, unlike the clips, carry the true homography of every frame. G5
+changed three of their pinned state strings, all on `leaveAndReturn`'s 106
+frames; the maintainer accepted the new strings on 2026-10-29, and the tests
+assert them, with the refused frames' reason and count, since the branch's
+commits after the gate. D, T and L are DETECT, TRACK and LOST; position 0 is
+frame 0.
+
+| test | before (`a071b55`) | under G5 (`4432d2a`) |
+|---|---|---|
+| `tracker_state_machine.test.ts`, the fixture target | `D T×38 D L×27 D×26 T×13` | `D T×38 L×28 D L D×24 T×13` |
+| the same file, the shipped `pinball.wnft` | the same | the same |
+| `tracker_external_detection.test.ts`, its M2 arm (seeded `SEED + i` per frame) | the same | `D T×38 L×28 D L L D×23 T×13` |
+
+The frames G5 refuses, each a 4-inlier DETECT before the gate, with the fit's
+RMS against the true homography over the target's 64 patch centres
+(`centreRms`), measured at the base by a scratch test, not committed:
+
+| run | frame 39 | frame 68 | frame 69 |
+|---|---|---|---|
+| fixture target | 4 inliers, 193.7 px | 4 inliers, 255.7 px | (8 inliers, not refused) |
+| shipped target | 4 inliers, 193.7 px | 4 inliers, 255.7 px | (8 inliers, not refused) |
+| external test's M2 arm | 4 inliers, 262.6 px | 4 inliers, 216.0 px | 4 inliers, 511.9 px |
+
+- **Every fit G5 refuses on these sequences is wrong**, by 193.7 to 511.9
+  px RMS. No right fit is refused there.
+- **No TRACK frame changes**, in state or position (frames 1 to 38 and 93 to
+  105 in all three), and every other assertion in the two files holds
+  unchanged. The one knock-on effect: the frame after a refusal detects
+  afresh, so its `trackLoss` reads null where it read `too-few-patches`.
+- **The limit, which G5 does not catch:** frame 69 on the fixture target,
+  and on the shipped one, is a DETECT on 8 inliers whose fit is 61,614.9 px
+  RMS from the true homography, at the base and under G5 alike. A count gate
+  at 5 refuses only the minimal fits.
+
+### What this addendum does not establish
+
+- **Whether the fits G5 refuses on the clips were wrong.** The clips carry
+  no ground truth; only #90's synthetic sequences above do.
+- **Any device figure.** Every run here is a desktop replay.
+- **The bench page's stateless pipeline.** `runStatelessPipeline`
+  (`examples/bench-nft.html`) is an inline copy of the detection steps that
+  never calls `detectTarget`, and was left unchanged by the maintainer's
+  ruling of 2026-10-29: after G5 it still accepts the 4-inlier fits the
+  tracker refuses. Three sentences that claim parity between it and the
+  tracker are false on such a frame (the counts still agree; the state does
+  not): `examples/bench-nft.html`'s comment over the function (lines 763 to
+  771), `DEFINITIONS.states` (`examples/js/bench-definitions.mjs`, line 66,
+  a hashed input) and `examples/README.md`'s detection-only bullet ("the same
+  pipeline as the stateless mode"). The static demo's inline pipeline
+  (`examples/pinball-static-jsfeatnext-backend.html`, about line 469) also
+  accepts them; it is a contract demo and claims no parity with the tracker.
+  The maintainer will open the follow-up.
+
+### The reviews
+
+Two read-only code reviews of the branch at `4432d2a`, with the check copy
+and the comparison: a general reviewer and the repository's `nft-reviewer`.
+Neither found anything critical.
+
+- **Applied:** check 14's second form and the comparison's hardening
+  (above); the ground-truth tests now assert each refused frame's reason and
+  count, where only the state string was pinned; the package README names
+  `MIN_DETECTION_INLIERS` among its fixed guards, rewraps the reason's
+  sentence and no longer calls detection-only mode "exactly M1"; the
+  CHANGELOG entry.
+- **Not applied, because `packages/nft-tracker/src` stays at the measured
+  commit** (its tree digest is check 2, and its comments reach `dist` and the
+  bundle): wording in `src/` comments (`detection.ts`'s citation of the
+  ruling, "a minimal fit" for a backend other than jsfeatNext, the reflow in
+  `tracker.ts`'s determinism note, "M1's `process` unchanged" in `detect`'s
+  doc). A NaN-safe comparison (`!(n >= 5)`), which the treatment does not
+  register.
+- **Left to the maintainer's follow-up:** the stateless pipeline's parity
+  sentences above.
