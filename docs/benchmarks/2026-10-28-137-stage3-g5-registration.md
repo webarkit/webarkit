@@ -493,6 +493,20 @@ The PR carries the diff.
   4-inlier fits the backend accepted under "accepted 4", and report 0
   "refused by the gate", since the wrapper refuses nothing and the tracker
   does. **No figure here is taken from those tables.**
+- **What the copy's LOST and `trackLoss` counts count (#143).** Its
+  printed tables inherit the probe's aggregate LOST and `trackLoss` counts,
+  on lines the registration does not let it change. They count every LOST
+  frame, whatever the cause: a frame before a first lock and a frame after a
+  lost lock alike, a conflation that is the tracker's (#143), not the
+  copy's. No verdict depends on them: C1 and C2 compare `state` frame by
+  frame, not LOST totals. At the implementation, as in the probe record
+  ("What LOST, `trackLoss` and the reacquisitions count here (#143)"),
+  every run's first lock falls in loop 0, the warm-up; the latest is frame
+  2 (wall, s4 and s5; table, s6), as in the probe's G5 row. So no counted
+  LOST frame precedes a first lock: a post-run read of the 24 per-frame row
+  files finds 0 of the 3,423 counted LOST frames before their run's first
+  ok frame. The same read of the base's 144 files gives 0 of 19,348, the
+  probe record's figure. A scratch count, not committed.
 
 ### The new checking code, exercised both ways
 
