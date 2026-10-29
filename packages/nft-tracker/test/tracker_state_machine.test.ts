@@ -195,8 +195,9 @@ describe("NftTracker on camera-path sequences", () => {
         expect(states.slice(47, 59)).toBe("L".repeat(12));
         // Tracking drops at frame 39, with 7 patches left in view, and that
         // frame is detected again at once. The detection is a 4-inlier fit,
-        // 193.7 px RMS from the true homography, which detectTarget refuses
-        // (#137), so the frame is LOST; so is frame 68's, 255.7 px off.
+        // which detectTarget refuses (#137), so the frame is LOST; so is
+        // frame 68's. Measured before the gate, the two fits were 193.7 and
+        // 255.7 px RMS from the true homography.
         const firstLoss = results.findIndex((r, i) => i > 10 && r.state !== "TRACK");
         expect(firstLoss).toBe(39);
         expect(results[39].trackLoss).toBe("too-few-patches");
@@ -206,6 +207,12 @@ describe("NftTracker on camera-path sequences", () => {
         expect(states).toBe(
             "D" + "T".repeat(38) + "L".repeat(28) + "DL" + "D".repeat(24) + "T".repeat(13),
         );
+        for (const i of [39, 68]) {
+            const r = results[i];
+            expect(r.ok).toBe(false);
+            if (!r.ok) expect(r.reason).toBe("too-few-inliers");
+            expect(r.numInliers).toBe(4);
+        }
     }, 60_000);
 
     it("survives a sudden velocity change of 4 px/frame; at 6 px/frame every moving frame refuses and re-detects", () => {
@@ -369,6 +376,12 @@ describe("the shipped target, examples/targets/pinball.wnft, on ground truth", (
         expect(states).toBe(
             "D" + "T".repeat(38) + "L".repeat(28) + "DL" + "D".repeat(24) + "T".repeat(13),
         );
+        for (const i of [39, 68]) {
+            const r = results[i];
+            expect(r.ok).toBe(false);
+            if (!r.ok) expect(r.reason).toBe("too-few-inliers");
+            expect(r.numInliers).toBe(4);
+        }
         const tracked = results.flatMap((r, i) => (r.state === "TRACK" ? [i] : []));
         const whole = tracked.map((i) => centreRms(results[i].H!, truths[i]));
         const worst = tracked.map((i) => centreMax(results[i].H!, truths[i]));
