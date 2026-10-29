@@ -673,7 +673,8 @@ describe("isLoopWrap: a step back is a wrap only when the clip restarts", () => 
         expect(() => isLoopWrap(at(0.9), at(-0.2))).toThrow(RangeError);
     });
 
-    // The independent check of #96: no test pinned the 0.5 s bound itself; 0.6 survived.
+    // The independent check of #96: no test pinned the 0.5 s bound itself; 0.6 survived. Until
+    // the test after this one, 0.549 survived too, and an epsilon of 1 ms or 4 ms (#120).
     it("draws each bound at 0.5 s, inclusive where the rule says at most", () => {
         // Into the clip: 0.5 s is near its start, 0.55 s is not.
         expect(isLoopWrap(at(11.9), at(0.5))).toBe(true);
@@ -687,6 +688,27 @@ describe("isLoopWrap: a step back is a wrap only when the clip restarts", () => 
         expect(() => isLoopWrap(at(0.75), at(0.25))).toThrow(
             /steps back 0\.5 s, not more than 0\.5 s/,
         );
+    });
+
+    // #114, re-derived from M4's figures: docs/benchmarks/2026-10-29-114-wrap-bound-rederivation.md.
+    // The test above pins the bound to [0.5, 0.55) and the epsilon only below 10 ms; W14 (0.549)
+    // and an epsilon of 1 ms (W9) or 4 ms (W18) survived it (#120). This pins both at 10 µs over.
+    it("refuses 10 µs over the 0.5 s bound, into the clip and across the wrap", () => {
+        // Why 10 µs and not 1 µs: media times are rounded to the µs, so on the 30 fps static
+        // clip a 15-frame skip across the wrap reads 0.500001 s on 5 of its 15 landings (11.733333
+        // to 0.066667 on 12.166667 s). A real restart can produce 0.500001 s; no landing produces
+        // 0.50001 s. Whether "at most" should tolerate that rounding is open, not decided here.
+        expect(isLoopWrap(at(11.9), at(0.5))).toBe(true);
+        expect(() => isLoopWrap(at(11.9), at(0.50001))).toThrow(/more than 0\.5 s into the clip/);
+        // 11.5 and 12 are exact in binary: the skips are exactly 0.5 s, and 0.5 + 0.00001, which
+        // rounds to the same double as 0.50001.
+        expect(isLoopWrap(at(11.5), at(0), 12)).toBe(true);
+        expect(() => isLoopWrap(at(11.5), at(0.00001), 12)).toThrow(
+            /skips 0\.50001 s across the wrap/,
+        );
+        // This catches an epsilon of 10 µs or more. It cannot tell 1e-9 from 1e-7: on media times
+        // to the µs no input can. bench-stall.test.mjs, "disagree" case (3), already pins it from below,
+        // at 5e-10 or more, with inputs finer than the data's.
     });
 
     it("refuses, given the clip's duration, a restart that skips more than 0.5 s across the wrap", () => {

@@ -48,9 +48,12 @@
  * derived. The smallest real step back in the committed exports is 8.63 s.
  *
  * #114 says when the first two are re-derived, and by what rule ("Criterion
- * for revisiting it"). M4's campaign closed on 2026-10-23 (#167) without
- * re-deriving them; that criterion defers the re-derivation to the first
- * window after the campaign.
+ * for revisiting it"). They were re-derived on 2026-10-29 from M4's recorded
+ * figures, and the rule gives 0.5 s again:
+ * docs/benchmarks/2026-10-29-114-wrap-bound-rederivation.md. The bound is
+ * pinned to within 10 µs by bench-metrics.test.mjs, "refuses 10 µs over the
+ * 0.5 s bound", and the epsilon it is read with to below 10 µs; that test says
+ * what it cannot tell.
  */
 const WRAP_BOUND_S = 0.5;
 
