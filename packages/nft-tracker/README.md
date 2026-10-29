@@ -305,8 +305,10 @@ if (result.ok) {
 
 `process` does not throw on a frame it cannot use; `result.ok` narrows the
 union. Besides `H`, `pose`, `numMatches`, `numInliers`, `sceneKeypoints` and,
-when not `ok`, a `reason` (`"too-few-matches"` or `"no-consensus"` from a
-detection; `"no-detection"` when `externalDetection` is on and no detection
+when not `ok`, a `reason` (`"too-few-matches"`, `"no-consensus"` or
+`"too-few-inliers"` from a detection, the last when RANSAC accepted a fit on
+fewer than `MIN_DETECTION_INLIERS`, 5, inliers: a minimal fit, whose residual
+on its own points is zero by construction, #137; `"no-detection"` when `externalDetection` is on and no detection
 was handed in; `"unconfirmed"` when one was handed in and the tracking step
 refused it — see **External detection** below; `"conditioning"` when the
 conditioning signal, in its refusing state, refused a detection's homography

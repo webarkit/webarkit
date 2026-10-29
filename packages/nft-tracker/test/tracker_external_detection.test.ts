@@ -448,7 +448,8 @@ describe("NftTracker with external detection on camera-path sequences", () => {
             "leaveAndReturn",
             leaveAndReturn,
             106,
-            "D" + "T".repeat(38) + "D" + "L".repeat(27) + "D".repeat(26) + "T".repeat(13),
+            // Frames 39, 68 and 69 are 4-inlier detections, refused (#137).
+            "D" + "T".repeat(38) + "L".repeat(28) + "DLL" + "D".repeat(23) + "T".repeat(13),
         ],
         ["velocityStep(6)", velocityStep(6), 15, "DTTTT" + "D".repeat(10)],
     ])(

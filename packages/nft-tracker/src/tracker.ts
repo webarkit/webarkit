@@ -132,11 +132,12 @@
  * **On determinism.** Point 7 also asks that every random choice go through an
  * injectable RNG. This class makes none: the one random choice in the pipeline
  * is the minimal-sample draw inside `estimateHomography`, which is below the
- * contract, and `RansacOptions` carries no RNG for a caller to seed. So there
- * is deliberately no `rng` option here — it would accept a generator and have
- * nowhere to pass it. When the contract gains the field this class forwards
- * it and the option appears; until then `process` is exactly as reproducible
- * as the backend's RANSAC is, and the tests are explicit about that. The
+ * contract. Since webarkit/webarkit#24 the contract's `RansacOptions` carries
+ * an `rng` a caller can seed, but `detectTarget` does not pass one yet, so
+ * there is no `rng` option here yet either — it would accept a generator and
+ * have nowhere to pass it. Until `detectTarget` forwards one, `process` is
+ * exactly as reproducible as the backend's RANSAC is, and the tests are
+ * explicit about that. The
  * tracking state draws nothing: a sequence of frames gives the same states
  * and homographies, bit for bit, for the same RANSAC draws in its
  * detections.
@@ -347,6 +348,12 @@ export type TrackFailure =
     | "too-few-matches"
     /** Enough matches, but RANSAC found no model they agree on. */
     | "no-consensus"
+    /**
+     * RANSAC accepted a model on fewer than `MIN_DETECTION_INLIERS` inliers,
+     * a minimal fit, and the detection refused it: no lock was set and no
+     * pose computed. `numInliers` is the fit's own count.
+     */
+    | "too-few-inliers"
     /**
      * No lock, and no detection: with `externalDetection`, the tracker runs
      * none itself, and none was handed to `process` this frame. The result

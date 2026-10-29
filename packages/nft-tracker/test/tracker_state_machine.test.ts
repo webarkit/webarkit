@@ -174,7 +174,7 @@ describe("NftTracker on camera-path sequences", () => {
         expect(p.results.map((r) => r.tracking)).toEqual([null, null, null, null, null, null]);
     }, 60_000);
 
-    it("loses the target when it leaves the frame (LOST on frames 40–66), re-detects it on each of the 26 fast return frames, and tracks again from frame 93", () => {
+    it("loses the target when it leaves the frame (LOST on frames 39–66), detects on each of the 26 fast return frames and locks on 25, refusing frame 68's 4-inlier fit (#137), and tracks again from frame 93", () => {
         const { results, truths, states } = run(target, leaveAndReturn, 106);
         // A TRACK result is a pose the tracker vouches for: never one several
         // px off, whatever a detection seeded it with. Measured: at most
@@ -194,7 +194,9 @@ describe("NftTracker on camera-path sequences", () => {
         // The target is out of the frame from frame 47 to 58.
         expect(states.slice(47, 59)).toBe("L".repeat(12));
         // Tracking drops at frame 39, with 7 patches left in view, and that
-        // frame is detected again at once.
+        // frame is detected again at once. The detection is a 4-inlier fit,
+        // 193.7 px RMS from the true homography, which detectTarget refuses
+        // (#137), so the frame is LOST; so is frame 68's, 255.7 px off.
         const firstLoss = results.findIndex((r, i) => i > 10 && r.state !== "TRACK");
         expect(firstLoss).toBe(39);
         expect(results[39].trackLoss).toBe("too-few-patches");
@@ -202,7 +204,7 @@ describe("NftTracker on camera-path sequences", () => {
         // step survives, and a lock after a detection starts with no
         // velocity: every frame re-detects until the motion slows.
         expect(states).toBe(
-            "D" + "T".repeat(38) + "D" + "L".repeat(27) + "D".repeat(26) + "T".repeat(13),
+            "D" + "T".repeat(38) + "L".repeat(28) + "DL" + "D".repeat(24) + "T".repeat(13),
         );
     }, 60_000);
 
@@ -363,8 +365,9 @@ describe("the shipped target, examples/targets/pinball.wnft, on ground truth", (
         // target (worst point 7.37 / 8.24 / 7.65), 0.34–0.36 in view (worst
         // 0.72). Every other TRACK frame is within 0.55 px RMS.
         const { results, truths, states } = shippedLeaveAndReturn(cv, K);
+        // Frames 39 and 68 are 4-inlier detections, refused (#137).
         expect(states).toBe(
-            "D" + "T".repeat(38) + "D" + "L".repeat(27) + "D".repeat(26) + "T".repeat(13),
+            "D" + "T".repeat(38) + "L".repeat(28) + "DL" + "D".repeat(24) + "T".repeat(13),
         );
         const tracked = results.flatMap((r, i) => (r.state === "TRACK" ? [i] : []));
         const whole = tracked.map((i) => centreRms(results[i].H!, truths[i]));
