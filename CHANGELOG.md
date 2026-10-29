@@ -30,6 +30,13 @@ release pull request's body and the GitHub Release's notes.
   JSON, it exits 2 with one line and no verdict, since 1 is a check that ran and failed. Each arm
   is tested passing and failing, and the verdict over every committed export with frames is
   pinned. The record's copy stays as the record of what ran.
+- **The provenance manifest hashes the script that writes it and the root `package.json`**
+  ([#127](https://github.com/webarkit/webarkit/issues/127)), additive: `examples/dist/provenance.json`
+  gains `build`, the SHA-256 and git blob id of `scripts/build-provenance.mjs` and of the root
+  `package.json` whose `build` runs it (`blob` null without git), so two exports'
+  `provenance.manifest.build` show by themselves whether one producer wrote both manifests. It
+  attests an accidental change only, and refuses nothing: neither file is served, so Start does
+  not read it. The schema stays `webarkit-bench-provenance/1`.
 
 ### Fixed
 

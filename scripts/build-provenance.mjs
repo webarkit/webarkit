@@ -41,7 +41,8 @@
  *    still imports anything: a module worker reads no import map.
  * 3. **The manifest**, `examples/dist/provenance.json`: `HEAD`, whether the
  *    tracked inputs were clean, and each one's SHA-256 (what the page compares)
- *    and git blob id (what a check from the repository compares). Its
+ *    and git blob id (what a check from the repository compares), this
+ *    script's and the root `package.json`'s included (`build`, #127). Its
  *    authority is that the build which made the bundle wrote it; the page
  *    checks the bytes the server serves against it at Start (`provenanceRefusal`
  *    in `examples/js/bench-metrics.mjs`).
@@ -68,6 +69,13 @@ const BUNDLE = "examples/dist/webarkit-packages.mjs";
 const MANIFEST = "examples/dist/provenance.json";
 const JSFEAT = "@webarkit/jsfeat-next";
 const JSFEAT_FILE = `node_modules/${JSFEAT}/dist/jsfeatNext.mjs`;
+/**
+ * What makes the manifest: this script, and the root `package.json` whose
+ * `build` runs it (#127). Hashed in `build`, not `sources`, which holds the
+ * packages' inputs. Neither is served, so Start reads neither: two exports'
+ * manifests show whether one producer wrote both, an accidental change only.
+ */
+const PRODUCER = ["scripts/build-provenance.mjs", "package.json"];
 /** What `clean` covers: the M4 runbook's guarded paths, and what installs the packages. */
 export const CLEAN_PATHS = [
     "examples/bench-nft.html",
@@ -241,6 +249,7 @@ if (
             entry: ENTRY,
         },
         sources: hashed(sources, withGit),
+        build: hashed(PRODUCER, withGit),
         served: Object.fromEntries(
             Object.entries(hashed(Object.keys(SERVED), withGit)).map(([p, h]) => [
                 p,
