@@ -104,8 +104,9 @@ release pull request's body and the GitHub Release's notes.
   fit's own count; it still does not call `detectTarget`, so that it times the pipeline's calls
   stage by stage as before. A parity test feeds it and `detectTarget` the same frame through one
   stub backend, and the two must agree on an accepted fit of 4 inliers and of 5, a RANSAC failure
-  and too few matches. Stateless exports from before this change and from after it are not
-  comparable on the hand-held clips; `provenance.manifest.served` tells them apart.
+  and too few matches. Stateless exports from before `7d3b914`, the commit that adds the gate,
+  and from after it are not comparable on the hand-held clips; `provenance.manifest.served` tells
+  them apart.
   `METRICS_VERSION` is unchanged: no definition changes, only which frames the mode poses. The
   static demo is left as the contract's raw pipeline, which does not apply the gate, and says so.
 

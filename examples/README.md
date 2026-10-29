@@ -190,10 +190,10 @@ match → estimateHomography → poseFromHomography` calls as the static demo,
   Like `detectTarget`, and unlike the static demo, it refuses a fit RANSAC
   accepted on fewer than `MIN_DETECTION_INLIERS` (5) inliers, as a LOST frame
   with the reason `too-few-inliers`
-  ([#191](https://github.com/webarkit/webarkit/issues/191)); a test holds the
-  two to the same answer. Before that change it posed such fits, so a
-  stateless export from before it and one from after are not comparable on the
-  hand-held clips. Each export's `provenance.manifest.served` records the
+  ([#191](https://github.com/webarkit/webarkit/issues/191), from commit
+  `7d3b914`); a test holds the two to the same answer. Before that commit it
+  posed such fits, so a stateless export from before it and one from after are
+  not comparable on the hand-held clips. Each export's `provenance.manifest.served` records the
   served files' hashes, which tell the two apart.
 - **NftTracker, detection-only** (`detection-only`) — `tracker.process(frame,
 timestampMs)` with `detectionOnly: true`: M1 of
