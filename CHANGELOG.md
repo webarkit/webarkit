@@ -92,8 +92,9 @@ release pull request's body and the GitHub Release's notes.
   +2.51 points per seed on the wall clip and −3.37 to +2.67 on the table clip, against ±0.5. On #90's ground-truth sequences every fit the gate refuses
   is a 4-inlier fit 193.7 to 511.9 px RMS from the true homography, and no TRACK frame changes;
   an 8-inlier fit 61,615 px wrong on the same path is not caught. The bench page's stateless
-  pipeline, an inline copy of the detection steps, still accepts the 4-inlier fits the tracker
-  refuses.
+  pipeline, an inline copy of the detection steps, was left accepting the 4-inlier fits the
+  tracker refuses; the next entry brings it to the same gate
+  ([#191](https://github.com/webarkit/webarkit/issues/191)).
 - **The bench page's stateless mode refuses a detection with fewer than `MIN_DETECTION_INLIERS`
   inliers, as the tracker does** ([#191](https://github.com/webarkit/webarkit/issues/191)). The
   mode is a copy of the detection steps, not a call to `detectTarget`, so #137's gate left it
@@ -106,9 +107,9 @@ release pull request's body and the GitHub Release's notes.
   stub backend, and the two must agree on an accepted fit of 4 inliers and of 5, a RANSAC failure
   and too few matches. Stateless exports from before `7d3b914`, the commit that adds the gate,
   and from after it are not comparable on the hand-held clips; `provenance.manifest.served` tells
-  them apart.
-  `METRICS_VERSION` is unchanged: no definition changes, only which frames the mode poses. The
-  static demo is left as the contract's raw pipeline, which does not apply the gate, and says so.
+  them apart. `METRICS_VERSION` is unchanged: no definition changes, only which frames the mode
+  poses. The static demo is left as the contract's raw pipeline, which does not apply the gate,
+  and says so.
 
 <!-- prettier-ignore-start -->
 

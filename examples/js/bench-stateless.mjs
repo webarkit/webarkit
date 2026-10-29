@@ -35,18 +35,32 @@
  * `./detection-worker-core.mjs` takes its own.
  */
 
+/** Throws unless `value` is a finite number: see {@link runStatelessPipeline}'s `deps`. */
+function requireNumber(name, value) {
+    if (!Number.isFinite(value)) {
+        throw new TypeError(`runStatelessPipeline: deps.${name} is ${value}, not a number`);
+    }
+}
+
 /**
- * The exact steps `NftTracker.process` runs (tracker.ts), written out
- * here against the same instrumented backend and the same defaults,
- * so this page's "stateless pipeline" mode and its "NftTracker" mode
- * measure the same work through the same calls -- the parity M1 claims,
- * made checkable rather than assumed. `maxKeypoints` is the one
+ * The detection steps `NftTracker.process` runs on a frame without a lock
+ * (`detectTarget`, detection.ts), its refusal of a fit on fewer than
+ * `MIN_DETECTION_INLIERS` inliers included, written out here against the
+ * same instrumented backend and the same defaults, so this page's
+ * "stateless pipeline" mode and its "NftTracker" mode measure the same
+ * detection work through the same calls -- the parity M1 claims, made
+ * checkable rather than assumed (the parity test,
+ * examples/test/bench-stateless.test.mjs). The pose is not the same work:
+ * this mode calls `poseFromHomography`, where the tracker chooses its pose
+ * with `selectPose` (#134) and makes no such call. `maxKeypoints` is the one
  * default this page lets a run override (see `readMaxKeypoints`); the
  * NftTracker mode receives the same value as `maxSceneKeypoints`.
  *
  * `deps` is `{ matchPerLevel, DEFAULT_SCENE_LEVELS, DEFAULT_RATIO,
  * DEFAULT_RANSAC_THRESHOLD, MIN_DETECTION_INLIERS }`, from
- * `@webarkit/nft-tracker`.
+ * `@webarkit/nft-tracker`. A value missing from it throws, which fails the
+ * page's run naming it: missing, `MIN_DETECTION_INLIERS` would turn the gate
+ * off with no error, since `h.numInliers < undefined` is false (#191).
  */
 export function runStatelessPipeline(
     icv,
@@ -65,6 +79,13 @@ export function runStatelessPipeline(
         MIN_DETECTION_INLIERS,
     },
 ) {
+    if (typeof matchPerLevel !== "function") {
+        throw new TypeError("runStatelessPipeline: deps.matchPerLevel is not a function");
+    }
+    requireNumber("DEFAULT_SCENE_LEVELS", DEFAULT_SCENE_LEVELS);
+    requireNumber("DEFAULT_RATIO", DEFAULT_RATIO);
+    requireNumber("DEFAULT_RANSAC_THRESHOLD", DEFAULT_RANSAC_THRESHOLD);
+    requireNumber("MIN_DETECTION_INLIERS", MIN_DETECTION_INLIERS);
     const sceneKeypoints = icv.detect(frame, {
         levels: DEFAULT_SCENE_LEVELS,
         maxKeypoints,
@@ -121,9 +142,7 @@ export function runStatelessPipeline(
             sceneKeypoints,
         };
     }
-    // A fit RANSAC accepted on a minimal sample, which detectTarget refuses
-    // (#137); the parity test (examples/test/bench-stateless.test.mjs) holds
-    // the two to the same answer (#191).
+    // A fit RANSAC accepted on a minimal sample, which detectTarget refuses (#137).
     if (h.numInliers < MIN_DETECTION_INLIERS) {
         return {
             ok: false,

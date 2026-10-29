@@ -193,8 +193,9 @@ match → estimateHomography → poseFromHomography` calls as the static demo,
   ([#191](https://github.com/webarkit/webarkit/issues/191), from commit
   `7d3b914`); a test holds the two to the same answer. Before that commit it
   posed such fits, so a stateless export from before it and one from after are
-  not comparable on the hand-held clips. Each export's `provenance.manifest.served` records the
-  served files' hashes, which tell the two apart.
+  not comparable on the hand-held clips. Each export's
+  `provenance.manifest.served` records the served files' hashes, which tell the
+  two apart.
 - **NftTracker, detection-only** (`detection-only`) — `tracker.process(frame,
 timestampMs)` with `detectionOnly: true`: M1 of
   [ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md),

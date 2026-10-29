@@ -76,11 +76,14 @@ const H = new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
  * A backend whose every answer is scripted: `matches` correspondences between
  * scene keypoint i and the first target level's keypoint i, and `ransac`'s
  * `{ ok, numInliers }` as `estimateHomography`'s result, its mask marking the
- * first `numInliers` correspondences. No `filterMatches`, so both paths skip it.
+ * first `numInliers` correspondences. With `filter`, a `filterMatches` that
+ * keeps the first `filter` matches; without, none, and both paths skip it.
  */
-function stubBackend({ matches, ransac }) {
+function stubBackend({ matches, ransac, filter }) {
     let firstLevel = null;
+    const filterMatches = (m) => m.slice(0, filter);
     return {
+        ...(filter === undefined ? {} : { filterMatches }),
         capabilities: { name: "stub", descriptors: ["orb"] },
         detect: () =>
             Array.from({ length: Math.max(matches, 1) }, (_, i) => ({
@@ -115,21 +118,29 @@ function stubBackend({ matches, ransac }) {
     };
 }
 
+/** The target's keypoints as the contract's `Keypoint[]`, as the page's `toKeypointArray` builds them. */
+function targetKeypointArray() {
+    const kp = target.keypoints;
+    return Array.from({ length: kp.count }, (_, i) => ({
+        x: kp.x[i],
+        y: kp.y[i],
+        score: kp.score[i],
+        angle: kp.angle[i],
+        level: kp.level[i],
+    }));
+}
+
+/** The stateless pipeline on the stub's frame, as the page calls it, with `deps` for the page's `STATELESS_DEPS`. */
+function statelessPath(script, deps = DEPS) {
+    const cv = stubBackend(script);
+    const levels = buildLevelIndex(chooseDescriptorSet(cv, target));
+    const keypoints = cv.filterMatches ? targetKeypointArray() : null;
+    return runStatelessPipeline(cv, target, levels, keypoints, null, FRAME, 40, 500, deps);
+}
+
 /** The same frame through both paths, each with its own backend built from `script`. */
 function bothPaths(script) {
-    const cvStateless = stubBackend(script);
-    const levels = buildLevelIndex(chooseDescriptorSet(cvStateless, target));
-    const stateless = runStatelessPipeline(
-        cvStateless,
-        target,
-        levels,
-        null,
-        null,
-        FRAME,
-        40,
-        script.maxKeypoints ?? 500,
-        DEPS,
-    );
+    const stateless = statelessPath(script);
     const cvTracker = stubBackend(script);
     const setup = prepareDetection(cvTracker, target, { maxSceneKeypoints: 500 });
     const tracker = detectTarget(cvTracker, setup, FRAME, 40);
@@ -141,6 +152,7 @@ const view = (d) => ({
     reason: d.ok ? null : d.reason,
     numInliers: d.numInliers,
     numMatches: d.numMatches,
+    numSceneKeypoints: d.sceneKeypoints.length,
 });
 
 describe("the stateless pipeline agrees with detectTarget on every refusal (#191: the parity test that keeps them from drifting)", () => {
@@ -148,22 +160,51 @@ describe("the stateless pipeline agrees with detectTarget on every refusal (#191
         [
             "an accepted fit on 4 inliers, which both refuse as too-few-inliers",
             { matches: 12, ransac: { ok: true, numInliers: 4 } },
-            { ok: false, reason: "too-few-inliers", numInliers: 4, numMatches: 12 },
+            {
+                ok: false,
+                reason: "too-few-inliers",
+                numInliers: 4,
+                numMatches: 12,
+                numSceneKeypoints: 12,
+            },
         ],
         [
             "an accepted fit on 5 inliers, which both accept",
             { matches: 12, ransac: { ok: true, numInliers: 5 } },
-            { ok: true, reason: null, numInliers: 5, numMatches: 12 },
+            { ok: true, reason: null, numInliers: 5, numMatches: 12, numSceneKeypoints: 12 },
         ],
         [
             "a RANSAC failure, which both refuse as no-consensus",
             { matches: 12, ransac: { ok: false, numInliers: 0 } },
-            { ok: false, reason: "no-consensus", numInliers: 0, numMatches: 12 },
+            {
+                ok: false,
+                reason: "no-consensus",
+                numInliers: 0,
+                numMatches: 12,
+                numSceneKeypoints: 12,
+            },
         ],
         [
             "too few matches to estimate, which both refuse as too-few-matches",
             { matches: 3, ransac: { ok: true, numInliers: 3 } },
-            { ok: false, reason: "too-few-matches", numInliers: 0, numMatches: 3 },
+            {
+                ok: false,
+                reason: "too-few-matches",
+                numInliers: 0,
+                numMatches: 3,
+                numSceneKeypoints: 3,
+            },
+        ],
+        [
+            "an accepted fit on 4 inliers among the matches filterMatches keeps, which both refuse",
+            { matches: 12, filter: 6, ransac: { ok: true, numInliers: 4 } },
+            {
+                ok: false,
+                reason: "too-few-inliers",
+                numInliers: 4,
+                numMatches: 6,
+                numSceneKeypoints: 12,
+            },
         ],
     ])("%s", (_, script, expected) => {
         const { stateless, tracker } = bothPaths(script);
@@ -171,5 +212,14 @@ describe("the stateless pipeline agrees with detectTarget on every refusal (#191
         expect(view(stateless), "the stateless pipeline").toEqual(view(tracker));
         // The page draws and exports a pose whenever there is one: a refusal carries none.
         if (!stateless.ok) expect([stateless.H, stateless.pose]).toEqual([null, null]);
+    });
+
+    // Missing, the constant would turn the gate off with no error (`h.numInliers < undefined` is
+    // false): the 4-inlier frame would be posed again, and every case above would pass on DEPS.
+    it.each(Object.keys(DEPS))("refuses deps without %s, rather than run without it", (name) => {
+        const { [name]: _, ...deps } = DEPS;
+        expect(() =>
+            statelessPath({ matches: 12, ransac: { ok: true, numInliers: 4 } }, deps),
+        ).toThrow(`deps.${name}`);
     });
 });
