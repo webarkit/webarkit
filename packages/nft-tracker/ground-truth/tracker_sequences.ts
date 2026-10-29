@@ -125,6 +125,31 @@ export const velocityStep =
     (v: number) =>
     (i: number): Pose => ({ scale: 0.45, angle: 0, shift: [i < 5 ? 0 : v * (i - 4), 0] });
 
+// #106's two paths, registered beside the sequences by the maintainer's ruling
+// of 2026-10-29 on open question 3, exactly as #197's probe defined them
+// (docs/benchmarks/2026-10-29-106-stage1-pose-filter-probe.mjs at 0665a96,
+// lines 129, 147 to 148 and 513 to 523); run through `run` like the others.
+// docs/benchmarks/2026-10-29-106-stage3-registration.md, "The registered
+// paths", checks them against the probe's frame by frame.
+
+/** The rest path's length: 60 frames at 33 ms is 2 s, over 12 time constants of a 1 Hz cutoff. */
+export const REST_FRAMES = 60;
+
+/** `velocityStep`'s rest pose, held: every frame differs only by its own noise, blur and exposure. */
+export const restPath = (_i: number): Pose => ({ scale: 0.45, angle: 0, shift: [0, 0] });
+
+/** The settle path's slide, frames 0 to 39: `leaveAndReturn`'s return slide. */
+export const SETTLE_SLIDE_FRAMES = 40;
+/** The settle path's rest, frames 40 to 79. */
+export const SETTLE_REST_FRAMES = 40;
+
+/** `leaveAndReturn`'s return slide, 260 px to 0 over 40 frames by the same smoothstep, then at rest. */
+export const settlePath = (i: number): Pose => ({
+    scale: 0.45,
+    angle: 0,
+    shift: [i < SETTLE_SLIDE_FRAMES ? 260 * (1 - smoothstep(i / SETTLE_SLIDE_FRAMES)) : 0, 0],
+});
+
 /** A whole path through one tracker, under one seeded RANSAC. States as "D", "T", "L". */
 export function run(
     cv: CvBackend,

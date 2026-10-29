@@ -49,10 +49,11 @@ them here after it closed, so that a frozen input no longer shares a directory,
 or a file, with tests that are free to change.
 
 **The next campaign's plan names these paths as inputs, with their hashes.**
-The table gives each file as #130 left it. Nothing checks it against the files,
-so the plan records the hashes at its own start rather than copying these.
+The table gives each file as #130 left it, except `tracker_sequences.ts`, which
+#106 changed since (below). Nothing checks it against the files, so the plan
+records the hashes at its own start rather than copying these.
 
-| File                              | SHA-256, as #130 left it                                           | M4's recorded hash, at `37dc6d4`                       |
+| File                              | SHA-256                                                            | M4's recorded hash, at `37dc6d4`                       |
 | --------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------ |
 | `fixtures/tracking_target.ts`     | `9407d82ec31bb4c4510a1b230062d3ed09994de69c4101f4f0f98bca1348209a` | equal, as `test/fixtures/tracking_target.ts`           |
 | `fixtures/warped_frames.ts`       | `0afb9e6dc0bbe7ebf1d9cf264926e837e6ad2bd8b94a4bee9d725afb3d886e97` | equal, as `test/fixtures/warped_frames.ts`             |
@@ -62,7 +63,15 @@ so the plan records the hashes at its own start rather than copying these.
 | `fixtures/pinball-scene-640.pgm`  | `de5d5b1ffb4823b47e6e2904e12a8f4dbf6952c8ea8a6a58f3e96bc7d0fbbc7e` | not recorded; unchanged since `37dc6d4`                |
 | `fixtures/make-fixtures.mjs`      | `30bb61bbe3c118e37419a00f3e8f0df11a60f48b96f51f6ab961ac309a139d78` | not recorded; unchanged since `37dc6d4`                |
 | `tracking/track_frame_sweep.ts`   | `089491e0f52473dcc1527f4968de9ceea2cceee7a8bbb8491bd8bfd1fb6bab78` | new; split out of `test/tracking/track_frame.test.ts`  |
-| `tracker_sequences.ts`            | `b3a1d87c1aaee1f186550eeb23c39a09b17adc6652280e762380dcfbdede432b` | new; split out of `test/tracker_state_machine.test.ts` |
+| `tracker_sequences.ts`            | `62dffdd279de22a1e66c2a60e14fde926e9117dae54ffc48d1a3793a4f915d0d` | new; split out of `test/tracker_state_machine.test.ts` |
+
+**`tracker_sequences.ts` changed after #130.** #106's Part 3 added the two
+paths the maintainer's ruling of 2026-10-29 registers beside the sequences, the
+rest path and the settle path of #197's probe
+([the registration](../../../docs/benchmarks/2026-10-29-106-stage3-registration.md),
+"The registered paths"). Nothing else in the file changed, and no campaign was
+open. As #130 left it, its SHA-256 was
+`b3a1d87c1aaee1f186550eeb23c39a09b17adc6652280e762380dcfbdede432b`.
 
 M4 recorded two more hashes, of `test/tracking/track_frame.test.ts` and
 `test/tracker_state_machine.test.ts`. Those files were split, so their hashes
