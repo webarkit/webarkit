@@ -305,9 +305,12 @@ if (result.ok) {
 
 `process` does not throw on a frame it cannot use; `result.ok` narrows the
 union. Besides `H`, `pose`, `numMatches`, `numInliers`, `sceneKeypoints` and,
-when not `ok`, a `reason` (`"too-few-matches"` or `"no-consensus"` from a
-detection; `"no-detection"` when `externalDetection` is on and no detection
-was handed in; `"unconfirmed"` when one was handed in and the tracking step
+when not `ok`, a `reason` (`"too-few-matches"`, `"no-consensus"` or
+`"too-few-inliers"` from a detection, the last when RANSAC accepted a fit on
+fewer than 5 inliers (`MIN_DETECTION_INLIERS`): with jsfeatNext a 4-point fit,
+whose residual on its own points is zero by construction
+([#137](https://github.com/webarkit/webarkit/issues/137)); `"no-detection"`
+when `externalDetection` is on and no detection was handed in; `"unconfirmed"` when one was handed in and the tracking step
 refused it — see **External detection** below; `"conditioning"` when the
 conditioning signal, in its refusing state, refused a detection's homography
 — see **The conditioning signal** below), every result carries:
@@ -410,7 +413,9 @@ for bit, with M2's detections one frame later.
 **Detection-only.** With `detectionOnly: true`, or a target that cannot be
 tracked — no patches (format spec §5.7), fewer than `minTrackedPatches`, or
 smaller than 3 × 3 — every frame runs detection and nothing is carried between
-frames: exactly M1. `tracker.detectionOnly` says which mode a tracker is in.
+frames: M1, with the refusal of a fit on fewer than 5 inliers that
+[#137](https://github.com/webarkit/webarkit/issues/137) added to detection.
+`tracker.detectionOnly` says which mode a tracker is in.
 Targets from `buildTargetFromImage` carry no patches; `compile-target` writes
 them. Combined with `externalDetection`, a detection-only tracker runs no
 detection itself either: every frame needs one, and a handed-in detection is
@@ -429,8 +434,10 @@ pipeline with its four options below. Its one adoption, 48 patches, is
 `compile-target`'s `--patches` default, not a tracker option
 ([`docs/benchmarks/README.md`](../../docs/benchmarks/README.md#the-pass-2026-09-29-not-tunable-above-the-contract),
 "The pass (2026-09-29): not tunable above the contract"). The fixed guards
-against degeneracy are constants, not tuning thresholds: `alignPatch`'s floor
-for a singular patch, and the
+against degeneracy are constants, not tuning thresholds: the detection's
+`MIN_DETECTION_INLIERS` (5), which refuses a fit whose residual is zero by
+construction ([#137](https://github.com/webarkit/webarkit/issues/137)),
+`alignPatch`'s floor for a singular patch, and the
 numerical singularity tests in `predictHomography` and `robustHomography`
 (`SINGULAR_RELATIVE_DET`, `SINGULAR_PIVOT_RATIO`). Each option is
 documented, with the measurement behind it, where it is defined in

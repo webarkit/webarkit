@@ -174,7 +174,7 @@ describe("NftTracker on camera-path sequences", () => {
         expect(p.results.map((r) => r.tracking)).toEqual([null, null, null, null, null, null]);
     }, 60_000);
 
-    it("loses the target when it leaves the frame (LOST on frames 40–66), re-detects it on each of the 26 fast return frames, and tracks again from frame 93", () => {
+    it("loses the target when it leaves the frame (LOST on frames 39–66), detects on each of the 26 fast return frames and locks on 25, refusing frame 68's 4-inlier fit (#137), and tracks again from frame 93", () => {
         const { results, truths, states } = run(target, leaveAndReturn, 106);
         // A TRACK result is a pose the tracker vouches for: never one several
         // px off, whatever a detection seeded it with. Measured: at most
@@ -194,7 +194,10 @@ describe("NftTracker on camera-path sequences", () => {
         // The target is out of the frame from frame 47 to 58.
         expect(states.slice(47, 59)).toBe("L".repeat(12));
         // Tracking drops at frame 39, with 7 patches left in view, and that
-        // frame is detected again at once.
+        // frame is detected again at once. The detection is a 4-inlier fit,
+        // which detectTarget refuses (#137), so the frame is LOST; so is
+        // frame 68's. Measured before the gate, the two fits were 193.7 and
+        // 255.7 px RMS from the true homography.
         const firstLoss = results.findIndex((r, i) => i > 10 && r.state !== "TRACK");
         expect(firstLoss).toBe(39);
         expect(results[39].trackLoss).toBe("too-few-patches");
@@ -202,8 +205,14 @@ describe("NftTracker on camera-path sequences", () => {
         // step survives, and a lock after a detection starts with no
         // velocity: every frame re-detects until the motion slows.
         expect(states).toBe(
-            "D" + "T".repeat(38) + "D" + "L".repeat(27) + "D".repeat(26) + "T".repeat(13),
+            "D" + "T".repeat(38) + "L".repeat(28) + "DL" + "D".repeat(24) + "T".repeat(13),
         );
+        for (const i of [39, 68]) {
+            const r = results[i];
+            expect(r.ok).toBe(false);
+            if (!r.ok) expect(r.reason).toBe("too-few-inliers");
+            expect(r.numInliers).toBe(4);
+        }
     }, 60_000);
 
     it("survives a sudden velocity change of 4 px/frame; at 6 px/frame every moving frame refuses and re-detects", () => {
@@ -291,6 +300,54 @@ describe("NftTracker on camera-path sequences", () => {
         const last = withSeededRandom(SEED, () => longer.process(padded(f1), 66)).value;
         expect(last.state).toBe("TRACK");
     }, 60_000);
+
+    it("makes a minimal detection LOST with no lock (too-few-inliers), and locks on one of 5 inliers (#137)", () => {
+        // The backend's own fit, its inlier mask cut to the first `k`: the
+        // homography is right, only the count is minimal.
+        const cutTo = (k: number) => {
+            let calls = 0;
+            const backend = new Proxy(cv, {
+                get: (t, p) =>
+                    p === "estimateHomography"
+                        ? (...a: Parameters<CvBackend["estimateHomography"]>) => {
+                              calls++;
+                              const h = t.estimateHomography(...a);
+                              if (!h.ok) return h;
+                              const inliers = new Uint8Array(h.inliers.length);
+                              for (let i = 0, kept = 0; i < inliers.length && kept < k; i++) {
+                                  if (h.inliers[i]) {
+                                      inliers[i] = 1;
+                                      kept++;
+                                  }
+                              }
+                              return { ...h, inliers, numInliers: k };
+                          }
+                        : Reflect.get(t, p),
+            });
+            return { backend, calls: () => calls };
+        };
+        const { frame: f0 } = frameAt(wander(0), 0);
+        const { frame: f1 } = frameAt(wander(1), 1);
+
+        const four = cutTo(4);
+        const t4 = new NftTracker(four.backend, target, K);
+        const r0 = withSeededRandom(SEED, () => t4.process(f0, 0)).value;
+        expect(r0.state).toBe("LOST");
+        expect(r0.ok).toBe(false);
+        if (!r0.ok) expect(r0.reason).toBe("too-few-inliers");
+        expect(r0.numInliers).toBe(4);
+        expect(r0.H).toBeNull();
+        expect(r0.pose).toBeNull();
+        const r1 = withSeededRandom(SEED, () => t4.process(f1, 33)).value;
+        expect(r1.state).not.toBe("TRACK");
+        expect(four.calls()).toBe(2); // no lock: frame 1 detected again
+
+        const five = cutTo(5);
+        const t5 = new NftTracker(five.backend, target, K);
+        expect(withSeededRandom(SEED, () => t5.process(f0, 0)).value.state).toBe("DETECT");
+        expect(withSeededRandom(SEED, () => t5.process(f1, 33)).value.state).toBe("TRACK");
+        expect(five.calls()).toBe(1); // locked: frame 1 tracked, no detection
+    }, 60_000);
 });
 
 // #90's ground-truth sequences on the shipped target are defined in
@@ -315,9 +372,16 @@ describe("the shipped target, examples/targets/pinball.wnft, on ground truth", (
         // target (worst point 7.37 / 8.24 / 7.65), 0.34–0.36 in view (worst
         // 0.72). Every other TRACK frame is within 0.55 px RMS.
         const { results, truths, states } = shippedLeaveAndReturn(cv, K);
+        // Frames 39 and 68 are 4-inlier detections, refused (#137).
         expect(states).toBe(
-            "D" + "T".repeat(38) + "D" + "L".repeat(27) + "D".repeat(26) + "T".repeat(13),
+            "D" + "T".repeat(38) + "L".repeat(28) + "DL" + "D".repeat(24) + "T".repeat(13),
         );
+        for (const i of [39, 68]) {
+            const r = results[i];
+            expect(r.ok).toBe(false);
+            if (!r.ok) expect(r.reason).toBe("too-few-inliers");
+            expect(r.numInliers).toBe(4);
+        }
         const tracked = results.flatMap((r, i) => (r.state === "TRACK" ? [i] : []));
         const whole = tracked.map((i) => centreRms(results[i].H!, truths[i]));
         const worst = tracked.map((i) => centreMax(results[i].H!, truths[i]));

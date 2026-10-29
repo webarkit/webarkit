@@ -46,6 +46,7 @@ export {
     DEFAULT_SCENE_LEVELS,
     detectTarget,
     matchPerLevel,
+    MIN_DETECTION_INLIERS,
     prepareDetection,
 } from "./detection.js";
 export type {

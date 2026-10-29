@@ -62,6 +62,31 @@ release pull request's body and the GitHub Release's notes.
   is set, or not recorded, is now a gap, whatever `endedBy` says. Neither changes what the
   committed exports say. The two stale comments beside `WRAP_BOUND_S` now point at
   [#114](https://github.com/webarkit/webarkit/issues/114); its value is unchanged.
+- **Detection refuses a homography fitted on fewer than 5 inliers, a fit whose residual is zero
+  by construction** ([#137](https://github.com/webarkit/webarkit/issues/137)). A fit on four
+  correspondences reproduces them exactly, so RANSAC's threshold could not refuse it, and the
+  detection path accepted such fits whether right or not. `detectTarget` now refuses an accepted
+  fit with fewer than `MIN_DETECTION_INLIERS` (5, exported) inliers as a failed detection with a
+  new reason, `"too-few-inliers"`, carrying the fit's own count; the tracker makes the frame LOST
+  with no lock, and the detection worker runs the same gate. `DetectionFailure` and
+  `TrackFailure` gain the value: a type change, though the package is pre-1.0 and private. The
+  gate is G5 of #137's pipeline probe ([#189](https://github.com/webarkit/webarkit/pull/189),
+  [the record](docs/benchmarks/2026-10-28-137-stage1-pipeline-probe.md)): every frame processed,
+  seeds 1 to 8, the static clip unchanged on every seed, the seed ratio of `jitterPx` from 4.77 to
+  1.15 on the wall clip and from 103 to 2.21 on the table clip, `trackTimeShare` equal to the
+  ungated pipeline's except +0.09 points on one seed. Its criteria were registered before the code
+  ([#190](https://github.com/webarkit/webarkit/pull/190),
+  [the registration](docs/benchmarks/2026-10-28-137-stage3-g5-registration.md)), and
+  [its addendum](docs/benchmarks/2026-10-28-137-stage3-g5-registration.md#addendum-2026-10-29-the-criteria-run-against-g5s-implementation)
+  records them run: C1 and C2 held, the implementation reproducing the probe's G5 rows frame for
+  frame on all three clips and eight seeds; on the device's scaled-step schedule, P-G5 (a) held on
+  the table clip (seed ratio 1.21, bound 1.50) and was refuted on the wall clip (1.55, bound 1.5,
+  from the control's 3.41), and (c) was refuted on both, `trackTimeShare` moving by −4.18 to
+  +2.51 points per seed on the wall clip and −3.37 to +2.67 on the table clip, against ±0.5. On #90's ground-truth sequences every fit the gate refuses
+  is a 4-inlier fit 193.7 to 511.9 px RMS from the true homography, and no TRACK frame changes;
+  an 8-inlier fit 61,615 px wrong on the same path is not caught. The bench page's stateless
+  pipeline, an inline copy of the detection steps, still accepts the 4-inlier fits the tracker
+  refuses.
 
 <!-- prettier-ignore-start -->
 
