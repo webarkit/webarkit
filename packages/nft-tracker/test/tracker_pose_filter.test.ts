@@ -45,7 +45,7 @@
 // check's (docs/benchmarks/2026-10-29-106-stage3-check.mjs), not these tests'.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import type { CvBackend, Mat3 } from "@webarkit/cv-backend-spec";
+import type { CvBackend, GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
 import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
 import * as index from "../src/index.js";
 import {
@@ -59,9 +59,13 @@ import {
 } from "../src/tracker.js";
 import type { NftTrackerOptions, TrackResult } from "../src/tracker.js";
 import { PoseFilter } from "../src/pose/pose_filter.js";
+import { detectTarget, prepareDetection } from "../src/detection.js";
 import type { TargetDb } from "../src/target/types.js";
+import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
 import {
     CAMERA,
+    frameAt,
+    SEED,
     REST_FRAMES,
     restPath,
     run,
@@ -217,6 +221,55 @@ describe("the poseFilter option: on", () => {
             expect(moved).toBeGreaterThan(0);
         });
     }
+});
+
+describe("the poseFilter option: every result reaches the filter, a LOST one included", () => {
+    // With external detection a LOST frame can be followed, on the next call,
+    // by a TRACK carried from a consumed detection, with no DETECT between
+    // them to reset the filter: so only the LOST frame itself can, and its
+    // timestamp is the reference the next frame is judged against. Through
+    // `run`, every LOST is followed by a DETECT, which resets anyway.
+    const stream = (t3: number) => {
+        const setup = prepareDetection(cv, target);
+        const frame = (i: number) => frameAt(restPath(i), i).frame;
+        const blank: GrayImage = {
+            width: CAMERA.width,
+            height: CAMERA.height,
+            data: new Uint8Array(CAMERA.width * CAMERA.height),
+        };
+        const detect = (i: number, ts: number) =>
+            withSeededRandom(SEED, () => detectTarget(cv, setup, frame(i), ts)).value;
+        const tracker = new NftTracker(cv, target, K, {
+            externalDetection: true,
+            poseFilter: { mode: "one-euro" },
+        });
+        return [
+            tracker.process(frame(0), 0, detect(0, 0)),
+            tracker.process(frame(1), 33),
+            tracker.process(blank, 66),
+            tracker.process(frame(3), t3, detect(3, t3)),
+            tracker.process(frame(4), t3 + 33),
+            tracker.process(frame(5), t3 + 66),
+        ];
+    };
+    const passes = (r: TrackResult) => ok(r) && r.pose === r.poseSelection.pose;
+
+    it("resets on the LOST frame, and judges the next frame's timestamp against the LOST frame's", () => {
+        const r = stream(66);
+        expect(r.map((x) => x.state[0]).join("")).toBe("TTLTTT");
+        expect(passes(r[0])).toBe(true); // seeds
+        expect(passes(r[1])).toBe(false);
+        expect(passes(r[3])).toBe(true); // 66 does not exceed the LOST frame's 66
+        expect(passes(r[4])).toBe(true); // seeds
+        expect(passes(r[5])).toBe(false);
+        // Must fire: at 70 ms, frame 3 seeds after the LOST frame's reset, and
+        // frame 4 is filtered. A LOST frame that never reached the filter
+        // would leave it seeded by frames 0 and 1, and frame 3 filtered.
+        const later = stream(70);
+        expect(later.map((x) => x.state[0]).join("")).toBe("TTLTTT");
+        expect(passes(later[3])).toBe(true);
+        expect(passes(later[4])).toBe(false);
+    });
 });
 
 describe("the poseFilter option: refusals, each by name", () => {

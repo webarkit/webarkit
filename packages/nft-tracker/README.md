@@ -519,7 +519,10 @@ tracker and feeds nothing back.
 - **Units.** Cutoffs are in Hz; `timestampMs` is read as **milliseconds**, the
   period being the difference of two frames' timestamps divided by 1000. No
   clock is read, so the output is a function of the frames and their
-  timestamps alone.
+  timestamps alone. Timestamps must be finite, two in a row a finite,
+  nonzero period apart: the reset rule catches `NaN` and a timestamp that
+  does not increase, but not a jump to `Infinity` or a period that overflows
+  or underflows, which gives a `NaN` pose on that frame.
 - **Parameters.** Each layer takes `{ minCutOff, beta }`, `minCutOff` finite
   and > 0, `beta` finite and ≥ 0 (per rad/s for the rotation, per model
   unit/s for the translation); `dCutOff` is shared. An omitted parameter takes

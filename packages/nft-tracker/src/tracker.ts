@@ -371,6 +371,12 @@ export interface PoseFilterLayerOptions {
  *   parameter takes the registered derived value, its `DEFAULT_POSE_FILTER_`
  *   constant; both layers are always on.
  *
+ * Timestamps must be finite, and two in a row must differ by a finite,
+ * nonzero period: the reset rule catches a `NaN` and a timestamp that does
+ * not increase, but not an increase to `Infinity`, nor a difference that
+ * overflows or underflows, and on such a frame the filtered pose is `NaN`
+ * (the registered rule, as the probe measured it, has no case for them).
+ *
  * The filter resets, and the frame's pose passes through unfiltered, on a
  * result that is not `"TRACK"` (a `"DETECT"` frame does not seed it; the
  * next `"TRACK"` does), on `pose.good === false`, and on a `timestampMs` that
@@ -795,6 +801,8 @@ export class NftTracker {
      * @param frame       The frame, a `GrayImage`.
      * @param timestampMs The frame's timestamp, in the caller's units; echoed
      *                    back, and the reference for `detectionLatencyMs`.
+     *                    With the `poseFilter` option on, read as milliseconds,
+     *                    and finite (see {@link PoseFilterOptions}).
      * @param detection   A detection computed elsewhere — by `detectTarget`,
      *                    in a worker the application owns — of an earlier
      *                    frame. Consumed when this frame ends without a lock
