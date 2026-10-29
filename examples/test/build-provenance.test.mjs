@@ -196,6 +196,19 @@ describe("scripts/build-provenance.mjs, run in a clone", () => {
         expect(m.head, "head without git").toBeNull();
         expect(m.clean).toBe(false);
         expect(m.dirtyPaths).toEqual([]);
+        // #127: the producer is still hashed, with no blob id to give.
+        expect(Object.keys(m.build).sort()).toEqual([
+            "package.json",
+            "scripts/build-provenance.mjs",
+        ]);
+        for (const [path, { sha256, blob }] of Object.entries(m.build)) {
+            expect(blob, `${path}'s blob without git`).toBeNull();
+            expect(sha256).toBe(
+                createHash("sha256")
+                    .update(readFileSync(join(root, path)))
+                    .digest("hex"),
+            );
+        }
     });
 
     // #120 (BB1, BB9): an entry that imports a module other than the packages built, and the

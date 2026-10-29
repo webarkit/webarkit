@@ -36,7 +36,7 @@ release pull request's body and the GitHub Release's notes.
   `package.json` whose `build` runs it (`blob` null without git), so two exports'
   `provenance.manifest.build` show by themselves whether one producer wrote both manifests. It
   attests an accidental change only, and refuses nothing: neither file is served, so Start does
-  not read it. The schema stays `webarkit-bench-provenance/1`.
+  not check them. The schema stays `webarkit-bench-provenance/1`.
 
 ### Fixed
 

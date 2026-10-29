@@ -72,8 +72,9 @@ const JSFEAT_FILE = `node_modules/${JSFEAT}/dist/jsfeatNext.mjs`;
 /**
  * What makes the manifest: this script, and the root `package.json` whose
  * `build` runs it (#127). Hashed in `build`, not `sources`, which holds the
- * packages' inputs. Neither is served, so Start reads neither: two exports'
+ * packages' inputs. Neither is served, so Start checks neither: two exports'
  * manifests show whether one producer wrote both, an accidental change only.
+ * Hashed as they are on disk when the manifest is written, after the build.
  */
 const PRODUCER = ["scripts/build-provenance.mjs", "package.json"];
 /** What `clean` covers: the M4 runbook's guarded paths, and what installs the packages. */
