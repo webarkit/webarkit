@@ -139,6 +139,24 @@ const BETAS_T = [0, 0.001, 0.01, 0.1];
 const LAR_REST_FROM = 96;
 /** The setting used for the responsiveness confirmation and the both-ways checks. */
 const ONE_SETTING = { minCutOffR: 1, betaR: 0, minCutOffT: 1, betaT: 0 };
+/**
+ * The settling probe path: leaveAndReturn's return slide (260 px to 0 over 40 frames, the same
+ * smoothstep), then at rest. SETTLE_REST_FRAMES = 40 rest frames: over 3τ at the lowest cutoff
+ * (3τ at 0.5 Hz is 0.95 s, 29 frames at 33 ms), with eleven frames of margin.
+ */
+const SETTLE_SLIDE_FRAMES = 40;
+const SETTLE_REST_FRAMES = 40;
+/**
+ * The three proposals the record states for the ruling, checked here against the sweeps so that
+ * each selects some settings and not all of them: a bound every setting meets selects nothing.
+ */
+const PROPOSED_STEADINESS_RATIO = 0.25;
+const proposedB = (unfilteredPeak, v) => unfilteredPeak + 0.5 * v;
+const PROPOSED_SETTLING_FRAMES = 15;
+/** The rotation layer on wander: its median error at most this far above the unfiltered median, px. */
+const PROPOSED_WANDER_DIFF = 0.5;
+/** The joint grid's pose digest on the original sequences at 3b275a1; a change is fatal. */
+const POSE_DIGEST_AT_3B275A1 = "86c8536dc80d1778187a29b95af3e1856795b678b70ff030bc7764169a9873b6";
 /** Tolerances of the checks. */
 const ROTATION_TOL = 1e-9;
 const TRANSCRIPTION_TOL = 1e-12;
@@ -275,20 +293,35 @@ class ReferenceOneEuro {
 // Layer 2: the pose layer, applied to a sequence of tracker results.
 // =============================================================================================
 /**
+ * `p`: `{ minCutOffR, betaR, minCutOffT, betaT }`; a layer whose `minCutOff` is
+ * `null` is off, and that part of the pose passes through unfiltered (the
+ * per-layer sweeps).
+ *
  * `variant`: `"correct"`; `"elementwise"` (the rotation averaged element by
  * element, no exp: broken for the rotation check); `"no-reset"` (every pose
  * fed, nothing resets: broken for the forgetting check); `"clock"` (the period
- * read from `performance.now()`: broken for the determinism check).
+ * read from `performance.now()`, which only this variant touches: broken for
+ * the determinism check); `"forget-time"` (a reset also forgets the last input
+ * timestamp, as this script did at 3b275a1: broken for the monotonic-timestamp
+ * check).
+ *
+ * Two timestamps are kept apart: `tLast`, the previous frame's input timestamp
+ * whatever that frame did, against which "does not increase" is judged; and
+ * `tPrev`, the timestamp of the last pose the filter absorbed, from which the
+ * period is taken.
  *
  * Returns per frame `{ pose, reset }`, `pose` null where the result has none,
  * and the reset counts by cause.
  */
 function filterPoses(results, timestamps, p, variant = "correct") {
-    const coreR = new OneEuroCore(variant === "elementwise" ? 9 : 3, p.minCutOffR, p.betaR, D_CUTOFF);
-    const coreT = new OneEuroCore(3, p.minCutOffT, p.betaT, D_CUTOFF);
+    const rotOn = p.minCutOffR !== null;
+    const transOn = p.minCutOffT !== null;
+    const coreR = new OneEuroCore(variant === "elementwise" ? 9 : 3, p.minCutOffR ?? 0, p.betaR ?? 0, D_CUTOFF);
+    const coreT = new OneEuroCore(3, p.minCutOffT ?? 0, p.betaT ?? 0, D_CUTOFF);
     let Rhat = null;
     let that = null;
     let tPrev = -Infinity;
+    let tLast = -Infinity;
     let clockPrev = 0;
     const causes = { notTrack: 0, notGood: 0, nonIncreasing: 0 };
     const frames = [];
@@ -304,14 +337,16 @@ function filterPoses(results, timestamps, p, variant = "correct") {
             } else if (!r.pose.good) {
                 reset = true;
                 causes.notGood++;
-            } else if (!(t > tPrev)) {
+            } else if (!(t > tLast)) {
                 reset = true;
                 causes.nonIncreasing++;
             }
         } else if (!hasPose) {
+            tLast = t;
             frames.push({ pose: null, reset: false });
             continue;
         }
+        tLast = variant === "forget-time" && reset ? -Infinity : t;
         if (reset) {
             Rhat = null;
             that = null;
@@ -325,7 +360,7 @@ function filterPoses(results, timestamps, p, variant = "correct") {
             Rhat = Float64Array.from(r.pose.R);
             that = Float64Array.from(r.pose.t);
             tPrev = t;
-            clockPrev = performance.now();
+            if (variant === "clock") clockPrev = performance.now();
             frames.push({ pose: copyPose(r.pose), reset: false });
             continue;
         }
@@ -335,7 +370,9 @@ function filterPoses(results, timestamps, p, variant = "correct") {
             te = Math.max(1e-6, (now - clockPrev) / 1000);
             clockPrev = now;
         }
-        if (variant === "elementwise") {
+        if (!rotOn) {
+            Rhat = Float64Array.from(r.pose.R);
+        } else if (variant === "elementwise") {
             const delta = new Float64Array(9);
             for (let i = 0; i < 9; i++) delta[i] = r.pose.R[i] - Rhat[i];
             const s = coreR.step(te, delta);
@@ -344,13 +381,33 @@ function filterPoses(results, timestamps, p, variant = "correct") {
             const omega = so3Log(mul3(transpose3(Rhat), r.pose.R));
             Rhat = mul3(Rhat, so3Exp(coreR.step(te, omega)));
         }
-        const dt = Float64Array.from([r.pose.t[0] - that[0], r.pose.t[1] - that[1], r.pose.t[2] - that[2]]);
-        const st = coreT.step(te, dt);
-        for (let i = 0; i < 3; i++) that[i] += st[i];
+        if (!transOn) {
+            that = Float64Array.from(r.pose.t);
+        } else {
+            const dt = Float64Array.from([r.pose.t[0] - that[0], r.pose.t[1] - that[1], r.pose.t[2] - that[2]]);
+            const st = coreT.step(te, dt);
+            for (let i = 0; i < 3; i++) that[i] += st[i];
+        }
         tPrev = t;
         frames.push({ pose: { R: Float64Array.from(Rhat), t: Float64Array.from(that), good: true }, reset: false });
     }
     return { frames, causes };
+}
+/** Runs `fn` with `performance.now` and `Date.now` replaced by throwing stubs; restores them. */
+function withoutClocks(fn) {
+    const perfNow = performance.now;
+    const dateNow = Date.now;
+    const stub = () => {
+        throw new Error("clock read");
+    };
+    performance.now = stub;
+    Date.now = stub;
+    try {
+        return fn();
+    } finally {
+        performance.now = perfNow;
+        Date.now = dateNow;
+    }
 }
 const copyPose = (p) => ({ R: Float64Array.from(p.R), t: Float64Array.from(p.t), good: p.good });
 const samePose = (a, b) => a.R.every((v, i) => Object.is(v, b.R[i])) && a.t.every((v, i) => Object.is(v, b.t[i]));
@@ -454,12 +511,25 @@ async function main() {
 
     // ---- The sequences, unfiltered ----------------------------------------------------------
     const rest = () => ({ scale: 0.45, angle: 0, shift: [0, 0] });
+    // leaveAndReturn's return slide (its `smoothstep`, frames 56 to 95), then at rest.
+    const smoothstep = (t) => {
+        const u = Math.min(1, Math.max(0, t));
+        return u * u * (3 - 2 * u);
+    };
+    const settle = (i) => ({
+        scale: 0.45,
+        angle: 0,
+        shift: [i < SETTLE_SLIDE_FRAMES ? 260 * (1 - smoothstep(i / SETTLE_SLIDE_FRAMES)) : 0, 0],
+    });
     const SEQS = [
         { name: "rest (probe path)", path: rest, n: REST_FRAMES },
+        { name: "settle (probe path)", path: settle, n: SETTLE_SLIDE_FRAMES + SETTLE_REST_FRAMES },
         { name: "wander", path: wander, n: 40 },
         { name: "leaveAndReturn", path: leaveAndReturn, n: 106 },
         ...SHIPPED_VELOCITIES.map((v) => ({ name: `velocityStep(${v})`, path: velocityStep(v), n: 15, v })),
     ];
+    /** The sequences the joint grid was measured on at 3b275a1, in that order (the digest below). */
+    const ORIGINAL = (s) => s.name !== "settle (probe path)";
     for (const s of SEQS) {
         const r = run(cv, K, target, s.path, s.n);
         s.results = r.results;
@@ -592,6 +662,49 @@ async function main() {
         if (a === spaced) fatal("determinism: halving the timestamps' spacing left the output unchanged; the clock is not read");
         if (c1 === c2) fatal("determinism: the performance.now() variant reproduced; the check cannot fire");
         checks.push(`determinism: wander twice on i·33 ms, digests equal (${a.slice(0, 12)}) — must not fire: did not; on i·16.5 ms the digest differs (${spaced.slice(0, 12)}) — must fire: fired; the period from performance.now(), two runs differ (their digests are not printed: they would make this stdout differ between runs) — must fire: fired`);
+    }
+
+    // The clock-free property itself: the correct filter runs with both clocks replaced by
+    // throwing stubs and gives the same digest; the clock variant throws under the same stubs.
+    {
+        const a = posesDigest(filterPoses(wan.results, wan.timestamps, ONE_SETTING).frames);
+        let stubbed;
+        try {
+            stubbed = withoutClocks(() => posesDigest(filterPoses(wan.results, wan.timestamps, ONE_SETTING).frames));
+        } catch (e) {
+            fatal(`clock-free: the correct filter read a clock (${e.message})`);
+        }
+        if (stubbed !== a) fatal("clock-free: the correct filter's digest changed under the stubs");
+        let threw = false;
+        try {
+            withoutClocks(() => filterPoses(wan.results, wan.timestamps, ONE_SETTING, "clock"));
+        } catch {
+            threw = true;
+        }
+        if (!threw) fatal("clock-free: the clock variant did not throw under the stubs; the check cannot fire");
+        checks.push(`clock-free: the correct filter with performance.now and Date.now replaced by throwing stubs: no throw, digest unchanged (${a.slice(0, 12)}) — must not fire: did not; the performance.now() variant under the same stubs throws — must fire: fired`);
+    }
+
+    // The timestamp rule across a reset: a repeated and a reversed timestamp on the frame right
+    // after a reset are each caught; a filter that forgets the timestamp on reset catches neither.
+    {
+        const streams = [
+            ["repeated", wan.timestamps.map((t, i) => (i === 1 ? wan.timestamps[0] : t))],
+            ["reversed", wan.timestamps.map((t, i) => (i === 1 ? wan.timestamps[0] - 33 : t))],
+        ];
+        if (wan.results[0].state !== "DETECT" || wan.results[1].state !== "TRACK") fatal("timestamps: wander does not begin D, T");
+        const notes = [];
+        for (const [name, ts] of streams) {
+            const good = filterPoses(wan.results, ts, ONE_SETTING);
+            const bad = filterPoses(wan.results, ts, ONE_SETTING, "forget-time");
+            if (good.causes.nonIncreasing !== 1 || !good.frames[1].reset || !samePose(good.frames[1].pose, wan.results[1].pose))
+                fatal(`timestamps (${name}): frame 1 was not reset and passed through (count ${good.causes.nonIncreasing})`);
+            if (bad.causes.nonIncreasing !== 0) fatal(`timestamps (${name}): the forgetting variant also caught it; the check cannot fire`);
+            notes.push(`${name} timestamp on frame 1 (after the DETECT at 0): reset, count 1, pose passed through — must fire: fired; the variant that forgets the timestamp on reset: count 0 — must not fire: did not`);
+        }
+        let onSequences = 0;
+        for (const s of SEQS) onSequences += filterPoses(s.results, s.timestamps, ONE_SETTING).causes.nonIncreasing;
+        checks.push(`timestamps across a reset: ${notes.join("; ")}; on the sequences the rule fires ${onSequences} times`);
     }
 
     say("## The checks, each exercised both ways (all passed; a failure exits before any figure)");
@@ -740,6 +853,131 @@ async function main() {
         say(`| ${p.minCutOffR} | ${p.betaR} | ${p.betaT} | ${lag === idx.length ? `≥ ${lag}` : lag} | ${fix(fe[0])} | ${fix(fe[fe.length - 1])} | ${fix(lar.e[idx[0]])} | ${fix(lar.e[idx[idx.length - 1]])} |`);
     }
     say();
+    // ---- The settle path, and the per-layer sweeps --------------------------------------------
+    const stl = SEQS.find((s) => s.name === "settle (probe path)");
+    const settleRestFrom = SETTLE_SLIDE_FRAMES;
+    const settleIdx = stl.results.map((_, i) => i).filter((i) => i >= settleRestFrom);
+    if (settleIdx.some((i) => stl.results[i].state !== "TRACK")) fatal("settle path: a rest frame is not TRACK");
+    const firstTrackSettle = stl.results.findIndex((r) => r.state === "TRACK");
+    /** Settling lag on the settle path: frames from the first rest frame until e filtered ≤ e unfiltered; null if never. */
+    const settleLag = (p) => {
+        const f = filterPoses(stl.results, stl.timestamps, p).frames;
+        const fe = settleIdx.map((i) => poseError(K, f[i].pose, stl.truths[i], G));
+        let lag = 0;
+        while (lag < settleIdx.length && fe[lag] > stl.e[settleIdx[lag]]) lag++;
+        return { lag: lag === settleIdx.length ? null : lag, first: fe[0], last: fe[fe.length - 1] };
+    };
+    const lagText = (l) => (l.lag === null ? `≥ ${settleIdx.length}` : String(l.lag));
+    say(`### Settling on the probe's settle path: the same slide over ${SETTLE_SLIDE_FRAMES} frames, then ${SETTLE_REST_FRAMES} frames at rest (states \`${runLength(stl.states)}\`, TRACK from frame ${firstTrackSettle}). Lag = frames from ${settleRestFrom} until the filtered error first falls to or below the unfiltered; "≥ ${SETTLE_REST_FRAMES}" when it has not within the window. Unfiltered e at ${settleRestFrom}: ${fix(stl.e[settleIdx[0]])} px, at ${settleIdx[settleIdx.length - 1]}: ${fix(stl.e[settleIdx[settleIdx.length - 1]])}.`);
+    say();
+    say("| minCutOff Hz | beta R | beta t | settling lag, frames | e filtered at the first rest frame px | at the last |");
+    say("| --- | --- | --- | --- | --- | --- |");
+    for (const p of settings()) {
+        const l = settleLag(p);
+        say(`| ${p.minCutOffR} | ${p.betaR} | ${p.betaT} | ${lagText(l)} | ${fix(l.first)} | ${fix(l.last)} |`);
+    }
+    say();
+
+    // Readings shared by the sweeps.
+    const restReadable = rst.atRest.map((b, i) => (b && rst.results[i].state === "TRACK" && rst.results[i - 1].state === "TRACK" ? i : -1)).filter((i) => i >= 0);
+    const restUnfilteredD = median(restReadable.map((i) => poseDistance(K, rst.results[i].pose, rst.results[i - 1].pose, G)));
+    const restUnfilteredE = median(restReadable.map((i) => rst.e[i]));
+    // Each layer's step at rest in its own unit: degrees between consecutive R, model units between consecutive t.
+    const stepDeg = (frames, i) => angleDeg(frames[i - 1].pose.R, frames[i].pose.R);
+    const stepT = (frames, i) => Math.hypot(...[0, 1, 2].map((k) => frames[i].pose.t[k] - frames[i - 1].pose.t[k]));
+    const rawFrames = rst.results.map((r) => ({ pose: r.pose }));
+    const restUnfilteredDeg = median(restReadable.map((i) => stepDeg(rawFrames, i)));
+    const restUnfilteredT = median(restReadable.map((i) => stepT(rawFrames, i)));
+    const restRead = (p) => {
+        const f = filterPoses(rst.results, rst.timestamps, p).frames;
+        const e = median(restReadable.map((i) => poseError(K, f[i].pose, rst.truths[i], G)));
+        const d = median(restReadable.map((i) => poseDistance(K, f[i].pose, f[i - 1].pose, G)));
+        const deg = median(restReadable.map((i) => stepDeg(f, i)));
+        const dt = median(restReadable.map((i) => stepT(f, i)));
+        return { e, d, ratio: d / restUnfilteredD, bias: e - restUnfilteredE, degRatio: deg / restUnfilteredDeg, tRatio: dt / restUnfilteredT };
+    };
+    const VEL = SEQS.filter((s) => s.v !== undefined && s.v <= 4);
+    const lastFrameRead = (p, s) => {
+        const f = filterPoses(s.results, s.timestamps, p).frames;
+        const moving = s.results.map((r, i) => (i >= STEP_FRAME ? i : -1)).filter((i) => i >= 0);
+        const upeak = max(moving.map((i) => s.e[i]));
+        const last = poseError(K, f[s.n - 1].pose, s.truths[s.n - 1], G);
+        return { last, upeak, meets: last <= proposedB(upeak, s.v) };
+    };
+
+    say("## The per-layer sweeps: one layer varied, the other off (its part of the pose passed through)");
+    say();
+    say(`The proposals read here: steadiness, the filtered-to-unfiltered ratio of the median step at rest ≤ ${PROPOSED_STEADINESS_RATIO}, in the metric's px (d) on the joint grid and in each layer's own unit on its sweep (degrees between consecutive R̂; model units between consecutive t̂); constant velocity, e on the last moving frame ≤ B(v) = unfiltered peak on the moving frames + 0.5 · v px; settling, a crossing within ${PROPOSED_SETTLING_FRAMES} frames on the settle path; the rotation layer on wander, its median e at most ${PROPOSED_WANDER_DIFF} px above the unfiltered median. Each is checked below to select some settings and not all. The px ratio is printed on the sweeps too, for the finding it carries.`);
+    say();
+    say(`Unfiltered at rest: d median ${fix(restUnfilteredD)} px, e median ${fix(restUnfilteredE)} px, rotation step median ${fix(restUnfilteredDeg)}°, translation step median ${fix(restUnfilteredT)} model units.`);
+    say();
+    say("### The translation layer (rotation off): the rest path, the velocity steps, the settle path");
+    say();
+    say("| minCutOff Hz | beta t | rest step ratio, model units | rest d ratio, px | e median − unfiltered px | v=2 last e (B) | v=3 last e (B) | v=4 last e (B) | settling lag | steadiness (own unit) | ≤ B at 2, 3, 4 | settles ≤ limit |");
+    say("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+    const tSweep = [];
+    for (const mc of MIN_CUTOFFS) {
+        for (const b of BETAS_T) {
+            const p = { minCutOffR: null, betaR: null, minCutOffT: mc, betaT: b };
+            const r = restRead(p);
+            const vel = VEL.map((s) => lastFrameRead(p, s));
+            const l = settleLag(p);
+            const row = {
+                steady: r.tRatio <= PROPOSED_STEADINESS_RATIO,
+                bounded: vel.every((x) => x.meets),
+                settles: l.lag !== null && l.lag <= PROPOSED_SETTLING_FRAMES,
+            };
+            tSweep.push(row);
+            say(`| ${mc} | ${b} | ${fix(r.tRatio, 3)} | ${fix(r.ratio, 3)} | ${fix(r.bias)} | ${vel.map((x, k) => `${fix(x.last, 2)} (${fix(proposedB(x.upeak, VEL[k].v), 2)})`).join(" | ")} | ${lagText(l)} | ${row.steady ? "yes" : "no"} | ${row.bounded ? "yes" : "no"} | ${row.settles ? "yes" : "no"} |`);
+        }
+    }
+    say();
+    const wanIdx = wan.results.map((r, i) => (i > 0 && r.state === "TRACK" ? i : -1)).filter((i) => i >= 0);
+    const wanU = wanIdx.map((i) => wan.e[i]);
+    say(`### The rotation layer (translation off): the rest path, and wander as differences (unfiltered e median ${fix(median(wanU))} px, max ${fix(max(wanU))}, against a non-rigid truth with a ${fix(median(wan.truths.map((H) => poseError(K, closedFormPose(H, K), H, G))))} px median floor)`);
+    say();
+    say(`| minCutOff Hz | beta R | rest step ratio, degrees | rest d ratio, px | e median − unfiltered px | wander e median − unfiltered px | e max − unfiltered | steadiness (own unit) | wander ≤ ${PROPOSED_WANDER_DIFF} px |`);
+    say("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+    const rSweep = [];
+    for (const mc of MIN_CUTOFFS) {
+        for (const b of BETAS_ROT) {
+            const p = { minCutOffR: mc, betaR: b, minCutOffT: null, betaT: null };
+            const r = restRead(p);
+            const f = filterPoses(wan.results, wan.timestamps, p).frames;
+            const e = wanIdx.map((i) => poseError(K, f[i].pose, wan.truths[i], G));
+            const diff = median(e) - median(wanU);
+            const row = { steady: r.degRatio <= PROPOSED_STEADINESS_RATIO, wanderOk: diff <= PROPOSED_WANDER_DIFF };
+            rSweep.push(row);
+            say(`| ${mc} | ${b} | ${fix(r.degRatio, 3)} | ${fix(r.ratio, 3)} | ${fix(r.bias)} | ${fix(diff)} | ${fix(max(e) - max(wanU))} | ${row.steady ? "yes" : "no"} | ${row.wanderOk ? "yes" : "no"} |`);
+        }
+    }
+    say();
+    const jointSel = [...settings()].map((p) => {
+        const r = restRead(p);
+        const vel = VEL.map((s) => lastFrameRead(p, s));
+        const l = settleLag(p);
+        return { steady: r.ratio <= PROPOSED_STEADINESS_RATIO, bounded: vel.every((x) => x.meets), settles: l.lag !== null && l.lag <= PROPOSED_SETTLING_FRAMES };
+    });
+    {
+        const count = (rows, k) => rows.filter((r) => r[k]).length;
+        const sel = [
+            ["joint grid, steadiness in px", count(jointSel, "steady"), jointSel.length],
+            ["joint grid, B(v) at 2, 3 and 4", count(jointSel, "bounded"), jointSel.length],
+            ["joint grid, settling", count(jointSel, "settles"), jointSel.length],
+            ["joint grid, all three", jointSel.filter((r) => r.steady && r.bounded && r.settles).length, jointSel.length],
+            ["translation sweep, steadiness in its unit", count(tSweep, "steady"), tSweep.length],
+            ["translation sweep, B(v) at 2, 3 and 4", count(tSweep, "bounded"), tSweep.length],
+            ["translation sweep, settling", count(tSweep, "settles"), tSweep.length],
+            ["translation sweep, all three", tSweep.filter((r) => r.steady && r.bounded && r.settles).length, tSweep.length],
+            ["rotation sweep, steadiness in its unit", count(rSweep, "steady"), rSweep.length],
+            [`rotation sweep, wander within ${PROPOSED_WANDER_DIFF} px`, count(rSweep, "wanderOk"), rSweep.length],
+            ["rotation sweep, both", rSweep.filter((r) => r.steady && r.wanderOk).length, rSweep.length],
+        ];
+        for (const [name, k, n] of sel) if (k === 0 || k === n) fatal(`proposal check: ${name} selects ${k} of ${n}; a proposal that selects none or all is no proposal`);
+        say("The proposals' selection, each neither none nor all (a failure here is fatal): " + sel.map(([name, k, n]) => `${name} ${k} of ${n}`).join("; ") + ".");
+        say();
+    }
+
     say("### The velocity steps, per frame at one setting (minCutOff 1 Hz, beta 0): e filtered / unfiltered, px");
     say();
     for (const s of SEQS.filter((s) => s.v !== undefined)) {
@@ -752,8 +990,15 @@ async function main() {
     // ---- Digest of every filtered pose over the grid, for the determinism statement --------
     {
         const parts = [];
-        for (const p of settings()) for (const s of SEQS) parts.push(posesDigest(filterPoses(s.results, s.timestamps, p).frames));
-        say(`Digest of every filtered pose, every setting and sequence in order: ${sha256(parts.join("\n"))}`);
+        for (const p of settings()) for (const s of SEQS.filter(ORIGINAL)) parts.push(posesDigest(filterPoses(s.results, s.timestamps, p).frames));
+        const joint = sha256(parts.join("\n"));
+        if (joint !== POSE_DIGEST_AT_3B275A1) fatal(`the joint grid's poses on the original sequences changed from 3b275a1: ${joint}`);
+        say(`Digest of every filtered pose of the joint grid on the original sequences, in order: ${joint} (equal to 3b275a1's, checked: no figure of the joint grid changed)`);
+        const more = [];
+        for (const p of settings()) more.push(posesDigest(filterPoses(stl.results, stl.timestamps, p).frames));
+        for (const mc of MIN_CUTOFFS) for (const b of BETAS_T) for (const s of SEQS) more.push(posesDigest(filterPoses(s.results, s.timestamps, { minCutOffR: null, betaR: null, minCutOffT: mc, betaT: b }).frames));
+        for (const mc of MIN_CUTOFFS) for (const b of BETAS_ROT) for (const s of SEQS) more.push(posesDigest(filterPoses(s.results, s.timestamps, { minCutOffR: mc, betaR: b, minCutOffT: null, betaT: null }).frames));
+        say(`Digest of the rest: the joint grid on the settle path, then the two sweeps on every sequence: ${sha256(more.join("\n"))}`);
     }
     process.stdout.write(out.join("\n") + "\n");
 }

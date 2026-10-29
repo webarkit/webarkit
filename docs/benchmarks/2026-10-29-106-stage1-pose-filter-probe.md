@@ -35,6 +35,46 @@ Two runs gave byte-identical stdout; its SHA-256 is in the last section. The
 stdout prints no clock, path or timing, so that this is a property of the
 computation and not of the day.
 
+## Changes from `3b275a1`, the PR's first commit (2026-10-29)
+
+Qodo's review of the PR made six findings; the maintainer checked each and
+ruled that they be fixed in this PR before it merges. What changed, and why:
+
+1. _The correct filter read a clock._ `filterPoses` called `performance.now()`
+   when initialising every variant, though only the clock variant used it.
+   Now only that variant reads it, and a new check runs the correct filter
+   with `performance.now` and `Date.now` replaced by throwing stubs (it passes
+   with the same digest) and the clock variant under the same stubs (it
+   throws).
+2. _A reversed timestamp after a reset passed._ A reset set the period's
+   reference to `−∞`, so the next frame could carry an equal or earlier
+   timestamp unflagged. The last input timestamp is now kept apart from the
+   filter's seeding timestamp and the rule is judged against it on every
+   frame; a new check feeds a repeated and a reversed timestamp right after a
+   reset (each is caught; a variant that forgets the timestamp on reset
+   catches neither). On the sequences the rule fires 0 times, as before.
+3. _The steadiness draft selected every cutoff_, since each candidate's own
+   ratio set its bound. It now proposes a fixed ratio, with its basis.
+4. _`B(v)` had no value._ It is now a formula per velocity, with its margin.
+5. _Settling lags of "≥ 10" had no limit to derive from._ A settle path was
+   added inside the script (the same slide, then 40 frames at rest, over 3τ
+   at the lowest cutoff), every setting read on it, and the draft's limit is
+   a fixed number of frames; settings that do not cross are excluded.
+6. _The joint grid could not derive the layers apart._ Two per-layer sweeps
+   were added, each layer varied over the same lists with the other off, and
+   the derivation rule reads each layer from its own sweep. Doing so found
+   that steadiness in the metric's px does not read per layer (below, "What
+   the sweeps found").
+
+**Which figures changed.** None of the joint grid's: the script now checks,
+fatally, that the digest of every filtered pose of the joint grid on the
+original sequences equals `3b275a1`'s. The settle path is a sequence, so the
+expressibility tables gain a row, the responsiveness count reads 232 of 319
+posed frames (was 190 of 252), the rotation check covers 3,828 filtered poses
+(was 3,024) and the reset count is 119 (was 82); the settle path's own
+figures and the sweeps are new. The stdout's SHA-256 changed accordingly (the
+last section keeps both).
+
 ## Step 0: provenance, and the brief's check
 
 **Read at.** `origin/dev` at `8b9e840e488c69243a58b2f6e826d38e3dea0c2a`, fetched
@@ -137,7 +177,12 @@ run of them longer than 9 frames, and 15 of them are the velocity runs' frames 2
 right after their detection, where the filter is still warming up; 60 frames
 at 33 ms is 2 s, over twelve time
 constants of a 1 Hz cutoff (`τ = 1 / 2π f ≈ 0.16 s`). It is a probe path, not a
-fixture; registering it is Part 2's question. The TypeScript modules are
+fixture; registering it is Part 2's question. A second probe path, `settle`:
+`leaveAndReturn`'s return slide (260 px to 0 over 40 frames, its
+`smoothstep`), then 40 frames at rest. Why 40 at rest: over `3τ` at the
+lowest cutoff (0.95 s, 29 frames at 0.5 Hz) with eleven frames of margin, so
+that every setting's settling is a measured crossing or a non-crossing over a
+window long enough to tell. The TypeScript modules are
 bundled by esbuild into a temporary directory and imported from there, each
 file's `import.meta.url` pinned so that the fixtures and the target resolve;
 nothing is reimplemented.
@@ -180,7 +225,14 @@ function of `R` and `t` by its own lines:
   is not `"TRACK"` with a pose (so a `"DETECT"` frame resets, and its pose
   passes through unfiltered); a `pose.good` of `false`; a timestamp that does
   not increase. The frame after a reset initialises the filter with its own
-  pose, unfiltered.
+  pose, unfiltered. Two timestamps are kept apart: the previous frame's input
+  timestamp, whatever that frame did, against which "does not increase" is
+  judged; and the timestamp of the last pose the filter absorbed, from which
+  the period is taken. The rule is per frame, against the previous input and
+  not against the largest timestamp seen: after a reversed timestamp, one
+  that merely exceeds it passes (open question 2 notes the stricter form). A
+  layer can be off, its part of the pose passing
+  through, which is how the per-layer sweeps run.
 
 The filter runs after the tracker, on the results `run` returned, and feeds
 nothing back: the tracker's `H`, states and poses are the same filtered or
@@ -204,7 +256,16 @@ unless a caller turns it on).
   it has not returned within the run's ten moving frames. _Settling lag_, on
   `leaveAndReturn`'s last rest segment (frames 96 to 105): the frames from 96
   until the filtered error first falls to or below the unfiltered error on the
-  same frame.
+  same frame; on the settle path, the same from its first rest frame (40),
+  over its 40 rest frames.
+- _A layer's step at rest, in its own unit:_ the angle in degrees between
+  consecutive filtered rotations, and the distance in model units between
+  consecutive filtered translations, each read on the readable rest pairs and
+  stated as the ratio of its median to the unfiltered median.
+- _The per-layer sweeps:_ one layer varied over the same lists as the grid,
+  the other off; the translation layer read on the rest path, the velocity
+  steps and the settle path, the rotation layer on the rest path and on
+  `wander` as differences from the unfiltered error.
 - _The grid._ `minCutOff ∈ {0.5, 1, 3} Hz` for both layers;
   `beta ∈ {0, 1, 10, 100}` per rad/s for the rotation and
   `{0, 0.001, 0.01, 0.1}` per model unit/s for the translation, the two lists
@@ -220,8 +281,8 @@ unless a caller turns it on).
 All run before any figure is printed; a failure exits with its reason and
 prints nothing else. The script's own lines:
 
-- **Responsiveness** (Stage 1's first question). `poseError` changed on 190 of
-  252 posed frames at `(minCutOff 1 Hz, beta 0)` — must fire: fired. The 62
+- **Responsiveness** (Stage 1's first question). `poseError` changed on 232 of
+  319 posed frames at `(minCutOff 1 Hz, beta 0)` — must fire: fired. The 87
   unchanged are the frames the filter passes through: every `"DETECT"` frame,
   every first frame after a reset. The metric moves; the step is not stopped
   here.
@@ -230,7 +291,7 @@ prints nothing else. The script's own lines:
   relative difference 2.19e-16 (tolerance 1e-12) — must not fire: did not.
   The same transcription with the derivative taken against the raw previous
   value instead of the filtered one: 1.22e-4 — must fire: fired.
-- **Every filtered `R` is a rotation.** Over 3,024 filtered poses (every
+- **Every filtered `R` is a rotation.** Over 3,828 filtered poses (every
   setting, every sequence): largest `‖R̂ᵀR̂ − I‖_F` 2.27e-14, largest
   `|det R̂ − 1|` 1.78e-15 (tolerance 1e-9) — must not fire: did not.
   Element-wise averaging of `R` with the same core, on `wander`: 2.44e-3 and
@@ -245,6 +306,16 @@ prints nothing else. The script's own lines:
   must fire: fired. The period read from `performance.now()`: two runs differ
   — must fire: fired. (Those two digests are not printed, since they would
   make the stdout differ between runs.)
+- **Clock-free** (added after `3b275a1`). The correct filter run with
+  `performance.now` and `Date.now` replaced by throwing stubs: no throw, and
+  the same digest as without them — must not fire: did not. The
+  `performance.now()` variant under the same stubs throws — must fire: fired.
+- **The timestamp rule across a reset** (added after `3b275a1`). On `wander`,
+  which begins `D, T`, frame 1 given frame 0's timestamp (repeated) and frame
+  0's minus 33 (reversed): each resets with the non-increasing count at 1 and
+  the pose passed through — must fire: fired. A variant that forgets the
+  timestamp on reset, as `3b275a1`'s script did: count 0 on both — must not
+  fire: did not. On the sequences the rule fires 0 times.
 
 ## Expressibility, on the unfiltered tracker
 
@@ -253,6 +324,7 @@ prints nothing else. The script's own lines:
 | sequence          | frames | states                     | posed | TRACK | resets: not TRACK | `pose.good` false | timestamp not increasing |
 | ----------------- | ------ | -------------------------- | ----- | ----- | ----------------- | ----------------- | ------------------------ |
 | rest (probe path) | 60     | `D T×59`                   | 60    | 59    | 1                 | 0                 | 0                        |
+| settle (probe path) | 80   | `L×13 D×24 T×43`           | 67    | 43    | 37                | 0                 | 0                        |
 | wander            | 40     | `D T×39`                   | 40    | 39    | 1                 | 0                 | 0                        |
 | leaveAndReturn    | 106    | `D T×38 L×28 D L D×24 T×13` | 77    | 51    | 55                | 0                 | 0                        |
 | velocityStep(2)   | 15     | `D T×14`                   | 15    | 14    | 1                 | 0                 | 0                        |
@@ -262,7 +334,7 @@ prints nothing else. The script's own lines:
 | velocityStep(6)   | 15     | `D T×4 D×10`               | 15    | 4     | 11                | 0                 | 0                        |
 
 The state strings are the stdout's with spaces added between runs. Of the
-three causes, only the first fires on these sequences: 82 times, every
+three causes, only the first fires on these sequences: 119 times, every
 one a `"DETECT"` or `"LOST"` frame. `pose.good` is `true` on every posed frame,
 and `run`'s timestamps always increase. On `velocityStep(5)` and `(6)` every
 moving frame re-detects, so the filter resets on each and never acts there:
@@ -275,6 +347,7 @@ Frames at rest whose result and predecessor are both `"TRACK"`:
 | sequence          | rest frames | readable | e median px | e max   | d median px | d max   | R step median ° | max     |
 | ----------------- | ----------- | -------- | ----------- | ------- | ----------- | ------- | --------------- | ------- |
 | rest (probe path) | 59          | 58       | 0.3223      | 0.5190  | 0.1245      | 0.3202  | 0.1356          | 0.3419  |
+| settle (probe path) | 39        | 39       | 0.3447      | 0.5190  | 0.1007      | 0.3202  | 0.1207          | 0.3150  |
 | wander            | 0           | 0        | —           | —       | —           | —       | —               | —       |
 | leaveAndReturn    | 25          | 18       | 0.3429      | 0.5210  | 0.1407      | 0.2791  | 0.1636          | 0.3419  |
 | velocityStep(2–6) | 4 each      | 3 each   | 0.3713      | 0.4079  | 0.1292      | 0.1844  | 0.1627          | 0.2306  |
@@ -290,6 +363,7 @@ is about an eighth: what a filter can reduce is the second, not the first.
 
 | sequence        | moving frames | truth px/frame median | max    | truth °/frame median | max    | posed moving | e median px | e max     |
 | --------------- | ------------- | --------------------- | ------ | -------------------- | ------ | ------------ | ----------- | --------- |
+| settle (probe path) | 40        | 7.3044                | 9.7419 | 0                    | 0      | 28           | 1.3094      | 237.5659  |
 | wander          | 39            | 1.6275                | 2.3107 | 0.6942               | 0.9929 | 39           | 15.9196     | 21.4068   |
 | leaveAndReturn  | 80            | 7.3044                | 9.7419 | 0                    | 0      | 57           | 0.7123      | 2118.0603 |
 | velocityStep(2) | 10            | 2                     | 2      | 0                    | 0      | 10           | 0.3808      | 0.5957    |
@@ -314,6 +388,7 @@ view is a conjecture from the path, not measured here.
 
 | sequence        | ‖ω‖/s median rad/s | max    | ‖Δt‖/s median model units/s | max      |
 | --------------- | ------------------ | ------ | --------------------------- | -------- |
+| settle (probe path) | 0.1218         | 0.4798 | 106.2863                    | 181.5754 |
 | wander          | 0.2631             | 0.8604 | 145.1381                    | 457.9415 |
 | leaveAndReturn  | 0.0692             | 0.4041 | 550.5056                    | 669.1793 |
 | velocityStep(2) | 0.1021             | 0.3465 | 137.8337                    | 146.4455 |
@@ -327,7 +402,8 @@ translations is noise in the pose's rotation (the truth's is 0), about
 ## The trade, over the grid
 
 Every setting is reported; choosing is Part 2's derivation, under the
-maintainer's ruling. `dCutOff = 1 Hz` throughout.
+maintainer's ruling. `dCutOff = 1 Hz` throughout. These joint-grid tables are
+as measured at `3b275a1`; the script checks that their poses are unchanged.
 
 ### At rest (the probe's rest path, 58 readable pairs)
 
@@ -448,6 +524,137 @@ setting the filter had already nearly followed the slide (its error at frame
 96 is 0.67 px against 0.40 unfiltered), so there is little excess to settle;
 the Stage 3 settling draft names that boundary as its void case.
 
+### Settling on the probe's settle path (added after `3b275a1`)
+
+The same slide over 40 frames, then 40 frames at rest. States
+`L×13 D×24 T×43`: tracking resumes at frame 37, three frames before the stop,
+as on `leaveAndReturn` (93 against 96). Unfiltered `e`: 0.4270 px at frame
+40, 0.3123 at 79. Every cell is now a measured crossing within a window of
+over `3τ` at every cutoff of the grid.
+
+| minCutOff Hz | beta R | beta t | settling lag, frames | e filtered at frame 40 px | at 79  |
+| ------------ | ------ | ------ | -------------------- | ------------------------- | ------ |
+| 0.5          | 0      | 0      | 30                   | 3.3097                    | 0.3346 |
+| 0.5          | 1      | 0.001  | 25                   | 3.2146                    | 0.3282 |
+| 0.5          | 10     | 0.01   | 10                   | 2.5429                    | 0.3164 |
+| 0.5          | 100    | 0.1    | 3                    | 0.8698                    | 0.2921 |
+| 1            | 0      | 0      | 15                   | 2.6959                    | 0.3059 |
+| 1            | 1      | 0.001  | 10                   | 2.6302                    | 0.3056 |
+| 1            | 10     | 0.01   | 9                    | 2.1515                    | 0.3026 |
+| 1            | 100    | 0.1    | 3                    | 0.8240                    | 0.2899 |
+| 3            | 0      | 0      | 9                    | 1.4531                    | 0.2928 |
+| 3            | 1      | 0.001  | 9                    | 1.4333                    | 0.2928 |
+| 3            | 10     | 0.01   | 3                    | 1.2775                    | 0.2924 |
+| 3            | 100    | 0.1    | 3                    | 0.6932                    | 0.2896 |
+
+At `beta 0` the crossing comes at 30, 15 and 9 frames for 0.5, 1 and 3 Hz,
+against `3τ` of 29, 14 and 5: the two slower cutoffs cross at about `3τ`, the
+fastest later than its `3τ`, since what is crossed is a 0.3–0.4 px noise
+floor and not zero. Where `leaveAndReturn`'s ten-frame window read "≥ 10", the
+settle path reads 30, 25, 10, 15 and 10; the seven rows that crossed within
+ten frames there cross within ten here too, a few frames apart (there / here:
+`1 Hz, beta 10` 9 / 9; `3 Hz, beta 0` and `beta 1` 7 / 9; `3 Hz, beta 10`
+7 / 3; `0.5` and `1 Hz, beta 100` 8 / 3; `3 Hz, beta 100` 1 / 3), the
+difference being how much excess the three tracked moving frames leave at
+the stop on each path.
+
+## The per-layer sweeps (added after `3b275a1`)
+
+One layer varied over the grid's lists, the other off with its part of the
+pose passed through. Unfiltered at rest: `d` median 0.1245 px, `e` median
+0.3223 px, rotation step median 0.1356°, translation step median 0.4765 model
+units.
+
+**What the sweeps found, before their tables.** Steadiness in the metric's px
+does not read per layer. With the rotation off, every translation setting
+_raises_ the frame-to-frame change `d` at rest, to 1.40–1.53 times the
+unfiltered; with the translation off, the rotation settings leave it at
+0.944–1.003. Yet each layer's own step falls as expected (to 0.088–0.404 of the
+unfiltered translation step; 0.070–0.375 of the rotation step), and the joint
+grid's `d` falls to 0.067–0.401. The reading is that the pose's frame-to-frame
+noise in `R` and in `t` is anti-correlated in projection: a small tilt and a
+small translation trade off against each other on the image plane, and the
+cancellation holds only while both move together. Filter one and the other's
+noise projects alone. So a per-layer steadiness is read in that layer's own
+unit (degrees; model units), and the px criterion is read on the joint
+setting. That `R` and `t` noise cancel in projection is a mechanism, and
+stands here as a conjecture consistent with the three tables, not measured on
+its own.
+
+### The translation layer, rotation off
+
+Read on the rest path (its step ratio in model units, the px `d` ratio beside
+it for the finding above, the bias), the velocity steps (the last-frame error
+against the proposed `B(v)` in parentheses), and the settle path. The last
+three columns apply the three proposals of Stage 3.
+
+| minCutOff Hz | beta t | rest step ratio, model units | rest d ratio, px | e median − unfiltered px | v = 2 last e (B) | v = 3 last e (B) | v = 4 last e (B) | settling lag | steadiness ≤ 0.25 | ≤ B at 2, 3, 4 | settles ≤ 15 |
+| ------------ | ------ | ---------------------------- | ---------------- | ------------------------ | ---------------- | ---------------- | ---------------- | ------------ | ----------------- | -------------- | ------------ |
+| 0.5          | 0      | 0.088           | 1.533             | 0.0277                   | 12.05 (1.60)     | 18.20 (2.14)     | 24.16 (2.71)     | ≥ 40         | yes               | no             | no           |
+| 0.5          | 0.001  | 0.089           | 1.531             | 0.0270                   | 8.90 (1.60)      | 11.89 (2.14)     | 14.13 (2.71)     | ≥ 40         | yes               | no             | no           |
+| 0.5          | 0.01   | 0.099           | 1.513             | 0.0281                   | 2.96 (1.60)      | 3.44 (2.14)      | 3.69 (2.71)      | 23           | yes               | no             | no           |
+| 0.5          | 0.1    | 0.143           | 1.486             | 0.0229                   | 0.85 (1.60)      | 0.88 (2.14)      | 0.76 (2.71)      | 8            | yes               | yes            | yes          |
+| 1            | 0      | 0.176           | 1.480             | 0.0249                   | 8.15 (1.60)      | 12.34 (2.14)     | 16.34 (2.71)     | 23           | yes               | no             | no           |
+| 1            | 0.001  | 0.177           | 1.479             | 0.0247                   | 6.59 (1.60)      | 9.13 (2.14)      | 11.10 (2.71)     | 23           | yes               | no             | no           |
+| 1            | 0.01   | 0.182           | 1.474             | 0.0235                   | 2.70 (1.60)      | 3.23 (2.14)      | 3.50 (2.71)      | 17           | yes               | no             | no           |
+| 1            | 0.1    | 0.244           | 1.462             | 0.0233                   | 0.83 (1.60)      | 0.86 (2.14)      | 0.74 (2.71)      | 8            | yes               | yes            | yes          |
+| 3            | 0      | 0.388           | 1.408             | 0.0160                   | 3.21 (1.60)      | 4.89 (2.14)      | 6.36 (2.71)      | 8            | no                | no             | yes          |
+| 3            | 0.001  | 0.388           | 1.408             | 0.0160                   | 2.98 (1.60)      | 4.39 (2.14)      | 5.51 (2.71)      | 8            | no                | no             | yes          |
+| 3            | 0.01   | 0.390           | 1.408             | 0.0159                   | 1.93 (1.60)      | 2.50 (2.14)      | 2.77 (2.71)      | 8            | no                | no             | yes          |
+| 3            | 0.1    | 0.404           | 1.400             | 0.0152                   | 0.78 (1.60)      | 0.81 (2.14)      | 0.66 (2.71)      | 8            | no                | yes            | yes          |
+
+Two of the twelve meet all three proposals: `(0.5 Hz, beta t 0.1)` and
+`(1 Hz, beta t 0.1)`. The translation layer alone, with the rotation
+unfiltered, never crosses the settle path's floor within 40 frames at
+`(0.5 Hz, beta 0)` and `(0.5 Hz, beta 0.001)`, where the joint setting
+crossed at 30 and 25: the rotation's unfiltered noise is in the error it has
+to fall under. The `1 Hz, beta 0.1` row's step ratio, 0.244, stands 0.006
+under the proposed 0.25: one grid point's clearance is a near thing, stated
+as such.
+
+### The rotation layer, translation off
+
+Read on the rest path, and on `wander` as differences from the unfiltered
+error (median 15.9196 px, max 21.4068, against a non-rigid truth with a
+5.3356 px median floor).
+
+| minCutOff Hz | beta R | rest step ratio, degrees | rest d ratio, px | e median − unfiltered px | wander e median − unfiltered px | e max − unfiltered | steadiness ≤ 0.25 | wander ≤ 0.5 px |
+| ------------ | ------ | ------------------------ | ---------------- | ------------------------ | ------------------------------- | ------------------ | ----------------- | --------------- |
+| 0.5          | 0      | 0.070                    | 0.964            | 0.0205                   | 6.8678                          | 7.7482             | yes               | no              |
+| 0.5          | 1      | 0.071                    | 0.959            | 0.0213                   | 2.5716                          | 2.0284             | yes               | no              |
+| 0.5          | 10     | 0.079                    | 0.958            | 0.0205                   | 0.4841                          | 0.6901             | yes               | yes             |
+| 0.5          | 100    | 0.154                    | 0.967            | 0.0270                   | −0.0271                         | 0.2128             | yes               | yes             |
+| 1            | 0      | 0.132                    | 0.944            | 0.0197                   | 2.8096                          | 3.4035             | yes               | no              |
+| 1            | 1      | 0.133                    | 0.945            | 0.0198                   | 2.0124                          | 1.6430             | yes               | no              |
+| 1            | 10     | 0.141                    | 0.958            | 0.0194                   | 0.4789                          | 0.6179             | yes               | yes             |
+| 1            | 100    | 0.211                    | 1.003            | 0.0216                   | −0.0126                         | 0.1992             | yes               | yes             |
+| 3            | 0      | 0.324                    | 0.968            | 0.0112                   | 1.1151                          | 0.9286             | no                | no              |
+| 3            | 1      | 0.325                    | 0.968            | 0.0112                   | 0.9426                          | 0.7941             | no                | no              |
+| 3            | 10     | 0.329                    | 0.972            | 0.0115                   | 0.4231                          | 0.4412             | no                | yes             |
+| 3            | 100    | 0.375                    | 0.973            | 0.0132                   | 0.0295                          | 0.1572             | no                | yes             |
+
+On `wander` the rotation layer's lag shows as the median error's rise above
+the unfiltered: 6.9 px at `(0.5 Hz, beta 0)`, falling with `beta` to within
+0.03 px at `beta 100` at every cutoff. It is a difference against a non-rigid
+truth, and `wander`'s rotation is 0.26 rad/s median: nothing here bounds the
+rotation layer's lag at a stated speed, because no committed sequence is a
+rigid path with rotation. The last column applies the fourth proposal of
+Stage 3, the `wander` difference at most 0.5 px.
+
+**The proposals' selection**, printed by the script and fatal if any selects
+none or all: joint grid, steadiness in px 8 of 12, `B(v)` at 2, 3 and 4: 3 of
+12, settling 10 of 12, all three 2 of 12; translation sweep, steadiness in its
+unit 8 of 12, `B(v)` 3 of 12, settling 6 of 12, all three 2 of 12; rotation
+sweep, steadiness in its unit 8 of 12, `wander` within 0.5 px 6 of 12, both
+4 of 12.
+
+One thing the ruling should weigh about all four: their bases are read off
+the grid they then select on (the gap between 0.22 and 0.33; the row that
+crosses at 15; the gap between 0.48 and 0.94), so the counts above describe
+how the proposals fit these settings, and are not predictions. A prediction
+on these criteria needs data the proposals were not read from: the registered
+sequences in Part 3, if they differ, or a path added for it.
+
 ## Stage 2: the declared covariates
 
 Declared from the sequences' definitions, not from the results above; each
@@ -510,43 +717,99 @@ variant failing it.
 the brief's example form unreadable on a step to constant velocity:
 
 - _At constant velocity_ `v ∈ {2, 3, 4}` px/frame, the filtered error on the
-  last moving frame (frame 14) is at most `B(v)`, with `B` derived by the rule
-  below from the registered setting's row in the velocity table. Refuted
-  upward by a last-frame error above `B(v)`; refuted downward, which here
-  means void, by a last-frame error equal to the unfiltered one, since that
-  would show the filter inactive (frames 5 to 14 are `"TRACK"` on these runs,
-  so a pass-through is not an explanation).
-- _Settling_: after `leaveAndReturn`'s return slide ends (frame 96), the
-  filtered error falls to or below the unfiltered error within `L` frames, `L`
-  the registered setting's settling lag plus one frame of margin, read with
-  the caveat above that the crossing is at a 0.4 px floor. Refuted upward by a
-  later crossing or none; void by a crossing at frame 96 itself, which would
-  mean no lag to settle.
+  last moving frame (frame 14) is at most `B(v)`. **Proposed, for the
+  ruling:** `B(v) = P_u(v) + 0.5 · v` px, with `P_u(v)` the unfiltered
+  tracker's peak error over the ten moving frames of that run (0.60, 0.64,
+  0.71 px here) and `0.5 · v` half a frame of the truth's motion as the
+  margin, so `B` is 1.60, 2.14 and 2.71 px at 2, 3 and 4 px/frame. Its basis:
+  a first-order low-pass at constant velocity lags by about `v · τ`, which at
+  the grid's cutoffs is 1.6 to 9.6 frames of motion at `beta 0`; the bound
+  admits a lag of half a frame above the tracker's own noise, which the joint
+  grid meets only at `beta t 0.1` (last-frame errors 0.65–0.76 px) and fails
+  at `beta t 0.01` (1.87–3.62 px) and below; the translation sweep reads the
+  same (0.66–0.88 and 1.93–3.69 px). It is independent of the candidate:
+  `P_u` is the control arm's figure. Refuted upward by a last-frame error
+  above `B(v)`; refuted downward, which here means void, by a last-frame error
+  equal to the unfiltered one, since that would show the filter inactive
+  (frames 5 to 14 are `"TRACK"` on these runs, so a pass-through is not an
+  explanation).
+- _Settling_: after the settle path's slide ends (frame 40), the filtered
+  error falls to or below the unfiltered error within `L` frames. **Proposed,
+  for the ruling:** `L = 15` frames, the crossing admitted at `≤ L`
+  (0.5 s at the sequences' 33 ms). Its basis: `3τ` at 1 Hz is 0.477 s, 14.5
+  frames at 33 ms, so the limit is the time constant of the grid's middle
+  cutoff rounded up to a whole frame; it admits every row at 1 and 3 Hz of
+  the joint grid and the `beta 10` and `beta 100` rows at 0.5 Hz (10 of 12),
+  and excludes `(0.5 Hz, beta 0)` and `(0.5 Hz, beta 1)` at 30 and 25. The
+  `(1 Hz, beta 0)` row crosses at exactly 15: a clearance of zero frames,
+  which the protocol's margin rule reads as a tie, so that row is admitted by
+  the `≤` and not by any margin, and the ruling may prefer `L = 16` or to
+  exclude it. A setting whose filtered error does not cross within the 40-frame
+  window has no measured lag and is excluded from selection, as two
+  translation-only settings are. Refuted upward by a crossing after `L` or
+  none; void by a crossing at frame 40 itself, which would mean no lag to
+  settle.
 
 **A draft criterion for steadiness at rest**, on the probe's rest path if Part
 2 registers it (otherwise on the 33 readable rest pairs of the sequences,
 pooled with that said):
 
-- the median frame-to-frame change `d` of the filtered poses is at most `r`
-  times the unfiltered median, `r` the registered setting's ratio from the
-  at-rest table (the probe measured 0.067–0.401 over the grid) plus one
-  grid step's worth of margin, the ratio of the next larger `minCutOff` at
-  the same `beta`; refuted by a ratio above `r`;
+- the median frame-to-frame change `d` of the filtered poses is at most
+  `r` times the unfiltered median. **Proposed, for the ruling:** `r = 0.25`,
+  fixed, independent of the candidate. Its basis: on the joint grid the 0.5
+  and 1 Hz rows read 0.067–0.224 and the 3 Hz rows 0.332–0.401, so the ratio
+  separates the grid's cutoffs at a gap between 0.22 and 0.33, and 0.25 is
+  the round value in it; the same gap holds in each layer's own unit on its
+  sweep (translation 0.244 against 0.388; rotation 0.211 against 0.324). It
+  selects 8 of 12 on each of the three readings. The `(1 Hz, beta 100 / 0.1)`
+  settings clear it by 0.026 in px and 0.006 in the translation's unit, the
+  second within a grid point's noise, stated as a near thing. Refuted by a
+  ratio above `r`; a ratio that every setting met would select nothing, and
+  the script checks that this one does not;
 - and the median error `e` of the filtered poses is within `0.02 px` of the
-  unfiltered median (the probe measured −0.003 to +0.009); refuted by a rise
-  above it, which would mean the filter adds bias at rest. The second part is
-  what refutes in the other direction: a filter can lower `d` to zero by
-  freezing, and the first part alone would pass it.
+  unfiltered median (the probe measured −0.003 to +0.009 on the joint grid;
+  the per-layer sweeps, with one layer's noise projecting alone, read +0.011
+  to +0.028 and would not all pass it, which is one more reason the px
+  criterion is read on the joint setting); refuted by a rise above it, which
+  would mean the filter adds bias at rest. The second part is what refutes in
+  the other direction: a filter can lower `d` to zero by freezing, and the
+  first part alone would pass it.
 
-**How the parameters would be derived**, the rule and not a value. Per layer,
-from the probe's tables, in this order: the largest `minCutOff` whose at-rest
-`d` ratio meets the steadiness criterion (the larger the cutoff, the shorter
-the settling); then the smallest `beta` at that cutoff whose last-frame error
-at `v = 4` and settling lag meet the bounded-lag criterion. The grid's step is
-a factor of 3 in `minCutOff` and 10 in `beta`, so a derived value is stated as
-its grid point, not interpolated; a finer grid is a new probe. `dCutOff` stays
-at 1 Hz unless a run shows a reason: this probe found none (it did not vary
-it).
+**How the parameters would be derived**, the rule and not a value. Each layer
+from its own sweep, then the pair checked on the joint grid:
+
+1. _The translation layer_, from its sweep: the largest `minCutOff` whose
+   step ratio in model units meets the steadiness proposal; then the smallest
+   `beta t` at that cutoff whose last-frame errors meet `B(v)` at 2, 3 and 4
+   px/frame and whose settle-path crossing is within `L`. A setting that does
+   not cross within the window is excluded before the choice.
+2. _The rotation layer_, from its sweep: the largest `minCutOff` whose step
+   ratio in degrees meets the steadiness proposal; then the smallest `beta R`
+   at that cutoff whose `wander` median error is within a stated distance of
+   the unfiltered (a difference above a non-rigid floor, not a lag bound).
+   **Proposed, for the ruling:** that distance is `0.5 px`. Its basis: on the
+   rotation sweep the difference separates `beta ≥ 10` (0.42–0.48 px) from
+   `beta ≤ 1` (0.94–6.87 px) at every cutoff, and 0.5 is the round value in
+   that gap; the largest figure it admits, 0.484, clears it by 0.016 px, a
+   near thing stated as such. It selects 6 of 12, and with steadiness 4 of
+   12. Refuted by a difference above it; a difference at or below zero at
+   `beta 0` would be void, since it would show the layer not lagging on the
+   one sequence with rotation.
+   **The rotation layer's lag has no rigid path to be read on**: every
+   committed sequence with rotation is `wander`, whose truth is not rigid, so
+   its `beta` is derived from steadiness and from `wander`'s differences only,
+   and no bounded-lag claim is made for it until a rigid path with rotation
+   exists.
+3. _The pair_, on the joint grid: the two settings together must meet the px
+   steadiness ratio, the bias bound, `B(v)` and `L` there, since (the finding
+   above) the px criteria do not read per layer. If the pair fails a joint
+   criterion that each layer met alone, the derivation reports it and stops;
+   it does not search.
+
+The grid's step is a factor of 3 in `minCutOff` and 10 in `beta`, so a derived
+value is stated as its grid point, not interpolated; a finer grid is a new
+probe. `dCutOff` stays at 1 Hz unless a run shows a reason: this probe found
+none (it did not vary it).
 
 **The open questions**, for the ruling:
 
@@ -564,7 +827,9 @@ it).
    Three points for the ruling: whether a `"DETECT"` frame's pose seeds the
    filter (the probe does not seed it; the next `"TRACK"` does) or passes
    through; whether a non-increasing timestamp resets, as here, or holds the
-   previous filtered value, as `oneeurofilter-ts` does on `te <= 0`; and
+   previous filtered value, as `oneeurofilter-ts` does on `te <= 0`; whether
+   "does not increase" is judged against the previous input, as here, or
+   against the largest timestamp seen since the last reset; and
    whether the rotation's `α` is per component of `ω`, as here and as the
    library applies it per index, or one scalar for the step. The same
    question has a second face: the core's derivative state `dx̂` for the
@@ -572,9 +837,10 @@ it).
    while that frame turns by `exp(ω̂)`; at these speeds (≤ 0.86 rad/s over
    33 ms) the effect is second order, but it is the ruling's to accept or
    to have the state re-expressed each step.
-3. _The rest path._ Whether Part 2 registers the probe's 60-frame rest path
-   as a fixture beside the sequences, or reads steadiness on the sequences'
-   own 33 pairs.
+3. _The rest path, and the settle path._ Whether Part 2 registers the
+   probe's 60-frame rest path and its 80-frame settle path as fixtures beside
+   the sequences, or reads steadiness on the sequences' own 33 pairs and
+   settling on `leaveAndReturn`'s ten.
 4. _A note for Part 3, not a question._ The probe's `so3Log` reads the angle
    from `acos` of the trace, which loses precision on steps far smaller than
    these (about 2e-3 rad here; the rotation check passed at 2.3e-14). An
@@ -602,6 +868,9 @@ it).
 - Nothing about rotation lag at speed. The only rotation is `wander`'s, 0.26
   rad/s median, read against a non-rigid truth; a lag bound on the rotation
   layer needs a rigid path with rotation, which no committed sequence has.
+- Not the mechanism behind the sweeps' finding. That the pose's `R` and `t`
+  noise cancel in projection is consistent with the three readings and
+  measured by none of them on its own.
 - Nothing at `v ≥ 5` px/frame, where every moving frame re-detects and the
   filter never acts.
 
@@ -609,13 +878,22 @@ it).
 
     node docs/benchmarks/2026-10-29-106-stage1-pose-filter-probe.mjs
 
-Run twice on 2026-10-29 at `8b9e840` with the two new files in place: both
-stdouts 165 lines, SHA-256
-`d97ceb01cb759b4bff25e74c7b768fa95b637ff038e7c186980206bd7b0db88f`, identical.
-(An earlier form of the script, before the two built modules were added to
-what it hashes, printed 162 lines at
-`2463ab3981532ab9a3a609cae17f80035b396ca3c97441e25ad86b6cb000b8ee`, with the
-same figures and the same pose digest below.)
-The digest the stdout ends with, over every filtered pose of every setting and
-sequence, is
-`86c8536dc80d1778187a29b95af3e1856795b678b70ff030bc7764169a9873b6`.
+Run twice on 2026-10-29 at `8b9e840` with the two new files in place, after
+the changes from `3b275a1` above: both stdouts 231 lines, SHA-256
+`768375b4ca443e6aeda1611d4df2efe7b01d111d72011940f83e9be34382ff59`, identical.
+The stdout ends with two digests: over every filtered pose of the joint grid
+on the original sequences,
+`86c8536dc80d1778187a29b95af3e1856795b678b70ff030bc7764169a9873b6`, which the
+script checks against `3b275a1`'s value and which is unchanged; and over the
+joint grid on the settle path and the two sweeps on every sequence,
+`eed3a6eaa569394ec086fa2e6f7350b656d667241c6d6a5c0169ce6a6cfc40c4`.
+
+Earlier forms, for the record: the same script before the rotation layer's
+`wander` proposal was added to its selection check printed 231 lines at
+`41bc49797a42863af5f7568a69b0765d0d25035b61280a39b36df7a1d7718989` (the
+independent review of the changes ran on that form; its figures are the same
+but for the added column and counts); `3b275a1`'s script printed 165 lines at
+`d97ceb01cb759b4bff25e74c7b768fa95b637ff038e7c186980206bd7b0db88f`; before
+the two built modules were added to what it hashes, 162 lines at
+`2463ab3981532ab9a3a609cae17f80035b396ca3c97441e25ad86b6cb000b8ee`; all with
+the same joint-grid figures and the same first digest.
