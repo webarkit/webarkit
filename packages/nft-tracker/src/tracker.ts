@@ -371,11 +371,14 @@ export interface PoseFilterLayerOptions {
  *   parameter takes the registered derived value, its `DEFAULT_POSE_FILTER_`
  *   constant; both layers are always on.
  *
- * Timestamps must be finite, and two in a row must differ by a finite,
- * nonzero period: the reset rule catches a `NaN` and a timestamp that does
- * not increase, but not an increase to `Infinity`, nor a difference that
- * overflows or underflows, and on such a frame the filtered pose is `NaN`
- * (the registered rule, as the probe measured it, has no case for them).
+ * With the filter on, a `timestampMs` that is not finite is a contract
+ * violation: `process` throws a `RangeError` naming it, before the frame is
+ * processed (the maintainer's ruling of 2026-10-30 on #199); it is not a
+ * reset cause, and the reset rule is the registered one. Two finite
+ * timestamps whose difference overflows or underflows (a period that is
+ * not finite, or 0) are not guarded, and give a `NaN` pose on that frame.
+ * A key the option does not read, in it or in `rotation` or `translation`,
+ * is refused by name.
  *
  * The filter resets, and the frame's pose passes through unfiltered, on a
  * result that is not `"TRACK"` (a `"DETECT"` frame does not seed it; the
@@ -802,7 +805,9 @@ export class NftTracker {
      * @param timestampMs The frame's timestamp, in the caller's units; echoed
      *                    back, and the reference for `detectionLatencyMs`.
      *                    With the `poseFilter` option on, read as milliseconds,
-     *                    and finite (see {@link PoseFilterOptions}).
+     *                    and must be finite: one that is not is a
+     *                    `RangeError`, thrown before the frame is processed
+     *                    (see {@link PoseFilterOptions}).
      * @param detection   A detection computed elsewhere — by `detectTarget`,
      *                    in a worker the application owns — of an earlier
      *                    frame. Consumed when this frame ends without a lock
@@ -810,8 +815,17 @@ export class NftTracker {
      *                    Trusted as `detectTarget` produced it.
      */
     process(frame: GrayImage, timestampMs: number, detection?: Detection | null): TrackResult {
-        const r = this.processFrame(frame, timestampMs, detection);
         const f = this.poseFilter;
+        // With the filter on, a timestamp that is not finite is a contract
+        // violation, refused before the frame is processed (the maintainer's
+        // ruling of 2026-10-30 on #199): not a reset cause, so the registered
+        // reset rule is unchanged. With the filter off it is echoed, as before.
+        if (f !== null && !Number.isFinite(timestampMs)) {
+            throw new RangeError(
+                `NftTracker: timestampMs must be finite with the poseFilter option on, got ${timestampMs}`,
+            );
+        }
+        const r = this.processFrame(frame, timestampMs, detection);
         if (f === null) return r;
         // Every result reaches the filter, a "LOST" one included: its
         // timestamp is the reset rule's reference for the next frame. Here
@@ -1177,6 +1191,20 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
         }
         return v;
     };
+    // A key the pose filter does not read is refused by name, inside
+    // `poseFilter` and its `rotation` and `translation` (the maintainer's
+    // ruling of 2026-10-30 on #199): a misspelt parameter would otherwise run
+    // at its default without a word. Only there; the other options keep
+    // ignoring keys they do not read.
+    const knownKeys = (path: string, v: object, keys: readonly string[]): void => {
+        for (const k of Object.keys(v)) {
+            if (keys.includes(k)) continue;
+            const near = keys.find((x) => x.toLowerCase() === k.toLowerCase());
+            throw new RangeError(
+                `NftTracker: ${path}.${k} is not a known key; ${near === undefined ? `the keys are ${keys.join(", ")}` : `did you mean ${near}?`}`,
+            );
+        }
+    };
     // An omitted layer takes both defaults. `null` is refused, not read as
     // omitted: on the filter module it means a layer that passes through,
     // which only the module may set (ruling C, the Stage 3 registration).
@@ -1192,6 +1220,7 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
                 `NftTracker: poseFilter.${name} must be an object with minCutOff and beta, got ${String(v)}`,
             );
         }
+        knownKeys(`poseFilter.${name}`, v, ["minCutOff", "beta"]);
         const l = v as { minCutOff?: unknown; beta?: unknown };
         return {
             minCutOff: cutoff(
@@ -1211,6 +1240,7 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
                       dCutOff?: unknown;
                   })
                 : {};
+        knownKeys("poseFilter", p, ["mode", "rotation", "translation", "dCutOff"]);
         if (p.mode === "off") {
             // A parameter given with the filter off would be dropped
             // silently, and a caller who gave one meant to filter.

@@ -519,10 +519,11 @@ tracker and feeds nothing back.
 - **Units.** Cutoffs are in Hz; `timestampMs` is read as **milliseconds**, the
   period being the difference of two frames' timestamps divided by 1000. No
   clock is read, so the output is a function of the frames and their
-  timestamps alone. Timestamps must be finite, two in a row a finite,
-  nonzero period apart: the reset rule catches `NaN` and a timestamp that
-  does not increase, but not a jump to `Infinity` or a period that overflows
-  or underflows, which gives a `NaN` pose on that frame.
+  timestamps alone. With the filter on, a `timestampMs` that is not finite
+  is a `RangeError` from `process`, thrown before the frame is processed: a
+  contract violation, not a reset. Two finite timestamps whose difference
+  overflows or underflows are not guarded, and give a `NaN` pose on that
+  frame.
 - **Parameters.** Each layer takes `{ minCutOff, beta }`, `minCutOff` finite
   and > 0, `beta` finite and ≥ 0 (per rad/s for the rotation, per model
   unit/s for the translation); `dCutOff` is shared. An omitted parameter takes
@@ -534,7 +535,33 @@ tracker and feeds nothing back.
   [registration](../../docs/benchmarks/2026-10-29-106-stage3-registration.md)
   states, with how close each sits to the bound that selected it. A parameter
   given with the filter off is a `RangeError`, as a threshold is for
-  `conditioning`.
+  `conditioning`, and so is a key the option does not read, in `poseFilter`
+  or in its `rotation` or `translation`, named with the key it may have
+  meant: `rotation: { minCutoff: 3 }` is refused as not a known key, with
+  "did you mean minCutOff?".
+- **Usage.**
+
+    ```ts
+    // The registered derived values, every parameter omitted.
+    const tracker = new NftTracker(cv, target, K, { poseFilter: { mode: "one-euro" } });
+
+    // Or explicit: the cutoffs in Hz, timestampMs in milliseconds.
+    const tuned = new NftTracker(cv, target, K, {
+        poseFilter: {
+            mode: "one-euro",
+            rotation: { minCutOff: 1, beta: 10 },
+            translation: { minCutOff: 1, beta: 0.1 },
+            dCutOff: 1,
+        },
+    });
+
+    const result = tracker.process(frame, performance.now());
+    if (result.ok) {
+        result.pose; // filtered
+        result.poseSelection.pose; // the selected pose, unfiltered
+    }
+    ```
+
 - **The reset rule.** The filter resets, and the frame's pose passes through
   unfiltered, on a result that is not `"TRACK"` — a `"DETECT"` frame does not
   seed it, the next `"TRACK"` does — on `pose.good === false`, and on a

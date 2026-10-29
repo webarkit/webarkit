@@ -57,8 +57,11 @@ release pull request's body and the GitHub Release's notes.
   0.1568 with the bias −0.0004 px, last-frame errors within `B(v)` at 2, 3 and 4 px/frame,
   settling in 1 frame); its fourth part, the rotation layer 0.4789 px above `wander`'s floor,
   confirms the probe's row and is not a prediction. No device claim, and no rotation lag bound:
-  no committed sequence has a rigid path with rotation. Timestamps must be finite: the reset rule
-  does not catch a jump to `Infinity`. Additive, pre-1.0 and private: `NftTrackerOptions` gains
+  no committed sequence has a rigid path with rotation. With the filter on, a `timestampMs` that
+  is not finite is a `RangeError` from `process`, before the frame is processed, and a key the
+  option does not read, in it or in `rotation` or `translation`, is refused by name; two finite
+  timestamps whose difference overflows or underflows are not guarded, and give a `NaN` pose on
+  that frame. Additive, pre-1.0 and private: `NftTrackerOptions` gains
   a key, and the index gains the `DEFAULT_POSE_FILTER*` constants and the `PoseFilterOptions`
   and `PoseFilterLayerOptions` types; the ground-truth module gains the rest and settle paths.
 

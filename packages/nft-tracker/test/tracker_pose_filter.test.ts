@@ -339,4 +339,118 @@ describe("the poseFilter option: refusals, each by name", () => {
             expect(f).toThrow(/poseFilter\.dCutOff/);
         }
     });
+
+    // The maintainer's ruling of 2026-10-30 on #199, point 4: an unknown key
+    // inside poseFilter, or inside its rotation or translation object, is
+    // refused by name — a misspelt parameter would otherwise run at its
+    // default without a word. Only there: conditioning and the other options
+    // are unchanged.
+    it("refuses an unknown key, naming it, and suggests the key a case slip meant", () => {
+        const cases: [unknown, RegExp, RegExp | null][] = [
+            [{ mode: "one-euro", dCutoff: 1 }, /poseFilter\.dCutoff/, /dCutOff/],
+            [{ mode: "one-euro", foo: 1 }, /poseFilter\.foo/, null],
+            [{ mode: "off", rotaton: {} }, /poseFilter\.rotaton/, null],
+            [
+                { mode: "one-euro", rotation: { minCutoff: 3 } },
+                /poseFilter\.rotation\.minCutoff/,
+                /minCutOff/,
+            ],
+            [
+                { mode: "one-euro", rotation: { beta: 1, extra: 0 } },
+                /poseFilter\.rotation\.extra/,
+                null,
+            ],
+            [
+                { mode: "one-euro", translation: { Beta: 1 } },
+                /poseFilter\.translation\.Beta/,
+                /beta/,
+            ],
+        ];
+        for (const [poseFilter, name, hint] of cases) {
+            const f = make(poseFilter);
+            expect(f).toThrow(RangeError);
+            expect(f).toThrow(name);
+            expect(f).toThrow(/not a known key/);
+            if (hint !== null) expect(f).toThrow(new RegExp(`did you mean ${hint.source}\\?`));
+        }
+    });
+
+    it("leaves unknown keys elsewhere as they were: conditioning's and the options' own", () => {
+        const options = (o: unknown) => () =>
+            new NftTracker(cv, target, K, o as unknown as NftTrackerOptions);
+        expect(options({ conditioning: { mode: "off", maxDscale: 1 } })).not.toThrow();
+        expect(options({ conditioning: { mode: "report", foo: 1 } })).not.toThrow();
+        expect(options({ poseFIlter: { mode: "one-euro" } })).not.toThrow();
+    });
+});
+
+// The maintainer's ruling of 2026-10-30 on #199, point 2: with the filter on,
+// a timestampMs that is not finite is a contract violation, refused before
+// the frame is processed; it is not a reset cause, so the registered reset
+// rule is unchanged. With the filter off, nothing changes (C0).
+describe("the poseFilter option: a timestamp that is not finite", () => {
+    const frame = (i: number) => frameAt(restPath(i), i).frame;
+    /** Frames through one tracker under one seeded generator; a call that throws is recorded as "threw". */
+    const through = (options: NftTrackerOptions | undefined, calls: [number, number][]) => {
+        const tracker = new NftTracker(cv, target, K, options);
+        return withSeededRandom(SEED, () =>
+            calls.map(([i, ts]) => {
+                try {
+                    return tracker.process(frame(i), ts);
+                } catch (e) {
+                    return e instanceof RangeError ? `threw: ${e.message}` : e;
+                }
+            }),
+        ).value;
+    };
+    const ON = { poseFilter: { mode: "one-euro" } } as const;
+
+    it("throws a RangeError naming timestampMs, with the filter on", () => {
+        for (const ts of [NaN, Infinity, -Infinity]) {
+            const [r0, r1] = through(ON, [
+                [0, 0],
+                [1, ts],
+            ]);
+            expect(typeof r0).toBe("object");
+            expect(r1).toMatch(/^threw: .*timestampMs/);
+        }
+    });
+
+    it("throws before the frame is processed: the tracker goes on as if the call never happened", () => {
+        const clean = through(ON, [
+            [0, 0],
+            [1, 33],
+            [2, 66],
+        ]);
+        const refused = through(ON, [
+            [0, 0],
+            [1, Infinity],
+            [1, 33],
+            [2, 66],
+        ]);
+        expect(refused[1]).toMatch(/^threw: /);
+        expect([refused[0], refused[2], refused[3]]).toEqual(clean);
+        // Must fire: a frame that was processed, here a finite one at 16 ms,
+        // leaves the tracker and the filter in another state.
+        const extra = through(ON, [
+            [0, 0],
+            [1, 16],
+            [1, 33],
+            [2, 66],
+        ]);
+        expect([extra[0], extra[2], extra[3]]).not.toEqual(clean);
+    });
+
+    it("changes nothing with the filter off: a timestamp that is not finite is echoed, as before", () => {
+        for (const options of [undefined, { poseFilter: { mode: "off" } } as const]) {
+            const r = through(options, [
+                [0, 0],
+                [1, NaN],
+                [2, Infinity],
+            ]);
+            for (const x of r) expect(typeof x).toBe("object");
+            expect((r[1] as TrackResult).timestampMs).toBeNaN();
+            expect((r[2] as TrackResult).timestampMs).toBe(Infinity);
+        }
+    });
 });
