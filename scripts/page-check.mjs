@@ -52,7 +52,10 @@
  *   `protocol` of the `?loops=1` and worker exports; Start under a `?tracker=`
  *   it cannot read; Start's provenance check on a `?run=1` session run, under
  *   nine faults, one per Start; a worker run whose detection post throws; and
- *   the worker failing while the source starts, at the page's first Start.
+ *   the worker failing while the source starts, at the page's first Start;
+ * - and one smoke check of the pose demo,
+ *   `examples/pinball-pose-jsfeatnext-backend.html` (#200): its pose drawn
+ *   under `"TRACK"`, with the pose filter off and then on.
  *
  * Nothing in the page is changed. Faults are injected from outside, through
  * the DevTools protocol, before the page's own scripts run: the page's
@@ -71,7 +74,8 @@
  * Serves the repository's `examples/` itself, on a free port of 127.0.0.1,
  * with `Cache-Control: no-store`, at `/examples/` so that the page's
  * provenance check finds the files its manifest lists where it lists them.
- * Anything outside `examples/` is a 404. Writes the tuning target the worker
+ * Anything outside `examples/` is a 404, except the pose demo's import-map
+ * targets, which its check's page answers itself ({@link poseDemo}). Writes the tuning target the worker
  * checks load first (`scripts/unknown-chunk-target.mjs`).
  *
  * Needs `npm run build` first, from a committed tree: the `?loops=1` run is a
@@ -1179,6 +1183,116 @@ async function workerFailsWhileSourceStarts(browser, base) {
     });
 }
 
+/** The pose demo (#200), which is not the bench page and has no manifest. */
+const POSE_PAGE = "examples/pinball-pose-jsfeatnext-backend.html";
+
+/**
+ * The directories of the pose page's import-map targets, as served paths:
+ * read from the page's own map, so that what its check serves outside
+ * `examples/` is exactly what the map names.
+ */
+function poseMapDirs() {
+    const html = readFileSync(join(ROOT, POSE_PAGE), "utf8");
+    const map = JSON.parse(/<script type="importmap">([\s\S]*?)<\/script>/.exec(html)[1]);
+    return Object.values(map.imports).map(
+        (target) => new URL(".", new URL(target, `http://x/${POSE_PAGE}`)).pathname,
+    );
+}
+
+/**
+ * The pose demo (#200), on the bundled static clip: once the tracker has held
+ * `"TRACK"`, the page reports a pose drawn (its `data-poses-drawn`, not
+ * pixels), and again after the filter is switched on, with no error raised.
+ *
+ * The only check that intercepts requests. The bench page loads one bundle
+ * from `examples/dist/`, so every other check is served by {@link serve}
+ * alone. This page keeps the other demos' import map onto the packages'
+ * `dist/` and `node_modules/`, outside `examples/`, where `serve` answers
+ * 404. Rather than widen `serve` for every check, this check's page answers
+ * the map's targets itself, read-only from the repository, and only those:
+ * any other request outside `examples/` still reaches `serve` and 404s.
+ */
+async function poseDemo(browser, base) {
+    const names = [
+        "pose demo, static clip: the pose is drawn under TRACK, filter off and then on, with no error",
+    ];
+    await scenario(names, async (check) => {
+        const dirs = poseMapDirs();
+        const context = await browser.createBrowserContext();
+        const page = await context.newPage();
+        const pageErrors = [];
+        page.on("pageerror", (e) => pageErrors.push(e.message));
+        await page.setRequestInterception(true);
+        page.on("request", (req) => {
+            const path = new URL(req.url()).pathname;
+            const file = normalize(join(ROOT, decodeURIComponent(path)));
+            const mapped = dirs.some((d) => path.startsWith(d));
+            if (mapped && req.method() === "GET" && existsSync(file) && statSync(file).isFile()) {
+                req.respond({
+                    status: 200,
+                    headers: { "Cache-Control": "no-store" },
+                    contentType: TYPES[extname(file)] ?? "application/octet-stream",
+                    body: readFileSync(file),
+                });
+            } else {
+                req.continue();
+            }
+        });
+        const data = () => page.evaluate(() => ({ ...document.body.dataset }));
+        const waitFor = async (fn, ms, what) => {
+            try {
+                await page.waitForFunction(fn, { timeout: ms, polling: 100 });
+            } catch (e) {
+                if (e.name !== "TimeoutError") throw e;
+                const status = await page.evaluate(
+                    () => document.getElementById("status").textContent,
+                );
+                const error = await page.evaluate(
+                    () => document.getElementById("error").textContent,
+                );
+                const errors = pageErrors.length ? `; page errors: ${pageErrors.join(" | ")}` : "";
+                throw new Error(
+                    `no ${what} within ${ms / 1000} s (status "${status}", error line "${error}"${errors})`,
+                );
+            }
+        };
+        try {
+            await page.goto(`${base}/${POSE_PAGE}`, { waitUntil: "load" });
+            await waitFor(() => document.body.dataset.ready === "true", READY_MS, "ready page");
+            await page.select("#source", "pinball-static.mp4");
+            await page.evaluate(() => document.getElementById("start").click());
+            await check(names[0], async () => {
+                const tracked = (filter) => () =>
+                    document.body.dataset.filter === filter &&
+                    Number(document.body.dataset.trackRun) >= 10;
+                await waitFor(tracked("off"), RUN_MS, '10 "TRACK" results in a row, filter off');
+                const off = await data();
+                expect(Number(off.posesDrawn) > 0, `filter off: posesDrawn ${off.posesDrawn}`);
+                await page.select("#filter", "one-euro");
+                await waitFor(
+                    tracked("one-euro"),
+                    RUN_MS,
+                    '10 "TRACK" results in a row, filter on',
+                );
+                const on = await data();
+                expect(
+                    Number(on.posesDrawn) > Number(off.posesDrawn),
+                    `filter on: posesDrawn ${on.posesDrawn}, after ${off.posesDrawn} with it off`,
+                );
+                const error = await page.evaluate(
+                    () => document.getElementById("error").textContent,
+                );
+                expect(
+                    on.errors === "0" && error === "" && pageErrors.length === 0,
+                    `errors ${on.errors}, error line "${error}", page errors: ${pageErrors.join(" | ")}`,
+                );
+            });
+        } finally {
+            await context.close();
+        }
+    });
+}
+
 async function main() {
     const t0 = Date.now();
     for (const file of ["dist/webarkit-packages.mjs", "dist/provenance.json"]) {
@@ -1224,6 +1338,7 @@ async function main() {
         await syncProvenanceFaults(browser, base);
         await workerDetectPostThrows(browser, base);
         await workerFailsWhileSourceStarts(browser, base);
+        await poseDemo(browser, base);
     } finally {
         await browser?.close();
         server.close();
