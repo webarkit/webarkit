@@ -188,7 +188,10 @@ points into the target and `−z` toward the camera.
 `js/pose-draw.mjs` explains the derivation, its tests check it on synthetic
 poses, and the page reports whether it held on every pose it drew since the
 last Start or filter change (`data-box-top-nearer`), which `npm run check:page`
-reads on the static clip's real poses.
+reads on the static clip's real poses. It holds for a pose that shows the
+target's printed side. A pose that shows it from behind (`R[8] < 0`), as some
+`"DETECT"` results with 5 or 6 inliers do in `pinball-bench.mp4`'s opening
+frames, stands its box behind the plane, and the flag reads `"false"`.
 A pose with any point on or behind the camera's plane is not drawn.
 
 **It needs `targets/pinball.wnft`**, loaded and decoded as `bench-nft.html`
