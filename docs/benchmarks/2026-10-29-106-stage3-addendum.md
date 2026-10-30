@@ -392,3 +392,25 @@ No figure and no verdict moves. The gates pass at `f98c773`: build,
 typecheck, `format:check`, `check:contract` and `check:page` (30 of 30), and
 `npm test` with `nft-tracker` at 885 passed and 1 skipped. The bundle hash
 is `8c0e0b9fff317e10605476e628686c51f04bf8d2773f0a6af46755203329d086`.
+
+**The stdout no longer depends on the commit the check runs at (`e3d58e1`).**
+An independent rerun on Linux at `b425a16` reproduced every line but one.
+Line 21 printed its build manifest's commit, "(of b425a16, clean)" where
+the recorded run had "(of f98c773, clean)". That one line alone gave a
+different stdout SHA-256, though `packages/` and every figure were the
+same. So **`7b1be91e…` is the hash of the check's `f98c773` form, run at
+`f98c773`**: it reproduces at that commit, and not at a later one.
+
+By the maintainer's ruling (a), lines 21 and 22 now print each tree's
+`packages/` tree id instead of its commit, and the check still requires
+each manifest to be of its tree's commit and clean. No other printed line
+names a commit, except C0's base `12ebed3`, which the check pins.
+
+The check, run twice at `e3d58e1`: both stdouts are 102 lines, SHA-256
+**`ff769ce4ab4d46c7d2df364e048f75b545e07fd300ae308beedaa6d166663f9b`**,
+equal. Against `7b1be91e…`, only lines 21 and 22 differ. The stdout now
+depends on the `packages/` tree, `948a225bda2df8018eb79c91dbd81ff5e367bc71`,
+and not on the commit, so it is the same at every commit with that tree,
+this one's included. No figure and no verdict moves. The gates pass at
+`e3d58e1`, as at `f98c773`: `nft-tracker` at 885 passed and 1 skipped, and
+`check:page` 30 of 30.
