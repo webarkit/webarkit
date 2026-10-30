@@ -431,7 +431,9 @@
             ? "locked on"
             : result.reason === "too-few-matches"
               ? "too few matches"
-              : "no consensus";
+              : result.reason === "too-few-inliers"
+                ? "too few inliers"
+                : "no consensus";
           renderStats([
             ["fps", fps.toFixed(1)],
             ["keypoints (scene)", result.sceneKeypoints.length],

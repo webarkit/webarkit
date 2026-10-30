@@ -47,7 +47,7 @@ None of the three is published to npm yet — see [Getting started](#-getting-st
 
 ### Prerequisites
 
-- Node.js — version pinned in [`.nvmrc`](./.nvmrc) (currently v24.21.0); `package.json` sets a floor of `>=18`.
+- Node.js — version pinned in [`.nvmrc`](./.nvmrc) (currently v24.21.0); `package.json` sets a floor of `>=22.12`.
 - npm 9+ (for [workspaces](https://docs.npmjs.com/cli/v9/using-npm/workspaces) support).
 
 ### Install
@@ -128,8 +128,9 @@ against the specification, with a §6.2 error code when it is not. **Can a
 backend use it?** by running §6.3's descriptor-set selection against a real
 backend's capabilities — because a perfectly valid file can still be unusable,
 and decoding alone never says so. Exit `0` valid and usable, `1` neither, `2`
-bad usage; `--decode-only` checks the file without loading a backend, `--json`
-for scripts.
+bad usage or no backend to run the usability pass with (not built yet);
+`--decode-only` checks the file without loading a backend, `--json` for
+scripts.
 
 ### What it buys you
 

@@ -41,7 +41,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { createJsfeatNextBackend } from "@webarkit/cv-backend-jsfeatnext";
 import { buildTargetFromImage, levelScale } from "../../src/index.js";
 import type { TargetDb } from "../../src/index.js";
-import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
+import { readPgm, TARGET_FIXTURE } from "../../ground-truth/fixtures/pgm.js";
 
 // levelScale is the one piece of arithmetic every tracking branch shares: the
 // patch centre, the frame pyramid and the target pyramid all need s_l. It

@@ -28,7 +28,8 @@ the whole repository, which is why the root README's command carries `-c-1`
 too.
 
 Then open <http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html>,
-<http://localhost:8080/examples/pinball-webcam-jsfeatnext-backend.html>, or
+<http://localhost:8080/examples/pinball-webcam-jsfeatnext-backend.html>,
+<http://localhost:8080/examples/pinball-pose-jsfeatnext-backend.html>, or
 <http://localhost:8080/examples/bench-nft.html>.
 
 Serve over HTTP: ES modules do not load from `file://`, and `getUserMedia`
@@ -107,11 +108,11 @@ pipeline right against two known images first is what made the webcam demo's
 own parameters (resolution, keypoint cap, pyramid depth) measurable rather than
 guessed — see its own section below.
 
-**Architecture.** The `CvBackend` contract is deliberately *stateless*, and a
+**Architecture.** The `CvBackend` contract is deliberately _stateless_, and a
 webcam demo is where that boundary actually gets tested: does the pipeline
 still make sense called fresh every tick, with nothing carried over? The answer
 turned out to be yes, with one caveat (see the known limitation below) — but a
-*tracker* (which target, when to re-detect, what to do when tracking is lost,
+_tracker_ (which target, when to re-detect, what to do when tracking is lost,
 how to smooth the pose over time) is still the high-level AR layer's job, not
 either example's. Neither demo attempts it.
 
@@ -162,6 +163,65 @@ the parameters above). Worth revisiting once the cost of a lighter multi-level
 search on the scene side is measured with the same rigour the current
 parameters got — tracked informally against this file for now, no issue yet.
 
+## `pinball-pose-jsfeatnext-backend.html`
+
+Draws the tracker's **pose** ([#200](https://github.com/webarkit/webarkit/issues/200)).
+Every other page draws the target's corners under `H`, and the pose filter
+of [#106](https://github.com/webarkit/webarkit/issues/106) (`poseFilter`,
+merged in [#199](https://github.com/webarkit/webarkit/pull/199)) does not
+touch `H`, so until this page it changed no pixel anywhere. Here, beside
+the corners under `H` (amber), the page projects through `K · [R | t]`:
+
+- `result.pose`, in green: the target's outline at `z = 0`, a box standing on
+  it, a quarter of the target's width high, and its three axes from the
+  target's centre (x red, y green, z blue);
+- optionally, behind a checkbox, `result.poseSelection.pose` in magenta,
+  dashed, drawn over it: the unfiltered pose. With the filter off the two
+  coincide; with it on they show its effect side by side. The stats panel's
+  angle between the two rotations is a display, not a metric.
+
+The model is the target's plane in level-0 pixels, `z = 0` on the plane, as
+`projectPose` in `packages/nft-tracker/test/pose/pose_metric.ts` defines it.
+The box stands on `−z`: `Pose` is in the OpenCV camera frame, which looks
+down `+Z`, and the target's `x` and `y` run the way the camera's do, so `+z`
+points into the target and `−z` toward the camera.
+`js/pose-draw.mjs` explains the derivation, its tests check it on synthetic
+poses, and the page reports whether it held on every pose it drew since the
+last Start or filter change (`data-box-top-nearer`), which `npm run check:page`
+reads on the static clip's real poses. It holds for a pose that shows the
+target's printed side. A pose that shows it from behind (`R[8] < 0`), as some
+`"DETECT"` results with 5 or 6 inliers do in `pinball-bench.mp4`'s opening
+frames, stands its box behind the plane, and the flag reads `"false"`.
+A pose with any point on or behind the camera's plane is not drawn.
+
+**It needs `targets/pinball.wnft`**, loaded and decoded as `bench-nft.html`
+loads it. A target from `buildTargetFromImage`, as the webcam demo builds
+one, has no tracking patches, so its tracker runs detection-only, every
+result is `"DETECT"`, and the filter, which resets on any result that is
+not `"TRACK"`, never acts. The page refuses to start on a detection-only
+tracker.
+
+**The filter switch:** off, or `{ mode: "one-euro" }` with its five
+parameters (`rotation` and `translation` `minCutOff` and `beta`, and
+`dCutOff`), which default to the package's exported `DEFAULT_POSE_FILTER_*`
+constants. A change rebuilds the tracker, so the filter starts unseeded.
+The processing box is the bench page's default, 480×360, and every other
+tracker option is the package's default, as the bench page runs with no
+`?tracker=`.
+
+**Timestamps.** For a bundled clip this page passes `process` the frame's
+media time in milliseconds, from `requestVideoFrameCallback`'s metadata, so
+the filter sees the clip's own frame spacing whatever the processing rate.
+At a loop wrap the timestamp steps back, which resets the filter by its
+reset rule; the stats panel counts the wraps. For the webcam it passes
+`performance.now()`, as the webcam demo does. This is the page's own
+choice: `bench-nft.html` passes `performance.now()` for a clip too, and
+reads media time only for its loop counter and its export, so with a filter
+on it would see wall-clock spacing.
+
+**It is not a measurement.** No exported value reads the pose, and this
+page exports nothing.
+
 ## `bench-nft.html`
 
 Measures the pipeline frame-by-frame on whatever device opens it, against a
@@ -182,12 +242,22 @@ told apart from the one run before it.
 
 Three modes, selected before pressing Start (or with `?mode=`):
 
-- **stateless pipeline** (`stateless`) — the same inline `detect → describe →
-  match → estimateHomography → poseFromHomography` calls as the static demo,
+- **stateless pipeline** (`stateless`) — the same `detect → describe →
+match → estimateHomography → poseFromHomography` calls as the static demo,
+  written out in `js/bench-stateless.mjs` rather than through `detectTarget`,
   against `@webarkit/nft-tracker`'s own `DEFAULT_SCENE_LEVELS` /
   `DEFAULT_MAX_SCENE_KEYPOINTS` / `DEFAULT_RATIO` / `DEFAULT_RANSAC_THRESHOLD`.
+  Like `detectTarget`, and unlike the static demo, it refuses a fit RANSAC
+  accepted on fewer than `MIN_DETECTION_INLIERS` (5) inliers, as a LOST frame
+  with the reason `too-few-inliers`
+  ([#191](https://github.com/webarkit/webarkit/issues/191), from commit
+  `7d3b914`); a test holds the two to the same answer. Before that commit it
+  posed such fits, so a stateless export from before it and one from after are
+  not comparable on the hand-held clips. Each export's
+  `provenance.manifest.served` records the served files' hashes, which tell the
+  two apart.
 - **NftTracker, detection-only** (`detection-only`) — `tracker.process(frame,
-  timestampMs)` with `detectionOnly: true`: M1 of
+timestampMs)` with `detectionOnly: true`: M1 of
   [ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md),
   every frame detected from scratch, the same pipeline as the stateless mode
   and expected to report the same match and inlier counts. Exports made before
@@ -262,7 +332,7 @@ loop by default — two runs then measure
 different content, not just different code paths, which defeats the point of
 comparing them. The **"start at (s)"** field (either video source; a webcam
 has no timeline to seek) seeks there before the first tick, so running it once
-for each mode with the same value gives two runs over the same *starting*
+for each mode with the same value gives two runs over the same _starting_
 point. The export carries `startAtSeconds` (`null` for a webcam run) precisely
 so a downloaded report can be checked to have actually started from the same
 point, rather than trusted on the assumption that the field was set the same
@@ -270,7 +340,7 @@ way both times.
 
 **A shared `startAt` is not a shared frame sequence, though.**
 `requestVideoFrameCallback` fires once per frame the browser actually
-*presents*, and a main thread busy for longer than the clip's own frame
+_presents_, and a main thread busy for longer than the clip's own frame
 interval (real here: `total`'s own p50 sits close to a ~25fps clip's ~40ms
 budget) makes the browser coalesce to the latest decoded frame, skipping
 whichever ones went stale while it was blocked. Two modes cost a slightly
@@ -341,6 +411,20 @@ summaries and the corners' jitter and spread on the frames both posed
 side by side, on the same footage. It refuses — one line, exit 1 — exports it
 cannot align: a webcam run (its media time is the stream's), an export from
 before `metricsVersion` 1, another clip, another processing size.
+
+**Checking an export for a stalled clip: `scripts/stall-check.mjs`.**
+`node scripts/stall-check.mjs export.json` runs the stall check of M3's step
+7 (`js/bench-stall.mjs`, #117) over one export: a line with its largest gap
+in media time and the loops it read, a `FAIL` line for each failure — an arm
+can fail more than once, one line a loop or a frame — then `stall check:
+PASS` or `stall check: FAIL`, exit 0 or 1. An export it parses but cannot
+read (no clip duration, fewer than two frames, a media time that is not
+finite) has no first line, and fails: exit 1. With no path, a file it cannot
+read, or one that is not JSON, there is no check to run: one line on stderr,
+no verdict, exit 2. Its four arms
+— gaps, monotonicity, coverage, cumulative — and where their bounds come
+from are in [the M3 record](../docs/benchmarks/2026-10-01-m3-session-additions.md#a-per-run-check-for-a-stalled-clip),
+which also keeps the copy that ran. The page does not run it.
 
 **Timing the frame pyramid on the device.** The tracker builds only the
 pyramid levels its patches start on; with `pinball.wnft`'s patches — 47 of
@@ -555,7 +639,7 @@ processing box (480×360, fitted with aspect preserved — a 16:9 source like
 this one actually lands at 480×270, not 480×360; the export's
 `processingResolution` records that real size, not the configured box) by a
 comfortable margin — downscaling further would start constraining what a
-*higher* processing resolution could be benchmarked against later. The table
+_higher_ processing resolution could be benchmarked against later. The table
 clip is left at its native 1080×1920 rather than downscaled to match, since
 after the rotation incident above the priority was verifying orientation over
 minimizing size a second time; revisit if its ~2.3 MB becomes a real problem.
@@ -580,7 +664,7 @@ can reach the page:
 - **`targets/pinball.wnft`** — a target compiled once, offline, from the very
   same `images/pinball.jpg`, committed, and `decode`d here.
 
-Everything after that point is identical for both, because a decoded target *is*
+Everything after that point is identical for both, because a decoded target _is_
 a target. That is the whole claim of the file format, and the selector is the
 demo's way of showing it rather than asserting it — `packages/nft-tracker`'s
 `test/wnft_roundtrip.test.ts` is the assertion.
@@ -592,12 +676,12 @@ from the same pixels. This page builds its grey image with
 compiler used a box filter in Node. Measured on these images: 2067 keypoints and
 99 matches built here, 2062 and 91 from the file. Both lock on, and the
 recovered pose differs between them by less than it differs between two reloads
-of *either* one — RANSAC draws its minimal sample from `Math.random`, and the
-contract has no seed to pass it (webarkit/webarkit#24), so inlier counts and
+of _either_ one — RANSAC draws its minimal sample from `Math.random`, and the
+demo passes no `RansacOptions.rng` (webarkit/webarkit#24), so inlier counts and
 translations move a little on every run regardless of where the target came
 from.
 
-What *does* separate the two is the **"target prepared in"** row, which the page
+What _does_ separate the two is the **"target prepared in"** row, which the page
 times apart from the per-frame **"pipeline"** row precisely so the difference is
 visible: building the target here costs the page an order of magnitude more than
 loading it does.
@@ -630,6 +714,29 @@ refresh. Committed on purpose, for the same reason: a `.wnft` that changed
 silently would make the demo and the Rust suite disagree about what the
 repository means by "the pinball target".
 
+### Candidate targets: `targets/tuning/`
+
+`bench-nft.html?targetFile=tuning/<name>.wnft` loads a target from
+`targets/tuning/` in place of `targets/pinball.wnft`. The directory is
+git-ignored: what is in it is never committed, and a run on it is never a
+session run.
+
+One file there is written by the repository:
+**`targets/tuning/unknown-chunk.wnft`**, which the bench page's checks load
+(`npm run check:page`, [#120](https://github.com/webarkit/webarkit/issues/120)).
+It is `targets/pinball.wnft` with one more chunk, of a type no reader knows
+(`XTRA`), so it decodes to the same target, 48 patches, with one warning,
+`UNKNOWN_CHUNK_SKIPPED`. That warning is what the checks look for on the worker
+path. [`scripts/unknown-chunk-target.mjs`](../scripts/unknown-chunk-target.mjs)
+writes it, decodes it with the codec's own reader and refuses anything else,
+and checks that `pinball.wnft`'s SHA-256 is unchanged. `npm run check:page`
+runs it first; on its own:
+
+```bash
+npm run build
+node scripts/unknown-chunk-target.mjs
+```
+
 ## Shared code: `js/pinball-shared.mjs`
 
 Both demos need the same two pieces — `toGray` (any drawable source to the
@@ -639,6 +746,13 @@ static demo's own inline copy did before this file existed. The
 per-pyramid-level matching strategy that used to live here moved into
 [`@webarkit/nft-tracker`](../packages/nft-tracker) — it is tracker logic, not
 page logic, and the tracker needs it too. What stayed is what touches the DOM.
+The pose demo imports both pieces too.
+
+`js/pose-draw.mjs` is the pose demo's drawing math: the projection
+`π(K · (R · (x, y, z) + t))` of a target point, and the outline, box and axes
+it draws of a pose, with no DOM, tested in `examples/test/pose-draw.test.mjs`
+by the root `npm test`. The bench page does not import it, so it is not
+served.
 
 `js/bench-metrics.mjs` is the bench page's other module: every run metric it
 reports and the text defining each, its URL parameters, and the helpers its
@@ -646,7 +760,11 @@ pyramid probe and the desktop replay share — no DOM, tested in
 `examples/test/` by the root `npm test`. `scripts/compare-bench.mjs` and
 `scripts/replay-clips.mjs` (a desktop pre-flight that replays the bundled
 clips through the tracker; ffmpeg needed) import it too, so a comparison or a
-replay means by each name what the page does.
+replay means by each name what the page does. Its code lives in the
+`js/bench-*.mjs` modules beside it, one per concern (#98), which it re-exports
+under the names it has always exported: import from `js/bench-metrics.mjs`.
+`js/bench-stall.mjs` is apart: it was never part of `bench-metrics.mjs`, and
+the page does not import it, so it is neither re-exported nor served.
 
 ## Images
 

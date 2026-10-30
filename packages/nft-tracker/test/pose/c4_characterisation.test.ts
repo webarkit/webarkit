@@ -69,8 +69,8 @@ import { decode } from "../../src/target/format/index.js";
 import { trackFrame, trackTarget } from "../../src/tracking/track_frame.js";
 import type { TrackFrameOptions } from "../../src/tracking/track_frame.js";
 import { POSE_AMBIGUITY_SIGMA_TRACK_PX, selectPose } from "../../src/pose/select_pose.js";
-import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
-import { renderWarp } from "../fixtures/warped_frames.js";
+import { readPgm, TARGET_FIXTURE } from "../../ground-truth/fixtures/pgm.js";
+import { renderWarp } from "../../ground-truth/fixtures/warped_frames.js";
 import { grid, median, poseError, rigidView } from "./pose_metric.js";
 
 const CAMERA = { width: 270, height: 360 };

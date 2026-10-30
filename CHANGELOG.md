@@ -14,6 +14,184 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-30
+
+The "M5 — the post-campaign window" milestone
+([milestone 6](https://github.com/webarkit/webarkit/milestone/6)), which restored what M4's
+campaign froze. It closes on [#120](https://github.com/webarkit/webarkit/issues/120),
+[#127](https://github.com/webarkit/webarkit/issues/127),
+[#130](https://github.com/webarkit/webarkit/issues/130) and
+[#137](https://github.com/webarkit/webarkit/issues/137). `.wnft` format: still **0.3**, in both
+codecs, so this tag freezes no new corpus.
+
+### Added
+
+- **`RansacOptions.rng` and the `deterministicRansac` capability**
+  ([#24](https://github.com/webarkit/webarkit/issues/24)), additive: an optional uniform source in
+  [0, 1) for `estimateHomography`'s RANSAC sampling, honoured by `cv-backend-jsfeatnext`, which
+  declares `deterministicRansac: true`; without it, behaviour is unchanged.
+- **The stall check is a tested module, with its command**
+  ([#117](https://github.com/webarkit/webarkit/issues/117)): `stallCheck` in
+  `examples/js/bench-stall.mjs`, and `node scripts/stall-check.mjs <export.json>`. Its logic is
+  moved in unchanged from the copy embedded in M3's record (SHA-256 `cccb475b…`), and reproduces
+  that copy's result, field for field, on every committed export. The command reproduces that
+  copy's output and exit code on every committed export, and differs only on input it cannot
+  read, where the record's copy threw: with no path, a file it cannot read or one that is not
+  JSON, it exits 2 with one line and no verdict, since 1 is a check that ran and failed. Each arm
+  is tested passing and failing, and the verdict over every committed export with frames is
+  pinned. The record's copy stays as the record of what ran.
+- **The provenance manifest hashes the script that writes it and the root `package.json`**
+  ([#127](https://github.com/webarkit/webarkit/issues/127)), additive: `examples/dist/provenance.json`
+  gains `build`, the SHA-256 and git blob id of `scripts/build-provenance.mjs` and of the root
+  `package.json` whose `build` runs it (`blob` null without git), so two exports'
+  `provenance.manifest.build` show by themselves whether one producer wrote both manifests. It
+  attests an accidental change only, and refuses nothing: neither file is served, so Start does
+  not check them. The schema stays `webarkit-bench-provenance/1`.
+- **One Euro filtering of the pose, the rotation in its tangent space, off by default**
+  ([#106](https://github.com/webarkit/webarkit/issues/106)): `NftTrackerOptions` gains
+  `poseFilter`, `{ mode: "off" }` by default (`DEFAULT_POSE_FILTER`), or
+  `{ mode: "one-euro", rotation: { minCutOff, beta }, translation: { minCutOff, beta }, dCutOff }`,
+  where an omitted parameter takes the registered derived value: rotation 1 Hz and `beta` 10,
+  translation 1 Hz and `beta` 0.1, `dCutOff` 1 Hz, exported as `DEFAULT_POSE_FILTER_` constants.
+  When on, `pose` is filtered and `poseSelection.pose` stays the unfiltered pose; nothing else
+  changes. Cutoffs are in Hz and `timestampMs` is read as milliseconds. The filter resets, passing
+  the frame's pose through, on a result that is not `"TRACK"`, on `pose.good === false` and on a
+  timestamp that does not exceed the previous frame's; the next frame seeds it. Derived on #197's
+  probe
+  ([`2026-10-29-106-stage1-pose-filter-probe.md`](./docs/benchmarks/2026-10-29-106-stage1-pose-filter-probe.md))
+  and registered before the implementation
+  ([`2026-10-29-106-stage3-registration.md`](./docs/benchmarks/2026-10-29-106-stage3-registration.md),
+  #198). The registered criteria, run on the implementation
+  ([`2026-10-29-106-stage3-addendum.md`](./docs/benchmarks/2026-10-29-106-stage3-addendum.md)):
+  C0 to C4 held, and the prediction P held in its three parts, none void (steadiness ratio
+  0.1568 with the bias −0.0004 px, last-frame errors within `B(v)` at 2, 3 and 4 px/frame,
+  settling in 1 frame); its fourth part, the rotation layer 0.4789 px above `wander`'s floor,
+  confirms the probe's row and is not a prediction. No device claim, and no rotation lag bound:
+  no committed sequence has a rigid path with rotation. With the filter on, a `timestampMs` that
+  is not finite is a `RangeError` from `process`, before the frame is processed, and a key the
+  option does not read, in it or in `rotation` or `translation`, is refused by name; a cutoff that
+  overflows makes the filter follow its input on that frame; two increasing finite timestamps
+  whose period underflows to 0 are not guarded, and give a `NaN` pose on that frame. Additive,
+  pre-1.0 and private: `NftTrackerOptions` gains a key, and the index gains the
+  `DEFAULT_POSE_FILTER*` constants and the `PoseFilterOptions` and `PoseFilterLayerOptions` types;
+  the ground-truth module gains the rest and settle paths.
+- **A demo page that draws the tracker's pose, with the pose filter on and off**
+  ([#200](https://github.com/webarkit/webarkit/issues/200)):
+  `examples/pinball-pose-jsfeatnext-backend.html` draws `result.pose` through `K · [R | t]` (the
+  target's outline, a box standing on it and its axes) beside the corners under `H`, optionally
+  with the unfiltered `poseSelection.pose`, on `targets/pinball.wnft`, the bundled clips or the
+  webcam. It is the first place the `poseFilter` option shows; it measures and exports nothing.
+
+### Fixed
+
+- **`@webarkit/cv-backend-spec`'s `description` reads its em dash again**
+  ([#171](https://github.com/webarkit/webarkit/pull/171)): the manifest shipped at 0.5.1 carried
+  it double-encoded, as `â€”`.
+- **`validate-target --decode-only` and `--help` load no backend**
+  ([#75](https://github.com/webarkit/webarkit/issues/75)). The tool imported
+  `@webarkit/cv-backend-jsfeatnext` statically, so both failed with `ERR_MODULE_NOT_FOUND`
+  where the backend was not built, against what `--help` and the READMEs promise. The backend is
+  now imported only by the full mode, which, when it cannot load it, exits 2 with a message naming
+  the backend and `--decode-only`, instead of failing at startup. A test runs the tool with the
+  backend made unresolvable by a resolution hook.
+- **The bench page refuses a second run while one is pending or live, and keeps the first failure
+  cause on its error line** ([#166](https://github.com/webarkit/webarkit/issues/166), found on
+  review of [#165](https://github.com/webarkit/webarkit/pull/165); the code is now in
+  `examples/js/run-lifecycle.mjs`, [#179](https://github.com/webarkit/webarkit/pull/179)). Two
+  defects. A second run could start while the first was in its provenance check: the probe stayed
+  enabled, and its end enabled Start with that start still pending. Now Start and the probe are off
+  from Start's click until its run is live, or the start is refused or fails. A later failure
+  replaced the first cause on the error line. Now the line keeps the first cause until Start clears
+  it, and each later failure is recorded on its own run. This makes true the `[0.5.0]` sentence "A
+  later failure no longer replaces the first on the error line", which `[0.5.1]` records as not
+  describing the shipped behaviour.
+- **The bench page and the replay refuse a manifest whose flags no build writes, and a session run
+  is one that did not fail** ([#119](https://github.com/webarkit/webarkit/issues/119)). Two
+  conditions no guard read. Start and `replay-clips --packages bundle` read the manifest's `head`
+  only for null, so `head: ""` passed, and neither compared `clean` with `dirtyPaths`. Both now
+  refuse a `head` that is not a full commit hash, a `clean` that is not a boolean, a `dirtyPaths`
+  that is not a list, and a `clean` that disagrees with `dirtyPaths`, as a manifest hand-edited or
+  written by a broken build; a manifest built without git keeps its own refusal. `sessionRunGaps`, and so `--transfer`'s recompute, read `run.endedBy` alone, so
+  only `failRun`'s `endedBy = "failed"` kept a failed run from counting. A run whose `run.failure`
+  is set, or not recorded, is now a gap, whatever `endedBy` says. Neither changes what the
+  committed exports say. The two stale comments beside `WRAP_BOUND_S` now point at
+  [#114](https://github.com/webarkit/webarkit/issues/114); its value is unchanged.
+- **Detection refuses a homography fitted on fewer than 5 inliers, a fit whose residual is zero
+  by construction** ([#137](https://github.com/webarkit/webarkit/issues/137)). A fit on four
+  correspondences reproduces them exactly, so RANSAC's threshold could not refuse it, and the
+  detection path accepted such fits whether right or not. `detectTarget` now refuses an accepted
+  fit with fewer than `MIN_DETECTION_INLIERS` (5, exported) inliers as a failed detection with a
+  new reason, `"too-few-inliers"`, carrying the fit's own count; the tracker makes the frame LOST
+  with no lock, and the detection worker runs the same gate. `DetectionFailure` and
+  `TrackFailure` gain the value: a type change, though the package is pre-1.0 and private. The
+  gate is G5 of #137's pipeline probe ([#189](https://github.com/webarkit/webarkit/pull/189),
+  [the record](docs/benchmarks/2026-10-28-137-stage1-pipeline-probe.md)): every frame processed,
+  seeds 1 to 8, the static clip unchanged on every seed, the seed ratio of `jitterPx` from 4.77 to
+  1.15 on the wall clip and from 103 to 2.21 on the table clip, `trackTimeShare` equal to the
+  ungated pipeline's except +0.09 points on one seed. Its criteria were registered before the code
+  ([#190](https://github.com/webarkit/webarkit/pull/190),
+  [the registration](docs/benchmarks/2026-10-28-137-stage3-g5-registration.md)), and
+  [its addendum](docs/benchmarks/2026-10-28-137-stage3-g5-registration.md#addendum-2026-10-29-the-criteria-run-against-g5s-implementation)
+  records them run: C1 and C2 held, the implementation reproducing the probe's G5 rows frame for
+  frame on all three clips and eight seeds; on the device's scaled-step schedule, P-G5 (a) held on
+  the table clip (seed ratio 1.21, bound 1.50) and was refuted on the wall clip (1.55, bound 1.5,
+  from the control's 3.41), and (c) was refuted on both, `trackTimeShare` moving by −4.18 to
+  +2.51 points per seed on the wall clip and −3.37 to +2.67 on the table clip, against ±0.5. On #90's ground-truth sequences every fit the gate refuses
+  is a 4-inlier fit 193.7 to 511.9 px RMS from the true homography, and no TRACK frame changes;
+  an 8-inlier fit 61,615 px wrong on the same path is not caught. The bench page's stateless
+  pipeline, an inline copy of the detection steps, was left accepting the 4-inlier fits the
+  tracker refuses; the next entry brings it to the same gate
+  ([#191](https://github.com/webarkit/webarkit/issues/191)).
+- **The bench page's stateless mode refuses a detection with fewer than `MIN_DETECTION_INLIERS`
+  inliers, as the tracker does** ([#191](https://github.com/webarkit/webarkit/issues/191)). The
+  mode is a copy of the detection steps, not a call to `detectTarget`, so #137's gate left it
+  behind: on a 4-inlier fit it read DETECT, with a pose, where the detection-only tracker read
+  LOST, and three sentences claiming parity between the two were false on such a frame. The mode,
+  moved unchanged into `examples/js/bench-stateless.mjs`, now applies the same gate through the
+  exported constant, refusing the fit as a LOST frame with reason `"too-few-inliers"` and the
+  fit's own count; it still does not call `detectTarget`, so that it times the pipeline's calls
+  stage by stage as before. A parity test feeds it and `detectTarget` the same frame through one
+  stub backend, and the two must agree on an accepted fit of 4 inliers and of 5, a RANSAC failure
+  and too few matches. Stateless exports from before `7d3b914`, the commit that adds the gate,
+  and from after it are not comparable on the hand-held clips; `provenance.manifest.served` tells
+  them apart. `METRICS_VERSION` is unchanged: no definition changes, only which frames the mode
+  poses. The static demo is left as the contract's raw pipeline, which does not apply the gate,
+  and says so.
+
+### What M5 did not deliver
+
+- **Four issues were moved out of milestone 6, with no milestone**, each with its reason in a
+  comment of 2026-10-30:
+    - [#92](https://github.com/webarkit/webarkit/issues/92), the residual limit: #186's
+      weighing found that the sweep does not choose between the candidates, and that the
+      committed exports, which carry no ground truth, cannot say what a limit would refuse
+      wrongly on real motion.
+    - [#116](https://github.com/webarkit/webarkit/issues/116), serving the bench page over
+      https: not started; every item it lists to settle first needs the tablet and the PC's
+      network, and M5 had no device sessions.
+    - [#133](https://github.com/webarkit/webarkit/issues/133), IPPE's guard near
+      fronto-parallel: with M4's campaign closed under its condition 2, the guard's
+      registration in #107 was never made, and the guard passes, open, to the next campaign.
+    - [#143](https://github.com/webarkit/webarkit/issues/143), the LOST rename: it was to
+      travel with other work only if the state machine was opened for another reason, and M5
+      did not open it.
+- **[#114](https://github.com/webarkit/webarkit/issues/114)'s per-round reading of the loop-wrap
+  bound was never made.** Round 0 had no counted run and round 1 will not run, so the reading, and
+  the registration of its figures with their headroom, pass open to the next campaign (#114's
+  comment of 2026-10-23). The bound's re-derivation shipped
+  ([#195](https://github.com/webarkit/webarkit/pull/195)).
+- **[#106](https://github.com/webarkit/webarkit/issues/106)'s device claim was withdrawn**, on
+  2026-10-15, as unmeasurable on this instrument, not refuted: every exported value is computed
+  from `H` and the result's flags, and none reads the pose. No rotation lag bound is claimed: no
+  committed sequence has a rigid path with rotation.
+- **Two issues opened during the window are not in it:**
+  [#196](https://github.com/webarkit/webarkit/issues/196), the loop-wrap rule's "at most 0.5 s"
+  against µs-rounded media times, and `bench-locks.mjs`'s untested epsilon; and
+  [#202](https://github.com/webarkit/webarkit/issues/202), detections with 5 or 6 inliers that
+  pose the target from behind on the wall clip, found by #200's demo.
+
+<!-- prettier-ignore-start -->
+
 ## [0.5.1] - 2026-10-23
 
 The "M4 campaign" milestone ([milestone 7](https://github.com/webarkit/webarkit/milestone/7)),
@@ -408,10 +586,13 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 - The original single-page jsartoolkitNFT demo the repository started as. It is kept at the tag
   `archive/original-nft-demo`.
 
-[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.5.1...dev
+[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.6.0...dev
+[0.6.0]: https://github.com/webarkit/webarkit/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/webarkit/webarkit/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/webarkit/webarkit/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/webarkit/webarkit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/webarkit/webarkit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/webarkit/webarkit/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/webarkit/webarkit/releases/tag/v0.1.0
+
+<!-- prettier-ignore-end -->

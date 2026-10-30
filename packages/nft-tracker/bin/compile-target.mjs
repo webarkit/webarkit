@@ -300,10 +300,10 @@ class UsageError extends Error {}
 
 /**
  * mulberry32 — a 32-bit PRNG, four lines, identical across platforms, which
- * `Math.random` is not. The same generator `test/fixtures/seeded_rng.ts` uses;
- * spelled out again rather than imported because that one is a test fixture
+ * `Math.random` is not. The same generator `ground-truth/fixtures/seeded_rng.ts` uses;
+ * spelled out again rather than imported because that one is a ground-truth fixture
  * and this is shipped tooling, and four lines is cheaper than a dependency
- * from `bin/` into `test/`.
+ * from `bin/` into `ground-truth/`.
  */
 function mulberry32(seed) {
     let a = seed >>> 0;

@@ -57,7 +57,7 @@ jobs:
             # type-checks src/, since that's what's actually published: a real
             # type error confined to test/ would pass a build-only check
             # silently. tsconfig.test.json in each package widens the program
-            # to include test/ too.
+            # to include test/ too (and nft-tracker's ground-truth/).
             - name: Type check (src + test)
               run: npm run typecheck
 
@@ -90,6 +90,50 @@ jobs:
 
             - name: Contract, TypeScript codec and Rust codec agree
               run: npm run check:contract
+
+    page-check:
+        runs-on: ubuntu-24.04
+
+        # The bench page's checks (#120): examples/bench-nft.html driven in
+        # headless Chrome, since its glue is reached by no unit test (#98). Its
+        # own job, beside build-and-test rather than a step in it, because it
+        # needs a browser and nothing else here does, and because its ?loops=1
+        # run is a session run: the page refuses it unless the manifest was
+        # built from a clean tree, which a fresh checkout is. It uses the
+        # runner's installed Google Chrome, which plays the clips' H.264 (a
+        # Chromium may not); scripts/page-check.mjs finds it at
+        # /usr/bin/google-chrome. No artifact: each check prints why it failed.
+        timeout-minutes: 15
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v7
+
+            - name: Use Node.js from .nvmrc
+              uses: actions/setup-node@v7
+              with:
+                  node-version-file: ".nvmrc"
+
+            - name: Get npm cache directory
+              id: npm-cache-dir
+              shell: bash
+              run: echo "dir=$(npm config get cache)" >> ${GITHUB_OUTPUT}
+
+            - uses: actions/cache@v6
+              with:
+                  path: ${{ steps.npm-cache-dir.outputs.dir }}
+                  key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+                  restore-keys: |
+                      ${{ runner.os }}-node-
+
+            - name: Install
+              run: npm ci
+
+            # The bundle and the manifest the page loads, from this checkout.
+            - name: Build
+              run: npm run build
+
+            - name: The bench page's checks
+              run: npm run check:page
 
     rust:
         runs-on: ubuntu-24.04

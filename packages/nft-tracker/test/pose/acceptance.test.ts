@@ -68,8 +68,8 @@ import type { TrackFrameOptions } from "../../src/tracking/track_frame.js";
 import { closedFormPose } from "../../src/pose/closed_form.js";
 import { ippe } from "../../src/pose/ippe.js";
 import { POSE_AMBIGUITY_SIGMA_TRACK_PX, selectPose } from "../../src/pose/select_pose.js";
-import { PINBALL_STEP, pinballPatches } from "../fixtures/tracking_target.js";
-import { readPgm, TARGET_FIXTURE } from "../fixtures/pgm.js";
+import { PINBALL_STEP, pinballPatches } from "../../ground-truth/fixtures/tracking_target.js";
+import { readPgm, TARGET_FIXTURE } from "../../ground-truth/fixtures/pgm.js";
 import {
     mat3Mul,
     project,
@@ -78,7 +78,7 @@ import {
     scaling,
     translation,
     view,
-} from "../fixtures/warped_frames.js";
+} from "../../ground-truth/fixtures/warped_frames.js";
 import {
     exactCorrespondences,
     grid,

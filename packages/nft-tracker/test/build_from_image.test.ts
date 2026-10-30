@@ -41,7 +41,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import type { CvBackend, Descriptors, GrayImage, Keypoint } from "@webarkit/cv-backend-spec";
 import { createJsfeatNextBackend } from "@webarkit/cv-backend-jsfeatnext";
 import { buildTargetFromImage, DEFAULT_SCALE_STEP } from "../src/target/build_from_image.js";
-import { readPgm, TARGET_FIXTURE } from "./fixtures/pgm.js";
+import { readPgm, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
 
 let cv: CvBackend;
 let image: GrayImage;

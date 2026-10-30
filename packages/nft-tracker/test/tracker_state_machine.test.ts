@@ -44,87 +44,33 @@
 // count below is pinned exactly; errors are pinned below about 1.2–1.3 ×
 // their measured value, which each test states.
 
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, it, expect, beforeAll } from "vitest";
 import type { CvBackend, GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
 import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
 import { NftTracker } from "../src/tracker.js";
 import type { NftTrackerOptions, TrackResult } from "../src/tracker.js";
 import { buildTargetFromImage } from "../src/target/build_from_image.js";
-import { decode } from "../src/target/format/index.js";
 import type { TargetDb } from "../src/target/types.js";
-import { trackTarget } from "../src/tracking/track_frame.js";
-import { PINBALL_STEP, pinballPatches, pinballTrackingTarget } from "./fixtures/tracking_target.js";
-import { readPgm, TARGET_FIXTURE } from "./fixtures/pgm.js";
-import { withSeededRandom } from "./fixtures/seeded_rng.js";
-import { project, renderWarp, view } from "./fixtures/warped_frames.js";
-
-/** The reference device's camera path: 270 × 360 grey frames, the target at about 0.45. */
-const CAMERA = { width: 270, height: 360 };
-const SEED = 20260925;
-const image = readPgm(TARGET_FIXTURE);
-
-interface Pose {
-    scale: number;
-    angle: number;
-    shift: [number, number];
-    perspective?: [number, number];
-}
-
-/** One frame of a path: #63's generator, one pass of blur, σ = 2 noise, a drifting exposure. */
-function frameAt(
-    pose: Pose,
-    i: number,
-    frameSize: { width: number; height: number } = CAMERA,
-): { frame: GrayImage; H: Mat3 } {
-    const H = view({ target: image, frame: frameSize, ...pose });
-    const frame = renderWarp(image, H, {
-        ...frameSize,
-        blurPasses: 1,
-        noiseSigma: 2,
-        gain: 1 + 0.08 * Math.sin(i / 5),
-        bias: 6 * Math.sin(i / 7),
-        seed: i + 1,
-    });
-    return { frame, H };
-}
-
-/** A slow hand-held wander that starts at rest: shift ≤ 20 px, 10° of roll, ±6% scale, mild tilt. */
-function wander(i: number): Pose {
-    const c = (period: number) => 1 - Math.cos(i / period);
-    return {
-        scale: 0.45 + 0.03 * c(7),
-        angle: ((5 * Math.PI) / 180) * c(11),
-        shift: [10 * c(8), 8 * c(10)],
-        perspective: [0.0003 * c(9), -0.0002 * c(13)],
-    };
-}
-
-const smoothstep = (t: number) => {
-    const u = Math.min(1, Math.max(0, t));
-    return u * u * (3 - 2 * u);
-};
-
-/** Rest 10 frames, slide 260 px right over 40 (fully out past 250), stay out 6, slide back over 40, rest 10. */
-function leaveAndReturn(i: number): Pose {
-    const x =
-        i < 10
-            ? 0
-            : i < 50
-              ? 260 * smoothstep((i - 10) / 40)
-              : i < 56
-                ? 260
-                : i < 96
-                  ? 260 * (1 - smoothstep((i - 56) / 40))
-                  : 0;
-    return { scale: 0.45, angle: 0, shift: [x, 0] };
-}
-
-/** At rest for 5 frames, then moving right at `v` px/frame: the first moving frame's prediction is off by `v`. */
-const velocityStep =
-    (v: number) =>
-    (i: number): Pose => ({ scale: 0.45, angle: 0, shift: [i < 5 ? 0 : v * (i - 4), 0] });
+import { pinballTrackingTarget } from "../ground-truth/fixtures/tracking_target.js";
+import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import {
+    CAMERA,
+    centreMax,
+    centreRms,
+    frameAt,
+    image,
+    inView,
+    leaveAndReturn,
+    run as runPath,
+    SEED,
+    shippedLeaveAndReturn,
+    shippedTarget,
+    shippedVelocitySteps,
+    shippedWander,
+    velocityStep,
+    wander,
+} from "../ground-truth/tracker_sequences.js";
+import type { Pose } from "../ground-truth/tracker_sequences.js";
 
 let cv: CvBackend;
 let K: Mat3;
@@ -136,20 +82,9 @@ beforeAll(async () => {
     target = pinballTrackingTarget(cv);
 });
 
-/** A whole path through one tracker, under one seeded RANSAC. States as "D", "T", "L". */
-function run(t: TargetDb, path: (i: number) => Pose, n: number, options?: NftTrackerOptions) {
-    const tracker = new NftTracker(cv, t, K, options);
-    const truths: Mat3[] = [];
-    const { value: results } = withSeededRandom(SEED, () =>
-        Array.from({ length: n }, (_, i) => {
-            const { frame, H } = frameAt(path(i), i);
-            truths.push(H);
-            return tracker.process(frame, i * 33);
-        }),
-    );
-    const states = results.map((r) => r.state[0]).join("");
-    return { results, truths, states };
-}
+/** `run` on this file's backend and K. */
+const run = (t: TargetDb, path: (i: number) => Pose, n: number, options?: NftTrackerOptions) =>
+    runPath(cv, K, t, path, n, options);
 
 /** Like `run`, but each frame gets its own freshly seeded RANSAC, so one frame can be compared with a fresh tracker's. */
 function runSeededPerFrame(
@@ -164,30 +99,6 @@ function runSeededPerFrame(
         const result = withSeededRandom(SEED + i, () => tracker.process(frame, i * 33)).value;
         return { frame, result };
     });
-}
-
-const patchCentres = trackTarget(pinballPatches(), PINBALL_STEP).centres;
-
-/** RMS, frame px, over the 64 patch centres of the target, between two homographies. */
-function centreRms(A: Mat3, B: Mat3): number {
-    let s = 0;
-    for (let i = 0; i < patchCentres.length; i += 2) {
-        const [ax, ay] = project(A, patchCentres[i], patchCentres[i + 1]);
-        const [bx, by] = project(B, patchCentres[i], patchCentres[i + 1]);
-        s += (ax - bx) ** 2 + (ay - by) ** 2;
-    }
-    return Math.sqrt(s / (patchCentres.length / 2));
-}
-
-/** The largest distance, frame px, between where `A` and `B` put one patch centre. */
-function centreMax(A: Mat3, B: Mat3): number {
-    let worst = 0;
-    for (let i = 0; i < patchCentres.length; i += 2) {
-        const [ax, ay] = project(A, patchCentres[i], patchCentres[i + 1]);
-        const [bx, by] = project(B, patchCentres[i], patchCentres[i + 1]);
-        worst = Math.max(worst, Math.hypot(ax - bx, ay - by));
-    }
-    return worst;
 }
 
 function median(values: number[]): number {
@@ -263,7 +174,7 @@ describe("NftTracker on camera-path sequences", () => {
         expect(p.results.map((r) => r.tracking)).toEqual([null, null, null, null, null, null]);
     }, 60_000);
 
-    it("loses the target when it leaves the frame (LOST on frames 40–66), re-detects it on each of the 26 fast return frames, and tracks again from frame 93", () => {
+    it("loses the target when it leaves the frame (LOST on frames 39–66), detects on each of the 26 fast return frames and locks on 25, refusing frame 68's 4-inlier fit (#137), and tracks again from frame 93", () => {
         const { results, truths, states } = run(target, leaveAndReturn, 106);
         // A TRACK result is a pose the tracker vouches for: never one several
         // px off, whatever a detection seeded it with. Measured: at most
@@ -283,7 +194,10 @@ describe("NftTracker on camera-path sequences", () => {
         // The target is out of the frame from frame 47 to 58.
         expect(states.slice(47, 59)).toBe("L".repeat(12));
         // Tracking drops at frame 39, with 7 patches left in view, and that
-        // frame is detected again at once.
+        // frame is detected again at once. The detection is a 4-inlier fit,
+        // which detectTarget refuses (#137), so the frame is LOST; so is
+        // frame 68's. Measured before the gate, the two fits were 193.7 and
+        // 255.7 px RMS from the true homography.
         const firstLoss = results.findIndex((r, i) => i > 10 && r.state !== "TRACK");
         expect(firstLoss).toBe(39);
         expect(results[39].trackLoss).toBe("too-few-patches");
@@ -291,8 +205,14 @@ describe("NftTracker on camera-path sequences", () => {
         // step survives, and a lock after a detection starts with no
         // velocity: every frame re-detects until the motion slows.
         expect(states).toBe(
-            "D" + "T".repeat(38) + "D" + "L".repeat(27) + "D".repeat(26) + "T".repeat(13),
+            "D" + "T".repeat(38) + "L".repeat(28) + "DL" + "D".repeat(24) + "T".repeat(13),
         );
+        for (const i of [39, 68]) {
+            const r = results[i];
+            expect(r.ok).toBe(false);
+            if (!r.ok) expect(r.reason).toBe("too-few-inliers");
+            expect(r.numInliers).toBe(4);
+        }
     }, 60_000);
 
     it("survives a sudden velocity change of 4 px/frame; at 6 px/frame every moving frame refuses and re-detects", () => {
@@ -380,54 +300,65 @@ describe("NftTracker on camera-path sequences", () => {
         const last = withSeededRandom(SEED, () => longer.process(padded(f1), 66)).value;
         expect(last.state).toBe("TRACK");
     }, 60_000);
+
+    it("makes a minimal detection LOST with no lock (too-few-inliers), and locks on one of 5 inliers (#137)", () => {
+        // The backend's own fit, its inlier mask cut to the first `k`: the
+        // homography is right, only the count is minimal.
+        const cutTo = (k: number) => {
+            let calls = 0;
+            const backend = new Proxy(cv, {
+                get: (t, p) =>
+                    p === "estimateHomography"
+                        ? (...a: Parameters<CvBackend["estimateHomography"]>) => {
+                              calls++;
+                              const h = t.estimateHomography(...a);
+                              if (!h.ok) return h;
+                              const inliers = new Uint8Array(h.inliers.length);
+                              for (let i = 0, kept = 0; i < inliers.length && kept < k; i++) {
+                                  if (h.inliers[i]) {
+                                      inliers[i] = 1;
+                                      kept++;
+                                  }
+                              }
+                              return { ...h, inliers, numInliers: k };
+                          }
+                        : Reflect.get(t, p),
+            });
+            return { backend, calls: () => calls };
+        };
+        const { frame: f0 } = frameAt(wander(0), 0);
+        const { frame: f1 } = frameAt(wander(1), 1);
+
+        const four = cutTo(4);
+        const t4 = new NftTracker(four.backend, target, K);
+        const r0 = withSeededRandom(SEED, () => t4.process(f0, 0)).value;
+        expect(r0.state).toBe("LOST");
+        expect(r0.ok).toBe(false);
+        if (!r0.ok) expect(r0.reason).toBe("too-few-inliers");
+        expect(r0.numInliers).toBe(4);
+        expect(r0.H).toBeNull();
+        expect(r0.pose).toBeNull();
+        const r1 = withSeededRandom(SEED, () => t4.process(f1, 33)).value;
+        expect(r1.state).not.toBe("TRACK");
+        expect(four.calls()).toBe(2); // no lock: frame 1 detected again
+
+        const five = cutTo(5);
+        const t5 = new NftTracker(five.backend, target, K);
+        expect(withSeededRandom(SEED, () => t5.process(f0, 0)).value.state).toBe("DETECT");
+        expect(withSeededRandom(SEED, () => t5.process(f1, 33)).value.state).toBe("TRACK");
+        expect(five.calls()).toBe(1); // locked: frame 1 tracked, no detection
+    }, 60_000);
 });
 
-/**
- * The shipped configuration, pinned on ground truth: the committed
- * `examples/targets/pinball.wnft`, decoded, on the same sequences. Every other
- * test here runs the 64-patch fixture, which stays independent of
- * compile-target's defaults on purpose (fixtures/tracking_target.ts); this
- * block is the one that follows them, so a change to the default that moves
- * the tracker's accuracy moves a pinned number, and has to be looked at.
- *
- * Errors are measured as the fixture tests measure them, at the fixture's 64
- * patch centres, and also over those the truth puts inside the frame: a
- * target leaving the frame is tracked on the patches still in view, and the
- * pose extrapolates to the rest. With the 48 patches of M3's tuning pass
- * (round 2) that extrapolation is 3.4 px RMS over the whole target at worst,
- * 8.2 px at its far point, where the 64 of M2 were 1.2 and 2.5; the part in
- * view stays within 0.36 px (docs/benchmarks/README.md, round 4). Pinned below
- * about 1.25 times the measured value, as elsewhere in this file.
- */
+// #90's ground-truth sequences on the shipped target are defined in
+// ground-truth/tracker_sequences.ts, with their paths, their true homographies
+// and the error measures; what they return is asserted here.
 describe("the shipped target, examples/targets/pinball.wnft, on ground truth", () => {
-    const SHIPPED = fileURLToPath(
-        new URL("../../../examples/targets/pinball.wnft", import.meta.url),
-    );
     let shipped: TargetDb;
 
     beforeAll(() => {
-        const decoded = decode(new Uint8Array(readFileSync(SHIPPED)));
-        if (!decoded.ok) throw new Error(`pinball.wnft: ${decoded.error}`);
-        shipped = decoded.target;
+        shipped = shippedTarget();
     });
-
-    /** The pose error over the measuring points the truth puts inside the frame, RMS and worst. */
-    function inView(A: Mat3, truth: Mat3): { rms: number; max: number } {
-        let s = 0;
-        let n = 0;
-        let max = 0;
-        for (let i = 0; i < patchCentres.length; i += 2) {
-            const [tx, ty] = project(truth, patchCentres[i], patchCentres[i + 1]);
-            if (!(tx >= 0 && tx <= CAMERA.width - 1 && ty >= 0 && ty <= CAMERA.height - 1))
-                continue;
-            const [ax, ay] = project(A, patchCentres[i], patchCentres[i + 1]);
-            const d = Math.hypot(ax - tx, ay - ty);
-            s += d * d;
-            n++;
-            max = Math.max(max, d);
-        }
-        return { rms: n === 0 ? 0 : Math.sqrt(s / n), max };
-    }
 
     it("is the default's target: 48 patches of 16 × 16, 47 of level 0 and one of level 1", () => {
         const p = shipped.patches!;
@@ -440,10 +371,17 @@ describe("the shipped target, examples/targets/pinball.wnft, on ground truth", (
         // with 9–11 inliers left, 3.01 / 3.37 / 3.25 px RMS over the whole
         // target (worst point 7.37 / 8.24 / 7.65), 0.34–0.36 in view (worst
         // 0.72). Every other TRACK frame is within 0.55 px RMS.
-        const { results, truths, states } = run(shipped, leaveAndReturn, 106);
+        const { results, truths, states } = shippedLeaveAndReturn(cv, K);
+        // Frames 39 and 68 are 4-inlier detections, refused (#137).
         expect(states).toBe(
-            "D" + "T".repeat(38) + "D" + "L".repeat(27) + "D".repeat(26) + "T".repeat(13),
+            "D" + "T".repeat(38) + "L".repeat(28) + "DL" + "D".repeat(24) + "T".repeat(13),
         );
+        for (const i of [39, 68]) {
+            const r = results[i];
+            expect(r.ok).toBe(false);
+            if (!r.ok) expect(r.reason).toBe("too-few-inliers");
+            expect(r.numInliers).toBe(4);
+        }
         const tracked = results.flatMap((r, i) => (r.state === "TRACK" ? [i] : []));
         const whole = tracked.map((i) => centreRms(results[i].H!, truths[i]));
         const worst = tracked.map((i) => centreMax(results[i].H!, truths[i]));
@@ -458,7 +396,7 @@ describe("the shipped target, examples/targets/pinball.wnft, on ground truth", (
     }, 60_000);
 
     it("tracks a slow wander as the fixture does, within 0.11 px RMS (worst point 0.35)", () => {
-        const { results, truths, states } = run(shipped, wander, 40);
+        const { results, truths, states } = shippedWander(cv, K);
         expect(states).toBe("D" + "T".repeat(39));
         const tracked = results.flatMap((r, i) => (r.state === "TRACK" ? [i] : []));
         expect(Math.max(...tracked.map((i) => centreRms(results[i].H!, truths[i])))).toBeLessThan(
@@ -477,8 +415,9 @@ describe("the shipped target, examples/targets/pinball.wnft, on ground truth", (
             [5, "DTTTT" + "D".repeat(10)],
             [6, "DTTTT" + "D".repeat(10)],
         ];
+        const runs = shippedVelocitySteps(cv, K);
         for (const [v, pinned] of expected) {
-            const { results, truths, states } = run(shipped, velocityStep(v), 15);
+            const { results, truths, states } = runs.find((r) => r.v === v)!;
             expect(states).toBe(pinned);
             results.forEach((r, i) => {
                 if (r.state === "TRACK") expect(centreRms(r.H!, truths[i])).toBeLessThan(0.13);

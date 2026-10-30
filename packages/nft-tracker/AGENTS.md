@@ -30,19 +30,19 @@ release tags.
 From the repository root (workspaces, so `-w @webarkit/nft-tracker` targets this
 package):
 
-| Command | Notes |
-|---|---|
-| `npm run build` | Root script only. This package builds **last**, after `cv-backend-spec` and `cv-backend-jsfeatnext`; that order is load-bearing |
-| `npm run typecheck -w @webarkit/nft-tracker` | `src/` **and** `test/` |
-| `npm test -w @webarkit/nft-tracker` | Vitest |
-| `npm run fixtures -w @webarkit/nft-tracker` | Builds, then regenerates the `.wnft` corpus. See **Fixtures** below — this deletes a directory |
-| `npm run compile-target -w @webarkit/nft-tracker` | `bin/compile-target.mjs`, the target compiler |
-| `npm run validate-target -w @webarkit/nft-tracker` | `bin/validate-target.mjs`. Answers two questions, not one: is the file valid (§6.2), and can a backend actually use it (§6.3). |
+| Command                                            | Notes                                                                                                                           |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run build`                                    | Root script only. This package builds **last**, after `cv-backend-spec` and `cv-backend-jsfeatnext`; that order is load-bearing |
+| `npm run typecheck -w @webarkit/nft-tracker`       | `src/`, `test/` and `ground-truth/`                                                                                             |
+| `npm test -w @webarkit/nft-tracker`                | Vitest                                                                                                                          |
+| `npm run fixtures -w @webarkit/nft-tracker`        | Builds, then regenerates the `.wnft` corpus. See **Fixtures** below — this deletes a directory                                  |
+| `npm run compile-target -w @webarkit/nft-tracker`  | `bin/compile-target.mjs`, the target compiler                                                                                   |
+| `npm run validate-target -w @webarkit/nft-tracker` | `bin/validate-target.mjs`. Answers two questions, not one: is the file valid (§6.2), and can a backend actually use it (§6.3).  |
 
 Note which step needs what. The **build** compiles `src/` only, so it needs the
 spec's `dist/` and not any backend's — `src/` may not import one (below), and
 that is why this package compiles with `cv-backend-jsfeatnext/dist` deleted.
-The **typecheck** widens to `test/`, where a real backend is injected, so that
+The **typecheck** widens to `test/` and `ground-truth/`; in `test/` a real backend is injected, so that
 one does need the backend built.
 
 `scripts/generate-fixtures.mjs` and `bin/*.mjs` import the built `dist/`, so a
@@ -68,7 +68,7 @@ implementation of the contract or on one.
 ## Portability rules for `src/` (ADR-0001, point 7)
 
 These exist so a future Rust port stays cheap. They apply to `src/`, not to
-`test/` or `bin/`:
+`test/`, `ground-truth/` or `bin/`:
 
 - **Pure core.** No DOM, timers, `requestAnimationFrame`, workers or camera
   access. Input is a `GrayImage` and a timestamp; output is a result. The
@@ -111,12 +111,18 @@ Also:
   `crates/wnft-format/tests/real_target.rs` asserts on its contents.
   Recompiling it is a change to that test's expectations, not a refresh: update
   both in one commit, or do not recompile.
-- **The suite's tracking fixture stays at 64 patches.** `test/fixtures/tracking_target.ts`
+- **The suite's tracking fixture stays at 64 patches.** `ground-truth/fixtures/tracking_target.ts`
   is an invariant, not a default: the frozen comparisons in
-  `test/tracking/track_frame.test.ts` and `test/tracker_state_machine.test.ts` are
-  measured against it, so changing it invalidates them. Decided in PR #90, and said
-  where the suite reads it (`test/tracking/track_frame.test.ts:635`); neither is
-  restated here.
+  `test/tracking/track_frame.test.ts` and `test/tracker_state_machine.test.ts`, and
+  #90's ground truth in `ground-truth/`, which measures its errors at the fixture's
+  64 patch centres, are measured against it, so changing it invalidates them.
+  Decided in PR #90, and said where the sweep reads it
+  (`ground-truth/tracking/track_frame_sweep.ts:126`); neither is restated here.
+- **`ground-truth/` holds reference values for measurements, and no unit tests**
+  ([#130](https://github.com/webarkit/webarkit/issues/130)). Its files are a
+  campaign's inputs, frozen and attested by hash while one is open; the
+  assertions on them are in `test/`. Its [README](./ground-truth/README.md) has
+  the rule, the hashes, and how to rerun the probes that read the old paths.
 
 ## `known.ts` is one end of a hand-made link
 

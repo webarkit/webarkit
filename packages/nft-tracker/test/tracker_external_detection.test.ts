@@ -45,7 +45,9 @@
 // `detectTarget`, under a seed; the tracker's own calls draw nothing, and the
 // tests say so. The frames are the camera path of tracker_state_machine.test.ts,
 // whose helpers are copied here rather than imported, so that file stays
-// exactly as M2 left it.
+// exactly as M2 left it. Since #130 those helpers are in
+// ground-truth/tracker_sequences.ts, which can be imported; the copies stay as
+// written.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import type { CvBackend, GrayImage, Mat3 } from "@webarkit/cv-backend-spec";
@@ -55,10 +57,10 @@ import type { TrackResult } from "../src/tracker.js";
 import { detectTarget, prepareDetection } from "../src/detection.js";
 import type { Detection, DetectionSetup } from "../src/detection.js";
 import type { TargetDb } from "../src/target/types.js";
-import { pinballTrackingTarget } from "./fixtures/tracking_target.js";
-import { readPgm, TARGET_FIXTURE } from "./fixtures/pgm.js";
-import { withSeededRandom } from "./fixtures/seeded_rng.js";
-import { renderWarp, view } from "./fixtures/warped_frames.js";
+import { pinballTrackingTarget } from "../ground-truth/fixtures/tracking_target.js";
+import { readPgm, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
+import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import { renderWarp, view } from "../ground-truth/fixtures/warped_frames.js";
 
 /** The reference device's camera path: 270 × 360 grey frames, the target at about 0.45. */
 const CAMERA = { width: 270, height: 360 };
@@ -440,21 +442,28 @@ describe("NftTracker with external detection on camera-path sequences", () => {
     // M2's pinned sequences (tracker_state_machine.test.ts), which the
     // per-frame seeding used here reproduces exactly — measured, so a change
     // on either side of the comparison is visible.
-    it.each<[string, Path, number, string]>([
-        ["wander", wander, 40, "D" + "T".repeat(39)],
+    // The last element: M2's frames whose detection is a 4-inlier fit, refused (#137).
+    it.each<[string, Path, number, string, number[]]>([
+        ["wander", wander, 40, "D" + "T".repeat(39), []],
         [
             "leaveAndReturn",
             leaveAndReturn,
             106,
-            "D" + "T".repeat(38) + "D" + "L".repeat(27) + "D".repeat(26) + "T".repeat(13),
+            "D" + "T".repeat(38) + "L".repeat(28) + "DLL" + "D".repeat(23) + "T".repeat(13),
+            [39, 68, 69],
         ],
-        ["velocityStep(6)", velocityStep(6), 15, "DTTTT" + "D".repeat(10)],
+        ["velocityStep(6)", velocityStep(6), 15, "DTTTT" + "D".repeat(10), []],
     ])(
         "at latency 1 reproduces M2 on %s: the same TRACK frames bit for bit, its detections one frame later, LOST where M2 detected",
-        (_, path, n, pinned) => {
+        (_, path, n, pinned, refused) => {
             const m2 = runM2(target, path, n);
             const ext = runExternal(target, path, n, 1);
             expect(m2.states).toBe(pinned);
+            const tooFew = m2.results.flatMap((r, i) =>
+                !r.ok && r.reason === "too-few-inliers" ? [i] : [],
+            );
+            expect(tooFew).toEqual(refused);
+            for (const i of refused) expect(m2.results[i].numInliers).toBe(4);
             expect(ext.states).toBe(pinned.replace(/D/g, "L"));
             m2.results.forEach((a, i) => {
                 const b = ext.results[i];

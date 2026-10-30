@@ -43,8 +43,8 @@ import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeat
 import { NftTracker } from "../src/tracker.js";
 import { buildTargetFromImage } from "../src/target/build_from_image.js";
 import type { TargetDb } from "../src/target/types.js";
-import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "./fixtures/pgm.js";
-import { withSeededRandom } from "./fixtures/seeded_rng.js";
+import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
+import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
 
 let cv: CvBackend;
 let target: TargetDb;

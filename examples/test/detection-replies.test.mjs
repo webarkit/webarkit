@@ -212,6 +212,23 @@ describe("routeReply", () => {
         expect(route.message).toMatch(/job 1 of run 1/);
     });
 
+    // #120 (RR5): the test above uses a job consumed while the run was live. A job whose reply
+    // arrived and was held for the next frame is discarded at Stop too, but it was answered: a
+    // second reply to it is no late reply, and fails the worker.
+    it("fails a reply to a job that was answered and held when its run ended", () => {
+        const a = newRun(1);
+        const held = post(a);
+        a.policy.arrive({});
+        held.arrivedAtMs = 120;
+        a.jobInFlight = null;
+        end(a);
+        held.outcome = "discardedAtStop"; // as the page's endRun marks its held job
+        const route = routeReply(result(a, held), { liveRunId: null, runsById: byId(a) });
+        expect(route).toMatchObject({ kind: "fail", run: a });
+        expect(route.message).toMatch(/job 1 of run 1, which ended with no such job unanswered/);
+        expect(a.staleReplies).toBe(0);
+    });
+
     it("leaves every run's accounting as it was when a late reply is routed and counted", () => {
         const a = newRun(1);
         const discarded = post(a);
@@ -234,7 +251,9 @@ describe("routeReply", () => {
     it("routes ready, and an error that names no job, to the init in progress; fails any other type", () => {
         const none = { liveRunId: null, runsById: new Map() };
         expect(routeReply({ type: "ready", targetSha256: "ab" }, none)).toEqual({ kind: "init" });
-        expect(routeReply({ type: "error", message: "bad target" }, none)).toEqual({ kind: "init" });
+        expect(routeReply({ type: "error", message: "bad target" }, none)).toEqual({
+            kind: "init",
+        });
         const odd = routeReply({ type: "progress" }, none);
         expect(odd.kind).toBe("fail");
         expect(odd.message).toMatch(/unknown type: progress/);
@@ -274,7 +293,9 @@ describe("failedRuns", () => {
         const c = ended(2);
         expect(failedRuns(failed, { liveRun: null, lastRun: c })).toEqual([c]);
         expect(failedRuns(live(4), { liveRun: null, lastRun: null })).toEqual([]);
-        expect(failedRuns(null, { liveRun: null, lastRun: ended(5, { path: "sync" }) })).toEqual([]);
+        expect(failedRuns(null, { liveRun: null, lastRun: ended(5, { path: "sync" }) })).toEqual(
+            [],
+        );
         // No run at all: nothing to fail, and the page only shows the failure.
         expect(failedRuns(null, { liveRun: null, lastRun: null })).toEqual([]);
     });

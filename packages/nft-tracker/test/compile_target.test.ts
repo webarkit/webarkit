@@ -64,7 +64,7 @@ import { decode } from "../src/target/format/decode.js";
 import type { DecodeResult } from "../src/target/format/errors.js";
 import { buildFramePyramid, levelScale } from "../src/index.js";
 import type { PatchTable } from "../src/index.js";
-import { readPgm, TARGET_FIXTURE } from "./fixtures/pgm.js";
+import { readPgm, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
 
 const SCRIPT = fileURLToPath(new URL("../bin/compile-target.mjs", import.meta.url));
 const IMAGE = fileURLToPath(new URL("../../../examples/images/pinball.jpg", import.meta.url));

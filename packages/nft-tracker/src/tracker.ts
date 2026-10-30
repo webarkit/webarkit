@@ -132,11 +132,12 @@
  * **On determinism.** Point 7 also asks that every random choice go through an
  * injectable RNG. This class makes none: the one random choice in the pipeline
  * is the minimal-sample draw inside `estimateHomography`, which is below the
- * contract, and `RansacOptions` carries no RNG for a caller to seed. So there
- * is deliberately no `rng` option here — it would accept a generator and have
- * nowhere to pass it. When the contract gains the field this class forwards
- * it and the option appears; until then `process` is exactly as reproducible
- * as the backend's RANSAC is, and the tests are explicit about that. The
+ * contract. Since webarkit/webarkit#24 the contract's `RansacOptions` carries
+ * an `rng` a caller can seed, but `detectTarget` does not pass one yet, so
+ * there is no `rng` option here yet either — it would accept a generator and
+ * have nowhere to pass it. Until `detectTarget` forwards one, `process` is
+ * exactly as reproducible as the backend's RANSAC is, and the tests are
+ * explicit about that. The
  * tracking state draws nothing: a sequence of frames gives the same states
  * and homographies, bit for bit, for the same RANSAC draws in its
  * detections.
@@ -147,6 +148,8 @@ import { POSE_AMBIGUITY_SIGMA_TRACK_PX, selectPose, targetGrid } from "./pose/se
 import type { PoseSelection } from "./pose/select_pose.js";
 import { conditioning, conditioningRefuses } from "./pose/conditioning.js";
 import type { ConditioningReading, ConditioningThresholds } from "./pose/conditioning.js";
+import { PoseFilter } from "./pose/pose_filter.js";
+import type { PoseFilterLayers } from "./pose/pose_filter.js";
 import {
     DEFAULT_MAX_SCENE_KEYPOINTS,
     DEFAULT_RANSAC_THRESHOLD,
@@ -341,12 +344,100 @@ export type ConditioningMode = ConditioningOptions["mode"];
  */
 export const DEFAULT_CONDITIONING: ConditioningOptions = Object.freeze({ mode: "off" });
 
+/**
+ * A layer of the pose filter: `minCutOff` in Hz, finite and `> 0`; `beta`
+ * per unit of the layer's derivative per second (per rad/s for the rotation,
+ * per model unit/s for the translation), finite and `≥ 0`. An omitted
+ * parameter takes its `DEFAULT_POSE_FILTER_` constant.
+ */
+export interface PoseFilterLayerOptions {
+    readonly minCutOff?: number;
+    readonly beta?: number;
+}
+
+/**
+ * One Euro filtering of the pose (#106; M5), the rotation in its tangent
+ * space, on every result after the pose is selected
+ * (`src/pose/pose_filter.ts`; the treatment registered in
+ * `docs/benchmarks/2026-10-29-106-stage3-registration.md`).
+ *
+ * - `"off"`, the default: nothing is computed, and `pose` is
+ *   `poseSelection.pose` on every result.
+ * - `"one-euro"`: `pose` is filtered; `poseSelection.pose` stays the selected,
+ *   unfiltered pose, and `H`, the state and every other field are what the
+ *   tracker computes without the filter, which feeds nothing back. Cutoffs
+ *   are in Hz and `timestampMs` is read as **milliseconds**: the period is
+ *   the difference of two frames' `timestampMs` divided by 1000. An omitted
+ *   parameter takes the registered derived value, its `DEFAULT_POSE_FILTER_`
+ *   constant; both layers are always on.
+ *
+ * With the filter on, a `timestampMs` that is not finite is a contract
+ * violation: `process` throws a `RangeError` naming it, before the frame is
+ * processed (the maintainer's ruling of 2026-10-30 on #199); it is not a
+ * reset cause, and the reset rule is the registered one. A cutoff that
+ * overflows — extreme finite parameters, or a period that overflows between
+ * finite timestamps — makes the filter follow its input on that frame (the
+ * smoothing factor takes its limit, 1). Two increasing finite timestamps so
+ * close that their period underflows to 0 (about 1e-320 ms apart) are not
+ * guarded, and give a `NaN` pose on that frame.
+ * A key the option does not read, in it or in `rotation` or `translation`,
+ * is refused by name.
+ *
+ * The filter resets, and the frame's pose passes through unfiltered, on a
+ * result that is not `"TRACK"` (a `"DETECT"` frame does not seed it; the
+ * next `"TRACK"` does), on `pose.good === false`, and on a `timestampMs` that
+ * does not exceed the previous frame's, whatever that frame was; the frame
+ * after a reset seeds the filter with its own pose. Its state lives on the
+ * tracker, so a new tracker starts unseeded. It reads no clock, and its step
+ * is not in `timings`.
+ */
+export type PoseFilterOptions =
+    | { readonly mode: "off" }
+    | {
+          readonly mode: "one-euro";
+          readonly rotation?: PoseFilterLayerOptions;
+          readonly translation?: PoseFilterLayerOptions;
+          /** The derivative's cutoff, Hz, shared by both layers. */
+          readonly dCutOff?: number;
+      };
+
+/**
+ * Off: the pose is the tracker's as it was before the filter existed (the
+ * ruling of 2026-10-29 on #106, decision 2).
+ */
+export const DEFAULT_POSE_FILTER: PoseFilterOptions = Object.freeze({ mode: "off" });
+
+/**
+ * The derived values, `"one-euro"` mode's defaults: each layer's from its own
+ * sweep in #197's probe, by the derivation rule the maintainer ruled on
+ * 2026-10-29 (`docs/benchmarks/2026-10-29-106-stage3-registration.md`, "The
+ * derived parameters"). Three are near what selected them: the translation's
+ * step ratio at rest, 0.244 against 0.25; the rotation's `wander` difference,
+ * 0.4789 against 0.5 px; and `beta` 0.1 for the translation is the probe
+ * grid's largest value, so it is set by the grid's edge.
+ */
+export const DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF = 1;
+/** Per rad/s. See {@link DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF}. */
+export const DEFAULT_POSE_FILTER_ROTATION_BETA = 10;
+/** Hz. See {@link DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF}. */
+export const DEFAULT_POSE_FILTER_TRANSLATION_MIN_CUTOFF = 1;
+/** Per model unit/s. See {@link DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF}. */
+export const DEFAULT_POSE_FILTER_TRANSLATION_BETA = 0.1;
+/** Hz, shared by both layers: the probe did not vary it. See {@link DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF}. */
+export const DEFAULT_POSE_FILTER_D_CUTOFF = 1;
+
 /** Why a frame produced no homography. */
 export type TrackFailure =
     /** Fewer than the 4 correspondences a homography needs. */
     | "too-few-matches"
     /** Enough matches, but RANSAC found no model they agree on. */
     | "no-consensus"
+    /**
+     * RANSAC accepted a model on fewer than `MIN_DETECTION_INLIERS` inliers,
+     * a minimal fit, and the detection refused it: no lock was set and no
+     * pose computed. `numInliers` is the fit's own count.
+     */
+    | "too-few-inliers"
     /**
      * No lock, and no detection: with `externalDetection`, the tracker runs
      * none itself, and none was handed to `process` this frame. The result
@@ -422,6 +513,13 @@ export interface NftTrackerOptions {
      */
     readonly conditioning?: ConditioningOptions;
     /**
+     * See {@link PoseFilterOptions} and {@link DEFAULT_POSE_FILTER}. In
+     * `"one-euro"` mode `timestampMs` is read as milliseconds and the cutoffs
+     * are in Hz; a parameter given with `mode: "off"` is refused, as
+     * `conditioning` refuses a threshold outside its refusing state.
+     */
+    readonly poseFilter?: PoseFilterOptions;
+    /**
      * A clock in milliseconds, e.g. `() => performance.now()`. When given,
      * every result carries {@link TrackTimings}; the tracker reads no clock of
      * its own (ADR-0001 point 7).
@@ -431,7 +529,7 @@ export interface NftTrackerOptions {
 
 /** Where a frame's time went, ms, by the `clock` option. */
 export interface TrackTimings {
-    /** The whole `process` call. */
+    /** The whole `process` call, the pose filter's step excepted (the `poseFilter` option). */
     readonly totalMs: number;
     /** The detection pipeline, pose included, when it ran this frame; else 0. */
     readonly detectMs: number;
@@ -530,17 +628,23 @@ export type TrackResult =
            */
           readonly H: Mat3;
           /**
-           * Decomposition of {@link H}. Present whenever `ok`, but check
-           * `pose.good`: a homography RANSAC agreed on can still be
-           * geometrically degenerate.
+           * The frame's pose. With the `poseFilter` option off, the default,
+           * the decomposition of {@link H}, `poseSelection.pose` itself. With
+           * it on, that pose filtered over the frames before it, except on a
+           * frame the filter passes through — a reset frame, and the seeding
+           * frame after it — where it is `poseSelection.pose` itself. Present
+           * whenever `ok`, but check `pose.good`: a homography RANSAC agreed
+           * on can still be geometrically degenerate.
            */
           readonly pose: Pose;
           /**
-           * How {@link pose} was chosen: IPPE's two candidates and the
-           * selection rule's outcome (#105; M4's step 3). `pose` is
-           * `poseSelection.pose`. The tracker makes no `poseFromHomography`
-           * call: the pose is computed here, above the contract, from `H`
-           * and the frame's correspondences.
+           * How the frame's pose was chosen: IPPE's two candidates and the
+           * selection rule's outcome (#105; M4's step 3). `poseSelection.pose`
+           * is the decomposition of {@link H}, never filtered: it is
+           * {@link pose} itself with the `poseFilter` option off, and on a
+           * frame the filter passes through. The tracker makes no
+           * `poseFromHomography` call: the pose is computed here, above the
+           * contract, from `H` and the frame's correspondences.
            */
           readonly poseSelection: PoseSelection;
           /**
@@ -602,6 +706,8 @@ export class NftTracker {
     /** The conditioning signal's state: the `conditioning` option's `mode`, `"off"` by default. */
     readonly conditioningMode: ConditioningMode;
     private readonly conditioningOptions: ConditioningOptions;
+    /** The pose filter and its state, with the `poseFilter` option on; else `null`. */
+    private readonly poseFilter: PoseFilter | null;
     /** The target's patches with their geometry, when this tracker tracks. */
     private readonly track: TrackTarget | null;
     private readonly trackOptions: TrackFrameOptions;
@@ -663,6 +769,7 @@ export class NftTracker {
         this.externalDetection = tracking.externalDetection;
         this.conditioningOptions = tracking.conditioning;
         this.conditioningMode = tracking.conditioning.mode;
+        this.poseFilter = tracking.poseFilter === null ? null : new PoseFilter(tracking.poseFilter);
         const [width, height] = target.pyramid.levelSizes[0];
         this.grid = targetGrid(width, height);
     }
@@ -700,6 +807,10 @@ export class NftTracker {
      * @param frame       The frame, a `GrayImage`.
      * @param timestampMs The frame's timestamp, in the caller's units; echoed
      *                    back, and the reference for `detectionLatencyMs`.
+     *                    With the `poseFilter` option on, read as milliseconds,
+     *                    and must be finite: one that is not is a
+     *                    `RangeError`, thrown before the frame is processed
+     *                    (see {@link PoseFilterOptions}).
      * @param detection   A detection computed elsewhere — by `detectTarget`,
      *                    in a worker the application owns — of an earlier
      *                    frame. Consumed when this frame ends without a lock
@@ -707,6 +818,31 @@ export class NftTracker {
      *                    Trusted as `detectTarget` produced it.
      */
     process(frame: GrayImage, timestampMs: number, detection?: Detection | null): TrackResult {
+        const f = this.poseFilter;
+        // With the filter on, a timestamp that is not finite is a contract
+        // violation, refused before the frame is processed (the maintainer's
+        // ruling of 2026-10-30 on #199): not a reset cause, so the registered
+        // reset rule is unchanged. With the filter off it is echoed, as before.
+        if (f !== null && !Number.isFinite(timestampMs)) {
+            throw new RangeError(
+                `NftTracker: timestampMs must be finite with the poseFilter option on, got ${timestampMs}`,
+            );
+        }
+        const r = this.processFrame(frame, timestampMs, detection);
+        if (f === null) return r;
+        // Every result reaches the filter, a "LOST" one included: its
+        // timestamp is the reset rule's reference for the next frame. Here
+        // `r.pose` is still `r.poseSelection.pose`, the unfiltered pose.
+        const pose = f.apply(r);
+        return r.ok && pose !== r.pose ? { ...r, pose: pose! } : r;
+    }
+
+    /** {@link process} before the pose filter: every result's `pose` is its `poseSelection.pose`. */
+    private processFrame(
+        frame: GrayImage,
+        timestampMs: number,
+        detection?: Detection | null,
+    ): TrackResult {
         const clock = this.clock;
         const start = clock === null ? 0 : clock();
         let trackLoss: TrackLoss | null = null;
@@ -1036,8 +1172,116 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
     readonly clock: (() => number) | null;
     readonly track: TrackFrameOptions;
     readonly conditioning: ConditioningOptions;
+    readonly poseFilter: PoseFilterLayers | null;
 } {
     const o = options ?? {};
+    // A cutoff is a finite number > 0, Hz; a beta a finite number >= 0. NaN,
+    // an infinity and a non-number are refused: an infinite cutoff makes
+    // One Euro's α = ∞ / ∞, which no layer may reach through the option.
+    const cutoff = (name: string, v: unknown): number => {
+        if (!(typeof v === "number" && v > 0 && Number.isFinite(v))) {
+            throw new RangeError(
+                `NftTracker: poseFilter.${name} must be a finite number > 0 (Hz), got ${String(v)}`,
+            );
+        }
+        return v;
+    };
+    const beta = (name: string, v: unknown): number => {
+        if (!(typeof v === "number" && v >= 0 && Number.isFinite(v))) {
+            throw new RangeError(
+                `NftTracker: poseFilter.${name} must be a finite number >= 0, got ${String(v)}`,
+            );
+        }
+        return v;
+    };
+    // A key the pose filter does not read is refused by name, inside
+    // `poseFilter` and its `rotation` and `translation` (the maintainer's
+    // ruling of 2026-10-30 on #199): a misspelt parameter would otherwise run
+    // at its default without a word. Only there; the other options keep
+    // ignoring keys they do not read.
+    const knownKeys = (path: string, v: object, keys: readonly string[]): void => {
+        for (const k of Object.keys(v)) {
+            if (keys.includes(k)) continue;
+            const near = keys.find((x) => x.toLowerCase() === k.toLowerCase());
+            throw new RangeError(
+                `NftTracker: ${path}.${k} is not a known key; ${near === undefined ? `the keys are ${keys.join(", ")}` : `did you mean ${near}?`}`,
+            );
+        }
+    };
+    // An omitted layer takes both defaults. `null` is refused, not read as
+    // omitted: on the filter module it means a layer that passes through,
+    // which only the module may set (ruling C, the Stage 3 registration).
+    const layer = (
+        name: string,
+        v: unknown,
+        minCutOff: number,
+        b: number,
+    ): { readonly minCutOff: number; readonly beta: number } => {
+        if (v === undefined) return { minCutOff, beta: b };
+        if (typeof v !== "object" || v === null) {
+            throw new RangeError(
+                `NftTracker: poseFilter.${name} must be an object with minCutOff and beta, got ${String(v)}`,
+            );
+        }
+        knownKeys(`poseFilter.${name}`, v, ["minCutOff", "beta"]);
+        const l = v as { minCutOff?: unknown; beta?: unknown };
+        return {
+            minCutOff: cutoff(
+                `${name}.minCutOff`,
+                l.minCutOff === undefined ? minCutOff : l.minCutOff,
+            ),
+            beta: beta(`${name}.beta`, l.beta === undefined ? b : l.beta),
+        };
+    };
+    const poseFilterLayers = (v: unknown): PoseFilterLayers | null => {
+        const p =
+            typeof v === "object" && v !== null
+                ? (v as {
+                      mode?: unknown;
+                      rotation?: unknown;
+                      translation?: unknown;
+                      dCutOff?: unknown;
+                  })
+                : {};
+        knownKeys("poseFilter", p, ["mode", "rotation", "translation", "dCutOff"]);
+        if (p.mode === "off") {
+            // A parameter given with the filter off would be dropped
+            // silently, and a caller who gave one meant to filter.
+            if (
+                p.rotation !== undefined ||
+                p.translation !== undefined ||
+                p.dCutOff !== undefined
+            ) {
+                throw new RangeError(
+                    'NftTracker: poseFilter.rotation, translation and dCutOff are only read in mode "one-euro", got one with mode "off"',
+                );
+            }
+            return null;
+        }
+        if (p.mode === "one-euro") {
+            return {
+                rotation: layer(
+                    "rotation",
+                    p.rotation,
+                    DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF,
+                    DEFAULT_POSE_FILTER_ROTATION_BETA,
+                ),
+                translation: layer(
+                    "translation",
+                    p.translation,
+                    DEFAULT_POSE_FILTER_TRANSLATION_MIN_CUTOFF,
+                    DEFAULT_POSE_FILTER_TRANSLATION_BETA,
+                ),
+                dCutOff: cutoff(
+                    "dCutOff",
+                    p.dCutOff === undefined ? DEFAULT_POSE_FILTER_D_CUTOFF : p.dCutOff,
+                ),
+            };
+        }
+        throw new RangeError(
+            `NftTracker: poseFilter.mode must be "off" or "one-euro", got ${String(p.mode)}`,
+        );
+    };
     // A threshold is a number >= 0; +Infinity leaves that quantity unbounded.
     // NaN, a negative number, -Infinity and a non-number are refused.
     const threshold = (name: string, v: unknown): number => {
@@ -1109,6 +1353,7 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
         externalDetection: flag("externalDetection", o.externalDetection ?? false),
         clock: o.clock ?? null,
         conditioning: conditioningOptions(o.conditioning ?? DEFAULT_CONDITIONING),
+        poseFilter: poseFilterLayers(o.poseFilter ?? DEFAULT_POSE_FILTER),
         track: {
             maxFrameLevels: integer(
                 "maxFrameLevels",

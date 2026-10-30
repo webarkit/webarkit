@@ -34,7 +34,7 @@ WASM-specific types: each backend converts internally at its own boundary.
 ## Capabilities and negotiation
 
 Backends are interchangeable because they share these signatures — but only as
-far as they share *capabilities*. The moment one backend has a descriptor
+far as they share _capabilities_. The moment one backend has a descriptor
 another lacks, signatures stop being enough, so what a backend implements is
 part of the contract:
 
@@ -42,7 +42,8 @@ part of the contract:
 const cv = await createBackend();
 cv.capabilities;
 // { name: 'jsfeatnext', detectors: ['fast'],
-//   descriptors: ['orb'], defaultDescriptor: 'orb', matchFilters: [] }
+//   descriptors: ['orb'], defaultDescriptor: 'orb', matchFilters: [],
+//   deterministicRansac: true }
 ```
 
 (`detectors` names only `fast` here even though the jsfeatNext adapter's underlying
@@ -60,12 +61,12 @@ to turn silent failures into loud ones:
   descriptor it does happen to have — choosing a fallback is the caller's
   decision, made against `capabilities`:
 
-  ```ts
-  const preferred: DescriptorKind[] = ["teblid", "freak", "orb"];
-  const kind =
-    preferred.find((k) => cv.capabilities.descriptors.includes(k)) ??
-    cv.capabilities.defaultDescriptor;
-  ```
+    ```ts
+    const preferred: DescriptorKind[] = ["teblid", "freak", "orb"];
+    const kind =
+        preferred.find((k) => cv.capabilities.descriptors.includes(k)) ??
+        cv.capabilities.defaultDescriptor;
+    ```
 
 - **`match` rejects descriptor sets that cannot be compared**, throwing
   `DescriptorMismatchError` when the `kind` or `norm` differ. This guards the
@@ -73,6 +74,24 @@ to turn silent failures into loud ones:
   both Hamming-compared, so matching one against the other throws nothing and
   returns confident, meaningless distances — RANSAC finds no consensus and the
   tracker simply never locks on, with nothing anywhere pointing at the cause.
+
+## Reproducible RANSAC
+
+`estimateHomography` samples at random. `RansacOptions.rng` lets the caller
+supply the source: a function returning uniform values in [0, 1), used for
+RANSAC sampling. Absent, the backend picks its own, as it always has.
+
+```ts
+const h = cv.estimateHomography(src, dst, { rng: mulberry32(seed) });
+```
+
+A backend that honours it declares `deterministicRansac: true`, and then the
+same inputs with an RNG in the same state give the same result. A backend that
+does not honour it ignores the option, as it would any unknown one, and leaves
+the flag out — absent means `false`. This is the one option that is ignored
+rather than refused: the fit is valid either way, only its reproducibility
+differs, so a caller that needs it checks `cv.capabilities.deterministicRansac`
+([#24](https://github.com/webarkit/webarkit/issues/24)).
 
 ## Match filtering
 
@@ -105,12 +124,12 @@ they don't belong in it.
 import type { CvBackend } from "@webarkit/cv-backend-spec";
 
 async function run(createBackend: () => Promise<CvBackend>) {
-  const cv = await createBackend(); // e.g. from @webarkit/jsfeat-next-cv-backend
-  const kps = cv.detect(frame);
-  const { descriptors } = cv.detectAndCompute
-    ? cv.detectAndCompute(frame)
-    : { descriptors: cv.describe(frame, kps) };
-  // ...
+    const cv = await createBackend(); // e.g. from @webarkit/jsfeat-next-cv-backend
+    const kps = cv.detect(frame);
+    const { descriptors } = cv.detectAndCompute
+        ? cv.detectAndCompute(frame)
+        : { descriptors: cv.describe(frame, kps) };
+    // ...
 }
 ```
 
@@ -125,11 +144,11 @@ back and then reused.
 
 **`estimateHomography` is the one exception, and it is named rather than left
 out** — in a contract, an omission reads as a permission. RANSAC draws minimal
-sets at random, so it is not a function of its arguments alone. It becomes pure
-*for a given RNG* as soon as one can be injected
-([#24](https://github.com/webarkit/webarkit/issues/24)), and joins the check
-then. Nothing else is exempt: `filterMatches` and `detectAndCompute` are
-optional, not impure.
+sets at random, so it is not a function of its arguments alone. It is pure
+_for a given RNG_ on a backend that declares `deterministicRansac` and is passed
+`RansacOptions.rng` ([#24](https://github.com/webarkit/webarkit/issues/24)); it
+has not joined the check yet. Nothing else is exempt: `filterMatches` and
+`detectAndCompute` are optional, not impure.
 
 Every backend should run the check. It ships as its own entry point, so
 importing the contract itself still pulls in no runtime code:
@@ -143,8 +162,8 @@ expect(violations).toEqual([]);
 // And refuse a vacuous pass: an image yielding no keypoints yields no
 // descriptors and no matches, and every comparison then trivially succeeds.
 expect(coverage.keypoints).toBeGreaterThan(0);
-expect(coverage.decoyDiffers).toBe(true);  // the intervening call saw other pixels
-expect(coverage.poseGood).toBe(true);      // the pose probe decomposed something
+expect(coverage.decoyDiffers).toBe(true); // the intervening call saw other pixels
+expect(coverage.poseGood).toBe(true); // the pose probe decomposed something
 ```
 
 It calls each of the three twice on identical inputs **with an unrelated call

@@ -36,7 +36,8 @@ change, it changes with a new measurement attached.
 ## Capability negotiation must stay honest
 
 `capabilities` in `src/jsfeatnext_backend.ts` currently declares
-`detectors: ["fast"]`, `descriptors: ["orb"]`, `matchFilters: []`.
+`detectors: ["fast"]`, `descriptors: ["orb"]`, `matchFilters: []`,
+`deterministicRansac: true` (`RansacOptions.rng` reaches `ransac_params_t`, #24).
 
 **Never add an entry the API cannot actually reach.** `matchFilters` is empty
 because `filterMatches` is not implemented here — that empty array is a true
@@ -51,11 +52,11 @@ descriptor family is only finished when `capabilities` says so.
 
 ## Commands
 
-| Command | Notes |
-|---|---|
-| `npm run build` (root) | Builds the spec first; do this rather than the per-package build when anything in the spec has moved |
-| `npm run typecheck -w @webarkit/cv-backend-jsfeatnext` | Needs the spec's `dist/` to resolve |
-| `npm test -w @webarkit/cv-backend-jsfeatnext` | Vitest. Tests import this package's own `src/`, not its `dist/` |
+| Command                                                | Notes                                                                                                |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `npm run build` (root)                                 | Builds the spec first; do this rather than the per-package build when anything in the spec has moved |
+| `npm run typecheck -w @webarkit/cv-backend-jsfeatnext` | Needs the spec's `dist/` to resolve                                                                  |
+| `npm test -w @webarkit/cv-backend-jsfeatnext`          | Vitest. Tests import this package's own `src/`, not its `dist/`                                      |
 
 ## Keeping the README true
 

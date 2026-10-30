@@ -26,7 +26,7 @@ typed arrays and plain structs. No `matrix_t`, nothing jsfeatNext-specific,
 nothing WASM-specific. If a type can only be produced by one backend, it does
 not belong here.
 
-"Implementation" means *of the contract*. Code that checks conformance **to**
+"Implementation" means _of the contract_. Code that checks conformance **to**
 the contract is the exception, and `src/purity.ts` is the one that exists: it
 contains no computer vision and names no backend, it calls the contract's own
 methods and compares their outputs. A contract nobody can conformance-check is
@@ -47,8 +47,8 @@ or from `examples/`.
 **The public surface is `detect`, `describe`, `match`, `estimateHomography`,
 `poseFromHomography`, and the optional `filterMatches`.** Two kinds of change
 to it, and they do not carry the same bar. The contract's own header draws the
-line: *"Omitting an option is always valid and selects the backend default, so
-a caller written against the unamended contract keeps working unchanged."*
+line: _"Omitting an option is always valid and selects the backend default, so
+a caller written against the unamended contract keeps working unchanged."_
 
 **Adding an optional field or method, negotiated through a capability, is an
 issue and a PR.** No ADR. That is how this contract has actually grown — the
@@ -94,11 +94,11 @@ container versions against each other.
 
 ## Commands
 
-| Command | Notes |
-|---|---|
-| `npm run build -w @webarkit/cv-backend-spec` | Or the root `npm run build`, which runs this first |
-| `npm run typecheck -w @webarkit/cv-backend-spec` | `src/` **and** `test/` |
-| `npm test -w @webarkit/cv-backend-spec` | Vitest |
+| Command                                          | Notes                                              |
+| ------------------------------------------------ | -------------------------------------------------- |
+| `npm run build -w @webarkit/cv-backend-spec`     | Or the root `npm run build`, which runs this first |
+| `npm run typecheck -w @webarkit/cv-backend-spec` | `src/` **and** `test/`                             |
+| `npm test -w @webarkit/cv-backend-spec`          | Vitest                                             |
 
 After changing anything in `src/`, run the **root** `npm run build`,
 `npm run typecheck` and `npm test` — not this package's alone. The point of a

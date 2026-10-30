@@ -55,7 +55,8 @@ export function instrumentBackend(cv, timings, clock = () => performance.now()) 
         detect: (...args) => time("detect", () => cv.detect(...args)),
         describe: (...args) => time("describe", () => cv.describe(...args)),
         match: (...args) => time("match", () => cv.match(...args)),
-        estimateHomography: (...args) => time("estimateHomography", () => cv.estimateHomography(...args)),
+        estimateHomography: (...args) =>
+            time("estimateHomography", () => cv.estimateHomography(...args)),
         poseFromHomography: (...args) => time("pose", () => cv.poseFromHomography(...args)),
     };
     if (cv.filterMatches) {

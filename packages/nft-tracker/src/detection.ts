@@ -89,6 +89,20 @@ export const DEFAULT_RATIO = 0.8;
 export const DEFAULT_RANSAC_THRESHOLD = 4;
 
 /**
+ * The fewest RANSAC inliers {@link detectTarget} accepts a homography on.
+ *
+ * A homography fitted on four correspondences reproduces them exactly, so its
+ * residual on its own points is zero by construction and RANSAC's threshold
+ * cannot refuse it: a minimal fit is accepted whether it is right or not
+ * (webarkit/webarkit#137). Five is the fewest at which a point outside the
+ * minimal sample can disagree with the fit. The value is the maintainer's
+ * ruling on #137's probe (`docs/benchmarks/2026-10-28-137-stage1-pipeline-probe.md`,
+ * its G5), and it is a constant rather than a tracker option, so that no run
+ * can tune it.
+ */
+export const MIN_DETECTION_INLIERS = 5;
+
+/**
  * A `BitsDescriptorSet` whose `kind` and `norm` a backend has accepted.
  *
  * `DescriptorSet` types those two as open unions, because the file format has
@@ -250,7 +264,13 @@ export type DetectionFailure =
     /** Fewer than the 4 correspondences a homography needs. */
     | "too-few-matches"
     /** Enough matches, but RANSAC found no model they agree on. */
-    | "no-consensus";
+    | "no-consensus"
+    /**
+     * RANSAC accepted a model on fewer than {@link MIN_DETECTION_INLIERS}
+     * inliers: a minimal fit, whose residual is zero by construction.
+     * `numInliers` is the fit's own count.
+     */
+    | "too-few-inliers";
 
 /**
  * What {@link detectTarget} found in one frame.
@@ -351,7 +371,8 @@ export function prepareDetection(
 
 /**
  * The detection pipeline on one frame: detect, describe, match per level,
- * filter, estimate. M1's pipeline, and the one `NftTracker` runs on a frame
+ * filter, estimate, and refuse a fit on fewer than
+ * {@link MIN_DETECTION_INLIERS} inliers. M1's pipeline, and the one `NftTracker` runs on a frame
  * without a lock — the same function, so the two cannot drift.
  *
  * This is the "whole pipeline step" the contract's boundary note means by
@@ -364,9 +385,9 @@ export function prepareDetection(
  * posts to a worker (ADR-0001 point 7).
  *
  * The one random choice is RANSAC's minimal-sample draw inside
- * `estimateHomography`, below the contract and not yet seedable through it
- * (webarkit/webarkit#24); everything else is a pure function of its
- * arguments.
+ * `estimateHomography`, below the contract. It is seedable through
+ * `RansacOptions.rng` since webarkit/webarkit#24, but `detectTarget` does not
+ * pass one yet; everything else is a pure function of its arguments.
  */
 export function detectTarget(
     cv: CvBackend,
@@ -425,6 +446,17 @@ export function detectTarget(
             ok: false,
             timestampMs,
             reason: "no-consensus",
+            numMatches: matches.length,
+            numInliers: h.numInliers,
+            sceneKeypoints,
+        };
+    }
+    // A fit RANSAC accepted on a minimal sample: see MIN_DETECTION_INLIERS.
+    if (h.numInliers < MIN_DETECTION_INLIERS) {
+        return {
+            ok: false,
+            timestampMs,
+            reason: "too-few-inliers",
             numMatches: matches.length,
             numInliers: h.numInliers,
             sceneKeypoints,

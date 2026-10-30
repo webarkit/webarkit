@@ -60,8 +60,8 @@ import {
     prepareDetection,
 } from "../src/index.js";
 import type { DetectTargetOptions, TargetDb } from "../src/index.js";
-import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "./fixtures/pgm.js";
-import { withSeededRandom } from "./fixtures/seeded_rng.js";
+import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
+import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
 
 let cv: CvBackend;
 let target: TargetDb;
@@ -113,6 +113,50 @@ describe("detectTarget", () => {
         expect(d.numInliers).toBe(0);
         expect(d.timestampMs).toBe(5);
         expect(draws).toBe(0); // no RANSAC without 4 matches
+    });
+
+    // #137: a fit on four correspondences reproduces them exactly, so its
+    // residual on its own points is zero by construction and RANSAC's
+    // threshold cannot refuse it. The backend's `estimateHomography` is
+    // stubbed to accept a fit with `k` inliers, the first `k` correspondences.
+    const acceptingWith = (k: number): CvBackend =>
+        new Proxy(cv, {
+            get: (t, p) =>
+                p === "estimateHomography"
+                    ? (src: Float64Array) => {
+                          const inliers = new Uint8Array(src.length >> 1);
+                          inliers.fill(1, 0, k);
+                          return {
+                              H: Float64Array.of(1, 0, 0, 0, 1, 0, 0, 0, 1),
+                              inliers,
+                              numInliers: k,
+                              ok: true,
+                          };
+                      }
+                    : Reflect.get(t, p),
+        });
+
+    it("refuses a minimal fit the backend accepted: too-few-inliers, with the fit's 4 inliers", () => {
+        const stub = acceptingWith(4);
+        const setup = prepareDetection(stub, target, { maxSceneKeypoints: 900 });
+        const d = detectTarget(stub, setup, scene, 3);
+        expect(d.ok).toBe(false);
+        if (d.ok) return;
+        expect(d.reason).toBe("too-few-inliers");
+        expect(d.numInliers).toBe(4);
+        expect(d.numMatches).toBeGreaterThan(4);
+        expect(d.timestampMs).toBe(3);
+    });
+
+    it("accepts a fit the backend accepted with 5 inliers, and carries those 5", () => {
+        const stub = acceptingWith(5);
+        const setup = prepareDetection(stub, target, { maxSceneKeypoints: 900 });
+        const d = detectTarget(stub, setup, scene, 3);
+        expect(d.ok).toBe(true);
+        if (!d.ok) return;
+        expect(d.numInliers).toBe(5);
+        expect(d.correspondences.src.length).toBe(10);
+        expect(d.correspondences.dst.length).toBe(10);
     });
 
     it("survives structuredClone with every field intact", () => {
