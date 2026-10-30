@@ -74,9 +74,10 @@
  * Serves the repository's `examples/` itself, on a free port of 127.0.0.1,
  * with `Cache-Control: no-store`, at `/examples/` so that the page's
  * provenance check finds the files its manifest lists where it lists them.
- * Anything outside `examples/` is a 404, except the pose demo's import-map
- * targets, which its check's page answers itself ({@link poseDemo}). Writes the tuning target the worker
- * checks load first (`scripts/unknown-chunk-target.mjs`).
+ * Anything outside `examples/` is a 404, except the directories of the pose
+ * demo's import-map targets, which its check's page answers itself
+ * ({@link poseDemo}). Writes the tuning target the worker checks load first
+ * (`scripts/unknown-chunk-target.mjs`).
  *
  * Needs `npm run build` first, from a committed tree: the `?loops=1` run is a
  * session run, which the page refuses on a manifest built from a dirty tree.
@@ -1200,21 +1201,26 @@ function poseMapDirs() {
 }
 
 /**
- * The pose demo (#200), on the bundled static clip: once the tracker has held
- * `"TRACK"`, the page reports a pose drawn (its `data-poses-drawn`, not
- * pixels), and again after the filter is switched on, with no error raised.
+ * The pose demo (#200), on the bundled static clip: with the filter off and
+ * then on, once the tracker has held `"TRACK"` for 10 frames since the switch,
+ * the page reports poses drawn since it (`data-poses-drawn`, which a filter
+ * change starts over), every drawn box's top nearer the camera than its base
+ * (`data-box-top-nearer`, the z sign on the tracker's real poses), and no
+ * error raised. Data the page sets, not pixels.
  *
  * The only check that intercepts requests. The bench page loads one bundle
  * from `examples/dist/`, so every other check is served by {@link serve}
  * alone. This page keeps the other demos' import map onto the packages'
  * `dist/` and `node_modules/`, outside `examples/`, where `serve` answers
  * 404. Rather than widen `serve` for every check, this check's page answers
- * the map's targets itself, read-only from the repository, and only those:
- * any other request outside `examples/` still reaches `serve` and 404s.
+ * requests under the directories of the map's targets itself (the packages'
+ * entry points import their siblings), read-only from the repository, and
+ * only those: any other request outside `examples/` still reaches `serve`
+ * and 404s.
  */
 async function poseDemo(browser, base) {
     const names = [
-        "pose demo, static clip: the pose is drawn under TRACK, filter off and then on, with no error",
+        "pose demo, static clip: the pose is drawn under TRACK, its box's top toward the camera, filter off and then on, with no error",
     ];
     await scenario(names, async (check) => {
         const dirs = poseMapDirs();
@@ -1224,9 +1230,15 @@ async function poseDemo(browser, base) {
         page.on("pageerror", (e) => pageErrors.push(e.message));
         await page.setRequestInterception(true);
         page.on("request", (req) => {
-            const path = new URL(req.url()).pathname;
-            const file = normalize(join(ROOT, decodeURIComponent(path)));
-            const mapped = dirs.some((d) => path.startsWith(d));
+            // Guarded as `serve` guards its own: a path that does not decode,
+            // or that resolves outside a mapped directory, is not answered here.
+            let file = null;
+            try {
+                file = normalize(join(ROOT, decodeURIComponent(new URL(req.url()).pathname)));
+            } catch {
+                // It names no file.
+            }
+            const mapped = file !== null && dirs.some((d) => file.startsWith(join(ROOT, d)));
             if (mapped && req.method() === "GET" && existsSync(file) && statSync(file).isFile()) {
                 req.respond({
                     status: 200,
@@ -1267,9 +1279,15 @@ async function poseDemo(browser, base) {
                 const tracked = (filter) =>
                     document.body.dataset.filter === filter &&
                     Number(document.body.dataset.trackRun) >= 10;
+                // 10 "TRACK" frames since the switch, each with a pose, so at
+                // least 10 drawn, all with the box's top toward the camera.
+                const drawn = (d, filter) =>
+                    expect(
+                        Number(d.posesDrawn) >= 10 && d.boxTopNearer === "true",
+                        `filter ${filter}: posesDrawn ${d.posesDrawn}, boxTopNearer "${d.boxTopNearer}"`,
+                    );
                 await waitFor(tracked, RUN_MS, '10 "TRACK" results in a row, filter off', "off");
-                const off = await data();
-                expect(Number(off.posesDrawn) > 0, `filter off: posesDrawn ${off.posesDrawn}`);
+                drawn(await data(), "off");
                 await page.select("#filter", "one-euro");
                 await waitFor(
                     tracked,
@@ -1278,10 +1296,7 @@ async function poseDemo(browser, base) {
                     "one-euro",
                 );
                 const on = await data();
-                expect(
-                    Number(on.posesDrawn) > Number(off.posesDrawn),
-                    `filter on: posesDrawn ${on.posesDrawn}, after ${off.posesDrawn} with it off`,
-                );
+                drawn(on, "on");
                 const error = await page.evaluate(
                     () => document.getElementById("error").textContent,
                 );
