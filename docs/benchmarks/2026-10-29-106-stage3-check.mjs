@@ -492,6 +492,7 @@ function checkoutInputs(dir) {
     return {
         status: git(dir, "status", "--porcelain", "--", "packages", "examples/targets", "node_modules"),
         head: git(dir, "rev-parse", "HEAD"),
+        tree: git(dir, "rev-parse", "HEAD:packages"),
         manifest: existsSync(at) ? JSON.parse(readFileSync(at, "utf8")) : null,
         files: Object.fromEntries(BUILT.map((rel) => [rel, existsSync(join(dir, rel)) ? sha256(readFileSync(join(dir, rel))) : null])),
     };
@@ -568,7 +569,9 @@ async function main() {
         ["The implementation", tipInputs],
         ["C0's base", baseInputs],
     ]) {
-        say(`${label}'s built files, each the one its build manifest (of ${c.head.slice(0, 7)}, clean) recorded: ${BUILT.map((rel) => `${rel} ${c.files[rel]}`).join("; ")}.`);
+        // The manifest is checked to be of the tree's commit; the commit itself is not printed, so
+        // that the stdout depends on the packages/ tree only, not on the commit the check runs at.
+        say(`${label}'s built files, each the one its build manifest (of its commit, packages/ tree ${c.tree}, clean) recorded: ${BUILT.map((rel) => `${rel} ${c.files[rel]}`).join("; ")}.`);
     }
     say("Both ways: a dirty base, a mismatched built file and a manifest of another commit are each refused — must fire: fired.");
     say();
