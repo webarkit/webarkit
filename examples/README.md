@@ -186,7 +186,9 @@ The box stands on `−z`: `Pose` is in the OpenCV camera frame, which looks
 down `+Z`, and the target's `x` and `y` run the way the camera's do, so `+z`
 points into the target and `−z` toward the camera.
 `js/pose-draw.mjs` explains the derivation, its tests check it on synthetic
-poses, and the page reports it on each pose it draws (`data-box-top-nearer`).
+poses, and the page reports whether it held on every pose it drew since the
+last Start or filter change (`data-box-top-nearer`), which `npm run check:page`
+reads on the static clip's real poses.
 A pose with any point on or behind the camera's plane is not drawn.
 
 **It needs `targets/pinball.wnft`**, loaded and decoded as `bench-nft.html`

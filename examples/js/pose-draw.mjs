@@ -51,8 +51,9 @@ export const AXIS_FRACTION = 0.3;
  * right and `y` down, as the camera's own axes do, so a proper `R` (det +1)
  * that shows the target's printed side keeps `z` pointing the way the camera
  * looks: into the target, away from the camera. Toward the camera is then
- * `-z`. The tests check this on synthetic poses, and the page reports it on
- * every pose it draws (`data-box-top-nearer`).
+ * `-z`. The tests check this on synthetic poses; on the tracker's real ones,
+ * the page reports whether it held on every pose it drew
+ * (`data-box-top-nearer`), and `npm run check:page` reads that.
  */
 export const TOWARD_CAMERA = -1;
 

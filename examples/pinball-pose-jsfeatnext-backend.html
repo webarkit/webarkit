@@ -343,10 +343,12 @@
 
       /**
        * What the page reports about itself, as data- attributes on <body>, for
-       * `npm run check:page` to read rather than pixels: `posesDrawn` counts
-       * frames whose `result.pose` was drawn, `trackRun` the "TRACK" results in
-       * a row, `boxTopNearer` whether the last drawn box's top was nearer the
-       * camera than its base at every corner, `wraps` the frames whose
+       * `npm run check:page` to read rather than pixels. Since the last Start
+       * or filter change (`resetReport`): `posesDrawn` counts frames whose
+       * `result.pose` was drawn, `trackRun` the "TRACK" results in a row, and
+       * `boxTopNearer` says whether every drawn box's top was nearer the
+       * camera than its base at every corner ("false" from the first that was
+       * not). Since the last Start: `wraps` counts the frames whose
        * timestamp stepped back, `wrapState` the last such frame's state, and
        * `wrapPassThrough` whether the last such frame with a pose, with the
        * filter on, came back with `pose` its `poseSelection.pose` (the reset
@@ -366,6 +368,12 @@
         for (const [k, v] of Object.entries(report)) document.body.dataset[k] = String(v);
       }
       publish();
+      /** Starts the counts over, for the filter the controls now name. */
+      function resetReport() {
+        Object.assign(report, { filter: filterSelect.value, posesDrawn: 0, trackRun: 0, boxTopNearer: "" });
+        Object.assign(report, { wrapState: "", wrapPassThrough: "" });
+        publish();
+      }
       window.addEventListener("error", () => {
         report.errors++;
         publish();
@@ -395,10 +403,13 @@
         }
       }
 
-      /** The `poseFilter` option the controls name. A value the tracker refuses is its to refuse. */
+      /**
+       * The `poseFilter` option the controls name. An empty input takes its
+       * default; a value the tracker refuses is its to refuse.
+       */
       function poseFilterOption() {
         if (filterSelect.value === "off") return { mode: "off" };
-        const n = (id) => Number($(id).value);
+        const n = (id) => ($(id).value.trim() === "" ? PARAM_INPUTS[id] : Number($(id).value));
         return {
           mode: "one-euro",
           rotation: { minCutOff: n("rotMinCutOff"), beta: n("rotBeta") },
@@ -428,11 +439,11 @@
         try {
           tracker = buildTracker();
           errorEl.textContent = "";
-          report.filter = filterSelect.value;
-          report.trackRun = 0;
-          report.wrapPassThrough = "";
-          publish();
+          resetReport();
         } catch (e) {
+          // The running tracker is unchanged, so the switch goes back to it.
+          filterSelect.value = report.filter;
+          params.disabled = report.filter === "off";
           errorEl.textContent = `Filter not changed: ${e.message}`;
         }
       }
@@ -497,8 +508,21 @@
         }
         if (video.readyState < HTMLMediaElement.HAVE_METADATA) {
           await new Promise((resolve, reject) => {
-            video.addEventListener("loadedmetadata", resolve, { once: true });
-            video.addEventListener("error", () => reject(new Error(`could not load ${choice}`)), { once: true });
+            // Each removes both, so no Start leaves a listener behind.
+            const onMeta = () => {
+              off();
+              resolve();
+            };
+            const onError = () => {
+              off();
+              reject(new Error(`could not load ${choice}`));
+            };
+            const off = () => {
+              video.removeEventListener("loadedmetadata", onMeta);
+              video.removeEventListener("error", onError);
+            };
+            video.addEventListener("loadedmetadata", onMeta);
+            video.addEventListener("error", onError);
           });
         }
         await video.play();
@@ -540,9 +564,8 @@
           sourceSelect.disabled = false;
           return;
         }
-        Object.assign(report, { filter: filterSelect.value, posesDrawn: 0, trackRun: 0, wraps: 0 });
-        Object.assign(report, { boxTopNearer: "", wrapState: "", wrapPassThrough: "" });
-        publish();
+        report.wraps = 0;
+        resetReport();
         stopButton.disabled = false;
         runLoop();
       }
@@ -613,7 +636,8 @@
               if (showUnfiltered.checked) drawPose(raw, COLOR_RAW, true, false);
               if (drawn) {
                 report.posesDrawn++;
-                report.boxTopNearer = String(drawn.depth.top.every((d, i) => d < drawn.depth.base[i]));
+                const nearer = drawn.depth.top.every((d, i) => d < drawn.depth.base[i]);
+                if (report.boxTopNearer !== "false") report.boxTopNearer = String(nearer);
               }
               angle = `${rotationAngleDeg(result.pose.R, raw.R).toFixed(3)}° (display, not a metric)`;
             }
