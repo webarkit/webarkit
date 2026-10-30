@@ -74,6 +74,9 @@ release pull request's body and the GitHub Release's notes.
 
 ### Fixed
 
+- **`@webarkit/cv-backend-spec`'s `description` reads its em dash again**
+  ([#171](https://github.com/webarkit/webarkit/pull/171)): the manifest shipped at 0.5.1 carried
+  it double-encoded, as `â€”`.
 - **`validate-target --decode-only` and `--help` load no backend**
   ([#75](https://github.com/webarkit/webarkit/issues/75)). The tool imported
   `@webarkit/cv-backend-jsfeatnext` statically, so both failed with `ERR_MODULE_NOT_FOUND`
