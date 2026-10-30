@@ -261,10 +261,12 @@
 
         <div class="panel">
           <h2>Result</h2>
-          <dl id="stats">
+          <dl>
             <dt>status</dt>
             <dd id="status">loading…</dd>
           </dl>
+          <!-- Rebuilt every frame (renderStats), so apart from #status. -->
+          <dl id="stats"></dl>
           <div class="legend">
             <div><i class="swatch" style="background: #fbbf24"></i> <span>target corners under <code>H</code></span></div>
             <div>
