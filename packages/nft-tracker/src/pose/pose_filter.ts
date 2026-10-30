@@ -103,10 +103,18 @@ export interface PoseFilterInput {
     readonly timestampMs: number;
 }
 
-/** One Euro's smoothing factor for a cutoff `f`, Hz, over `te` seconds. */
+/**
+ * One Euro's smoothing factor for a cutoff `f`, Hz, over `te` seconds:
+ * `r / (r + 1)` with `r = 2π f te`, whose limit is 1 as `r` grows. A cutoff
+ * that overflows `r` to Infinity, which finite parameters can do (`f` up to
+ * about 1e308, or `minCutOff + beta · |dx̂|` past it), would read `∞ / ∞`,
+ * NaN; it takes the limit instead, so the filter follows its input on that
+ * frame. `r` is never NaN or negative here (`te > 0`, `f > 0`), and every
+ * finite `r` keeps the expression the probe measured, bit for bit.
+ */
 const alpha = (te: number, f: number): number => {
     const r = 2 * Math.PI * f * te;
-    return r / (r + 1);
+    return Number.isFinite(r) ? r / (r + 1) : 1;
 };
 
 /** The vector core: each component of a step filtered on its own, as the library does per index. */

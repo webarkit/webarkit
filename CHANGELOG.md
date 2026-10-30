@@ -59,11 +59,12 @@ release pull request's body and the GitHub Release's notes.
   confirms the probe's row and is not a prediction. No device claim, and no rotation lag bound:
   no committed sequence has a rigid path with rotation. With the filter on, a `timestampMs` that
   is not finite is a `RangeError` from `process`, before the frame is processed, and a key the
-  option does not read, in it or in `rotation` or `translation`, is refused by name; two finite
-  timestamps whose difference overflows or underflows are not guarded, and give a `NaN` pose on
-  that frame. Additive, pre-1.0 and private: `NftTrackerOptions` gains
-  a key, and the index gains the `DEFAULT_POSE_FILTER*` constants and the `PoseFilterOptions`
-  and `PoseFilterLayerOptions` types; the ground-truth module gains the rest and settle paths.
+  option does not read, in it or in `rotation` or `translation`, is refused by name; a cutoff that
+  overflows makes the filter follow its input on that frame; two increasing finite timestamps
+  whose period underflows to 0 are not guarded, and give a `NaN` pose on that frame. Additive,
+  pre-1.0 and private: `NftTrackerOptions` gains a key, and the index gains the
+  `DEFAULT_POSE_FILTER*` constants and the `PoseFilterOptions` and `PoseFilterLayerOptions` types;
+  the ground-truth module gains the rest and settle paths.
 
 ### Fixed
 

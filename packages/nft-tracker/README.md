@@ -521,8 +521,10 @@ tracker and feeds nothing back.
   clock is read, so the output is a function of the frames and their
   timestamps alone. With the filter on, a `timestampMs` that is not finite
   is a `RangeError` from `process`, thrown before the frame is processed: a
-  contract violation, not a reset. Two finite timestamps whose difference
-  overflows or underflows are not guarded, and give a `NaN` pose on that
+  contract violation, not a reset. A cutoff that overflows (extreme finite
+  parameters, or a period that overflows) makes the filter follow its input
+  on that frame. Two increasing finite timestamps whose period underflows to
+  0, about 1e-320 ms apart, are not guarded, and give a `NaN` pose on that
   frame.
 - **Parameters.** Each layer takes `{ minCutOff, beta }`, `minCutOff` finite
   and > 0, `beta` finite and ≥ 0 (per rad/s for the rotation, per model

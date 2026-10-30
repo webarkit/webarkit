@@ -374,9 +374,12 @@ export interface PoseFilterLayerOptions {
  * With the filter on, a `timestampMs` that is not finite is a contract
  * violation: `process` throws a `RangeError` naming it, before the frame is
  * processed (the maintainer's ruling of 2026-10-30 on #199); it is not a
- * reset cause, and the reset rule is the registered one. Two finite
- * timestamps whose difference overflows or underflows (a period that is
- * not finite, or 0) are not guarded, and give a `NaN` pose on that frame.
+ * reset cause, and the reset rule is the registered one. A cutoff that
+ * overflows — extreme finite parameters, or a period that overflows between
+ * finite timestamps — makes the filter follow its input on that frame (the
+ * smoothing factor takes its limit, 1). Two increasing finite timestamps so
+ * close that their period underflows to 0 (about 1e-320 ms apart) are not
+ * guarded, and give a `NaN` pose on that frame.
  * A key the option does not read, in it or in `rotation` or `translation`,
  * is refused by name.
  *

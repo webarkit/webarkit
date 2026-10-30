@@ -384,6 +384,39 @@ describe("the poseFilter option: refusals, each by name", () => {
     });
 });
 
+// Qodo's second review of #199, finding 1, as the maintainer ruled it: the
+// option accepts any finite positive cutoff and finite non-negative beta, and
+// at such values `2π · cutoff · te` can overflow to Infinity, which made
+// One Euro's α = ∞ / ∞ = NaN. An overflowing cutoff now gives α = 1: the
+// filter follows its input on that frame.
+describe("the poseFilter option: extreme finite parameters", () => {
+    const EXTREME = {
+        poseFilter: {
+            mode: "one-euro",
+            rotation: { minCutOff: 1e308, beta: 1e308 },
+            translation: { minCutOff: 1e308, beta: 1e308 },
+            dCutOff: 1e308,
+        },
+    } as const;
+
+    it("gives finite poses marked good, following the input, at cutoffs and betas of 1e308", () => {
+        const { results } = run(cv, K, target, restPath, 12, EXTREME);
+        let filtered = 0;
+        for (const r of results) {
+            if (!ok(r)) continue;
+            expect([...r.pose.R, ...r.pose.t].every(Number.isFinite)).toBe(true);
+            expect(r.pose.good).toBe(true);
+            if (r.pose === r.poseSelection.pose) continue;
+            filtered++;
+            // α = 1: the filtered pose is its input, to rounding.
+            const u = r.poseSelection.pose;
+            for (let i = 0; i < 9; i++) expect(Math.abs(r.pose.R[i] - u.R[i])).toBeLessThan(1e-9);
+            for (let i = 0; i < 3; i++) expect(Math.abs(r.pose.t[i] - u.t[i])).toBeLessThan(1e-9);
+        }
+        expect(filtered).toBeGreaterThan(5);
+    });
+});
+
 // The maintainer's ruling of 2026-10-30 on #199, point 2: with the filter on,
 // a timestampMs that is not finite is a contract violation, refused before
 // the frame is processed; it is not a reset cause, so the registered reset
