@@ -1239,9 +1239,9 @@ async function poseDemo(browser, base) {
             }
         });
         const data = () => page.evaluate(() => ({ ...document.body.dataset }));
-        const waitFor = async (fn, ms, what) => {
+        const waitFor = async (fn, ms, what, arg) => {
             try {
-                await page.waitForFunction(fn, { timeout: ms, polling: 100 });
+                await page.waitForFunction(fn, { timeout: ms, polling: 100 }, arg);
             } catch (e) {
                 if (e.name !== "TimeoutError") throw e;
                 const status = await page.evaluate(
@@ -1250,9 +1250,10 @@ async function poseDemo(browser, base) {
                 const error = await page.evaluate(
                     () => document.getElementById("error").textContent,
                 );
+                const report = JSON.stringify(await data());
                 const errors = pageErrors.length ? `; page errors: ${pageErrors.join(" | ")}` : "";
                 throw new Error(
-                    `no ${what} within ${ms / 1000} s (status "${status}", error line "${error}"${errors})`,
+                    `no ${what} within ${ms / 1000} s (status "${status}", error line "${error}", report ${report}${errors})`,
                 );
             }
         };
@@ -1262,17 +1263,19 @@ async function poseDemo(browser, base) {
             await page.select("#source", "pinball-static.mp4");
             await page.evaluate(() => document.getElementById("start").click());
             await check(names[0], async () => {
-                const tracked = (filter) => () =>
+                // Run in the page, so `filter` comes in as an argument, not a closure.
+                const tracked = (filter) =>
                     document.body.dataset.filter === filter &&
                     Number(document.body.dataset.trackRun) >= 10;
-                await waitFor(tracked("off"), RUN_MS, '10 "TRACK" results in a row, filter off');
+                await waitFor(tracked, RUN_MS, '10 "TRACK" results in a row, filter off', "off");
                 const off = await data();
                 expect(Number(off.posesDrawn) > 0, `filter off: posesDrawn ${off.posesDrawn}`);
                 await page.select("#filter", "one-euro");
                 await waitFor(
-                    tracked("one-euro"),
+                    tracked,
                     RUN_MS,
                     '10 "TRACK" results in a row, filter on',
+                    "one-euro",
                 );
                 const on = await data();
                 expect(
