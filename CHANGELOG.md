@@ -14,6 +14,16 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-30
+
+The "M5 — the post-campaign window" milestone
+([milestone 6](https://github.com/webarkit/webarkit/milestone/6)), which restored what M4's
+campaign froze. It closes on [#120](https://github.com/webarkit/webarkit/issues/120),
+[#127](https://github.com/webarkit/webarkit/issues/127),
+[#130](https://github.com/webarkit/webarkit/issues/130) and
+[#137](https://github.com/webarkit/webarkit/issues/137). `.wnft` format: still **0.3**, in both
+codecs, so this tag freezes no new corpus.
+
 ### Added
 
 - **`RansacOptions.rng` and the `deterministicRansac` capability**
@@ -74,6 +84,9 @@ release pull request's body and the GitHub Release's notes.
 
 ### Fixed
 
+- **`@webarkit/cv-backend-spec`'s `description` reads its em dash again**
+  ([#171](https://github.com/webarkit/webarkit/pull/171)): the manifest shipped at 0.5.1 carried
+  it double-encoded, as `â€”`.
 - **`validate-target --decode-only` and `--help` load no backend**
   ([#75](https://github.com/webarkit/webarkit/issues/75)). The tool imported
   `@webarkit/cv-backend-jsfeatnext` statically, so both failed with `ERR_MODULE_NOT_FOUND`
@@ -144,6 +157,38 @@ release pull request's body and the GitHub Release's notes.
   them apart. `METRICS_VERSION` is unchanged: no definition changes, only which frames the mode
   poses. The static demo is left as the contract's raw pipeline, which does not apply the gate,
   and says so.
+
+### What M5 did not deliver
+
+- **Four issues were moved out of milestone 6, with no milestone**, each with its reason in a
+  comment of 2026-10-30:
+    - [#92](https://github.com/webarkit/webarkit/issues/92), the residual limit: #186's
+      weighing found that the sweep does not choose between the candidates, and that the
+      committed exports, which carry no ground truth, cannot say what a limit would refuse
+      wrongly on real motion.
+    - [#116](https://github.com/webarkit/webarkit/issues/116), serving the bench page over
+      https: not started; every item it lists to settle first needs the tablet and the PC's
+      network, and M5 had no device sessions.
+    - [#133](https://github.com/webarkit/webarkit/issues/133), IPPE's guard near
+      fronto-parallel: with M4's campaign closed under its condition 2, the guard's
+      registration in #107 was never made, and the guard passes, open, to the next campaign.
+    - [#143](https://github.com/webarkit/webarkit/issues/143), the LOST rename: it was to
+      travel with other work only if the state machine was opened for another reason, and M5
+      did not open it.
+- **[#114](https://github.com/webarkit/webarkit/issues/114)'s per-round reading of the loop-wrap
+  bound was never made.** Round 0 had no counted run and round 1 will not run, so the reading, and
+  the registration of its figures with their headroom, pass open to the next campaign (#114's
+  comment of 2026-10-23). The bound's re-derivation shipped
+  ([#195](https://github.com/webarkit/webarkit/pull/195)).
+- **[#106](https://github.com/webarkit/webarkit/issues/106)'s device claim was withdrawn**, on
+  2026-10-15, as unmeasurable on this instrument, not refuted: every exported value is computed
+  from `H` and the result's flags, and none reads the pose. No rotation lag bound is claimed: no
+  committed sequence has a rigid path with rotation.
+- **Two issues opened during the window are not in it:**
+  [#196](https://github.com/webarkit/webarkit/issues/196), the loop-wrap rule's "at most 0.5 s"
+  against µs-rounded media times, and `bench-locks.mjs`'s untested epsilon; and
+  [#202](https://github.com/webarkit/webarkit/issues/202), detections with 5 or 6 inliers that
+  pose the target from behind on the wall clip, found by #200's demo.
 
 <!-- prettier-ignore-start -->
 
@@ -541,7 +586,8 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 - The original single-page jsartoolkitNFT demo the repository started as. It is kept at the tag
   `archive/original-nft-demo`.
 
-[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.5.1...dev
+[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.6.0...dev
+[0.6.0]: https://github.com/webarkit/webarkit/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/webarkit/webarkit/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/webarkit/webarkit/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/webarkit/webarkit/compare/v0.3.0...v0.4.0
