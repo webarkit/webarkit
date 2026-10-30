@@ -360,3 +360,35 @@ documented keys, so neither refusal fires on it. The check, run twice on
 `nft-tracker` at 884 passed and 1 skipped (5 more than at `1f48231`), the
 other packages unchanged. `git diff --diff-filter=MD 12ebed3 626db0a --
 packages/*/test examples/test` prints nothing.
+
+**Qodo's second review, as the maintainer ruled it (2026-10-30).** Two
+findings changed the branch:
+- At extreme finite parameters, `2π · cutoff · te` could overflow to
+  Infinity, and One Euro's `α = r / (r + 1)` read `∞ / ∞`. `α` now takes its
+  limit, 1, when `r` is not finite, so the filter follows its input on that
+  frame. Every finite `r` keeps the probe's expression bit for bit. The
+  test, at 1e308 on both layers and `dCutOff`, was seen red first
+  (`066c02f`). The one `NaN` path left, a period that underflows to 0
+  between increasing finite timestamps, stays documented, as ruled.
+- The check now refuses a base checkout whose tracked inputs differ from
+  its commit. In both trees, the built files it imports must be the ones
+  that tree's build manifest recorded, and that manifest must be of the
+  tree's commit and clean. Both refusals were exercised on the real base
+  checkout, each restored after: a dirty `tracker.ts`, and an altered
+  `dist/index.js` (`4ee3546`). That exercise found the check crashing in
+  Step 0, its built-file list read before it was declared, and it was
+  fixed before any recorded run (`f98c773`).
+
+The check, run twice at `f98c773` (`packages/` tree
+`948a225bda2df8018eb79c91dbd81ff5e367bc71`): both stdouts are 102 lines,
+SHA-256 **`7b1be91e30829cadd5c0ac6344b52cd37b3b8fc2eb57366c3bf6652714a29d54`**,
+equal. Against `76ee2358…` they differ in Step 0 only:
+- lines 11 and 12, the SHA-256 of `tracker.ts` and `pose_filter.ts`;
+- line 20, the `packages/` tree, with the base now also stated clean;
+- three lines added after it: both trees' built-file hashes, which are
+  identical, and the refusals' both-ways line.
+
+No figure and no verdict moves. The gates pass at `f98c773`: build,
+typecheck, `format:check`, `check:contract` and `check:page` (30 of 30), and
+`npm test` with `nft-tracker` at 885 passed and 1 skipped. The bundle hash
+is `8c0e0b9fff317e10605476e628686c51f04bf8d2773f0a6af46755203329d086`.
