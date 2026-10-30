@@ -28,7 +28,8 @@ the whole repository, which is why the root README's command carries `-c-1`
 too.
 
 Then open <http://localhost:8080/examples/pinball-static-jsfeatnext-backend.html>,
-<http://localhost:8080/examples/pinball-webcam-jsfeatnext-backend.html>, or
+<http://localhost:8080/examples/pinball-webcam-jsfeatnext-backend.html>,
+<http://localhost:8080/examples/pinball-pose-jsfeatnext-backend.html>, or
 <http://localhost:8080/examples/bench-nft.html>.
 
 Serve over HTTP: ES modules do not load from `file://`, and `getUserMedia`
@@ -161,6 +162,65 @@ per-frame cost, which is exactly why this demo does not do it by default (see
 the parameters above). Worth revisiting once the cost of a lighter multi-level
 search on the scene side is measured with the same rigour the current
 parameters got — tracked informally against this file for now, no issue yet.
+
+## `pinball-pose-jsfeatnext-backend.html`
+
+Draws the tracker's **pose** ([#200](https://github.com/webarkit/webarkit/issues/200)).
+Every other page draws the target's corners under `H`, and the pose filter
+of [#106](https://github.com/webarkit/webarkit/issues/106) (`poseFilter`,
+merged in [#199](https://github.com/webarkit/webarkit/pull/199)) does not
+touch `H`, so until this page it changed no pixel anywhere. Here, beside
+the corners under `H` (amber), the page projects through `K · [R | t]`:
+
+- `result.pose`, in green: the target's outline at `z = 0`, a box standing on
+  it, a quarter of the target's width high, and its three axes from the
+  target's centre (x red, y green, z blue);
+- optionally, behind a checkbox, `result.poseSelection.pose` in magenta,
+  dashed, drawn over it: the unfiltered pose. With the filter off the two
+  coincide; with it on they show its effect side by side. The stats panel's
+  angle between the two rotations is a display, not a metric.
+
+The model is the target's plane in level-0 pixels, `z = 0` on the plane, as
+`projectPose` in `packages/nft-tracker/test/pose/pose_metric.ts` defines it.
+The box stands on `−z`: `Pose` is in the OpenCV camera frame, which looks
+down `+Z`, and the target's `x` and `y` run the way the camera's do, so `+z`
+points into the target and `−z` toward the camera.
+`js/pose-draw.mjs` explains the derivation, its tests check it on synthetic
+poses, and the page reports whether it held on every pose it drew since the
+last Start or filter change (`data-box-top-nearer`), which `npm run check:page`
+reads on the static clip's real poses. It holds for a pose that shows the
+target's printed side. A pose that shows it from behind (`R[8] < 0`), as some
+`"DETECT"` results with 5 or 6 inliers do in `pinball-bench.mp4`'s opening
+frames, stands its box behind the plane, and the flag reads `"false"`.
+A pose with any point on or behind the camera's plane is not drawn.
+
+**It needs `targets/pinball.wnft`**, loaded and decoded as `bench-nft.html`
+loads it. A target from `buildTargetFromImage`, as the webcam demo builds
+one, has no tracking patches, so its tracker runs detection-only, every
+result is `"DETECT"`, and the filter, which resets on any result that is
+not `"TRACK"`, never acts. The page refuses to start on a detection-only
+tracker.
+
+**The filter switch:** off, or `{ mode: "one-euro" }` with its five
+parameters (`rotation` and `translation` `minCutOff` and `beta`, and
+`dCutOff`), which default to the package's exported `DEFAULT_POSE_FILTER_*`
+constants. A change rebuilds the tracker, so the filter starts unseeded.
+The processing box is the bench page's default, 480×360, and every other
+tracker option is the package's default, as the bench page runs with no
+`?tracker=`.
+
+**Timestamps.** For a bundled clip this page passes `process` the frame's
+media time in milliseconds, from `requestVideoFrameCallback`'s metadata, so
+the filter sees the clip's own frame spacing whatever the processing rate.
+At a loop wrap the timestamp steps back, which resets the filter by its
+reset rule; the stats panel counts the wraps. For the webcam it passes
+`performance.now()`, as the webcam demo does. This is the page's own
+choice: `bench-nft.html` passes `performance.now()` for a clip too, and
+reads media time only for its loop counter and its export, so with a filter
+on it would see wall-clock spacing.
+
+**It is not a measurement.** No exported value reads the pose, and this
+page exports nothing.
 
 ## `bench-nft.html`
 
@@ -686,6 +746,13 @@ static demo's own inline copy did before this file existed. The
 per-pyramid-level matching strategy that used to live here moved into
 [`@webarkit/nft-tracker`](../packages/nft-tracker) — it is tracker logic, not
 page logic, and the tracker needs it too. What stayed is what touches the DOM.
+The pose demo imports both pieces too.
+
+`js/pose-draw.mjs` is the pose demo's drawing math: the projection
+`π(K · (R · (x, y, z) + t))` of a target point, and the outline, box and axes
+it draws of a pose, with no DOM, tested in `examples/test/pose-draw.test.mjs`
+by the root `npm test`. The bench page does not import it, so it is not
+served.
 
 `js/bench-metrics.mjs` is the bench page's other module: every run metric it
 reports and the text defining each, its URL parameters, and the helpers its

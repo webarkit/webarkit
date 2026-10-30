@@ -65,6 +65,12 @@ release pull request's body and the GitHub Release's notes.
   pre-1.0 and private: `NftTrackerOptions` gains a key, and the index gains the
   `DEFAULT_POSE_FILTER*` constants and the `PoseFilterOptions` and `PoseFilterLayerOptions` types;
   the ground-truth module gains the rest and settle paths.
+- **A demo page that draws the tracker's pose, with the pose filter on and off**
+  ([#200](https://github.com/webarkit/webarkit/issues/200)):
+  `examples/pinball-pose-jsfeatnext-backend.html` draws `result.pose` through `K · [R | t]` (the
+  target's outline, a box standing on it and its axes) beside the corners under `H`, optionally
+  with the unfiltered `poseSelection.pose`, on `targets/pinball.wnft`, the bundled clips or the
+  webcam. It is the first place the `poseFilter` option shows; it measures and exports nothing.
 
 ### Fixed
 
