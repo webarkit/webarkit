@@ -345,8 +345,10 @@
        * What the page reports about itself, as data- attributes on <body>, for
        * `npm run check:page` to read rather than pixels. Since the last Start
        * or filter change (`resetReport`): `posesDrawn` counts frames whose
-       * `result.pose` was drawn, `trackRun` the "TRACK" results in a row, and
-       * `boxTopNearer` says whether every drawn box's top was nearer the
+       * `result.pose` was drawn, whatever their state, `trackRun` the "TRACK"
+       * results in a row, `trackDrawnRun` the "TRACK" results in a row whose
+       * pose was drawn (a "TRACK" result whose pose could not be drawn ends
+       * the run, as any other result does), and `boxTopNearer` says whether every drawn box's top was nearer the
        * camera than its base at every corner ("false" from the first that was
        * not). Since the last Start: `wraps` counts the frames whose
        * timestamp stepped back, `wrapState` the last such frame's state, and
@@ -358,6 +360,7 @@
         filter: "off",
         posesDrawn: 0,
         trackRun: 0,
+        trackDrawnRun: 0,
         boxTopNearer: "",
         wraps: 0,
         wrapState: "",
@@ -370,7 +373,8 @@
       publish();
       /** Starts the counts over, for the filter the controls now name. */
       function resetReport() {
-        Object.assign(report, { filter: filterSelect.value, posesDrawn: 0, trackRun: 0, boxTopNearer: "" });
+        Object.assign(report, { filter: filterSelect.value, posesDrawn: 0, trackRun: 0, trackDrawnRun: 0 });
+        report.boxTopNearer = "";
         Object.assign(report, { wrapState: "", wrapPassThrough: "" });
         publish();
       }
@@ -619,6 +623,7 @@
 
             octx.clearRect(0, 0, overlay.width, overlay.height);
             let angle = "—";
+            let poseDrawn = false;
             if (result.ok) {
               const w = targetDb.meta.widthPx;
               const h = targetDb.meta.heightPx;
@@ -635,12 +640,14 @@
               // where they coincide (always, with the filter off).
               if (showUnfiltered.checked) drawPose(raw, COLOR_RAW, true, false);
               if (drawn) {
+                poseDrawn = true;
                 report.posesDrawn++;
                 const nearer = drawn.depth.top.every((d, i) => d < drawn.depth.base[i]);
                 if (report.boxTopNearer !== "false") report.boxTopNearer = String(nearer);
               }
               angle = `${rotationAngleDeg(result.pose.R, raw.R).toFixed(3)}° (display, not a metric)`;
             }
+            report.trackDrawnRun = result.state === "TRACK" && poseDrawn ? report.trackDrawnRun + 1 : 0;
             publish();
 
             statusEl.textContent = result.ok ? "locked on" : result.reason;

@@ -1202,9 +1202,10 @@ function poseMapDirs() {
 
 /**
  * The pose demo (#200), on the bundled static clip: with the filter off and
- * then on, once the tracker has held `"TRACK"` for 10 frames since the switch,
- * the page reports poses drawn since it (`data-poses-drawn`, which a filter
- * change starts over), every drawn box's top nearer the camera than its base
+ * then on, the page reports 10 `"TRACK"` results in a row since the switch
+ * whose pose was drawn (`data-track-drawn-run`, which a filter change starts
+ * over, as an undrawable pose or any other state does), every drawn box's top
+ * nearer the camera than its base
  * (`data-box-top-nearer`, the z sign on the tracker's real poses), and no
  * error raised. Data the page sets, not pixels.
  *
@@ -1276,23 +1277,30 @@ async function poseDemo(browser, base) {
             await page.evaluate(() => document.getElementById("start").click());
             await check(names[0], async () => {
                 // Run in the page, so `filter` comes in as an argument, not a closure.
+                // `trackDrawnRun`: "TRACK" results in a row whose pose was
+                // drawn, so the poses counted are ones the filter can act on.
                 const tracked = (filter) =>
                     document.body.dataset.filter === filter &&
-                    Number(document.body.dataset.trackRun) >= 10;
-                // 10 "TRACK" frames since the switch, each with a pose, so at
-                // least 10 drawn, all with the box's top toward the camera.
+                    Number(document.body.dataset.trackDrawnRun) >= 10;
+                // 10 such frames since the switch, all with the box's top
+                // toward the camera.
                 const drawn = (d, filter) =>
                     expect(
-                        Number(d.posesDrawn) >= 10 && d.boxTopNearer === "true",
-                        `filter ${filter}: posesDrawn ${d.posesDrawn}, boxTopNearer "${d.boxTopNearer}"`,
+                        Number(d.trackDrawnRun) >= 10 && d.boxTopNearer === "true",
+                        `filter ${filter}: trackDrawnRun ${d.trackDrawnRun}, boxTopNearer "${d.boxTopNearer}"`,
                     );
-                await waitFor(tracked, RUN_MS, '10 "TRACK" results in a row, filter off', "off");
+                await waitFor(
+                    tracked,
+                    RUN_MS,
+                    '10 "TRACK" results in a row with their pose drawn (trackDrawnRun), filter off',
+                    "off",
+                );
                 drawn(await data(), "off");
                 await page.select("#filter", "one-euro");
                 await waitFor(
                     tracked,
                     RUN_MS,
-                    '10 "TRACK" results in a row, filter on',
+                    '10 "TRACK" results in a row with their pose drawn (trackDrawnRun), filter on',
                     "one-euro",
                 );
                 const on = await data();
