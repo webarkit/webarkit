@@ -475,6 +475,42 @@ async function bundle(root, entries, dir) {
     return mods;
 }
 
+/**
+ * The built files the check imports from a checkout: the backend's entry, the module it re-exports,
+ * and jsfeatNext's bundle, which the backend imports. Each tree's build manifest
+ * (`examples/dist/provenance.json`, written by `npm run build`) records their SHA-256 in
+ * `bundledInputs`, with the commit it was built at (`head`) and whether the tree was clean then.
+ */
+const BUILT = [
+    "packages/cv-backend-jsfeatnext/dist/index.js",
+    "packages/cv-backend-jsfeatnext/dist/jsfeatnext_backend.js",
+    "node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs",
+];
+/** What a checkout's inputs are: its tracked inputs' state, its commit, its build manifest, and the built files' SHA-256. */
+function checkoutInputs(dir) {
+    const at = join(dir, "examples/dist/provenance.json");
+    return {
+        status: git(dir, "status", "--porcelain", "--", "packages", "examples/targets", "node_modules"),
+        head: git(dir, "rev-parse", "HEAD"),
+        manifest: existsSync(at) ? JSON.parse(readFileSync(at, "utf8")) : null,
+        files: Object.fromEntries(BUILT.map((rel) => [rel, existsSync(join(dir, rel)) ? sha256(readFileSync(join(dir, rel))) : null])),
+    };
+}
+/**
+ * Why a checkout's inputs cannot be read as its commit's, or `null`: a tracked file under `packages/`,
+ * or the target, differs from the commit; or its build manifest is missing, of another commit, or
+ * of a tree that was not clean; or a built file the check imports is not the one that build recorded.
+ */
+function inputRefusal(label, c) {
+    if (c.status !== "") return `${label}: packages/ or the target differ from its commit`;
+    if (c.manifest === null) return `${label}: no build manifest (examples/dist/provenance.json): run npm run build`;
+    if (c.manifest.head !== c.head || c.manifest.clean !== true) return `${label}: its build manifest is of ${c.manifest.head} (${c.manifest.clean === true ? "clean" : "not clean"}), not of ${c.head} clean: rebuild it`;
+    for (const rel of BUILT) {
+        if (c.files[rel] === null || c.manifest.bundledInputs?.[rel] !== c.files[rel]) return `${label}: ${rel} is ${c.files[rel]}, not the ${c.head.slice(0, 7)} build's ${c.manifest.bundledInputs?.[rel]}`;
+    }
+    return null;
+}
+
 async function main() {
     // ---- Step 0 ------------------------------------------------------------------------------
     const at = process.argv.indexOf("--base");
@@ -483,7 +519,25 @@ async function main() {
     if (!existsSync(join(BASE, "packages/cv-backend-jsfeatnext/dist/index.js"))) fatal("--base is not built: its cv-backend-jsfeatnext/dist/index.js is missing");
     const baseHead = git(BASE, "rev-parse", "HEAD");
     if (baseHead !== git(ROOT, "rev-parse", `${REGISTRATION_MERGE}^{commit}`)) fatal(`--base is at ${baseHead}, not the registration's merge commit ${REGISTRATION_MERGE}`);
-    if (git(ROOT, "status", "--porcelain", "--", "packages", "examples/targets", "node_modules") !== "") fatal("packages/ or the target differ from the commit: the implementation is read from a clean tree");
+    // Both checkouts' inputs are their commits': tracked files, the build manifest, the built files.
+    const tipInputs = checkoutInputs(ROOT);
+    const baseInputs = checkoutInputs(BASE);
+    for (const [label, c] of [
+        ["the implementation", tipInputs],
+        ["--base", baseInputs],
+    ]) {
+        const why = inputRefusal(label, c);
+        if (why !== null) fatal(why);
+    }
+    {
+        // Both ways: a dirty base, a mismatched built file and a manifest of another commit are refused.
+        const broken = [
+            ["a dirty base", { ...baseInputs, status: " M packages/nft-tracker/src/tracker.ts" }],
+            ["a mismatched dist", { ...baseInputs, files: { ...baseInputs.files, [BUILT[0]]: "0".repeat(64) } }],
+            ["a manifest of another commit", { ...baseInputs, manifest: { ...baseInputs.manifest, head: tipInputs.head } }],
+        ];
+        for (const [name, c] of broken) if (inputRefusal("--base", c) === null) fatal(`inputs: ${name} was not refused; the check cannot fire`);
+    }
     // The copy: the probe's kept ranges, found byte for byte in this file (line endings aside, which a
     // checkout may convert). Both ways: lines 125 to 433 with so3Log's acos replaced are not found.
     let copyLine;
@@ -509,7 +563,14 @@ async function main() {
         }).join("; "),
     );
     say(copyLine);
-    say(`The implementation: packages/ at tree ${git(ROOT, "rev-parse", "HEAD:packages")}, clean. C0's base: ${baseHead}. Node ${process.version}.`);
+    say(`The implementation: packages/ at tree ${git(ROOT, "rev-parse", "HEAD:packages")}, clean. C0's base: ${baseHead}, clean. Node ${process.version}.`);
+    for (const [label, c] of [
+        ["The implementation", tipInputs],
+        ["C0's base", baseInputs],
+    ]) {
+        say(`${label}'s built files, each the one its build manifest (of ${c.head.slice(0, 7)}, clean) recorded: ${BUILT.map((rel) => `${rel} ${c.files[rel]}`).join("; ")}.`);
+    }
+    say("Both ways: a dirty base, a mismatched built file and a manifest of another commit are each refused — must fire: fired.");
     say();
 
     // ---- Load the modules: bundled from their TypeScript sources, imported from a temp dir --
