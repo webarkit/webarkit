@@ -105,6 +105,20 @@ export type { ConditioningReading, ConditioningThresholds } from "./pose/conditi
 export { DEFAULT_CONDITIONING } from "./tracker.js";
 export type { ConditioningMode, ConditioningOptions } from "./tracker.js";
 
+// One Euro filtering of the pose, the rotation in its tangent space (#106,
+// M5): the tracker's option, off by default, and the registered derived
+// values its "one-euro" mode takes for an omitted parameter. The filter's
+// module itself is not exported here (the Stage 3 registration, ruling C).
+export {
+    DEFAULT_POSE_FILTER,
+    DEFAULT_POSE_FILTER_D_CUTOFF,
+    DEFAULT_POSE_FILTER_ROTATION_BETA,
+    DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF,
+    DEFAULT_POSE_FILTER_TRANSLATION_BETA,
+    DEFAULT_POSE_FILTER_TRANSLATION_MIN_CUTOFF,
+} from "./tracker.js";
+export type { PoseFilterLayerOptions, PoseFilterOptions } from "./tracker.js";
+
 // The tracking state (M2). Every function is exported here up front, stub or
 // not, so the branches implementing them never need to touch this file.
 export { levelScale } from "./tracking/level_scale.js";
