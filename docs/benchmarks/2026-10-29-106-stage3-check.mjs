@@ -119,6 +119,17 @@ const KEPT = [
     [513, 523],
     [1006, 1010],
 ];
+/**
+ * The built files the check imports from a checkout: the backend's entry, the module it re-exports,
+ * and jsfeatNext's bundle, which the backend imports. Each tree's build manifest
+ * (`examples/dist/provenance.json`, written by `npm run build`) records their SHA-256 in
+ * `bundledInputs`, with the commit it was built at (`head`) and whether the tree was clean then.
+ */
+const BUILT = [
+    "packages/cv-backend-jsfeatnext/dist/index.js",
+    "packages/cv-backend-jsfeatnext/dist/jsfeatnext_backend.js",
+    "node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs",
+];
 /** The registration's merge commit (#198): C0's base. */
 const REGISTRATION_MERGE = "12ebed3";
 /** The derived values the `DEFAULT_` constants must equal (the registration, "The derived parameters"). */
@@ -475,17 +486,6 @@ async function bundle(root, entries, dir) {
     return mods;
 }
 
-/**
- * The built files the check imports from a checkout: the backend's entry, the module it re-exports,
- * and jsfeatNext's bundle, which the backend imports. Each tree's build manifest
- * (`examples/dist/provenance.json`, written by `npm run build`) records their SHA-256 in
- * `bundledInputs`, with the commit it was built at (`head`) and whether the tree was clean then.
- */
-const BUILT = [
-    "packages/cv-backend-jsfeatnext/dist/index.js",
-    "packages/cv-backend-jsfeatnext/dist/jsfeatnext_backend.js",
-    "node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs",
-];
 /** What a checkout's inputs are: its tracked inputs' state, its commit, its build manifest, and the built files' SHA-256. */
 function checkoutInputs(dir) {
     const at = join(dir, "examples/dist/provenance.json");
