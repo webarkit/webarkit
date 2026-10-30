@@ -1,0 +1,668 @@
+<!doctype html>
+<!--
+  pinball-pose-jsfeatnext-backend.html
+  webarkit
+
+  This file is part of webarkit.
+
+  SPDX-License-Identifier: LGPL-3.0-or-later
+
+  Copyright 2026 WebARKit.
+
+  Author(s): Walter Perdan @kalwalt https://github.com/kalwalt
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CvBackend — pinball pose demo</title>
+
+    <!--
+      No bundler, as in the other two demos: an import map onto the packages'
+      built dist/. Run `npm run build` at the repo root first, then serve the
+      repository root over HTTP (the page reads ../packages/ and
+      ../node_modules/ through the map, and targets/ and videos/ beside it).
+      This page is not the bench page's: it loads no bundle and is in no
+      provenance manifest.
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@webarkit/jsfeat-next": "../node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs",
+          "@webarkit/cv-backend-spec": "../packages/cv-backend-spec/dist/index.js",
+          "@webarkit/cv-backend-jsfeatnext": "../packages/cv-backend-jsfeatnext/dist/index.js",
+          "@webarkit/nft-tracker": "../packages/nft-tracker/dist/index.js"
+        }
+      }
+    </script>
+
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #10131a;
+        --panel: #181c26;
+        --ink: #e8ecf4;
+        --muted: #9aa4b8;
+        --line: #2a3040;
+        --bad: #f87171;
+        --accent: #60a5fa;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          14px/1.5 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 4px;
+      }
+      p.lede {
+        color: var(--muted);
+        margin: 0 0 20px;
+        max-width: 75ch;
+      }
+      .wrap {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: minmax(0, 480px) 340px;
+        align-items: start;
+      }
+      @media (max-width: 1000px) {
+        .wrap {
+          grid-template-columns: 1fr;
+        }
+      }
+      .stage {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 4 / 3;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .stage video,
+      .stage canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .stage video {
+        object-fit: cover;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px 16px;
+        margin-bottom: 16px;
+      }
+      .panel h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 0 0 10px;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 4px 12px;
+        margin: 0;
+      }
+      dt {
+        color: var(--muted);
+      }
+      dd {
+        margin: 0;
+        font-variant-numeric: tabular-nums;
+      }
+      fieldset {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        margin: 8px 0 0;
+        padding: 8px 10px;
+      }
+      fieldset:disabled {
+        opacity: 0.5;
+      }
+      legend {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      fieldset label {
+        display: grid;
+        grid-template-columns: 1fr 90px;
+        gap: 8px;
+        align-items: center;
+        margin: 4px 0;
+        color: var(--muted);
+      }
+      input[type="number"] {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .legend {
+        margin-top: 14px;
+        display: grid;
+        gap: 6px;
+      }
+      .legend > div {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+      }
+      .swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        flex: none;
+      }
+      .err {
+        color: var(--bad);
+        white-space: pre-wrap;
+      }
+      code {
+        color: var(--accent);
+      }
+      button {
+        background: var(--accent);
+        color: #0b1220;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>CvBackend — pinball pose demo</h1>
+    <p class="lede">
+      <code>NftTracker</code> on <code>targets/pinball.wnft</code>, with its pose drawn through
+      <code>K · [R | t]</code>: the target's outline, a box standing on it and its three axes, beside the corners
+      under <code>H</code> that the other demos draw. The pose filter (<code>poseFilter</code>, One Euro, off by
+      default) changes no pixel of those corners; here it shows. With the unfiltered pose
+      (<code>poseSelection.pose</code>) drawn too, the two coincide with the filter off and show its effect side by
+      side with it on. A display, not a measurement: this page exports nothing (see
+      <a href="./README.md#pinball-pose-jsfeatnext-backendhtml">examples/README.md</a>).
+    </p>
+
+    <div class="wrap">
+      <div>
+        <div class="stage" id="stage">
+          <video id="video" playsinline muted></video>
+          <canvas id="overlay"></canvas>
+        </div>
+        <p id="error" class="err"></p>
+      </div>
+
+      <div>
+        <div class="panel">
+          <h2>Source and filter</h2>
+          <div class="row">
+            <label
+              >source
+              <select id="source">
+                <option value="pinball-bench.mp4" selected>wall, frontal (pinball-bench.mp4)</option>
+                <option value="pinball-bench-table.mp4">table, oblique (pinball-bench-table.mp4)</option>
+                <option value="pinball-static.mp4">wall, fixed camera (pinball-static.mp4)</option>
+                <option value="webcam">webcam</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <button id="start" disabled>Start</button>
+            <button id="stop" disabled>Stop</button>
+          </div>
+          <div class="row">
+            <label
+              >pose filter
+              <select id="filter">
+                <option value="off" selected>off</option>
+                <option value="one-euro">one-euro</option>
+              </select>
+            </label>
+          </div>
+          <fieldset id="params" disabled>
+            <legend>one-euro parameters (defaults: the package's DEFAULT_POSE_FILTER_* constants)</legend>
+            <label>rotation minCutOff (Hz) <input type="number" id="rotMinCutOff" step="any" min="0" /></label>
+            <label>rotation beta <input type="number" id="rotBeta" step="any" min="0" /></label>
+            <label>translation minCutOff (Hz) <input type="number" id="trMinCutOff" step="any" min="0" /></label>
+            <label>translation beta <input type="number" id="trBeta" step="any" min="0" /></label>
+            <label>dCutOff (Hz) <input type="number" id="dCutOff" step="any" min="0" /></label>
+          </fieldset>
+          <div class="row" style="margin-top: 10px">
+            <label><input type="checkbox" id="showUnfiltered" checked /> also draw the unfiltered pose</label>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Result</h2>
+          <dl id="stats">
+            <dt>status</dt>
+            <dd id="status">loading…</dd>
+          </dl>
+          <div class="legend">
+            <div><i class="swatch" style="background: #fbbf24"></i> <span>target corners under <code>H</code></span></div>
+            <div>
+              <i class="swatch" style="background: #34d399"></i>
+              <span><code>result.pose</code>: outline and box (filtered when the filter is on)</span>
+            </div>
+            <div>
+              <i class="swatch" style="background: #e879f9"></i>
+              <span><code>result.poseSelection.pose</code>, dashed, drawn over it: unfiltered</span>
+            </div>
+            <div>
+              <i class="swatch" style="background: linear-gradient(90deg, #ef4444 33%, #22c55e 33% 66%, #3b82f6 66%)"></i>
+              <span>axes x, y, z of <code>result.pose</code> (z toward the camera)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeatnext";
+      import {
+        decode,
+        NftTracker,
+        DEFAULT_POSE_FILTER_D_CUTOFF,
+        DEFAULT_POSE_FILTER_ROTATION_BETA,
+        DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF,
+        DEFAULT_POSE_FILTER_TRANSLATION_BETA,
+        DEFAULT_POSE_FILTER_TRANSLATION_MIN_CUTOFF,
+      } from "@webarkit/nft-tracker";
+      import { toGray, project } from "./js/pinball-shared.mjs";
+      import { poseShapes, rotationAngleDeg } from "./js/pose-draw.mjs";
+
+      // Loaded and decoded as the bench page loads it, never built from the
+      // image: a target built by buildTargetFromImage has no tracking patches,
+      // so its tracker runs detection-only, every result is "DETECT", and the
+      // filter, which resets on every result that is not "TRACK", never acts.
+      const TARGET_FILE = "./targets/pinball.wnft";
+      // The bench page's default processing box (bench-nft.html, PROC_WIDTH
+      // and PROC_HEIGHT), restated rather than imported: the values live in
+      // that page's inline script, and this page must not load anything of
+      // the bench page's. Every tracker option else is the package's default,
+      // which is what the bench page runs with no `?tracker=`.
+      const PROC_WIDTH = 480;
+      const PROC_HEIGHT = 360;
+
+      const COLOR_H = "#fbbf24";
+      const COLOR_POSE = "#34d399";
+      const COLOR_RAW = "#e879f9";
+      const COLOR_AXES = ["#ef4444", "#22c55e", "#3b82f6"];
+
+      const $ = (id) => document.getElementById(id);
+      const stage = $("stage");
+      const video = $("video");
+      const overlay = $("overlay");
+      const octx = overlay.getContext("2d");
+      const sourceSelect = $("source");
+      const filterSelect = $("filter");
+      const params = $("params");
+      const showUnfiltered = $("showUnfiltered");
+      const startButton = $("start");
+      const stopButton = $("stop");
+      const statusEl = $("status");
+      const errorEl = $("error");
+      const statsDl = $("stats");
+      const PARAM_INPUTS = {
+        rotMinCutOff: DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF,
+        rotBeta: DEFAULT_POSE_FILTER_ROTATION_BETA,
+        trMinCutOff: DEFAULT_POSE_FILTER_TRANSLATION_MIN_CUTOFF,
+        trBeta: DEFAULT_POSE_FILTER_TRANSLATION_BETA,
+        dCutOff: DEFAULT_POSE_FILTER_D_CUTOFF,
+      };
+      for (const [id, value] of Object.entries(PARAM_INPUTS)) $(id).value = String(value);
+
+      /**
+       * What the page reports about itself, as data- attributes on <body>, for
+       * `npm run check:page` to read rather than pixels: `posesDrawn` counts
+       * frames whose `result.pose` was drawn, `trackRun` the "TRACK" results in
+       * a row, `boxTopNearer` whether the last drawn box's top was nearer the
+       * camera than its base at every corner, `wraps` the frames whose
+       * timestamp stepped back, `wrapState` the last such frame's state, and
+       * `wrapPassThrough` whether the last such frame with a pose, with the
+       * filter on, came back with `pose` its `poseSelection.pose` (the reset
+       * rule), and `errors` the errors the loop raised.
+       */
+      const report = {
+        filter: "off",
+        posesDrawn: 0,
+        trackRun: 0,
+        boxTopNearer: "",
+        wraps: 0,
+        wrapState: "",
+        wrapPassThrough: "",
+        errors: 0,
+      };
+      function publish() {
+        for (const [k, v] of Object.entries(report)) document.body.dataset[k] = String(v);
+      }
+      publish();
+      window.addEventListener("error", () => {
+        report.errors++;
+        publish();
+      });
+      window.addEventListener("unhandledrejection", () => {
+        report.errors++;
+        publish();
+      });
+
+      let cv = null;
+      let targetDb = null;
+      let K = null;
+      let tracker = null;
+      let running = false;
+      let vfcHandle = null;
+      let stream = null;
+      let isClip = true;
+
+      function renderStats(rows) {
+        statsDl.innerHTML = "";
+        for (const [label, value] of rows) {
+          const dt = document.createElement("dt");
+          dt.textContent = label;
+          const dd = document.createElement("dd");
+          dd.textContent = value;
+          statsDl.append(dt, dd);
+        }
+      }
+
+      /** The `poseFilter` option the controls name. A value the tracker refuses is its to refuse. */
+      function poseFilterOption() {
+        if (filterSelect.value === "off") return { mode: "off" };
+        const n = (id) => Number($(id).value);
+        return {
+          mode: "one-euro",
+          rotation: { minCutOff: n("rotMinCutOff"), beta: n("rotBeta") },
+          translation: { minCutOff: n("trMinCutOff"), beta: n("trBeta") },
+          dCutOff: n("dCutOff"),
+        };
+      }
+
+      /**
+       * A new tracker for the controls' filter: the filter's state lives on the
+       * tracker, so a change of filter starts it unseeded. Throws, leaving the
+       * running tracker as it was, on an option the tracker refuses.
+       */
+      function buildTracker() {
+        const t = new NftTracker(cv, targetDb, K, { poseFilter: poseFilterOption() });
+        // The bench page's own guard (bench-nft.html, "would run
+        // detection-only"): on a detection-only tracker the filter never acts.
+        if (t.detectionOnly) {
+          throw new Error(`The tracker would run detection-only on ${TARGET_FILE}; the filter would never act.`);
+        }
+        return t;
+      }
+
+      function rebuild() {
+        params.disabled = filterSelect.value === "off";
+        if (!running) return;
+        try {
+          tracker = buildTracker();
+          errorEl.textContent = "";
+          report.filter = filterSelect.value;
+          report.trackRun = 0;
+          report.wrapPassThrough = "";
+          publish();
+        } catch (e) {
+          errorEl.textContent = `Filter not changed: ${e.message}`;
+        }
+      }
+
+      function strokePolygon(points, color, width, dashed) {
+        octx.strokeStyle = color;
+        octx.lineWidth = width;
+        octx.setLineDash(dashed ? [6, 5] : []);
+        octx.beginPath();
+        points.forEach(([x, y], i) => (i ? octx.lineTo(x, y) : octx.moveTo(x, y)));
+        octx.closePath();
+        octx.stroke();
+      }
+
+      function strokeLines(pairs, color, width, dashed) {
+        octx.strokeStyle = color;
+        octx.lineWidth = width;
+        octx.setLineDash(dashed ? [6, 5] : []);
+        octx.beginPath();
+        for (const [[ax, ay], [bx, by]] of pairs) {
+          octx.moveTo(ax, ay);
+          octx.lineTo(bx, by);
+        }
+        octx.stroke();
+      }
+
+      /** The outline and the box of one pose; its axes too when `axes`. Returns the shapes, or null if none drawn. */
+      function drawPose(pose, color, dashed, axes) {
+        if (!pose.good) return null;
+        const s = poseShapes(K, pose, targetDb.meta.widthPx, targetDb.meta.heightPx);
+        if (!s.ok) return null;
+        strokePolygon(s.outline, color, 2, dashed);
+        strokePolygon(s.top, color, 2, dashed);
+        strokeLines(
+          s.outline.map((p, i) => [p, s.top[i]]),
+          color,
+          2,
+          dashed,
+        );
+        if (axes) {
+          const { origin, x, y, z } = s.axes;
+          [x, y, z].forEach((end, i) => strokeLines([[origin, end]], COLOR_AXES[i], 3, false));
+        }
+        return s;
+      }
+
+      async function startSource() {
+        const choice = sourceSelect.value;
+        isClip = choice !== "webcam";
+        if (isClip) {
+          video.srcObject = null;
+          video.src = `./videos/${choice}`;
+          video.loop = true;
+        } else {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: PROC_WIDTH }, height: { ideal: PROC_HEIGHT } },
+            audio: false,
+          });
+          video.removeAttribute("src");
+          video.srcObject = stream;
+          video.loop = false;
+        }
+        if (video.readyState < HTMLMediaElement.HAVE_METADATA) {
+          await new Promise((resolve, reject) => {
+            video.addEventListener("loadedmetadata", resolve, { once: true });
+            video.addEventListener("error", () => reject(new Error(`could not load ${choice}`)), { once: true });
+          });
+        }
+        await video.play();
+      }
+
+      function stopSource() {
+        running = false;
+        if (vfcHandle !== null) video.cancelVideoFrameCallback(vfcHandle);
+        vfcHandle = null;
+        video.pause();
+        if (stream) for (const track of stream.getTracks()) track.stop();
+        stream = null;
+        video.removeAttribute("src");
+        video.srcObject = null;
+        video.load();
+      }
+
+      async function start() {
+        startButton.disabled = true;
+        sourceSelect.disabled = true;
+        errorEl.textContent = "";
+        try {
+          await startSource();
+          // As both demos and the bench page derive it: `K` and the overlay
+          // agree with the downscaled processing frame, probed once, since
+          // every later frame downscales to this size for the stream's life.
+          const probe = toGray(video, video.videoWidth, video.videoHeight, PROC_WIDTH, PROC_HEIGHT);
+          stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+          overlay.width = probe.width;
+          overlay.height = probe.height;
+          K = intrinsics(probe.width, probe.height);
+          running = true;
+          tracker = buildTracker();
+        } catch (e) {
+          stopSource();
+          errorEl.textContent = e.message;
+          statusEl.textContent = "failed";
+          startButton.disabled = false;
+          sourceSelect.disabled = false;
+          return;
+        }
+        Object.assign(report, { filter: filterSelect.value, posesDrawn: 0, trackRun: 0, wraps: 0 });
+        Object.assign(report, { boxTopNearer: "", wrapState: "", wrapPassThrough: "" });
+        publish();
+        stopButton.disabled = false;
+        runLoop();
+      }
+
+      function stop() {
+        stopSource();
+        octx.clearRect(0, 0, overlay.width, overlay.height);
+        statusEl.textContent = "stopped";
+        stopButton.disabled = true;
+        startButton.disabled = false;
+        sourceSelect.disabled = false;
+      }
+
+      /**
+       * One tick per decoded frame, through `requestVideoFrameCallback`. The
+       * timestamp `process` gets: for a clip, the frame's media time in
+       * milliseconds, so the filter sees the clip's own spacing whatever this
+       * machine's processing rate, and a loop wrap, where it steps back,
+       * resets the filter by its reset rule; for the webcam,
+       * `performance.now()`, as the webcam demo passes it. The bench page
+       * passes `performance.now()` for a clip too (its `t0`): with a filter
+       * on, it would see wall-clock spacing.
+       */
+      function runLoop() {
+        let lastTickAt = performance.now();
+        let fps = 0;
+        let lastTs = -Infinity;
+
+        const tick = (_now, metadata) => {
+          if (!running) return;
+          try {
+            const ts = isClip ? (metadata?.mediaTime ?? video.currentTime) * 1000 : performance.now();
+            const wrapped = ts <= lastTs;
+            lastTs = ts;
+            const scene = toGray(video, video.videoWidth, video.videoHeight, PROC_WIDTH, PROC_HEIGHT);
+            const result = tracker.process(scene, ts);
+
+            const now = performance.now();
+            const instantFps = 1000 / Math.max(1, now - lastTickAt);
+            fps = fps === 0 ? instantFps : fps * 0.8 + instantFps * 0.2;
+            lastTickAt = now;
+
+            if (wrapped) {
+              report.wraps++;
+              report.wrapState = result.state;
+              if (result.ok && report.filter !== "off") {
+                report.wrapPassThrough = String(result.pose === result.poseSelection.pose);
+              }
+            }
+            report.trackRun = result.state === "TRACK" ? report.trackRun + 1 : 0;
+
+            octx.clearRect(0, 0, overlay.width, overlay.height);
+            let angle = "—";
+            if (result.ok) {
+              const w = targetDb.meta.widthPx;
+              const h = targetDb.meta.heightPx;
+              const corners = [
+                [0, 0],
+                [w - 1, 0],
+                [w - 1, h - 1],
+                [0, h - 1],
+              ].map(([x, y]) => project(result.H, x, y));
+              strokePolygon(corners, COLOR_H, 2, false);
+              const raw = result.poseSelection.pose;
+              const drawn = drawPose(result.pose, COLOR_POSE, false, true);
+              // Over the filtered pose, dashed, so that both stay visible
+              // where they coincide (always, with the filter off).
+              if (showUnfiltered.checked) drawPose(raw, COLOR_RAW, true, false);
+              if (drawn) {
+                report.posesDrawn++;
+                report.boxTopNearer = String(drawn.depth.top.every((d, i) => d < drawn.depth.base[i]));
+              }
+              angle = `${rotationAngleDeg(result.pose.R, raw.R).toFixed(3)}° (display, not a metric)`;
+            }
+            publish();
+
+            statusEl.textContent = result.ok ? "locked on" : result.reason;
+            renderStats([
+              ["fps", fps.toFixed(1)],
+              ["state", result.state],
+              ["inliers", result.ok || result.numMatches >= 4 ? `${result.numInliers} / ${result.numMatches}` : "—"],
+              ["pose.good", result.ok ? String(result.pose.good) : "—"],
+              ["filter", report.filter],
+              ["filtered vs unfiltered R", angle],
+              ["timestamp", `${ts.toFixed(1)} ms (${isClip ? "media time" : "performance.now()"})`],
+              ["loop wraps", String(report.wraps)],
+            ]);
+          } catch (e) {
+            report.errors++;
+            publish();
+            errorEl.textContent = e.message;
+            console.error(e);
+            stop();
+            return;
+          }
+          vfcHandle = video.requestVideoFrameCallback(tick);
+        };
+        vfcHandle = video.requestVideoFrameCallback(tick);
+      }
+
+      async function main() {
+        cv = await createJsfeatNextBackend();
+        const response = await fetch(TARGET_FILE);
+        if (!response.ok) throw new Error(`${TARGET_FILE}: HTTP ${response.status}`);
+        const decoded = decode(await response.arrayBuffer());
+        if (!decoded.ok) throw new Error(`${TARGET_FILE}: ${decoded.error} — ${decoded.detail}`);
+        for (const w of decoded.warnings) console.warn(`${TARGET_FILE}: ${w.code} — ${w.detail}`);
+        targetDb = decoded.target;
+        statusEl.textContent = "ready";
+        document.body.dataset.ready = "true";
+        startButton.disabled = false;
+        startButton.addEventListener("click", start);
+        stopButton.addEventListener("click", stop);
+        filterSelect.addEventListener("change", rebuild);
+        for (const id of Object.keys(PARAM_INPUTS)) $(id).addEventListener("change", rebuild);
+      }
+
+      main().catch((e) => {
+        errorEl.textContent = e.message;
+        statusEl.textContent = "failed";
+        console.error(e);
+      });
+    </script>
+  </body>
+</html>
