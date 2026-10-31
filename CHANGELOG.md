@@ -14,6 +14,19 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+### Added
+
+- **A provenance preflight, which CI runs after the build**
+  ([#136](https://github.com/webarkit/webarkit/issues/136)): `npm run check:provenance`
+  (`scripts/provenance-preflight.mjs`) exits 0 when `examples/dist/provenance.json` describes the
+  checkout (its head is `HEAD`, the tree is clean over the paths the build's `clean` covers, and
+  every file it hashes hashes the same on disk, the bundle's inputs (`bundledInputs`) among them,
+  `served` listing what `SERVED` names), 1 when it does not, one line per finding and the remedy,
+  and 2, naming the field, on a manifest it cannot read or whose fields have the wrong shape. It
+  asks git three times per run, however many files the manifest lists. `npm test` no longer asks whether the manifest describes the tree, which
+  failed after every edit until the next build: it asserts the manifest's agreement with itself and
+  with the bundle beside it, with no git call.
+
 ### Fixed
 
 - **The bench page's Start can be pressed again after a provenance check that throws**

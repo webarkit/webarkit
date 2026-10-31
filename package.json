@@ -14,6 +14,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "check:contract": "node scripts/check-contract-sync.mjs",
     "check:page": "node scripts/page-check.mjs",
+    "check:provenance": "node scripts/provenance-preflight.mjs",
     "format": "npm run format:check -- --write",
     "format:check": "prettier --check \"packages/*/src/**/*.ts\" \"packages/*/test/**/*.ts\" \"packages/*/ground-truth/**/*.ts\" \"packages/*/bin/*.mjs\" \"scripts/*.mjs\" \"examples/js/**/*.mjs\" \"examples/test/**/*.mjs\" \"**/*.md\"",
     "lint": "npm run lint --workspaces --if-present",

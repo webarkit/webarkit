@@ -126,6 +126,11 @@ This is an npm-workspaces monorepo — run these from the repo root; they cover 
     ```powershell
     npm test
     ```
+- **The provenance preflight** (whether the manifest the build wrote describes this checkout, `scripts/provenance-preflight.mjs`):
+    ```powershell
+    npm run check:provenance
+    ```
+    It passes only on a build from a committed tree, and any edit fails it until the next build: commit, run `npm run build`, then the preflight. Exit 1 names each file and condition that differ, and the remedy.
 - **The bench page's checks** (`examples/bench-nft.html` driven in headless Chrome, `scripts/page-check.mjs`):
     ```powershell
     npm run check:page
