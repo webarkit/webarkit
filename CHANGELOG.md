@@ -26,6 +26,12 @@ release pull request's body and the GitHub Release's notes.
   asks git three times per run, however many files the manifest lists. `npm test` no longer asks whether the manifest describes the tree, which
   failed after every edit until the next build: it asserts the manifest's agreement with itself and
   with the bundle beside it, with no git call.
+- **`npm run check:replay`, the desktop replay's refusals against real decoding**
+  ([#207](https://github.com/webarkit/webarkit/issues/207)): `scripts/replay-decoding-check.mjs`
+  runs `scripts/replay-clips.mjs` on a `--sequence` export recorded at another resolution, and on
+  an `--external` arm that falls short of its counted loops, and checks that each is refused with
+  its line and exit 1, and that the passing case beside it is not. It needs ffmpeg and ffprobe on
+  the `PATH`, exits 2 without them, and is not run in CI, which has no ffmpeg.
 
 ### Fixed
 

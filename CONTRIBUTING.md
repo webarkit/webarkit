@@ -139,8 +139,13 @@ This is an npm-workspaces monorepo — run these from the repo root; they cover 
     - **A build first, from a committed tree.** Its first check is a `?loops=1` run, which is a session run, as are its `?run=1` provenance checks, and the page refuses a session run on provenance when the manifest was built from a tree with uncommitted changes. Those checks then fail, and show the page's provenance line. Commit, run `npm run build`, then the checks.
     - **Google Chrome**, found at its usual install path, or named by `CHROME_PATH`. Not Chromium: the bundled clips are H.264. `CHROME_ARGS` adds flags to Chrome's command line, such as `--no-sandbox` where the sandbox cannot start.
     - **Node 22.12 or newer**, which `puppeteer-core` requires. The version `.nvmrc` pins qualifies, and the root `engines` floor is 22.12 for the same reason.
+- **The replay's refusals against real decoding** (`scripts/replay-clips.mjs`'s refusals that act only once ffmpeg has decoded a clip, `scripts/replay-decoding-check.mjs`):
+    ```powershell
+    npm run check:replay
+    ```
+    `npm test` checks their verdicts; this runs the script's own branches, each refusing and passing. It needs **ffmpeg and ffprobe** on the `PATH` and a build (`npm run build`), and exits 2 naming what is missing, never passing or skipping without them. **CI does not run it**, having no ffmpeg: run it after changing `scripts/replay-clips.mjs` or what it imports. About 30 s.
 
-These are exactly the checks CI runs on every push and pull request (see `.github/workflows/CI.yml`; `check:page` runs in a job of its own, `page-check`). If you add a new feature, make sure to include appropriate tests in the relevant package's `test/` directory (Vitest, e.g. `packages/cv-backend-jsfeatnext/test/*.test.ts`).
+These, except `check:replay`, are exactly the checks CI runs on every push and pull request (see `.github/workflows/CI.yml`; `check:page` runs in a job of its own, `page-check`). If you add a new feature, make sure to include appropriate tests in the relevant package's `test/` directory (Vitest, e.g. `packages/cv-backend-jsfeatnext/test/*.test.ts`).
 
 ### Formatting
 
