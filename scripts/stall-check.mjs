@@ -37,9 +37,11 @@
  * with one line and no verdict, when there is no check to run: no path given,
  * a file it cannot read, one that is not JSON, or JSON that is not an object
  * (`null`, a number, a string, a boolean or an array: no export). On every
- * export it reads, its output lines are the ones the copy embedded in
- * docs/benchmarks/2026-10-01-m3-session-additions.md printed (#117); that
- * copy threw where this exits 2.
+ * committed export, its output and exit code are the ones the copy embedded in
+ * docs/benchmarks/2026-10-01-m3-session-additions.md printed (#117). It differs
+ * on input that is not an export or that it cannot read, where that copy threw
+ * or gave another verdict: this exits 2, or fails with one line naming what it
+ * cannot read (#206).
  */
 
 import { readFileSync } from "node:fs";

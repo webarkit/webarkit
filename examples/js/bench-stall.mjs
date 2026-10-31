@@ -32,11 +32,12 @@
  *
  * Moved in from the copy embedded in
  * `docs/benchmarks/2026-10-01-m3-session-additions.md`, "The scripts"
- * (SHA-256 `cccb475b…`), with its logic unchanged; that copy stays as the
- * record of what ran. The arms and where their bounds come from are in the
- * same record, "A per-run check for a stalled clip". Neither the page nor the
- * worker imports this module, so `bench-metrics.mjs` does not re-export it and
- * it is not served.
+ * (SHA-256 `cccb475b…`), with its logic unchanged but for #206's two guards on
+ * frames it cannot read, where the copy threw or read a string's characters as
+ * frames; that copy stays as the record of what ran. The arms and where their
+ * bounds come from are in the same record, "A per-run check for a stalled
+ * clip". Neither the page nor the worker imports this module, so
+ * `bench-metrics.mjs` does not re-export it and it is not served.
  *
  * A gap is the media time between two consecutive processed frames. Across a
  * loop wrap (media time going back) it is the clip's end after the first frame
@@ -57,8 +58,9 @@
  *
  * An export it cannot read is a FAIL that says why, not a throw (#206): a
  * `frames` that is not a list, before any frame is read; no clip duration, or
- * fewer than two frames; and, at the first frame where it is so, a frame that
- * is not an object or one with no finite media time.
+ * fewer than two frames; and then, reading the frames in order, the first that
+ * is not an object, or the first step whose two media times are not both
+ * finite, named by its second frame.
  */
 
 export const BOUND_MS = 500; // round 2's largest gap on the tablet, 240.8 ms, doubled and rounded up
@@ -71,8 +73,12 @@ export const CLIP_S = {
     "pinball-static.mp4": 12.166667,
 };
 
-/** A value's type as a FAIL line names it, `null` and `array` apart from `object`. */
-const typeOf = (v) => (v === null ? "null" : Array.isArray(v) ? "array" : typeof v);
+/**
+ * A value's type as a FAIL line names it, `null` apart from `object`. Never an
+ * array here: a `frames` that is one is a list, and a frame that is one is an
+ * object, read on to its media time.
+ */
+const typeOf = (v) => (v === null ? "null" : typeof v);
 const isObject = (v) => typeof v === "object" && v !== null;
 
 export function stallCheck(e) {

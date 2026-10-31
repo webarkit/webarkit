@@ -322,6 +322,10 @@ describe("stallCheck with nothing to read", () => {
         }
         // Without a clip duration too: the list is what cannot be read.
         expect(stallCheck({ frames: {} }).fails).toEqual(["frames is not a list (object)"]);
+        // A null list is no list, as an absent one: no frames to read.
+        expect(stallCheck({ clipDurationS: D, frames: null }).fails).toEqual([
+            "no clip duration or no frames to read (12, 0 frames)",
+        ]);
     });
 
     it("stops at a frame that is not an object, frame 0 included", () => {
@@ -334,6 +338,17 @@ describe("stallCheck with nothing to read", () => {
             fails: ["frame 1: not an object (null)"],
             maxGap: null,
             loops: 0,
+        });
+        expect(
+            stallCheck({ clipDurationS: D, frames: [{ mediaTimeSeconds: 0 }, 5] }).fails,
+        ).toEqual(["frame 1: not an object (number)"]);
+        // After a loop wrap: the loops counted so far.
+        const wrapped = exportOf([11.9375, 0, 0.0625]);
+        wrapped.frames.push(null);
+        expect(stallCheck(wrapped)).toEqual({
+            fails: ["frame 3: not an object (null)"],
+            maxGap: null,
+            loops: 1,
         });
     });
 });
@@ -466,7 +481,7 @@ describe("scripts/stall-check.mjs", () => {
         ]) {
             refused(
                 exec(write(name, text)),
-                new RegExp(`${name.replace(".", "\\.")} is not a JSON object: ${what}$`),
+                new RegExp(`^.*${name.replace(".", "\\.")} is not a JSON object: ${what}$`),
             );
         }
     });
