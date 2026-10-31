@@ -86,6 +86,26 @@ const disk = {
 };
 const blobs = { "package.json": blob("2"), "scripts/build-provenance.mjs": blob("5") };
 
+/**
+ * The manifest as the build writes it where git is not usable (build-provenance.mjs): no head,
+ * `clean` false, no dirty path, no sources (it lists them with `git ls-files`), and every blob id
+ * null; the rest hashed as with git.
+ */
+function noGit() {
+    const m = manifest();
+    const unblobbed = (group) =>
+        Object.fromEntries(Object.entries(group).map(([p, e]) => [p, { ...e, blob: null }]));
+    return {
+        ...m,
+        head: null,
+        clean: false,
+        dirtyPaths: [],
+        sources: {},
+        build: unblobbed(m.build),
+        served: unblobbed(m.served),
+    };
+}
+
 /** The readers `preflight` takes, over `disk` unless `over` replaces one, each git reader counted. */
 function tree(over = {}) {
     const calls = { head: 0, dirtyPaths: 0, blobs: 0 };
@@ -135,6 +155,19 @@ describe("preflight", () => {
             { ...manifest(), head: null, clean: false },
             {},
             /manifest head: null; .* -- built without git/,
+        ],
+        // The build's own output without git: stale for any checkout, never malformed (Qodo, #210).
+        [
+            "the manifest the build writes without git",
+            noGit(),
+            {},
+            /^manifest head: null; .* -- built without git$/m,
+        ],
+        [
+            "the manifest the build writes without git, on a checkout git cannot describe",
+            noGit(),
+            { head: () => null, dirtyPaths: () => null, blobs: () => null },
+            /^manifest head: null; checkout HEAD: unknown \(git unavailable\) -- built without git$/m,
         ],
         [
             "a dirty path in the tree now",
@@ -358,6 +391,25 @@ describe("preflight", () => {
             /build: \["package\.json"\] is not \["scripts\/build-provenance\.mjs","package\.json"\]/,
         ],
         ["no sources", { ...m(), sources: {} }, /sources: \{\} is not an object of paths/],
+        // Only the build without git writes no sources and null blob ids; a git build never does.
+        [
+            "no sources beside a dirty flag and a head",
+            { ...m(), clean: false, dirtyPaths: ["examples/js/a.mjs"], sources: {} },
+            /sources: \{\} is not an object of paths/,
+        ],
+        [
+            "no sources beside no head that says its tree is clean",
+            { ...noGit(), clean: true },
+            /sources: \{\} is not an object of paths/,
+        ],
+        [
+            "a null blob id in a git build",
+            {
+                ...m(),
+                served: { "examples/js/a.mjs": { ...m().served["examples/js/a.mjs"], blob: null } },
+            },
+            /served\["examples\/js\/a\.mjs"\]\.blob: null is not a git object id/,
+        ],
         [
             "no bundledInputs",
             { ...m(), bundledInputs: undefined },
@@ -401,7 +453,7 @@ describe("preflight", () => {
             "a path both a source and a producer file",
             {
                 ...m(),
-                sources: { ...m().sources, "package.json": { sha256: hex("1"), blob: null } },
+                sources: { ...m().sources, "package.json": { sha256: hex("1"), blob: blob("1") } },
             },
             /package\.json: hashed in both sources and build/,
         ],

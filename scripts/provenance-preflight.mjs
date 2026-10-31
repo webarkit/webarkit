@@ -29,7 +29,10 @@
  * `npm run check:provenance`: whether the manifest `npm run build` wrote
  * describes this tree (#136).
  *
- *     node scripts/provenance-preflight.mjs [examples/dist/provenance.json]
+ *     node scripts/provenance-preflight.mjs [manifest]
+ *
+ * An explicit path is read as given, relative to the current directory;
+ * without one, the repository's `examples/dist/provenance.json`.
  *
  * It does, when the manifest's head is this checkout's `HEAD`, the tree is
  * clean over the paths the build's `clean` covers (`CLEAN_PATHS`, the M4
@@ -93,9 +96,14 @@ function shapeError(m) {
     if (typeof m.bundle.sha256 !== "string" || !SHA256.test(m.bundle.sha256)) {
         return bad("bundle.sha256", m.bundle.sha256, "a SHA-256");
     }
+    // Without git the build lists no sources (`git ls-files`) and records every blob id null: its
+    // own manifest, stale for any checkout (the head finding says "built without git"), not a
+    // malformed one. Only in that state: a git build always has sources and blob ids.
+    const noGit = m.head === null && !m.clean && m.dirtyPaths.length === 0;
     const hashedIn = { [BUNDLE]: "bundle", [JSFEAT_FILE]: "dependencies" };
     for (const group of ["sources", "build", "served"]) {
-        if (!isObject(m[group]) || Object.keys(m[group]).length === 0) {
+        const empty = isObject(m[group]) && Object.keys(m[group]).length === 0;
+        if (!isObject(m[group]) || (empty && !(group === "sources" && noGit))) {
             return bad(group, m[group], "an object of paths");
         }
         for (const [path, e] of Object.entries(m[group])) {
@@ -104,8 +112,15 @@ function shapeError(m) {
             if (typeof e.sha256 !== "string" || !SHA256.test(e.sha256)) {
                 return bad(`${field}.sha256`, e.sha256, "a SHA-256");
             }
-            if (e.blob !== null && !(typeof e.blob === "string" && OBJECT_ID.test(e.blob))) {
-                return bad(`${field}.blob`, e.blob, "a git object id or null");
+            if (
+                !(e.blob === null && noGit) &&
+                !(typeof e.blob === "string" && OBJECT_ID.test(e.blob))
+            ) {
+                return bad(
+                    `${field}.blob`,
+                    e.blob,
+                    noGit ? "a git object id or null" : "a git object id",
+                );
             }
             if (group === "served" && typeof e.side !== "string") {
                 return bad(`${field}.side`, e.side, "a side");
@@ -251,7 +266,9 @@ if (
     realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
 ) {
     const ROOT = fileURLToPath(new URL("../", import.meta.url));
-    // Named as given, or repository-relative; read from the repository wherever it is run.
+    // An explicit path is read as given, relative to the current directory, as any command reads
+    // its arguments; without one, the repository's manifest, wherever the command runs. The
+    // files the manifest names are always read from the repository (`sha256` below).
     const path = process.argv[2] ?? "examples/dist/provenance.json";
     const refuse = (line) => {
         console.error(`provenance preflight: ${line}`);
