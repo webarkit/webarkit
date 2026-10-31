@@ -32,9 +32,11 @@
  *     node scripts/stall-check.mjs <export.json>
  *
  * Exits 0 if every arm passes, and 1 if any fails, an export with no clip
- * duration, fewer than two frames or a media time that is not finite among
- * them. Exits 2, with one line and no verdict, when there is no check to run:
- * no path given, a file it cannot read, or one that is not JSON. On every
+ * duration, fewer than two frames, a `frames` that is not a list, or a frame
+ * among them that is not an object or whose media time is not finite. Exits 2,
+ * with one line and no verdict, when there is no check to run: no path given,
+ * a file it cannot read, one that is not JSON, or JSON that is not an object
+ * (`null`, a number, a string, a boolean or an array: no export). On every
  * export it reads, its output lines are the ones the copy embedded in
  * docs/benchmarks/2026-10-01-m3-session-additions.md printed (#117); that
  * copy threw where this exits 2.
@@ -65,12 +67,21 @@ function load(path) {
         console.error(`cannot read ${path}: ${e.message}`);
         process.exit(2);
     }
+    let value;
     try {
-        return JSON.parse(text);
+        value = JSON.parse(text);
     } catch (e) {
         console.error(`cannot parse ${path} as JSON: ${e.message}`);
         process.exit(2);
     }
+    // An export is an object: anything else is no export to check (#206).
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        const what =
+            value === null ? "null" : Array.isArray(value) ? "an array" : `a ${typeof value}`;
+        console.error(`${path} is not a JSON object: ${what}`);
+        process.exit(2);
+    }
+    return value;
 }
 
 const r = stallCheck(load(path));
