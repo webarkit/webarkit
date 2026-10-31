@@ -44,6 +44,9 @@ const ROOT = new URL("../../", import.meta.url);
 const bytes = (path) => readFileSync(new URL(path, ROOT));
 const sha256 = (path) => createHash("sha256").update(bytes(path)).digest("hex");
 
+/** A well-formed SHA-256 for a fixture, one hex digit repeated: `served`'s entries need one (#209). */
+const hex = (digit) => digit.repeat(64);
+
 describe("provenanceRefusal", () => {
     const manifest = {
         head: "0123456789abcdef0123456789abcdef01234567",
@@ -51,14 +54,14 @@ describe("provenanceRefusal", () => {
         dirtyPaths: [],
         bundle: { path: "examples/dist/webarkit-packages.mjs", sha256: "b" },
         served: {
-            "examples/bench-nft.html": { sha256: "h" },
-            "examples/js/a.mjs": { sha256: "a" },
+            "examples/bench-nft.html": { sha256: hex("1"), side: "page" },
+            "examples/js/a.mjs": { sha256: hex("a"), side: "both" },
         },
     };
     const observed = {
         manifestChanged: false,
         bundleSha256: "b",
-        served: { "examples/bench-nft.html": "h", "examples/js/a.mjs": "a" },
+        served: { "examples/bench-nft.html": hex("1"), "examples/js/a.mjs": hex("a") },
         loaded: ["examples/dist/webarkit-packages.mjs", "examples/js/a.mjs"],
     };
     const session = { sessionRun: true };
@@ -96,7 +99,7 @@ describe("provenanceRefusal", () => {
         [
             "a served file that could not be fetched",
             manifest,
-            { ...observed, served: { "examples/bench-nft.html": "h" } },
+            { ...observed, served: { "examples/bench-nft.html": hex("1") } },
             /differ from the build: examples\/js\/a\.mjs/,
         ],
         [
@@ -332,20 +335,20 @@ describe("provenanceRefusal", () => {
             ...manifest,
             served: {
                 ...manifest.served,
-                "examples/js/p.mjs": { sha256: "p", side: "page" },
-                "examples/js/w.mjs": { sha256: "w", side: "worker" },
-                "examples/js/both.mjs": { sha256: "o", side: "both" },
-                "examples/js/entry.mjs": { sha256: "e", side: "bundled" },
+                "examples/js/p.mjs": { sha256: hex("2"), side: "page" },
+                "examples/js/w.mjs": { sha256: hex("3"), side: "worker" },
+                "examples/js/both.mjs": { sha256: hex("4"), side: "both" },
+                "examples/js/entry.mjs": { sha256: hex("e"), side: "bundled" },
             },
         };
         const seen = {
             ...observed,
             served: {
                 ...observed.served,
-                "examples/js/p.mjs": "p",
-                "examples/js/w.mjs": "w",
-                "examples/js/both.mjs": "o",
-                "examples/js/entry.mjs": "e",
+                "examples/js/p.mjs": hex("2"),
+                "examples/js/w.mjs": hex("3"),
+                "examples/js/both.mjs": hex("4"),
+                "examples/js/entry.mjs": hex("e"),
             },
             loaded: [
                 ...observed.loaded,
