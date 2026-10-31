@@ -53,6 +53,14 @@ jobs:
             - name: Build
               run: npm run build
 
+            # The manifest the build just wrote describes this checkout: its
+            # head is HEAD, the tree is clean, every hash is the file's (#136).
+            # Not part of npm test, where a developer's checkout fails it after
+            # every edit until the next build; here it always runs on a build
+            # of the tree it checks.
+            - name: Provenance preflight
+              run: npm run check:provenance
+
             # Separate from build: tsc -p tsconfig.json (the build step) only
             # type-checks src/, since that's what's actually published: a real
             # type error confined to test/ would pass a build-only check
