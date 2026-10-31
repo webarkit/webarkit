@@ -1883,9 +1883,12 @@
           try {
             provenance = await checkProvenance(TUNING.loops !== null || TUNING.run !== null);
           } catch (e) {
-            // Start stays off, as it did when this threw unhandled; the probe is as it was.
-            clearPendingStart();
-            probeButton.disabled = !probeAllowed();
+            // A check that throws is a failed start, and ends as one: the controls
+            // are set as after a refusal, so Start can be tried again once the
+            // manifest is rebuilt (#205). A manifest that cannot be fetched or
+            // parsed does not throw: fetchManifest catches it, and a session
+            // run refuses it.
+            endStart();
             showError(e.message);
             return;
           }
