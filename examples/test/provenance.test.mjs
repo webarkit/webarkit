@@ -27,16 +27,15 @@
 
 /**
  * The provenance check (#110, §4–5): Start's refusal, decided by
- * `provenanceRefusal`; the manifest `npm run build` writes, against the files
- * on disk; and its list of served files, against the imports the page and the
- * worker actually make. What the page fetches at Start, and what the browser
+ * `provenanceRefusal`; the manifest `npm run build` writes, against itself and
+ * the bundle beside it (against the tree as it is now, it is
+ * provenance-preflight.test.mjs's); and its list of served files, against the
+ * imports the page and the worker actually make. What the page fetches at Start, and what the browser
  * caches, no test here can see: those are shown by a browser run.
  */
 
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { provenanceFindings, provenanceRefusal } from "../js/bench-metrics.mjs";
 import { SERVED } from "../../scripts/build-provenance.mjs";
@@ -398,92 +397,72 @@ describe("provenanceRefusal", () => {
     });
 });
 
+/**
+ * What holds on any build, a branch's or a campaign's (#136): the manifest
+ * agrees with itself and with the bundle written beside it. Whether it
+ * describes the tree as it is now (its head HEAD, the tree clean, each source
+ * and served file's hash the file's, `served` what SERVED names now) fails
+ * after every edit until the next build, so it is not asked here: it is
+ * `npm run check:provenance` (scripts/provenance-preflight.mjs), which CI runs
+ * after the build. No git here.
+ */
 describe("the manifest npm run build writes", () => {
     const manifest = JSON.parse(bytes("examples/dist/provenance.json"));
+    const jsfeat = manifest.dependencies["@webarkit/jsfeat-next"];
 
-    /**
-     * Why a hash in the manifest differs from the file on disk, as one line per
-     * condition with both values, and the remedy. A hash that differs has one of
-     * two causes with different remedies: the manifest was built at another
-     * commit, or at this one with a dirty tree. The checkout's state comes from
-     * git; without git the lines say so. (#135: the root build overwrote an
-     * attested build without a word, and this message was the only account.)
-     */
-    const whyStale = () => {
-        const git = (...args) => {
-            try {
-                return execFileSync("git", args, {
-                    cwd: fileURLToPath(ROOT),
-                    encoding: "utf8",
-                }).trim();
-            } catch {
-                return null;
-            }
-        };
-        const head = git("rev-parse", "HEAD");
-        const status = git("status", "--porcelain", "--untracked-files=no");
-        const dirty = status === null ? null : status.split("\n").filter(Boolean);
-        return [
-            `manifest head: ${manifest.head}; checkout HEAD: ${head ?? "unknown (git unavailable)"}${head && head !== manifest.head ? " -- built at another commit" : ""}`,
-            `manifest clean: ${manifest.clean}; tree clean now: ${dirty === null ? "unknown (git unavailable)" : dirty.length === 0}${dirty && dirty.length > 0 ? " -- dirty: " + dirty.join(", ") : ""}${manifest.dirtyPaths?.length ? "; manifest dirtyPaths: " + manifest.dirtyPaths.join(", ") : ""}`,
-            `remedy: rebuild from a clean tree at ${head ?? "the expected commit"} (npm run build)`,
-        ].join("\n");
-    };
-
-    /**
-     * `h` is `path`'s hash in the manifest. The message is built only when the
-     * hashes differ: `whyStale` runs git twice, and as an eager argument it ran
-     * for every file, which on Windows took the test past vitest's 5 s timeout.
-     */
-    const expectHash = (path, h) => {
-        const onDisk = sha256(path);
-        expect(
-            h,
-            h === onDisk
-                ? undefined
-                : `${path}: the manifest's hash is not the file's\n${whyStale()}`,
-        ).toBe(onDisk);
-    };
-
-    it("hashes the files on disk, the bundle and jsfeat-next's included (rebuild after an edit)", () => {
+    it("is a git build's, and says it is clean exactly when it lists no dirty path", () => {
         expect(manifest.schema).toBe("webarkit-bench-provenance/1");
         expect(manifest.head).toMatch(/^[0-9a-f]{40}$/);
-        for (const [path, { sha256: h }] of Object.entries({
-            ...manifest.sources,
-            ...manifest.served,
-        })) {
-            expectHash(path, h);
+        expect(manifest.dirtyPaths).toBeInstanceOf(Array);
+        expect(
+            manifest.clean,
+            `clean is ${manifest.clean}, dirtyPaths ${JSON.stringify(manifest.dirtyPaths)}`,
+        ).toBe(manifest.dirtyPaths.length === 0);
+    });
+
+    it("records every hash well-formed: SHA-256 in hex, blob ids as full git object ids", () => {
+        const sha = /^[0-9a-f]{64}$/;
+        const groups = {
+            sources: manifest.sources,
+            served: manifest.served,
+            build: manifest.build,
+        };
+        for (const [group, entries] of Object.entries(groups)) {
+            for (const [path, { sha256: h, blob }] of Object.entries(entries)) {
+                expect(h, `${group} ${path}: sha256`).toMatch(sha);
+                expect(blob, `${group} ${path}: blob`).toMatch(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
+            }
         }
-        expectHash(manifest.bundle.path, manifest.bundle.sha256);
-        const jsfeat = manifest.dependencies["@webarkit/jsfeat-next"];
-        expect(jsfeat.sha256).toBe(sha256(jsfeat.file));
+        for (const [path, h] of Object.entries(manifest.bundledInputs)) {
+            expect(h, `bundledInputs ${path}`).toMatch(sha);
+        }
+        expect(manifest.bundle.sha256, "bundle").toMatch(sha);
+        expect(jsfeat.sha256, "jsfeat-next").toMatch(sha);
+    });
+
+    // Written with the manifest by the same build, so these hold until node_modules or the bundle
+    // is replaced, and `npm install` and `npm ci` rebuild (`prepare`).
+    it("hashes the bundle written beside it, and the jsfeat-next file the bundle holds", () => {
+        expect(manifest.bundle.sha256, `${manifest.bundle.path}: the manifest's hash`).toBe(
+            sha256(manifest.bundle.path),
+        );
+        expect(jsfeat.sha256, `${jsfeat.file}: the manifest's hash`).toBe(sha256(jsfeat.file));
         expect(jsfeat.installedVersion).toBe(jsfeat.version);
     });
 
     it("hashes its producer and the root package.json, which run it (#127)", () => {
-        const build = ["scripts/build-provenance.mjs", "package.json"];
-        expect(Object.keys(manifest.build ?? {}).sort()).toEqual([...build].sort());
-        for (const path of build) {
-            const { sha256: h, blob } = manifest.build[path];
-            expectHash(path, h);
-            const onDisk = execFileSync("git", ["hash-object", path], {
-                cwd: fileURLToPath(ROOT),
-                encoding: "utf8",
-            }).trim();
-            expect(blob, `${path}: the manifest's blob id is not the file's`).toBe(onDisk);
-        }
+        expect(Object.keys(manifest.build ?? {}).sort()).toEqual(
+            ["package.json", "scripts/build-provenance.mjs"].sort(),
+        );
     });
 
-    it("lists every package source, and served exactly what SERVED names, with its side", () => {
+    it("lists every package's sources and the lockfile", () => {
         const sources = Object.keys(manifest.sources);
         for (const p of ["cv-backend-spec", "cv-backend-jsfeatnext", "nft-tracker"]) {
             expect(sources).toContain(`packages/${p}/package.json`);
             expect(sources.some((s) => s.startsWith(`packages/${p}/src/`))).toBe(true);
         }
         expect(sources).toContain("package-lock.json");
-        expect(
-            Object.fromEntries(Object.entries(manifest.served).map(([p, e]) => [p, e.side])),
-        ).toEqual(SERVED);
     });
 });
 
