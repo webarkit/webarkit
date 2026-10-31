@@ -34,11 +34,11 @@
  * It does, when the manifest's head is this checkout's `HEAD`, the tree is
  * clean over the paths the build's `clean` covers (`CLEAN_PATHS`, the M4
  * runbook's step 2), and every file the manifest hashes (`sources`, `served`,
- * `build`, the bundle and jsfeat-next's file) hashes the same on disk, with
- * `served` listing exactly what `SERVED` names. CI runs it after the build; a
- * device session runs it on the serving PC before measuring. A developer's
- * checkout fails it after any edit until the next build, which is why it is a
- * command and not part of `npm test` (#136).
+ * `build`, `bundledInputs`, the bundle and jsfeat-next's file) hashes the same
+ * on disk, with `served` listing exactly what `SERVED` names. CI runs it after
+ * the build; a device session runs it on the serving PC before measuring. A
+ * developer's checkout fails it after any edit until the next build, which is
+ * why it is a command and not part of `npm test` (#136).
  *
  * Exits 0 if the manifest describes the tree, 1 if it does not, with one line
  * per finding and the remedy, and 2, with one line naming the field, when the
@@ -57,6 +57,8 @@ const JSFEAT = "@webarkit/jsfeat-next";
 const SHA256 = /^[0-9a-f]{64}$/;
 /** A full object id, SHA-1's or SHA-256's, as the page reads `head`. */
 const OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+/** A repository-relative path as the build writes one: forward slashes, no root, no drive. */
+const RELATIVE = /^(?![/]|[A-Za-z]:)[^\\]+$/;
 
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const show = (v) => (v === undefined ? "undefined" : JSON.stringify(v));
@@ -124,6 +126,22 @@ function shapeError(m) {
     if (typeof dep.sha256 !== "string" || !SHA256.test(dep.sha256)) {
         return bad(`${field}.sha256`, dep.sha256, "a SHA-256");
     }
+    // Every input the bundle took: the packages' gitignored dist/ files and jsfeat-next's, which
+    // `clean` cannot see. Outside the one-path-one-group rule above, because the build records
+    // jsfeat-next's file both here and in `dependencies`: one file's hash, so the two must agree.
+    if (!isObject(m.bundledInputs) || Object.keys(m.bundledInputs).length === 0) {
+        return bad("bundledInputs", m.bundledInputs, "an object of paths");
+    }
+    for (const [path, h] of Object.entries(m.bundledInputs)) {
+        const input = `bundledInputs[${JSON.stringify(path)}]`;
+        if (!RELATIVE.test(path) || path.split("/").includes("..")) {
+            return bad(input, path, "a relative path");
+        }
+        if (typeof h !== "string" || !SHA256.test(h)) return bad(input, h, "a SHA-256");
+        if (path === JSFEAT_FILE && h !== dep.sha256) {
+            return `${input}: ${h} is not ${field}.sha256 ${dep.sha256}`;
+        }
+    }
     return null;
 }
 
@@ -159,11 +177,21 @@ export function preflight(manifest, t) {
 
     // Each path once (`shapeError` refuses a second entry), each group's own entries.
     const hashed = [
+        // A source the manifest leaves out cannot be stale unseen: every source is tracked under
+        // CLEAN_PATHS, so with the head HEAD and the tree clean it is HEAD's (Qodo on #210).
         ...Object.entries(m.sources),
         ...Object.entries(m.served),
         ...Object.entries(m.build),
         [BUNDLE, m.bundle],
+        // jsfeat-next's version is not compared with the install: the bundle takes one file of
+        // it (the build's `allowed()`), compared here, so another version with the same bytes
+        // changes nothing the page runs, and the build refuses an install the lockfile does not
+        // pin (Qodo on #210).
         [JSFEAT_FILE, m.dependencies[JSFEAT]],
+        // The gitignored inputs `clean` cannot see; jsfeat-next's file is compared just above.
+        ...Object.entries(m.bundledInputs)
+            .filter(([path]) => path !== JSFEAT_FILE)
+            .map(([path, h]) => [path, { sha256: h }]),
     ];
     for (const [path, { sha256: h }] of hashed) {
         const onDisk = t.sha256(path);

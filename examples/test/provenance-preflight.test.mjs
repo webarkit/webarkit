@@ -61,6 +61,11 @@ const manifest = () => ({
         "package.json": { sha256: hex("2"), blob: blob("2") },
     },
     served: { "examples/js/a.mjs": { sha256: hex("3"), blob: blob("3"), side: "both" } },
+    // As the build writes it: every input the bundle took, jsfeat-next's file among them.
+    bundledInputs: {
+        "packages/p/dist/a.js": hex("7"),
+        "node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs": hex("4"),
+    },
     dependencies: {
         "@webarkit/jsfeat-next": {
             version: "1.0.0",
@@ -72,6 +77,7 @@ const manifest = () => ({
 });
 const disk = {
     "packages/p/src/a.ts": hex("1"),
+    "packages/p/dist/a.js": hex("7"),
     "package.json": hex("2"),
     "scripts/build-provenance.mjs": hex("5"),
     "examples/js/a.mjs": hex("3"),
@@ -171,6 +177,13 @@ describe("preflight", () => {
             manifest(),
             { sha256: (p) => (p.startsWith("node_modules/") ? hex("9") : disk[p]) },
             /jsfeatNext\.mjs: the manifest's hash 4{12}… is not the file's 9{12}…/,
+        ],
+        // Gitignored, so `clean` cannot see it: only its hash can (Qodo on #210).
+        [
+            "a stale bundled input",
+            manifest(),
+            { sha256: (p) => (p === "packages/p/dist/a.js" ? hex("9") : disk[p]) },
+            /packages\/p\/dist\/a\.js: the manifest's hash 7{12}… is not the file's 9{12}…/,
         ],
         [
             "a file missing on disk",
@@ -345,6 +358,44 @@ describe("preflight", () => {
             /build: \["package\.json"\] is not \["scripts\/build-provenance\.mjs","package\.json"\]/,
         ],
         ["no sources", { ...m(), sources: {} }, /sources: \{\} is not an object of paths/],
+        [
+            "no bundledInputs",
+            { ...m(), bundledInputs: undefined },
+            /bundledInputs: undefined is not an object of paths/,
+        ],
+        [
+            "bundledInputs that are a list",
+            { ...m(), bundledInputs: [] },
+            /bundledInputs: \[\] is not an object of paths/,
+        ],
+        ["empty bundledInputs", { ...m(), bundledInputs: {} }, /bundledInputs: \{\} is not/],
+        [
+            "a bundled input whose hash is not SHA-256",
+            { ...m(), bundledInputs: { ...m().bundledInputs, "packages/p/dist/a.js": "abc" } },
+            /bundledInputs\["packages\/p\/dist\/a\.js"\]: "abc" is not a SHA-256/,
+        ],
+        [
+            "a bundled input that is not a relative path",
+            { ...m(), bundledInputs: { ...m().bundledInputs, "/etc/passwd": hex("7") } },
+            /bundledInputs\["\/etc\/passwd"\]: .* is not a relative path/,
+        ],
+        [
+            "a bundled input that climbs out of the repository",
+            { ...m(), bundledInputs: { ...m().bundledInputs, "packages/../../x.js": hex("7") } },
+            /bundledInputs\["packages\/\.\.\/\.\.\/x\.js"\]: .* is not a relative path/,
+        ],
+        // The build records jsfeat-next's file twice, in bundledInputs and dependencies; one file.
+        [
+            "jsfeat-next's two hashes disagreeing",
+            {
+                ...m(),
+                bundledInputs: {
+                    ...m().bundledInputs,
+                    "node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs": hex("8"),
+                },
+            },
+            /bundledInputs\["node_modules\/@webarkit\/jsfeat-next\/dist\/jsfeatNext\.mjs"\]: 8{64} is not dependencies\["@webarkit\/jsfeat-next"\]\.sha256 4{64}/,
+        ],
         // One path, two entries: only one of the hashes would be compared.
         [
             "a path both a source and a producer file",
