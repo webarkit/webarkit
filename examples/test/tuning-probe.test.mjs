@@ -31,20 +31,21 @@
 // patches, on which the tracking step holds, and tracker results constructed
 // to agree with the probe's step or to disagree with it in one way at a time.
 //
-// Of the nine `diverged` sites, these reach the five that compare the probe
-// with the tracker's result or the frame it is given: the mirror lock (both
-// ways), each of the step's counts, the step's outcome against the state, the
-// homography, and the probe's own pyramid of the frame. The other four compare
-// the probe's re-alignment with its own `trackFrame` call on the same inputs
-// (the prediction, and each patch's alignment, convergence and ZNCC against the
-// outcome the step gave it), which the package computes the same way from the
-// same arguments. No input whose values read the same each time sets them
-// apart. One whose accessors change between the two calls does: a frame whose
-// `data` getter returns other bytes once `trackFrame` has read it reaches the
-// patch's alignment (`:188`), and the review of #207's branch reached the
-// prediction (`:171`) and convergence (`:192`) so. The replay hands the probe
-// plain arrays, and no test here uses such an input. Imports the built dist/,
-// as the probe does: `npm run build` first, which CI does.
+// Of the nine `diverged` sites, these reach the four that compare the probe
+// with the tracker's result: the mirror lock (both ways), each of the step's
+// counts, the step's outcome against the state, and the homography. The other
+// five compare the probe's re-alignment with its own `trackFrame` call on the
+// same inputs (the prediction, its pyramid of the frame's first width × height
+// bytes, and each patch's alignment, convergence and ZNCC against the outcome
+// the step gave it), which the package computes the same way from the same
+// arguments. No input whose values read the same each time sets them apart.
+// One whose accessors change between the two calls does: a frame whose `data`
+// getter returns other bytes once `trackFrame` has read it reaches the patch's
+// alignment (`:203`), and one byte fewer the pyramid (`:191`); the review of
+// #207's branch reached the prediction (`:186`) and convergence (`:207`) so.
+// The replay hands the probe plain arrays, and no test here uses such an
+// input. Imports the built dist/, as the probe does: `npm run build` first,
+// which CI does.
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -180,17 +181,16 @@ describe("createStepProbe (TPR1)", () => {
         );
     });
 
-    // The tracker reads a frame's first width × height bytes (`firstPixels`);
-    // the probe hands the frame itself to buildFramePyramid, which refuses a
-    // buffer of another length. The replay's frames are exactly that length.
-    it("throws when its own pyramid of the frame cannot be built, naming the reason", () => {
+    // The tracker reads a frame's first width × height bytes (`firstPixels`),
+    // and so does the probe's own pyramid of it: a longer buffer, a pooled one
+    // say, is no divergence.
+    it("passes a frame on a longer buffer, reading its first width × height bytes", () => {
         const long = paintedFrame(1);
         const theirs = stepOn(long, null, IDENTITY);
         expect(theirs.ok).toBe(true);
         const probe = createStepProbe(target);
         probe.frame(long, detected);
-        expect(() => probe.frame(long, trackedBy(theirs))).toThrow(
-            new RegExp(`^${DIVERGED} 1: buildFramePyramid: `),
-        );
+        probe.frame(long, trackedBy(theirs));
+        expect(probe.summary().steps).toBe(1);
     });
 });
