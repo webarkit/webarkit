@@ -55,7 +55,8 @@
  * Needs ffmpeg and ffprobe on the PATH, and the packages built (`npm run
  * build`). **CI does not run it: it has no ffmpeg.** Without either, it exits 2
  * and says what is missing; it never passes or skips. Exits 0 when every check
- * passes, 1 when one fails, one line per check. About 30 s.
+ * passes, 1 when one fails, one line per check, and 2, as "could not run", when
+ * a replay cannot be started or runs past 180 s. About 30 s.
  *
  *     npm run check:replay
  */
@@ -108,6 +109,7 @@ function requireTools() {
         }
     }
     for (const file of [
+        "packages/cv-backend-spec/dist/index.js",
         "packages/cv-backend-jsfeatnext/dist/index.js",
         "packages/nft-tracker/dist/index.js",
     ]) {

@@ -38,8 +38,13 @@
 // the probe's re-alignment with its own `trackFrame` call on the same inputs
 // (the prediction, and each patch's alignment, convergence and ZNCC against the
 // outcome the step gave it), which the package computes the same way from the
-// same arguments; a constructed input cannot set them apart. Imports the built
-// dist/, as the probe does: `npm run build` first, which CI does.
+// same arguments. No input whose values read the same each time sets them
+// apart. One whose accessors change between the two calls does: a frame whose
+// `data` getter returns other bytes once `trackFrame` has read it reaches the
+// patch's alignment (`:188`), and the review of #207's branch reached the
+// prediction (`:171`) and convergence (`:192`) so. The replay hands the probe
+// plain arrays, and no test here uses such an input. Imports the built dist/,
+// as the probe does: `npm run build` first, which CI does.
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
