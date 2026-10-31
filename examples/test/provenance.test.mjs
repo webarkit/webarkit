@@ -412,7 +412,7 @@ describe("the manifest npm run build writes", () => {
 
     it("is a git build's, and says it is clean exactly when it lists no dirty path", () => {
         expect(manifest.schema).toBe("webarkit-bench-provenance/1");
-        expect(manifest.head).toMatch(/^[0-9a-f]{40}$/);
+        expect(manifest.head).toMatch(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
         expect(manifest.dirtyPaths).toBeInstanceOf(Array);
         expect(
             manifest.clean,

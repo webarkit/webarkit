@@ -50,7 +50,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { CLEAN_PATHS, SERVED } from "./build-provenance.mjs";
+import { BUNDLE, CLEAN_PATHS, JSFEAT_FILE, PRODUCER, SERVED } from "./build-provenance.mjs";
 
 const SCHEMA = "webarkit-bench-provenance/1";
 const JSFEAT = "@webarkit/jsfeat-next";
@@ -63,8 +63,10 @@ const show = (v) => (v === undefined ? "undefined" : JSON.stringify(v));
 
 /**
  * The first field of `m` whose shape is wrong, as `field: value is not …`, or
- * null. Only what the comparison reads is checked; the rest is the ordinary
- * suite's (`examples/test/provenance.test.mjs`).
+ * null. Only what the comparison reads is checked, and the paths the build
+ * always writes (the bundle's, jsfeat-next's file, the producer's): any other
+ * would leave a file the page reads unchecked. A path is hashed once: two
+ * entries for one path would have only one of their hashes compared.
  */
 function shapeError(m) {
     if (!isObject(m)) return `the manifest is not a JSON object: ${show(m)}`;
@@ -85,12 +87,15 @@ function shapeError(m) {
         return "clean, dirtyPaths: the manifest says its tree is dirty, but lists no dirty path";
     }
     if (!isObject(m.bundle)) return bad("bundle", m.bundle, "an object");
-    if (typeof m.bundle.path !== "string") return bad("bundle.path", m.bundle.path, "a path");
+    if (m.bundle.path !== BUNDLE) return bad("bundle.path", m.bundle.path, `"${BUNDLE}"`);
     if (typeof m.bundle.sha256 !== "string" || !SHA256.test(m.bundle.sha256)) {
         return bad("bundle.sha256", m.bundle.sha256, "a SHA-256");
     }
+    const hashedIn = { [BUNDLE]: "bundle", [JSFEAT_FILE]: "dependencies" };
     for (const group of ["sources", "build", "served"]) {
-        if (!isObject(m[group])) return bad(group, m[group], "an object of paths");
+        if (!isObject(m[group]) || Object.keys(m[group]).length === 0) {
+            return bad(group, m[group], "an object of paths");
+        }
         for (const [path, e] of Object.entries(m[group])) {
             const field = `${group}[${JSON.stringify(path)}]`;
             if (!isObject(e)) return bad(field, e, "an object");
@@ -103,12 +108,19 @@ function shapeError(m) {
             if (group === "served" && typeof e.side !== "string") {
                 return bad(`${field}.side`, e.side, "a side");
             }
+            if (Object.hasOwn(hashedIn, path)) {
+                return `${path}: hashed in both ${hashedIn[path]} and ${group}`;
+            }
+            hashedIn[path] = group;
         }
+    }
+    if (JSON.stringify(Object.keys(m.build).sort()) !== JSON.stringify([...PRODUCER].sort())) {
+        return bad("build", Object.keys(m.build), JSON.stringify(PRODUCER));
     }
     const field = `dependencies[${JSON.stringify(JSFEAT)}]`;
     const dep = isObject(m.dependencies) ? m.dependencies[JSFEAT] : undefined;
     if (!isObject(dep)) return bad(field, dep, "an object");
-    if (typeof dep.file !== "string") return bad(`${field}.file`, dep.file, "a path");
+    if (dep.file !== JSFEAT_FILE) return bad(`${field}.file`, dep.file, `"${JSFEAT_FILE}"`);
     if (typeof dep.sha256 !== "string" || !SHA256.test(dep.sha256)) {
         return bad(`${field}.sha256`, dep.sha256, "a SHA-256");
     }
@@ -145,14 +157,15 @@ export function preflight(manifest, t) {
     );
     let ok = headOk && cleanOk;
 
-    const hashed = {
-        ...m.sources,
-        ...m.served,
-        ...m.build,
-        [m.bundle.path]: m.bundle,
-        [m.dependencies[JSFEAT].file]: m.dependencies[JSFEAT],
-    };
-    for (const [path, { sha256: h }] of Object.entries(hashed)) {
+    // Each path once (`shapeError` refuses a second entry), each group's own entries.
+    const hashed = [
+        ...Object.entries(m.sources),
+        ...Object.entries(m.served),
+        ...Object.entries(m.build),
+        [BUNDLE, m.bundle],
+        [JSFEAT_FILE, m.dependencies[JSFEAT]],
+    ];
+    for (const [path, { sha256: h }] of hashed) {
         const onDisk = t.sha256(path);
         if (onDisk === h) continue;
         ok = false;
@@ -164,17 +177,21 @@ export function preflight(manifest, t) {
     // file's blob id adds nothing its SHA-256 has not said.
     const producer = Object.keys(m.build);
     const ids = t.blobs(producer);
-    producer.forEach((path, i) => {
-        const id = ids?.[i] ?? null;
-        if (m.build[path].blob === id) return;
+    if (!Array.isArray(ids) || ids.length !== producer.length) {
         ok = false;
-        findings.push(
-            `${path}: the manifest's blob id ${m.build[path].blob} is not the file's ${id}`,
-        );
-    });
+        findings.push(`build: git gave no blob ids for ${producer.join(", ")}`);
+    } else
+        producer.forEach((path, i) => {
+            const id = ids[i];
+            if (m.build[path].blob === id) return;
+            ok = false;
+            findings.push(
+                `${path}: the manifest's blob id ${m.build[path].blob} is not the file's ${id}`,
+            );
+        });
 
     for (const [path, { side }] of Object.entries(m.served)) {
-        if (!(path in t.served)) {
+        if (!Object.hasOwn(t.served, path)) {
             ok = false;
             findings.push(`served: the manifest lists ${path}, which SERVED does not`);
         } else if (t.served[path] !== side) {
@@ -185,20 +202,19 @@ export function preflight(manifest, t) {
         }
     }
     for (const path of Object.keys(t.served)) {
-        if (!(path in m.served)) {
+        if (!Object.hasOwn(m.served, path)) {
             ok = false;
             findings.push(`served: SERVED names ${path}, which the manifest does not list`);
         }
     }
 
     if (ok) return { code: 0, lines: [] };
-    return {
-        code: 1,
-        lines: [
-            ...findings,
-            `remedy: commit, then rebuild from a clean tree at ${head ?? "the expected commit"} (npm run build)`,
-        ],
-    };
+    // A commit to name only on a clean tree: committing a dirty one moves HEAD.
+    const remedy =
+        head !== null && dirty !== null && dirty.length === 0
+            ? `rebuild from a clean tree at ${head}`
+            : "commit, then rebuild from the clean tree";
+    return { code: 1, lines: [...findings, `remedy: ${remedy} (npm run build)`] };
 }
 
 // Run, not imported (the tests import `preflight`), as build-provenance.mjs is.

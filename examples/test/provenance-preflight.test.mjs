@@ -34,7 +34,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,7 +56,10 @@ const manifest = () => ({
     dirtyPaths: [],
     bundle: { path: "examples/dist/webarkit-packages.mjs", sha256: hex("b") },
     sources: { "packages/p/src/a.ts": { sha256: hex("1"), blob: blob("1") } },
-    build: { "package.json": { sha256: hex("2"), blob: blob("2") } },
+    build: {
+        "scripts/build-provenance.mjs": { sha256: hex("5"), blob: blob("5") },
+        "package.json": { sha256: hex("2"), blob: blob("2") },
+    },
     served: { "examples/js/a.mjs": { sha256: hex("3"), blob: blob("3"), side: "both" } },
     dependencies: {
         "@webarkit/jsfeat-next": {
@@ -70,11 +73,12 @@ const manifest = () => ({
 const disk = {
     "packages/p/src/a.ts": hex("1"),
     "package.json": hex("2"),
+    "scripts/build-provenance.mjs": hex("5"),
     "examples/js/a.mjs": hex("3"),
     "examples/dist/webarkit-packages.mjs": hex("b"),
     "node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs": hex("4"),
 };
-const blobs = { "package.json": blob("2") };
+const blobs = { "package.json": blob("2"), "scripts/build-provenance.mjs": blob("5") };
 
 /** The readers `preflight` takes, over `disk` unless `over` replaces one, each git reader counted. */
 function tree(over = {}) {
@@ -198,6 +202,25 @@ describe("preflight", () => {
             { served: { "examples/js/a.mjs": "page" } },
             /served: examples\/js\/a\.mjs is on side both in the manifest, page in SERVED/,
         ],
+        // Not a key of SERVED's own, though `in` would find it on Object.prototype.
+        [
+            "a served file named like an Object property",
+            {
+                ...manifest(),
+                served: {
+                    ...manifest().served,
+                    constructor: { sha256: hex("6"), blob: blob("6"), side: "page" },
+                },
+            },
+            { sha256: (p) => (p === "constructor" ? hex("6") : disk[p]) },
+            /served: the manifest lists constructor, which SERVED does not/,
+        ],
+        [
+            "a producer git cannot give blob ids for",
+            manifest(),
+            { blobs: () => null },
+            /build: git gave no blob ids for scripts\/build-provenance\.mjs, package\.json/,
+        ],
     ])("fails on %s, naming it, with the remedy", (_, m, over, why) => {
         const r = preflight(m, tree(over).t);
         expect(r.code, text(r)).toBe(1);
@@ -225,6 +248,23 @@ describe("preflight", () => {
         }
         expect(text(r).match(/remedy:/g)).toHaveLength(1);
         expect(calls).toEqual({ head: 1, dirtyPaths: 1, blobs: 1 });
+    });
+
+    it("names no blob id per file when git gave none, only that it gave none", () => {
+        const r = preflight(manifest(), tree({ blobs: () => null }).t);
+        expect(text(r)).not.toMatch(/the manifest's blob id/);
+    });
+
+    // HEAD names the commit to rebuild at only if the tree is clean: committing moves it.
+    it("names the commit to rebuild at on a clean tree, and none on a dirty one", () => {
+        const stale = tree({ sha256: (p) => (p === "examples/js/a.mjs" ? hex("9") : disk[p]) });
+        expect(preflight(manifest(), stale.t).lines.at(-1)).toBe(
+            `remedy: rebuild from a clean tree at ${HEAD} (npm run build)`,
+        );
+        const dirty = tree({ dirtyPaths: () => ["examples/js/a.mjs"] });
+        expect(preflight(manifest(), dirty.t).lines.at(-1)).toBe(
+            "remedy: commit, then rebuild from the clean tree (npm run build)",
+        );
     });
 
     // Exit 2: no verdict, the field named, and git never asked (#206 and #209 are the same shape of
@@ -277,8 +317,50 @@ describe("preflight", () => {
         ],
         [
             "a blob id that is not an object id",
-            { ...m(), build: { "package.json": { sha256: hex("2"), blob: "zz" } } },
+            { ...m(), build: { ...m().build, "package.json": { sha256: hex("2"), blob: "zz" } } },
             /build\["package\.json"\]\.blob: "zz" is not/,
+        ],
+        // The producer writes these paths and no other; any other would leave a file unchecked.
+        [
+            "a bundle elsewhere than the build writes it",
+            { ...m(), bundle: { ...m().bundle, path: "package.json", sha256: hex("2") } },
+            /bundle\.path: "package\.json" is not "examples\/dist\/webarkit-packages\.mjs"/,
+        ],
+        [
+            "a jsfeat-next file other than the one bundled",
+            {
+                ...m(),
+                dependencies: {
+                    "@webarkit/jsfeat-next": {
+                        ...m().dependencies["@webarkit/jsfeat-next"],
+                        file: "package.json",
+                    },
+                },
+            },
+            /dependencies\["@webarkit\/jsfeat-next"\]\.file: "package\.json" is not "node_modules/,
+        ],
+        [
+            "a build that does not hash both producer files",
+            { ...m(), build: { "package.json": m().build["package.json"] } },
+            /build: \["package\.json"\] is not \["scripts\/build-provenance\.mjs","package\.json"\]/,
+        ],
+        ["no sources", { ...m(), sources: {} }, /sources: \{\} is not an object of paths/],
+        // One path, two entries: only one of the hashes would be compared.
+        [
+            "a path both a source and a producer file",
+            {
+                ...m(),
+                sources: { ...m().sources, "package.json": { sha256: hex("1"), blob: null } },
+            },
+            /package\.json: hashed in both sources and build/,
+        ],
+        [
+            "a served file that is also the bundle",
+            {
+                ...m(),
+                bundle: { ...m().bundle, path: "examples/js/a.mjs" },
+            },
+            /bundle\.path: "examples\/js\/a\.mjs" is not/,
         ],
         [
             "no jsfeat-next dependency",
@@ -308,13 +390,16 @@ describe("preflight", () => {
 });
 
 describe("node scripts/provenance-preflight.mjs", () => {
-    /** The command on a manifest whose text is `body`, or on a path that does not exist. */
+    /**
+     * The command on a manifest whose text is `body`, or on a path that does not exist, run from
+     * outside the repository: it reads the repository's files wherever it is run from.
+     */
     function run(body) {
         const dir = mkdtempSync(join(tmpdir(), "provenance-preflight-"));
         try {
             const path = join(dir, "provenance.json");
             if (body !== undefined) writeFileSync(path, body);
-            const r = spawnSync(process.execPath, [SCRIPT, path], { encoding: "utf8" });
+            const r = spawnSync(process.execPath, [SCRIPT, path], { cwd: dir, encoding: "utf8" });
             return { status: r.status, out: r.stdout + r.stderr };
         } finally {
             rmSync(dir, { recursive: true, force: true });
@@ -343,5 +428,27 @@ describe("node scripts/provenance-preflight.mjs", () => {
         expect(r.status, r.out).toBe(2);
         expect(r.out).toMatch(why);
         expect(r.out.trim().split("\n")).toHaveLength(1);
+    });
+
+    // Its own readers (git and the disk), on a case where each must fire whatever state this
+    // checkout is in: the manifest `npm run build` wrote, its head, one served hash and one producer
+    // blob id replaced. Each line shows its reader returned the checkout's value, not none.
+    it("fails on the built manifest with its head, a served hash and a blob id replaced", () => {
+        const m = JSON.parse(readFileSync(new URL("../dist/provenance.json", import.meta.url)));
+        m.head = OTHER;
+        m.served["examples/bench-nft.html"].sha256 = hex("0");
+        m.build["package.json"].blob = blob("0");
+        const r = run(JSON.stringify(m));
+        expect(r.status, r.out).toBe(1);
+        expect(r.out).toMatch(
+            new RegExp(`manifest head: ${OTHER}; checkout HEAD: [0-9a-f]{40} -- built at another`),
+        );
+        expect(r.out).toMatch(/manifest clean: true; tree clean now: (true|false)/);
+        expect(r.out).toMatch(
+            /examples\/bench-nft\.html: the manifest's hash 0{12}… is not the file's [0-9a-f]{12}…/,
+        );
+        expect(r.out).toMatch(
+            /package\.json: the manifest's blob id 0{40} is not the file's [0-9a-f]{40}/,
+        );
     });
 });
