@@ -56,6 +56,10 @@
  * - Start's provenance check throwing, on a resource-timing entry whose name
  *   is not a URL (#205): the start ends as a failed one, with
  *   Start and the probe enabled, and a second Start passes the check;
+ * - Start's provenance check on a manifest whose `served` no build writes, a
+ *   null entry, a key that is not a path, then `served` a string beside a
+ *   module from the cache (#209): each start refused by name, Start and the
+ *   probe enabled, and a fourth Start passes;
  * - and one smoke check of the pose demo,
  *   `examples/pinball-pose-jsfeatnext-backend.html` (#200): its pose drawn
  *   under `"TRACK"`, with the pose filter off and then on.
@@ -1166,6 +1170,104 @@ async function syncProvenanceThrows(browser, base) {
     });
 }
 
+/**
+ * Start's provenance check on a manifest whose `served` no build writes
+ * (#209): a sync `?run=1` page, and the manifest served at Start as the build
+ * wrote it but for one fault, a Start each: a null entry, which
+ * `provenanceFindings` threw on; an entry under `"http://["`, a key the page's
+ * `new URL` threw on, hashing; and `served` a string beside a module's timeline
+ * entry made a cache hit, so that the page's `listed()` reads `served`, which
+ * threw on `p in "x"`. Each start is refused, by the refusal that names the
+ * field, not failed with a `TypeError`'s message, and leaves Start and the
+ * probe enabled. With the faults undone, a fourth Start passes the check and
+ * its run starts.
+ */
+async function syncServedMalformed(browser, base) {
+    const names = [
+        "sync ?run=1 Start, a malformed served (a null entry, a key that is not a path, served a string): refused by name each time, and a fourth Start passes",
+    ];
+    const manifest = JSON.parse(readFileSync(join(SERVED, "dist/provenance.json"), "utf8"));
+    const broken =
+        ", so it was hand-edited or written by a broken build. To fix: run `npm run build`.";
+    await scenario(names, async (check) => {
+        const page = "examples/bench-nft.html";
+        expect(page in (manifest.served ?? {}), `the build's manifest does not list ${page}`);
+        const faults = [
+            {
+                served: { ...manifest.served, [page]: null },
+                why: `the manifest's served["${page}"] null is not an object`,
+            },
+            {
+                served: { ...manifest.served, "http://[": manifest.served[page] },
+                why: `the manifest's served key "http://[" is not a repository-relative path`,
+            },
+            {
+                served: "x",
+                // A module run from the cache: listed() is asked only of those.
+                timeline: {
+                    type: "resource",
+                    path: "/examples/js/run-lifecycle.mjs",
+                    set: { transferSize: 0 },
+                },
+                why: `the manifest's served "x" is not an object of paths`,
+            },
+        ];
+        const p = await openPage(
+            browser,
+            base,
+            "mode=tracking&target=wnft&clip=pinball-bench.mp4&run=1&window=2000",
+        );
+        try {
+            await p.waitReady();
+            await check(names[0], async () => {
+                for (const { served, timeline, why } of faults) {
+                    const body = JSON.stringify({ ...manifest, served });
+                    await p.page.evaluate(
+                        (body, timeline) => {
+                            window.__pageCheck.faults = {
+                                fetch: { path: "/examples/dist/provenance.json", body },
+                                ...(timeline && { timeline }),
+                            };
+                        },
+                        body,
+                        timeline ?? null,
+                    );
+                    try {
+                        await p.clickStart();
+                    } finally {
+                        await p.page.evaluate(() => {
+                            window.__pageCheck.faults = {};
+                        });
+                    }
+                    const status = await p.read.status();
+                    const error = await p.read.error();
+                    expect(
+                        status === "failed" && error === `Provenance: ${why}${broken}`,
+                        `status "${status}", error line "${error}": expected the refusal "Provenance: ${why}${broken}"`,
+                    );
+                    expect(await p.read.stopDisabled(), "Stop is enabled: a run started");
+                    expect(
+                        !(await p.read.startDisabled()),
+                        "Start is disabled after the refusal: expected it enabled, as startAllowed() allows on a sync page",
+                    );
+                    expect(
+                        !(await p.read.probeDisabled()),
+                        "the probe is disabled after the refusal: expected it enabled, as probeAllowed() allows",
+                    );
+                }
+                await p.clickStart();
+                expect(
+                    !(await p.read.stopDisabled()),
+                    `no run started on the fourth Start (status "${await p.read.status()}", error line "${await p.read.error()}")`,
+                );
+                await p.click("stop");
+            });
+        } finally {
+            await p.close();
+        }
+    });
+}
+
 /** The bundled wall clip on the worker path, on the committed target. */
 const WORKER_QUERY =
     "mode=tracking&target=wnft&detection=worker&clip=pinball-bench.mp4&window=2000";
@@ -1447,6 +1549,7 @@ async function main() {
         await syncParamRefusal(browser, base);
         await syncProvenanceFaults(browser, base);
         await syncProvenanceThrows(browser, base);
+        await syncServedMalformed(browser, base);
         await workerDetectPostThrows(browser, base);
         await workerFailsWhileSourceStarts(browser, base);
         await poseDemo(browser, base);

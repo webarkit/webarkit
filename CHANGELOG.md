@@ -38,9 +38,16 @@ release pull request's body and the GitHub Release's notes.
 - **The bench page's Start can be pressed again after a provenance check that throws**
   ([#205](https://github.com/webarkit/webarkit/issues/205)). Such a start ended with Start
   disabled until the page was reloaded. It now ends as a failed start, with Start and the probe set
-  as after a refusal. The check throws, for example, on a manifest that parses but whose `served`
-  holds a null entry; a manifest that cannot be fetched or parsed never threw, and a session run
-  already refused it.
+  as after a refusal. The check threw, for example, on a manifest that parses but whose `served`
+  held a null entry, which is now refused by name (#209, below); a manifest that cannot be fetched
+  or parsed never threw, and a session run already refused it.
+- **The bench page's Start refuses a manifest whose `served` is malformed, naming the field**
+  ([#209](https://github.com/webarkit/webarkit/issues/209)). A null entry, a `served` that is not
+  an object, or a key that `new URL` cannot resolve made Start's provenance check throw, so the page
+  showed a `TypeError`'s message. Those, a missing `served`, a key that is not a
+  repository-relative path, and an entry without a SHA-256 or a side `SERVED` uses now refuse a
+  session run with a line that names the field, as a malformed `head`, `clean` or `dirtyPaths`
+  already did.
 
 ## [0.6.0] - 2026-10-30
 

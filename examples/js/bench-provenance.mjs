@@ -71,6 +71,68 @@ const shown = (v) => JSON.stringify(v) ?? String(v);
 /** The end of every refusal {@link manifestFlagsError} gives a reason for. */
 const BROKEN_MANIFEST = "so it was hand-edited or written by a broken build";
 
+/** A SHA-256 as `sha256Hex` and the build write one: 64 lower-case hex digits. */
+const SHA256 = /^[0-9a-f]{64}$/;
+/** The sides `SERVED` in scripts/build-provenance.mjs puts a file on. */
+const SIDES = ["page", "both", "worker", "bundled"];
+
+/**
+ * Whether `key` is a repository-relative path as the build writes one, on
+ * which `new URL(key, REPO_ROOT)` does not throw: no scheme (a drive letter is
+ * one), no leading `/`, no backslash, no `..` segment, and no C0 control
+ * character or space, which the URL parser strips at the ends, and removes
+ * inside if a tab, LF or CR, before it reads a scheme (`" http://["` throws as
+ * `"http://["` does). A percent-encoded dot segment (`%2e%2e`) passes: the
+ * parser reads it as `..`, but it does not throw.
+ */
+const isRelativePath = (key) =>
+    !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(key) &&
+    !key.startsWith("/") &&
+    !key.includes("\\") &&
+    !/[\x00-\x20]/.test(key) &&
+    !key.split("/").includes("..");
+
+/**
+ * Why `manifest.served` cannot be what `scripts/build-provenance.mjs` wrote, as
+ * a line ending in {@link BROKEN_MANIFEST}, or `null` (#209): no map, or one
+ * that is not an object of paths; a key that is not a repository-relative path
+ * ({@link isRelativePath}); or an entry that is not an object with a SHA-256 and
+ * a side `SERVED` uses. The first such field, in the map's property order, is
+ * named. Every reader of `served` runs only after this is `null`: Start's
+ * hashing and listing in the page, and {@link provenanceFindings}.
+ *
+ * Not asked, because the page reads neither: a git blob id, which
+ * scripts/provenance-preflight.mjs requires, and a non-empty map. An empty
+ * `served` is caught by the other findings: the modules the page loaded are
+ * then unlisted. The preflight also does not check `served`'s keys as
+ * paths: it compares them with `SERVED`, so a key like `"http://["` is a
+ * finding there (exit 1), not a malformed field (exit 2).
+ */
+export function servedShapeError(manifest) {
+    const { served } = manifest;
+    const subject = "the manifest's served";
+    let why = null;
+    if (served === undefined) {
+        why = "the manifest records no served map";
+    } else if (typeof served !== "object" || served === null || Array.isArray(served)) {
+        why = `${subject} ${shown(served)} is not an object of paths`;
+    } else {
+        for (const [key, e] of Object.entries(served)) {
+            const field = `${subject}[${JSON.stringify(key)}]`;
+            if (!isRelativePath(key))
+                why = `${subject} key ${JSON.stringify(key)} is not a repository-relative path`;
+            else if (typeof e !== "object" || e === null)
+                why = `${field} ${shown(e)} is not an object`;
+            else if (typeof e.sha256 !== "string" || !SHA256.test(e.sha256))
+                why = `${field}.sha256 ${shown(e.sha256)} is not a SHA-256`;
+            else if (!SIDES.includes(e.side))
+                why = `${field}.side ${shown(e.side)} is not a side: page, both, worker or bundled`;
+            if (why) break;
+        }
+    }
+    return why && `${why}, ${BROKEN_MANIFEST}`;
+}
+
 /**
  * What the provenance check found wrong, in one line with its remedies, or
  * `null` (#110, §5). `manifest` is `examples/dist/provenance.json` as fetched
@@ -102,6 +164,10 @@ export function provenanceFindings(manifest, observed, { detection = "sync" } = 
     // independent of the rest, and each is named with its remedy.
     if (!manifest)
         return "Provenance: no manifest (examples/dist/provenance.json). To fix: run `npm run build`.";
+    // A guard, not one finding among others: every reader below that reads `served` would throw
+    // on it or misread it (#209).
+    const servedError = servedShapeError(manifest);
+    if (servedError) return `Provenance: ${servedError}. To fix: run \`npm run build\`.`;
     const found = [];
     const add = (reason, remedy) => found.push({ reason, remedy });
     if (observed.manifestChanged)
@@ -178,7 +244,9 @@ export function provenanceFindings(manifest, observed, { detection = "sync" } = 
  * possible) is refused: its commit is unknown, so the replay could not name
  * the code it ran. So is one whose flags no build writes (#119), as at Start.
  * A dirty tree that its manifest records consistently is not refused here: the
- * replay's header says so.
+ * replay's header says so. The replay reads the manifest's `bundle.sha256`,
+ * `head` and `clean`, never `served`, so {@link servedShapeError} is not asked
+ * here (#209).
  */
 export function bundleManifestRefusal(manifest) {
     if (!manifest)
