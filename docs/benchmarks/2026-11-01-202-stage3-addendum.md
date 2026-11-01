@@ -92,7 +92,8 @@ the implementation:
 Every check passed, check D (G0 on seed 1 against `replay-clips.mjs`'s
 "every frame, sync" export at `8b85d06`) and the new check J included. Its
 diff against the probe touches only the ranges the registration allows (below,
-"The check copy's diff"). Run twice, byte-identical: stdout
+"The check copy's diff"). Its stdout's line 4 reads "built clean at
+`8b85d06d…`". Run twice, byte-identical: stdout
 `1fbf89dab33e306ad4652dbf45c48b7e227337f01141ce0b1be5130d21b8f3d6`,
 expressibility
 `8df56c2292a0ceb881f1cd8c0a830e0aec9570fa54b03b134c7a680760bfb23f`.
@@ -103,7 +104,9 @@ expressibility
     node docs/benchmarks/2026-11-01-202-stage3-compare.mjs --base <base run> --tip <tip run>
 
 Exit 0; run twice, byte-identical, stdout
-`32eb87aadc7f765953ac92ec26c5ab0487b5a5f900f0f617d84f9fc54d6036db`. Per clip,
+`32eb87aadc7f765953ac92ec26c5ab0487b5a5f900f0f617d84f9fc54d6036db`, and the
+same once more with the script as committed, after the review's change to its
+C2 reading (below). Per clip,
 over seeds 1 to 8:
 
 | clip                  | rows a run | refused at the base (GWM) and `"not-facing"` at the tip, per seed | under the exception | differing |
@@ -201,25 +204,32 @@ run's head) before reading any. Exit 0; run twice, byte-identical, stdout
 `cd19d695776c1149fa8383f23f9f558994b836140240e4110a8d30815ac94c5b`. Counted
 loops 1 to 4:
 
-| clip, seed | (a) DETECT corners null, A / candidate / B | mirrored, A / candidate / B | (c) ok and with corners, A | the candidate | B |
-| --- | --- | --- | --- | --- | --- |
-| static, every seed | 0 / 0 / 0 | 0 / 0 / 0 | 728, 728 | 728, 728 | 728, 728 |
-| wall s1 | 19 / 0 / 19 | 0 / 0 / 0 | 349, 330 | 328, 328 | 349, 330 |
-| wall s2 | 14 / 0 / 14 | 0 / 0 / 0 | 342, 328 | 337, 337 | 342, 328 |
-| wall s3 | 19 / 0 / 19 | 0 / 0 / 0 | 338, 319 | 330, 330 | 338, 319 |
-| wall s4 | 18 / 0 / 18 | 0 / 0 / 0 | 339, 321 | 331, 331 | 339, 321 |
-| wall s5 | 14 / 0 / 14 | 0 / 0 / 0 | 336, 322 | 338, 338 | 336, 322 |
-| wall s6 | 18 / 0 / 18 | 0 / 0 / 0 | 338, 320 | 340, 340 | 338, 320 |
-| wall s7 | 13 / 0 / 13 | 0 / 0 / 0 | 337, 324 | 337, 337 | 337, 324 |
-| wall s8 | 15 / 0 / 15 | 0 / 0 / 0 | 338, 323 | 323, 323 | 338, 323 |
-| table s1 | 13 / 0 / 13 | 0 / 0 / 0 | 419, 406 | 403, 403 | 419, 406 |
-| table s2 | 14 / 0 / 14 | 0 / 0 / 0 | 424, 410 | 404, 404 | 424, 410 |
-| table s3 | 16 / 0 / 16 | 0 / 0 / 0 | 420, 404 | 408, 408 | 420, 404 |
-| table s4 | 12 / 0 / 12 | 0 / 0 / 0 | 420, 408 | 414, 414 | 420, 408 |
-| table s5 | 16 / 0 / 16 | 0 / 0 / 0 | 420, 404 | 410, 410 | 420, 404 |
-| table s6 | 11 / 0 / 11 | 0 / 0 / 0 | 416, 405 | 406, 406 | 416, 405 |
-| table s7 | 16 / 0 / 16 | 0 / 0 / 0 | 421, 405 | 407, 407 | 421, 405 |
-| table s8 | 11 / 0 / 11 | 0 / 0 / 0 | 421, 410 | 408, 408 | 421, 410 |
+| clip, seed | (a) DETECT corners null, A / candidate / B | mirrored, A / candidate / B | (c) ok and with corners, A | the candidate | B | `stepMs`, A / candidate / B | `trackTimeShare`, A / candidate / B |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| static s1 | 0 / 0 / 0 | 0 / 0 / 0 | 728, 728 | 728, 728 | 728, 728 | 9.6472 / 10.5030 / 9.6888 | 1.0000 / 1.0000 / 1.0000 |
+| static s2 | 0 / 0 / 0 | 0 / 0 / 0 | 728, 728 | 728, 728 | 728, 728 | 9.8267 / 9.8006 / 9.5177 | 1.0000 / 1.0000 / 1.0000 |
+| static s3 | 0 / 0 / 0 | 0 / 0 / 0 | 728, 728 | 728, 728 | 728, 728 | 9.6116 / 9.5121 / 9.5895 | 1.0000 / 1.0000 / 1.0000 |
+| static s4 | 0 / 0 / 0 | 0 / 0 / 0 | 728, 728 | 728, 728 | 728, 728 | 9.6979 / 10.0948 / 9.6601 | 1.0000 / 1.0000 / 1.0000 |
+| static s5 | 0 / 0 / 0 | 0 / 0 / 0 | 728, 728 | 728, 728 | 728, 728 | 9.6125 / 9.5080 / 9.5423 | 1.0000 / 1.0000 / 1.0000 |
+| static s6 | 0 / 0 / 0 | 0 / 0 / 0 | 728, 728 | 728, 728 | 728, 728 | 9.6217 / 9.6412 / 11.1129 | 1.0000 / 1.0000 / 1.0000 |
+| static s7 | 0 / 0 / 0 | 0 / 0 / 0 | 728, 728 | 728, 728 | 728, 728 | 9.6560 / 9.5666 / 9.7524 | 1.0000 / 1.0000 / 1.0000 |
+| static s8 | 0 / 0 / 0 | 0 / 0 / 0 | 728, 728 | 728, 728 | 728, 728 | 9.6185 / 9.5335 / 9.5215 | 1.0000 / 1.0000 / 1.0000 |
+| wall s1 | 19 / 0 / 19 | 0 / 0 / 0 | 349, 330 | 328, 328 | 349, 330 | 13.9365 / 15.5446 / 13.6212 | 0.4122 / 0.3838 / 0.4122 |
+| wall s2 | 14 / 0 / 14 | 0 / 0 / 0 | 342, 328 | 337, 337 | 342, 328 | 14.2988 / 14.4163 / 13.6323 | 0.3988 / 0.4089 / 0.3988 |
+| wall s3 | 19 / 0 / 19 | 0 / 0 / 0 | 338, 319 | 330, 330 | 338, 319 | 13.5875 / 14.6538 / 14.5218 | 0.3721 / 0.3988 / 0.3721 |
+| wall s4 | 18 / 0 / 18 | 0 / 0 / 0 | 339, 321 | 331, 331 | 339, 321 | 14.5514 / 14.1892 / 14.0544 | 0.3788 / 0.3938 / 0.3788 |
+| wall s5 | 14 / 0 / 14 | 0 / 0 / 0 | 336, 322 | 338, 338 | 336, 322 | 13.5346 / 13.7548 / 13.8351 | 0.3687 / 0.4156 / 0.3687 |
+| wall s6 | 18 / 0 / 18 | 0 / 0 / 0 | 338, 320 | 340, 340 | 338, 320 | 13.8650 / 13.7705 / 13.6751 | 0.3754 / 0.4222 / 0.3754 |
+| wall s7 | 13 / 0 / 13 | 0 / 0 / 0 | 337, 324 | 337, 337 | 337, 324 | 13.7233 / 13.7050 / 13.4530 | 0.3721 / 0.4122 / 0.3721 |
+| wall s8 | 15 / 0 / 15 | 0 / 0 / 0 | 338, 323 | 323, 323 | 338, 323 | 13.3787 / 13.8326 / 14.0455 | 0.3754 / 0.3721 / 0.3754 |
+| table s1 | 13 / 0 / 13 | 0 / 0 / 0 | 419, 406 | 403, 403 | 419, 406 | 11.3378 / 11.7495 / 11.1214 | 0.7292 / 0.7287 / 0.7292 |
+| table s2 | 14 / 0 / 14 | 0 / 0 / 0 | 424, 410 | 404, 404 | 424, 410 | 10.9702 / 11.2212 / 11.0064 | 0.7413 / 0.7261 / 0.7413 |
+| table s3 | 16 / 0 / 16 | 0 / 0 / 0 | 420, 404 | 408, 408 | 420, 404 | 11.4036 / 11.2168 / 11.5753 | 0.7267 / 0.7337 / 0.7267 |
+| table s4 | 12 / 0 / 12 | 0 / 0 / 0 | 420, 408 | 414, 414 | 420, 408 | 11.3038 / 11.8254 / 10.9768 | 0.7264 / 0.7447 / 0.7264 |
+| table s5 | 16 / 0 / 16 | 0 / 0 / 0 | 420, 404 | 410, 410 | 420, 404 | 11.0956 / 11.0480 / 11.1204 | 0.7261 / 0.7233 / 0.7261 |
+| table s6 | 11 / 0 / 11 | 0 / 0 / 0 | 416, 405 | 406, 406 | 416, 405 | 11.1362 / 11.1529 / 10.9481 | 0.7188 / 0.7295 / 0.7188 |
+| table s7 | 16 / 0 / 16 | 0 / 0 / 0 | 421, 405 | 407, 407 | 421, 405 | 10.8423 / 10.9478 / 11.1009 | 0.7236 / 0.7287 / 0.7236 |
+| table s8 | 11 / 0 / 11 | 0 / 0 / 0 | 421, 410 | 408, 408 | 421, 410 | 11.0902 / 11.1453 / 10.7913 | 0.7385 / 0.7337 / 0.7385 |
 
 Zero-area corners: 0 on every run. Runs A and B agree on every figure (a) and
 (c) read, on every seed of every clip.
@@ -359,6 +369,9 @@ registration puts it, and no reader of the reason missed.
   leave-and-return assert frames 67 and 69's reason `"not-facing"` and counts
   5 and 8, which only the state strings had pinned; the M2 arm lists its
   `"not-facing"` frames; a misplaced comment in the stateless test moved.
+  These pins are measured values, not seen red on their own: with the rule
+  removed (a scratch `detection.ts`, restored and `git diff`-ed empty) the
+  three tests fail, but at their state strings first.
 - **Applied in the CHANGELOG:** `DetectionSetup` gains a required `grid`.
 - **Not applied, with the reason:**
   - the stateless mode builds `targetGrid` on every frame, where
