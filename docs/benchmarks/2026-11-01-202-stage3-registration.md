@@ -112,6 +112,26 @@ that refuses columns `mixed-w` and `reversed`.
   the reason include `examples/README.md` (about line 252) and the webcam
   demo's per-reason message (about line 434); and, the maintainer's own
   addition, the static demo's note (below, "The treatment").
+- **C0 widened, the maintainer's ruling of 2026-11-01, given after this
+  file's first commit and before its merge.** The first commit's C0 compared
+  `facing` DETECT frames only, so the full results of TRACK frames were
+  compared by no criterion. **Ruled:** C0 compares every result field on
+  every frame, at every index, except the frames the rule refuses, and the
+  three fields of correction 1 on the frame after one; TRACK frames included
+  (below, C0). The ruling asked for a check on the probe's per-frame rows
+  first, with a stop if it failed:
+  - **The check:** whether any frame other than a frame GWM refused, or its
+    successor, differs in `state` between the probe's G0 and GWM rows, on any
+    clip and seed. A scratch script, not committed, read the 48 row files of
+    the probe's recorded run in the probe session's scratch directory. Each
+    file's SHA-256 began with the value the recorded stdout prints for it
+    (script line 1013); that stdout is `1ad32881…`.
+  - **The result: none, on any of the 24 G0/GWM pairs.** `state` differs
+    exactly on GWM's refused frames: 0 a run on the static clip, 60 to 74
+    on the wall clip and 81 to 95 on the table clip, over all six loops.
+    It differs on no successor of a refused frame and on no other frame.
+  - **Exercised the other way:** with one G0 row's `state` changed (wall,
+    seed 1, frame 500), that frame was reported.
 - **Seen before registration:** the probe's two recorded stdouts, in the
   probe session's scratch directory, at their recorded SHA-256
   (`1ad32881…`, line 4 reading "built clean at
@@ -209,12 +229,11 @@ that refuses columns `mixed-w` and `reversed`.
   `detectTarget`'s order, with the same reason and count.
 - **Nothing else changes:** the tracking step, the pose selector
   (`selectPose`), the conditioning signal and `poseFilter` are untouched.
-  C0 checks it on every `facing` DETECT frame (`H`, `pose`, `poseSelection`,
-  `conditioning` and every other field equal to the base's), and C1 on every
-  frame of the clips against the probe, TRACK frames included, by the
-  fields its rows carry (`state`, `ok`, `inliers`, `H`, `corners`,
-  `poseCorners` and the rest of C1's list). The full results of TRACK frames
-  are compared by neither.
+  C0 checks it on every frame the rule does not refuse, TRACK frames
+  included (`H`, `pose`, `poseSelection`, `conditioning`, `tracking` and every
+  other field equal to the base's, but for correction 1's three fields on
+  the frame after a refusal). C1 checks it on every frame of the clips
+  against the probe, by the fields its rows carry.
 - `METRICS_VERSION` stays 1: the rule changes which frames are posed, not a
   definition.
 
@@ -226,17 +245,18 @@ as a basis. Each is exercised both ways in Part 3.
 
 ### C0, facing is unchanged
 
-- **The check.** On every DETECT frame the base classifies `facing` by axis
-  A, every result field at the implementation equals the base's, where the
-  base is **the registration's merge commit** (this file's merge into `dev`;
-  not this file's basis, `f872707`):
+- **The check** (widened by the maintainer's ruling of 2026-11-01, Step 0).
+  On every frame, at every index, every result field at the implementation
+  equals the base's, where the base is **the registration's merge commit**
+  (this file's merge into `dev`; not this file's basis, `f872707`). TRACK,
+  DETECT and LOST frames alike, with two exceptions below. It runs:
   - **on the replay's clips**, the three of them, seeds 1 to 8, all six loops,
     every frame processed, RANSAC seeded as the probe seeds it;
   - **on the ground truth's sequences**, `shippedLeaveAndReturn`,
     `shippedWander` and `shippedVelocitySteps`
     (`ground-truth/tracker_sequences.ts`, lines 243 to 256), seeded by the
-    module (`SEED` 20260925): 50 `facing` DETECT frames at the base, by the
-    probe's expressibility run.
+    module (`SEED` 20260925). The probe's expressibility run counts 52 DETECT
+    frames there at the base, 50 of them `facing`.
   - **Fields compared:** every field of every result, recursively: `ok`,
     `state`, `quality`, `timestampMs`, `numMatches`, `numInliers`, `H`, `pose`
     (`R`, `t`, `good`), `poseSelection` (`pose`, `candidates`, `chosen`,
@@ -245,23 +265,38 @@ as a basis. Each is exercised both ways in Part 3.
     `timings`, `needsDetection`, `detectionUse`, `detectionLatencyMs`. The two
     results have the same keys at every level; arrays and typed arrays are
     compared element by element; every leaf with `Object.is`.
-  - **The exception (correction 1):** on the frame immediately after a frame
-    the rule refuses at the implementation (its reason `"not-facing"`),
-    `tracking`, `trackLoss` and `trackLossConditioning` are not compared.
-    Every other field there is. The three are covered there by C1.
-  - The implementation's frame at the same index is compared; a base `facing`
-    DETECT frame that is not DETECT at the implementation is a differing
-    frame.
-- _Basis:_ the probe's method: the rule acts only on a fit it refuses, and
-  every other step is untouched; on the every-frame schedule GWM's DETECT
-  frames are G0's less its refusals, on every seed (the addendum's tables).
-- _Refuted by_ any field that differs outside the exception, on any clip,
-  seed, sequence or frame.
-- _Both ways:_ the comparison run on the base against itself reports
-  nothing; given a copy of one base result with one leaf changed (a component
-  of `pose.t`, then `poseSelection.margin`) it reports that leaf; given
-  `tracking` changed on a `facing` frame that does not follow a refusal it
-  reports it, and on one that does it does not.
+  - **The exceptions:**
+    - **(i)** the frames the rule refuses at the implementation (reason
+      `"not-facing"`) are not compared. C1 covers them on the clips and C2
+      on the sequences;
+    - **(ii)** on the frame immediately after one of them, `tracking`,
+      `trackLoss` and `trackLossConditioning` are not compared (correction
+      1). Every other field there is, `state` included. The three are
+      covered there by C1.
+  - The two runs have the same number of results; a result present in one
+    only is a differing frame.
+- _Basis, from the probe:_
+  - No TRACK frame on the corpus rests on a `mixed-w` or `reversed`
+    detection: on no clip and no seed does such a detection start a lock that
+    a TRACK frame follows (the addendum, "What the lock does after a mixed-w
+    detection").
+  - GWM's states equal G0's less its refusals, on every seed (the addendum's
+    tables; and, frame by frame, the check of Step 0: `state` differs only
+    on GWM's refused frames, never on a successor or any other frame).
+  - So every TRACK frame rests on a `facing` lock at both commits, and the
+    rule acts only on a fit it refuses.
+- _Refuted by_ any field that differs outside exceptions (i) and (ii), on any
+  frame of any clip, seed or sequence, TRACK frames included; or a result
+  present in one run only.
+- _Both ways:_
+  - The comparison run on the base against itself reports nothing.
+  - Given a copy of one base result with one leaf changed, it reports that
+    leaf: a component of `pose.t` on a TRACK frame, `poseSelection.margin` on
+    a DETECT frame, then `tracking` on a TRACK frame.
+  - Given `tracking` changed on a frame that follows a refusal, it reports
+    nothing.
+  - Given `state` changed on that same frame, it reports it.
+  - Given any field changed on a refused frame, it reports nothing.
 
 ### C1, fidelity to the probe
 
@@ -576,9 +611,9 @@ through the comparison.
   (`state`, `H`, `gate.side`), frame by frame; on the sequences, its base
   DETECT frames and columns equal the base expressibility stdout's. Otherwise
   it stops.
-- It prints, per clip and seed and per sequence, the `facing` DETECT frames
-  compared, the frames under the exception, and every differing field with
-  both values, or none.
+- It prints, per clip and seed and per sequence, the frames compared by
+  state (TRACK, DETECT, LOST), the frames under exceptions (i) and (ii), and
+  every differing field with both values, or none.
 
 **C2**: the check copy's `--expressibility` stdout at the implementation
 (above), against the base's (`<base run>/expressibility.txt`, the recorded
@@ -698,7 +733,9 @@ figure and found no critical finding. As applied:
   - The treatment said C0 covers every frame the rule passes. C0 compares
     `facing` DETECT frames only, and the sentence now says so. TRACK frames'
     full results are compared by neither C0 nor C1, which is recorded. C0
-    was not widened beyond the ruling.
+    was not widened beyond the ruling. (The maintainer then widened it, on
+    2026-11-01, before the merge: Step 0. TRACK frames are now compared by
+    C0.)
   - C2's must-not-fire needs the base's expressibility stdout beside the
     tip's. It now has a command.
 - **Minor, applied:**
