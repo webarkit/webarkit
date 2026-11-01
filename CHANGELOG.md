@@ -14,6 +14,21 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+The "M7 — what detection accepts" milestone
+([milestone 9](https://github.com/webarkit/webarkit/milestone/9)), which decided which
+homographies the tracker accepts from a detection. It took
+[#202](https://github.com/webarkit/webarkit/issues/202) through
+[`docs/benchmarks/step-protocol.md`](docs/benchmarks/step-protocol.md) to a rule registered before
+its code, and closes on #202 by the first of the milestone's two ways: a rule registered,
+implemented and accepted on its registered criteria. Its three steps are the seeded Stage 1 probe
+([#218](https://github.com/webarkit/webarkit/pull/218)), the registration
+([#219](https://github.com/webarkit/webarkit/pull/219)) and the rule
+([#220](https://github.com/webarkit/webarkit/pull/220)). `@webarkit/nft-tracker` changes, so the
+version is a minor: it gains a failure reason, an exported function with its type, and a required
+field, and it refuses detections it used to accept. Every other package and crate moves to 0.7.0 by
+[ADR-0002](docs/adr/0002-lockstep-versioning.md)'s lockstep. `.wnft` format: still **0.3**, in
+both codecs, so this tag freezes no new corpus.
+
 ### Fixed
 
 - **Detection refuses a homography that does not show the target facing the camera**
@@ -48,6 +63,43 @@ release pull request's body and the GitHub Release's notes.
   sequence's frames 70 to 72, [#92](https://github.com/webarkit/webarkit/issues/92)), and its half
   on reversed fits has no must-fire set on the corpus: it rests on geometry and on a constructed
   unit case.
+
+### What M7 did not deliver
+
+- **Not in it, by the milestone's description:**
+    - [#92](https://github.com/webarkit/webarkit/issues/92), the residual limit: it waits for a
+      corpus with ground truth on moving sequences.
+    - [#133](https://github.com/webarkit/webarkit/issues/133), IPPE's guard near
+      fronto-parallel: it waits for the next campaign's plan.
+    - [#143](https://github.com/webarkit/webarkit/issues/143), the LOST rename: it waits for work
+      that opens the state machine. A refusal adds a failure reason, not a state, as G5 did.
+    - [#109](https://github.com/webarkit/webarkit/issues/109), real-footage ground truth: it waits
+      for webarkit/artoolkit-nft-bench's own real-footage milestone.
+    - No device campaign. `METRICS_VERSION` stays at 1: the rule is a refusal, which changes which
+      frames are posed, not a definition.
+- **Left by the rule, from
+  [#202's closing comment](https://github.com/webarkit/webarkit/issues/202#issuecomment-6562649361):**
+    - Detections that face the camera and are wrong (the leave-and-return sequence's frames
+      70 to 72) are not reached. That is #92.
+    - GM's half, on reversed fits, has no must-fire set on the corpus. It rests on geometry and on
+      a constructed unit case.
+    - [#42](https://github.com/webarkit/webarkit/issues/42)'s promotion condition: the probe
+      measured the spatial distribution of the inliers on the wrong frames, and whether the
+      condition is met is decided on #42.
+      [The ruling of 2026-11-01 on #202](https://github.com/webarkit/webarkit/issues/202#issuecomment-6559359479)
+      records it as not triggered on the probe's hull figures, and not decided there. #42 has had
+      no comment since 2026-10-02, so the condition is open.
+- **Follow-ups that #202's closing comment lists, not applied**, because each would change a file
+  after the measurements:
+    - building the bench page's stateless grid once per run, instead of per frame;
+    - a comment in `targetSide` on a non-finite determinant;
+    - `--only` in `docs/benchmarks/2026-11-01-202-stage3-c0.mjs`: a selection that matches no
+      clip-and-seed pair, and is not `sequences`, compares nothing and exits 0. The registered run
+      used no `--only`.
+- **One issue opened during the window is not in it:**
+  [#217](https://github.com/webarkit/webarkit/issues/217), two manifests that no build writes
+  passing the provenance preflight (a source outside the repository, a bundled input left out),
+  and its CLI test assuming SHA-1.
 
 ## [0.6.1] - 2026-11-01
 
