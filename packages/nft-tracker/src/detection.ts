@@ -67,6 +67,7 @@ import type {
     Mat3,
     Match,
 } from "@webarkit/cv-backend-spec";
+import { targetGrid } from "./pose/select_pose.js";
 import type { BitsDescriptorSet, TargetDb } from "./target/types.js";
 
 /**
@@ -101,6 +102,47 @@ export const DEFAULT_RANSAC_THRESHOLD = 4;
  * can tune it.
  */
 export const MIN_DETECTION_INLIERS = 5;
+
+/**
+ * Which side of the target a homography shows, on the target's 5 × 5 grid
+ * ({@link targetGrid} of its level-0 size): see {@link targetSide}.
+ */
+export type TargetSide = "facing" | "reversed" | "mixed-w" | "singular";
+
+/**
+ * The side of the target `H` shows, from `H` alone (webarkit/webarkit#202).
+ *
+ * `wᵢ = H[6]·xᵢ + H[7]·yᵢ + H[8]` on the 25 points of `grid`. When they are all
+ * of one sign `s` and none is 0, the fit is `"facing"` when `s · det H > 0`
+ * (the determinant of `H` scaled so its `w` are positive: `H` and `−H` are the
+ * same homography) and `"reversed"` when `< 0`: the target seen from behind,
+ * which a visible printed target cannot be. Any `w` of the other sign, or any
+ * `w` exactly 0, is `"mixed-w"`: the camera's plane `z = 0` crosses the
+ * target, so the fit maps part of it to infinity. `det H = 0` with one-signed
+ * `w` is `"singular"`: the target mapped to a line or a point, which shows no
+ * face. {@link detectTarget} accepts `"facing"` only.
+ *
+ * The definition and its arithmetic are axis A of #202's probe
+ * (`docs/benchmarks/2026-11-01-202-stage1-probe.mjs`, `sideOf`), as its
+ * Stage 3 registration (`2026-11-01-202-stage3-registration.md`) registers it.
+ */
+export function targetSide(H: ArrayLike<number>, grid: ArrayLike<number>): TargetSide {
+    let pos = true;
+    let neg = true;
+    for (let i = 0; i < grid.length; i += 2) {
+        const w = H[6] * grid[i] + H[7] * grid[i + 1] + H[8];
+        if (!(w > 0)) pos = false;
+        if (!(w < 0)) neg = false;
+    }
+    if (!pos && !neg) return "mixed-w";
+    const det =
+        H[0] * (H[4] * H[8] - H[5] * H[7]) -
+        H[1] * (H[3] * H[8] - H[5] * H[6]) +
+        H[2] * (H[3] * H[7] - H[4] * H[6]);
+    const d = (pos ? 1 : -1) * det;
+    if (d === 0) return "singular";
+    return d > 0 ? "facing" : "reversed";
+}
 
 /**
  * A `BitsDescriptorSet` whose `kind` and `norm` a backend has accepted.
@@ -257,6 +299,11 @@ export interface DetectionSetup {
     readonly maxSceneKeypoints: number;
     readonly ratio: number;
     readonly ransacThreshold: number;
+    /**
+     * {@link targetGrid} of the target's level-0 size, the 25 points
+     * {@link targetSide} reads (and the tracker's pose selection).
+     */
+    readonly grid: Float64Array;
 }
 
 /** Why a detection produced no homography. */
@@ -270,7 +317,14 @@ export type DetectionFailure =
      * inliers: a minimal fit, whose residual is zero by construction.
      * `numInliers` is the fit's own count.
      */
-    | "too-few-inliers";
+    | "too-few-inliers"
+    /**
+     * RANSAC accepted a model on at least {@link MIN_DETECTION_INLIERS}
+     * inliers whose `H` does not show the target facing the camera
+     * ({@link targetSide}: reversed, mixed-w or singular), webarkit/webarkit#202.
+     * `numInliers` is the fit's own count.
+     */
+    | "not-facing";
 
 /**
  * What {@link detectTarget} found in one frame.
@@ -366,13 +420,15 @@ export function prepareDetection(
         ),
         ratio: positive("ratio", o.ratio ?? DEFAULT_RATIO, 1),
         ransacThreshold: positive("ransacThreshold", o.ransacThreshold ?? DEFAULT_RANSAC_THRESHOLD),
+        grid: targetGrid(...target.pyramid.levelSizes[0]),
     };
 }
 
 /**
  * The detection pipeline on one frame: detect, describe, match per level,
  * filter, estimate, and refuse a fit on fewer than
- * {@link MIN_DETECTION_INLIERS} inliers. M1's pipeline, and the one `NftTracker` runs on a frame
+ * {@link MIN_DETECTION_INLIERS} inliers or one whose `H` does not show the
+ * target facing the camera ({@link targetSide}). M1's pipeline, and the one `NftTracker` runs on a frame
  * without a lock — the same function, so the two cannot drift.
  *
  * This is the "whole pipeline step" the contract's boundary note means by
@@ -457,6 +513,17 @@ export function detectTarget(
             ok: false,
             timestampMs,
             reason: "too-few-inliers",
+            numMatches: matches.length,
+            numInliers: h.numInliers,
+            sceneKeypoints,
+        };
+    }
+    // A fit that shows the target from behind, or not as a whole: see targetSide (#202).
+    if (targetSide(h.H, setup.grid) !== "facing") {
+        return {
+            ok: false,
+            timestampMs,
+            reason: "not-facing",
             numMatches: matches.length,
             numInliers: h.numInliers,
             sceneKeypoints,
