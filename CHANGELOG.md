@@ -14,6 +14,8 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-01
+
 The "M7 — what detection accepts" milestone
 ([milestone 9](https://github.com/webarkit/webarkit/milestone/9)), which decided which
 homographies the tracker accepts from a detection. It took
@@ -756,7 +758,8 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 - The original single-page jsartoolkitNFT demo the repository started as. It is kept at the tag
   `archive/original-nft-demo`.
 
-[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.6.1...dev
+[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.7.0...dev
+[0.7.0]: https://github.com/webarkit/webarkit/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/webarkit/webarkit/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/webarkit/webarkit/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/webarkit/webarkit/compare/v0.5.0...v0.5.1
