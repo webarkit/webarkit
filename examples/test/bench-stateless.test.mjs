@@ -264,8 +264,6 @@ describe("the stateless pipeline agrees with detectTarget on every refusal (#191
         if (!stateless.ok) expect([stateless.H, stateless.pose]).toEqual([null, null]);
     });
 
-    // Missing, the constant would turn the gate off with no error (`h.numInliers < undefined` is
-    // false): the 4-inlier frame would be posed again, and every case above would pass on DEPS.
     // #202's fits are what the cases above say they are, on the target's level-0 grid.
     it("builds its #202 cases in the columns they are named for", () => {
         const grid = targetGrid(...target.pyramid.levelSizes[0]);
@@ -276,6 +274,8 @@ describe("the stateless pipeline agrees with detectTarget on every refusal (#191
         ]);
     });
 
+    // Missing, the constant would turn the gate off with no error (`h.numInliers < undefined` is
+    // false): the 4-inlier frame would be posed again, and every case above would pass on DEPS.
     it.each(Object.keys(DEPS))("refuses deps without %s, rather than run without it", (name) => {
         const { [name]: _, ...deps } = DEPS;
         expect(() =>

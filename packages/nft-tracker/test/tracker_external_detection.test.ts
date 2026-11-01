@@ -442,9 +442,10 @@ describe("NftTracker with external detection on camera-path sequences", () => {
     // M2's pinned sequences (tracker_state_machine.test.ts), which the
     // per-frame seeding used here reproduces exactly — measured, so a change
     // on either side of the comparison is visible.
-    // The last element: M2's frames whose detection is a 4-inlier fit, refused (#137).
-    it.each<[string, Path, number, string, number[]]>([
-        ["wander", wander, 40, "D" + "T".repeat(39), []],
+    // The last two elements: M2's frames whose detection is a 4-inlier fit, refused (#137), and
+    // those whose detection does not show the target facing the camera, refused (#202).
+    it.each<[string, Path, number, string, number[], number[]]>([
+        ["wander", wander, 40, "D" + "T".repeat(39), [], []],
         [
             "leaveAndReturn",
             leaveAndReturn,
@@ -453,11 +454,12 @@ describe("NftTracker with external detection on camera-path sequences", () => {
             // refused (#202); 68 and 69 are 4-inlier fits, as before.
             "D" + "T".repeat(38) + "L".repeat(31) + "D".repeat(23) + "T".repeat(13),
             [39, 68, 69],
+            [67],
         ],
-        ["velocityStep(6)", velocityStep(6), 15, "DTTTT" + "D".repeat(10), []],
+        ["velocityStep(6)", velocityStep(6), 15, "DTTTT" + "D".repeat(10), [], []],
     ])(
         "at latency 1 reproduces M2 on %s: the same TRACK frames bit for bit, its detections one frame later, LOST where M2 detected",
-        (_, path, n, pinned, refused) => {
+        (_, path, n, pinned, refused, notFacing) => {
             const m2 = runM2(target, path, n);
             const ext = runExternal(target, path, n, 1);
             expect(m2.states).toBe(pinned);
@@ -466,6 +468,10 @@ describe("NftTracker with external detection on camera-path sequences", () => {
             );
             expect(tooFew).toEqual(refused);
             for (const i of refused) expect(m2.results[i].numInliers).toBe(4);
+            const notFacingAt = m2.results.flatMap((r, i) =>
+                !r.ok && r.reason === "not-facing" ? [i] : [],
+            );
+            expect(notFacingAt).toEqual(notFacing);
             expect(ext.states).toBe(pinned.replace(/D/g, "L"));
             m2.results.forEach((a, i) => {
                 const b = ext.results[i];

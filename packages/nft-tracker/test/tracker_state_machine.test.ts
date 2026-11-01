@@ -216,6 +216,15 @@ describe("NftTracker on camera-path sequences", () => {
             if (!r.ok) expect(r.reason).toBe("too-few-inliers");
             expect(r.numInliers).toBe(4);
         }
+        for (const [i, n] of [
+            [67, 5],
+            [69, 8],
+        ]) {
+            const r = results[i];
+            expect(r.ok).toBe(false);
+            if (!r.ok) expect(r.reason).toBe("not-facing");
+            expect(r.numInliers).toBe(n);
+        }
     }, 60_000);
 
     it("survives a sudden velocity change of 4 px/frame; at 6 px/frame every moving frame refuses and re-detects", () => {
@@ -386,6 +395,15 @@ describe("the shipped target, examples/targets/pinball.wnft, on ground truth", (
             expect(r.ok).toBe(false);
             if (!r.ok) expect(r.reason).toBe("too-few-inliers");
             expect(r.numInliers).toBe(4);
+        }
+        for (const [i, n] of [
+            [67, 5],
+            [69, 8],
+        ]) {
+            const r = results[i];
+            expect(r.ok).toBe(false);
+            if (!r.ok) expect(r.reason).toBe("not-facing");
+            expect(r.numInliers).toBe(n);
         }
         const tracked = results.flatMap((r, i) => (r.state === "TRACK" ? [i] : []));
         const whole = tracked.map((i) => centreRms(results[i].H!, truths[i]));
