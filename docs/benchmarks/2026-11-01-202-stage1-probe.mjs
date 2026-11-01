@@ -173,7 +173,8 @@ function mirrored(H, corners) {
     if (BREAK === "mirror-always") return true;
     return Math.sign(a) !== Math.sign(b);
 }
-const CANDIDATES = ["G0", "GM", "GP", "GMP"];
+// GW and GWM: the maintainer's ruling of 2026-11-01 on #218, added after the record's first run.
+const CANDIDATES = ["G0", "GM", "GP", "GMP", "GW", "GWM"];
 /** The candidate's verdict on a fit with n ≥ 5: a reason, or null to accept. */
 function refuseOf(cand, side, outcome) {
     const m = side === "reversed";
@@ -182,6 +183,10 @@ function refuseOf(cand, side, outcome) {
     if (cand === "GM") return m ? "reversed" : null;
     if (cand === "GP") return p ? "none-in-front" : null;
     if (cand === "GMP") return m ? "reversed" : p ? "none-in-front" : null;
+    const w = side === "mixed-w";
+    if (BREAK === "gw-blind" && cand === "GW") return null;
+    if (cand === "GW") return w ? "mixed-w" : null;
+    if (cand === "GWM") return m ? "reversed" : w ? "mixed-w" : null;
     return null;
 }
 /** The convex hull's area (Andrew's monotone chain) of a flat point array. */
@@ -298,6 +303,15 @@ function selfTest() {
     expect("GMP: refuses behind", verdict("GMP", cases.behind), "none-in-front");
     expect("G0: passes mirrored", verdict("G0", cases.mirrored), null);
     expect("G0: passes behind", verdict("G0", cases.behind), null);
+    expect("GW: refuses mixed-w", verdict("GW", cases["mixed-w"]), "mixed-w");
+    expect("GW: passes mirrored", verdict("GW", cases.mirrored), null);
+    expect("GW: passes behind", verdict("GW", cases.behind), null);
+    expect("GWM: refuses mixed-w", verdict("GWM", cases["mixed-w"]), "mixed-w");
+    expect("GWM: refuses mirrored", verdict("GWM", cases.mirrored), "reversed");
+    expect("GWM: passes behind", verdict("GWM", cases.behind), null);
+    // The corners' w and the grid's w are mixed together (w is affine, the corners are grid points).
+    const cornersMixed = (H) => { const w = corners.map(([x, y]) => H[6] * x + H[7] * y + H[8]); return !(w.every((v) => v > 0) || w.every((v) => v < 0)); };
+    for (const [name, H] of [["ordinary", ordinary], ["reversed", reversed], ["mixed", mixed]]) expect(`corners-w = grid-w: ${name}`, cornersMixed(H), sideOf(H, grid).side === "mixed-w");
     // #42's measures on a known set: the four corners cover the whole target, four cells.
     expect("hull: corners = target area", hullArea(corners.flat()), (W - 1) * (Hh - 1));
     expect("cells: four corners", cellsCovered(corners.flat(), W, Hh), 4);
@@ -581,6 +595,14 @@ async function child(clip) {
                 j++;
             }
             const A = sideOf(h.H, grid);
+            // The ruling's equivalence, checked on every accepted fit: the four corners' w are
+            // mixed exactly when the grid's are (w is affine in (x, y); the corners are grid points).
+            {
+                const cw = targetPoints.map(([x, y]) => h.H[6] * x + h.H[7] * y + h.H[8]);
+                let cm = !(cw.every((v) => v > 0) || cw.every((v) => v < 0));
+                if (BREAK === "corners-w") cm = !cm;
+                if (cm !== (A.side === "mixed-w")) fatal(`${clip}, ${cand}, frame ${entry.k}: the corners' w mixed ${cm}, the grid's side ${A.side}`);
+            }
             if (A.side === null) fatal(`${clip}, ${cand}, frame ${entry.k}: det H = 0 with one-signed w`);
             const sel = selectPose(h.H, K, inSrc, inDst, threshold, grid);
             const cf = closedFormPose(h.H, K);
@@ -687,6 +709,11 @@ async function child(clip) {
             if (g === null || !g.ransacOk || g.refused !== null || g.n < MIN_N || g.n !== x.inliers) fatal(`${clip}, ${cand}, seed ${seed}: DETECT frame ${x.k} does not match its gate call`);
             if (g.H.some((v, j) => v !== x.H[j])) fatal(`${clip}, ${cand}, seed ${seed}: DETECT frame ${x.k}: the tracker's H is not the fit's`);
             if (g.outcome !== x.outcome || g.chosen !== x.chosen) fatal(`${clip}, ${cand}, seed ${seed}: DETECT frame ${x.k}: selection ${x.outcome}/${x.chosen}, recomputed ${g.outcome}/${g.chosen}`);
+            {
+                let nullCorners = x.corners === null;
+                if (BREAK === "null-corners") nullCorners = !nullCorners;
+                if ((g.side === "mixed-w") !== nullCorners) fatal(`${clip}, ${cand}, seed ${seed}: DETECT frame ${x.k}: side ${g.side}, corners ${x.corners === null ? "null" : "present"}`);
+            }
             if (g.side !== "mixed-w") {
                 const want = (g.side === "facing" ? 1 : -1) * (BREAK === "algebra-flip" ? -1 : 1);
                 for (const [j, p] of g.poses.entries()) {
@@ -789,6 +816,24 @@ async function child(clip) {
             for (const g of calls) if (g.ransacOk && g.n < MIN_N) small.push({ seed, n: g.n, side: g.side, depth: g.depth });
         }
         const refusals = calls.filter((g) => g.refused !== null);
+        const refusedCells = {};
+        for (const g of refusals) refusedCells[`${g.side} × ${g.depth}`] = (refusedCells[`${g.side} × ${g.depth}`] ?? 0) + 1;
+        // What the lock does after a counted DETECT: the TRACK frames that follow it before the
+        // state leaves TRACK, by the detection's column; and how many of those have corners.
+        const lockFollow = Object.fromEntries(SIDES.map((sd) => [sd, { detections: 0, locked: 0, track: 0, trackWithCorners: 0 }]));
+        for (const x of det) {
+            const L = lockFollow[x.gate.side];
+            L.detections++;
+            let j = x.k + 1;
+            let any = false;
+            while (j < r.rows.length && r.rows[j].state === "TRACK") {
+                L.track++;
+                if (r.rows[j].corners !== null) L.trackWithCorners++;
+                any = true;
+                j++;
+            }
+            if (any) L.locked++;
+        }
         const g0 = g0rows[seed];
         runs.push({
             clip,
@@ -808,6 +853,8 @@ async function child(clip) {
             outcomes: Object.fromEntries(["selected", "ambiguous", "no-candidate-in-front", "degenerate"].map((o) => [o, det.filter((x) => x.outcome === o).length])),
             refused: { total: refusals.length, reversed: refusals.filter((g) => g.refused === "reversed").length, "none-in-front": refusals.filter((g) => g.refused === "none-in-front").length },
             refusedAtG0Corners: cand === "G0" ? 0 : cRows.filter((x) => x.gate !== null && x.gate.refused !== null && g0[x.k].corners !== null).length,
+            refusedCells,
+            lockFollow,
             g5Refused: calls.filter((g) => g.ransacOk && g.n < MIN_N).length,
             trackTimeShare: summary.trackTimeShare.share,
             locks: summary.detectionLocks.n,
@@ -922,6 +969,19 @@ function report(R, input1) {
         const sc = {};
         for (const x of R[clip].small) sc[`${x.side} × ${x.depth}`] = (sc[`${x.side} × ${x.depth}`] ?? 0) + 1;
         say(`side table, labelled: G0's RANSAC-accepted fits with n < 5 (G5 refuses them), counted loops, seeds pooled: ${Object.entries(sc).sort().map(([k, v]) => `${k} ${v}`).join("; ") || "none"}`);
+        // GW and GWM (the ruling of 2026-11-01 on #218), per seed beside G0.
+        say(`### ${clip}: GW and GWM per seed, beside G0 (ok / with corners / DETECT / selected pose behind / trackTimeShare; refusals by cell; refused at G0's corners)`);
+        for (const seed of SEEDS) {
+            const line = (cand) => {
+                const r = runs.find((x) => x.cand === cand && x.seed === seed);
+                const cells = Object.entries(r.refusedCells).sort().map(([k, v]) => `${k} ${v}`).join(", ") || "none";
+                return `${cand} ${r.ok} / ${r.corners} / ${r.detect} / ${r.selBehind} / ${fx(r.trackTimeShare)}; refused ${cells}; at G0's corners ${r.refusedAtG0Corners}`;
+            };
+            say(`s${seed}: ${["G0", "GW", "GWM"].map(line).join(" | ")}`);
+        }
+        say(`mixed-w on a DETECT frame ⇔ the frame's corners null: checked on every DETECT frame of all six loops, every candidate and seed (fatal otherwise); the four corners' w mixed ⇔ the grid's: checked on every accepted fit (fatal otherwise)`);
+        say(`### ${clip}: the lock after a counted DETECT, G0, per seed, by column (detections / followed by TRACK / TRACK frames before the state leaves TRACK / of which with corners)`);
+        for (const r of runs.filter((x) => x.cand === "G0")) say(`s${r.seed}: ${SIDES.map((sd) => { const L = r.lockFollow[sd]; return `${sd} ${L.detections} / ${L.locked} / ${L.track} / ${L.trackWithCorners}`; }).join("; ")}`);
         say(`per-frame rows' SHA-256: ${runs.map((r) => `${r.cand}/s${r.seed} ${r.rowsSha256.slice(0, 12)}`).join(" ")}`);
         say("");
     }
@@ -1000,23 +1060,30 @@ async function expressibility() {
     const runs = [["leave and return", seq.shippedLeaveAndReturn(cv, K)], ["wander", seq.shippedWander(cv, K)], ...seq.shippedVelocitySteps(cv, K).map((x) => [`velocity ${x.v}`, x])];
     let total = 0;
     let reversed = 0;
+    const mixedW = [];
     for (const [name, r] of runs) {
         const det = r.results.map((x, i) => [x, r.truths[i]]).filter(([x]) => x.ok && x.state === "DETECT");
         const sides = det.map(([x]) => sideOf(x.H, sGrid).side);
         const errs = det.map(([x, T]) => seq.centreRms(x.H, T));
         for (const [j, [x, T]] of det.entries()) {
             const e = errs[j];
+            // Must-not-fire for GW (the ruling of 2026-11-01 on #218): a mixed-w detection under the
+            // record's 5 px cut is a right detection GW would refuse. Stop and report it.
+            if (sides[j] === "mixed-w" && !(e >= (BREAK === "gw-must-not" ? 1e6 : 5))) fatal(`sequence ${name}, frame ${r.results.indexOf(x)}: a mixed-w detection ${e.toFixed(3)} px from the truth`);
+            say(`  every DETECT: frame ${r.results.indexOf(x)}, ${x.numInliers} inliers, ${sides[j]} × ${depthOf(x.poseSelection)}, ${e.toFixed(3)} px`);
             // 5 px: a display cut, far above the right detections here (about 1 px), not a verdict.
             if (e >= 5) say(`  frame ${r.results.indexOf(x)}: ${x.numInliers} inliers, side ${sides[j]}, depth ${depthOf(x.poseSelection)}, outcome ${x.poseSelection.outcome}, error ${e.toFixed(3)} px`);
         }
         total += det.length;
         reversed += sides.filter((s) => s === "reversed").length;
+        for (const [j, [x]] of det.entries()) if (sides[j] === "mixed-w") mixedW.push({ name, k: r.results.indexOf(x), e: errs[j] });
         say(
             `sequence ${name}: ${r.results.length} frames, states ${r.states}; DETECT ${det.length}: sides ${count(sides, (s) => s)}, depths ${count(det, ([x]) => depthOf(x.poseSelection))}, ` +
                 `error to the truth at the 64 centres, max ${errs.length ? Math.max(...errs).toFixed(3) : "—"} px`,
         );
     }
-    say(`the sequences: ${total} DETECT frames with a known answer, ${reversed} reversed`);
+    say(`the sequences: ${total} DETECT frames with a known answer, ${reversed} reversed, ${mixedW.length} mixed-w (${mixedW.map((m) => `${m.name} frame ${m.k}, ${m.e.toFixed(3)} px`).join("; ")}), every mixed-w one at or above 5 px (fatal otherwise)`);
+    say(`GW's must-fire set in the sequences: ${mixedW.length} frames; must-not-fire: no mixed-w detection under 5 px`);
     say(`must-fire set for a detection rule on a reversed H: ${reversed === 0 ? "none in the corpus" : `${reversed} frames`}`);
     process.stdout.write(out.join("\n") + "\n");
 }
