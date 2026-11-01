@@ -41,6 +41,12 @@ release pull request's body and the GitHub Release's notes.
   as after a refusal. The check throws, for example, on a manifest that parses but whose `served`
   holds a null entry; a manifest that cannot be fetched or parsed never threw, and a session run
   already refused it.
+- **`scripts/stall-check.mjs` answers input it cannot check with a verdict or a refusal, never a
+  stack trace** ([#206](https://github.com/webarkit/webarkit/issues/206)). JSON that is not an
+  object (`null`, a number, a string, a boolean, an array) exits 2 with one line naming the file:
+  `null` threw, the others failed. An export whose `frames` is not a list, or holds a frame that is
+  not an object, fails with one line naming it, exit 1, where it threw or read a string's characters
+  as frames. Its output and exit code on every committed export are unchanged.
 
 ## [0.6.0] - 2026-10-30
 
