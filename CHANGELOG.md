@@ -68,6 +68,36 @@ in both codecs, so this tag freezes no new corpus.
   repository-relative path, and an entry without a SHA-256 or a side `SERVED` uses now refuse a
   session run with a line that names the field, as a malformed `head`, `clean` or `dirtyPaths`
   already did.
+- **Detection refuses a homography that does not show the target facing the camera**
+  ([#202](https://github.com/webarkit/webarkit/issues/202)). A detection whose `H` showed the
+  target from behind, or mapped part of it to infinity, was accepted with 5 or more inliers and
+  returned a pose with no corners (what [#200](https://github.com/webarkit/webarkit/issues/200)'s
+  demo drew). `detectTarget` now classifies an accepted fit with the new exported `targetSide`, on
+  the target's 5 × 5 level-0 grid: its `w` all of one sign and none zero, then the sign of
+  `s · det H`. It refuses every fit that is not `"facing"` (reversed, mixed-w, or singular) as a
+  failed detection with a new reason, `"not-facing"`, carrying the fit's own count, after G5's
+  refusal; the tracker makes the frame LOST with no lock, and the detection worker runs the same
+  code. `DetectionFailure` and `TrackFailure` gain the value, the index gains `targetSide` and its
+  type `TargetSide`, and `DetectionSetup` gains a required field, `grid`, which `prepareDetection`
+  fills (a setup built by hand needs it). The bench page's stateless mode applies the same function through its
+  `deps` ([#191](https://github.com/webarkit/webarkit/issues/191)'s precedent), so a stateless
+  export from before this change and one from after are not comparable on the hand-held clips.
+  On the ground truth's leave-and-return sequence, frames 67 and 69 (5 and 8 inliers, both wrong)
+  are now refused, and three pinned state strings change by them. The rule is GWM of the seeded
+  probe ([#218](https://github.com/webarkit/webarkit/pull/218),
+  [the record](docs/benchmarks/2026-11-01-202-stage1-probe.md)); its criteria were registered
+  before the code ([#219](https://github.com/webarkit/webarkit/pull/219),
+  [the registration](docs/benchmarks/2026-11-01-202-stage3-registration.md)), and
+  [its addendum](docs/benchmarks/2026-11-01-202-stage3-addendum.md) records them run against this
+  code: C0 to C4 held (no result field changes outside the refused frames, on every clip, seed and
+  sequence; the refused frames are the probe's GWM refusals, frame for frame, 60 to 74 a run on
+  the wall clip and 81 to 95 on the table clip; the sequences' frames 67 and 69 are refused and no
+  other). Of the prediction on the device's scaled-step schedule, the half on fits whose `w` are
+  of both signs, and every posed frame having corners, held on both hand-held clips and are void
+  on the static clip; the half on reversed fits is void on every clip, since the control showed no
+  reversed detection there. It does not reach detections that face the camera and are wrong (the sequence's frames 70 to 72,
+  [#92](https://github.com/webarkit/webarkit/issues/92)), and its half on reversed fits has no
+  must-fire set on the corpus: it rests on geometry and on a constructed unit case.
 
 ### What M6 did not deliver
 

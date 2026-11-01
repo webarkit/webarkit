@@ -58,6 +58,8 @@ import {
     detectTarget,
     NftTracker,
     prepareDetection,
+    targetGrid,
+    targetSide,
 } from "../src/index.js";
 import type { DetectTargetOptions, TargetDb } from "../src/index.js";
 import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
@@ -118,8 +120,12 @@ describe("detectTarget", () => {
     // #137: a fit on four correspondences reproduces them exactly, so its
     // residual on its own points is zero by construction and RANSAC's
     // threshold cannot refuse it. The backend's `estimateHomography` is
-    // stubbed to accept a fit with `k` inliers, the first `k` correspondences.
-    const acceptingWith = (k: number): CvBackend =>
+    // stubbed to accept a fit with `k` inliers, the first `k` correspondences,
+    // and `H` (the identity unless given: #202's cases construct their own).
+    const acceptingWith = (
+        k: number,
+        H: ArrayLike<number> = [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    ): CvBackend =>
         new Proxy(cv, {
             get: (t, p) =>
                 p === "estimateHomography"
@@ -127,7 +133,7 @@ describe("detectTarget", () => {
                           const inliers = new Uint8Array(src.length >> 1);
                           inliers.fill(1, 0, k);
                           return {
-                              H: Float64Array.of(1, 0, 0, 0, 1, 0, 0, 0, 1),
+                              H: Float64Array.from(H),
                               inliers,
                               numInliers: k,
                               ok: true,
@@ -157,6 +163,87 @@ describe("detectTarget", () => {
         expect(d.numInliers).toBe(5);
         expect(d.correspondences.src.length).toBe(10);
         expect(d.correspondences.dst.length).toBe(10);
+    });
+
+    // #202: the facing rule (C3 of docs/benchmarks/2026-11-01-202-stage3-registration.md).
+    // Each fit is built for the target's own level-0 grid, classified by the exported
+    // classifier first, and only then handed to detectTarget with 7 inliers, past G5.
+    describe("refuses a fit whose H does not show the target facing the camera (#202)", () => {
+        const KC = [300, 0, 135, 0, 300, 180, 0, 0, 1];
+        // H = K·[r1 r2 t] for a pose, as the probe's self-test builds its cases (its lines 232 to 239).
+        const fromPose = (R: number[], t: number[]): number[] => {
+            const M = [R[0], R[1], t[0], R[3], R[4], t[1], R[6], R[7], t[2]];
+            const H = new Array<number>(9).fill(0);
+            for (let r = 0; r < 3; r++)
+                for (let c = 0; c < 3; c++)
+                    for (let k = 0; k < 3; k++) H[r * 3 + c] += KC[r * 3 + k] * M[k * 3 + c];
+            return H;
+        };
+        const rotX = (a: number) => [
+            1,
+            0,
+            0,
+            0,
+            Math.cos(a),
+            -Math.sin(a),
+            0,
+            Math.sin(a),
+            Math.cos(a),
+        ];
+        const size = () => target.pyramid.levelSizes[0];
+        const grid = () => targetGrid(...size());
+        const facing = () =>
+            fromPose(rotX(0.2), [-(size()[0] - 1) / 2, -(size()[1] - 1) / 2, 2000]);
+        // The camera on the plane's back, every grid point in front (the probe's lines 245 to 248).
+        const reversed = () =>
+            fromPose(rotX(Math.PI - 0.2), [-(size()[0] - 1) / 2, (size()[1] - 1) / 2, 2000]);
+        // A steep pose whose plane crosses z = 0 inside the grid (the probe's lines 249 to 250).
+        const mixed = () => fromPose(rotX(-1.2), [0, 0, 0.5 * (size()[1] - 1)]);
+        // w = x + y: exactly 0 at the grid point (0, 0) and positive at the other 24; det H = −1.
+        const zeroW = () => [1, 0, 1, 0, 1, 0, 1, 1, 0];
+        // w = 1 everywhere, one-signed; the second row is 0, so det H = 0.
+        const singular = () => [1, 0, 0, 0, 0, 0, 0, 0, 1];
+
+        const decide = (H: number[]) => {
+            const stub = acceptingWith(7, H);
+            const setup = prepareDetection(stub, target, { maxSceneKeypoints: 900 });
+            return detectTarget(stub, setup, scene, 3);
+        };
+
+        it("accepts a facing fit, and its negation −H, the same homography", () => {
+            for (const H of [facing(), facing().map((v) => -v)]) {
+                expect(targetSide(H, grid())).toBe("facing");
+                const d = decide(H);
+                expect(d.ok).toBe(true);
+                if (!d.ok) return;
+                expect(Array.from(d.H)).toEqual(H);
+                expect(d.numInliers).toBe(7);
+            }
+        });
+
+        it.each([
+            ["reversed", reversed, "reversed"],
+            ["mixed-w", mixed, "mixed-w"],
+            ["one grid w exactly 0", zeroW, "mixed-w"],
+            ["det H = 0 with one-signed w", singular, "singular"],
+        ] as const)("refuses %s as not-facing, with the fit's 7 inliers", (_, build, side) => {
+            const H = build();
+            expect(targetSide(H, grid())).toBe(side);
+            const d = decide(H);
+            expect(d.ok).toBe(false);
+            if (d.ok) return;
+            expect(d.reason).toBe("not-facing");
+            expect(d.numInliers).toBe(7);
+            expect(d.numMatches).toBeGreaterThan(7);
+            expect(d.timestampMs).toBe(3);
+        });
+
+        it("leaves a 4-inlier fit to G5, whatever its side: too-few-inliers", () => {
+            const stub = acceptingWith(4, reversed());
+            const d = detectTarget(stub, prepareDetection(stub, target), scene, 3);
+            expect(d.ok).toBe(false);
+            if (!d.ok) expect(d.reason).toBe("too-few-inliers");
+        });
     });
 
     it("survives structuredClone with every field intact", () => {

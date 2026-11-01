@@ -44,8 +44,9 @@ function requireNumber(name, value) {
 
 /**
  * The detection steps `NftTracker.process` runs on a frame without a lock
- * (`detectTarget`, detection.ts), its refusal of a fit on fewer than
- * `MIN_DETECTION_INLIERS` inliers included, written out here against the
+ * (`detectTarget`, detection.ts), its refusals of a fit on fewer than
+ * `MIN_DETECTION_INLIERS` inliers and of one whose `H` does not show the
+ * target facing the camera (`targetSide`, #202) included, written out here against the
  * same instrumented backend and the same defaults, so this page's
  * "stateless pipeline" mode and its "NftTracker" mode measure the same
  * detection work through the same calls -- the parity M1 claims, made
@@ -57,10 +58,12 @@ function requireNumber(name, value) {
  * NftTracker mode receives the same value as `maxSceneKeypoints`.
  *
  * `deps` is `{ matchPerLevel, DEFAULT_SCENE_LEVELS, DEFAULT_RATIO,
- * DEFAULT_RANSAC_THRESHOLD, MIN_DETECTION_INLIERS }`, from
- * `@webarkit/nft-tracker`. A value missing from it throws, which fails the
+ * DEFAULT_RANSAC_THRESHOLD, MIN_DETECTION_INLIERS, targetSide, targetGrid }`,
+ * from `@webarkit/nft-tracker`. A value missing from it throws, which fails the
  * page's run naming it: missing, `MIN_DETECTION_INLIERS` would turn the gate
- * off with no error, since `h.numInliers < undefined` is false (#191).
+ * off with no error, since `h.numInliers < undefined` is false (#191). The
+ * facing rule uses the package's own `targetSide` on the package's own grid,
+ * so the two paths cannot classify a fit differently.
  */
 export function runStatelessPipeline(
     icv,
@@ -77,10 +80,18 @@ export function runStatelessPipeline(
         DEFAULT_RATIO,
         DEFAULT_RANSAC_THRESHOLD,
         MIN_DETECTION_INLIERS,
+        targetSide,
+        targetGrid,
     },
 ) {
-    if (typeof matchPerLevel !== "function") {
-        throw new TypeError("runStatelessPipeline: deps.matchPerLevel is not a function");
+    for (const [name, fn] of [
+        ["matchPerLevel", matchPerLevel],
+        ["targetSide", targetSide],
+        ["targetGrid", targetGrid],
+    ]) {
+        if (typeof fn !== "function") {
+            throw new TypeError(`runStatelessPipeline: deps.${name} is not a function`);
+        }
     }
     requireNumber("DEFAULT_SCENE_LEVELS", DEFAULT_SCENE_LEVELS);
     requireNumber("DEFAULT_RATIO", DEFAULT_RATIO);
@@ -147,6 +158,20 @@ export function runStatelessPipeline(
         return {
             ok: false,
             reason: "too-few-inliers",
+            timestampMs,
+            numMatches: matches.length,
+            numInliers: h.numInliers,
+            H: null,
+            pose: null,
+            sceneKeypoints,
+        };
+    }
+    // A fit whose H does not show the target facing the camera, which detectTarget
+    // refuses (#202), on the same grid: targetGrid of the target's level-0 size.
+    if (targetSide(h.H, targetGrid(...targetDb.pyramid.levelSizes[0])) !== "facing") {
+        return {
+            ok: false,
+            reason: "not-facing",
             timestampMs,
             numMatches: matches.length,
             numInliers: h.numInliers,

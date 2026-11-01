@@ -433,7 +433,9 @@
               ? "too few matches"
               : result.reason === "too-few-inliers"
                 ? "too few inliers"
-                : "no consensus";
+                : result.reason === "not-facing"
+                  ? "target not facing the camera"
+                  : "no consensus";
           renderStats([
             ["fps", fps.toFixed(1)],
             ["keypoints (scene)", result.sceneKeypoints.length],

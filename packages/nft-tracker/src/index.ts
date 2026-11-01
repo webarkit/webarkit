@@ -48,6 +48,7 @@ export {
     matchPerLevel,
     MIN_DETECTION_INLIERS,
     prepareDetection,
+    targetSide,
 } from "./detection.js";
 export type {
     Detection,
@@ -55,6 +56,7 @@ export type {
     DetectionSetup,
     DetectTargetOptions,
     TargetLevelView,
+    TargetSide,
     UsableDescriptorSet,
 } from "./detection.js";
 

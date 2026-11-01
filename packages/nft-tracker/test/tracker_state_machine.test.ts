@@ -174,7 +174,7 @@ describe("NftTracker on camera-path sequences", () => {
         expect(p.results.map((r) => r.tracking)).toEqual([null, null, null, null, null, null]);
     }, 60_000);
 
-    it("loses the target when it leaves the frame (LOST on frames 39–66), detects on each of the 26 fast return frames and locks on 25, refusing frame 68's 4-inlier fit (#137), and tracks again from frame 93", () => {
+    it("loses the target when it leaves the frame (LOST on frames 39–66), detects on each of the 26 fast return frames and locks on 23, refusing frame 68's 4-inlier fit (#137) and frames 67 and 69, whose fits do not show the target facing the camera (#202), and tracks again from frame 93", () => {
         const { results, truths, states } = run(target, leaveAndReturn, 106);
         // A TRACK result is a pose the tracker vouches for: never one several
         // px off, whatever a detection seeded it with. Measured: at most
@@ -203,15 +203,27 @@ describe("NftTracker on camera-path sequences", () => {
         expect(results[39].trackLoss).toBe("too-few-patches");
         // On the way back the target moves 5–10 px a frame, past what one
         // step survives, and a lock after a detection starts with no
-        // velocity: every frame re-detects until the motion slows.
+        // velocity: every frame re-detects until the motion slows. The
+        // detections of frames 67 and 69 (5 and 8 inliers, both wrong) do not
+        // show the target facing the camera, so those frames are LOST too
+        // (#202): LOST runs from 39 to 69.
         expect(states).toBe(
-            "D" + "T".repeat(38) + "L".repeat(28) + "DL" + "D".repeat(24) + "T".repeat(13),
+            "D" + "T".repeat(38) + "L".repeat(31) + "D".repeat(23) + "T".repeat(13),
         );
         for (const i of [39, 68]) {
             const r = results[i];
             expect(r.ok).toBe(false);
             if (!r.ok) expect(r.reason).toBe("too-few-inliers");
             expect(r.numInliers).toBe(4);
+        }
+        for (const [i, n] of [
+            [67, 5],
+            [69, 8],
+        ]) {
+            const r = results[i];
+            expect(r.ok).toBe(false);
+            if (!r.ok) expect(r.reason).toBe("not-facing");
+            expect(r.numInliers).toBe(n);
         }
     }, 60_000);
 
@@ -372,15 +384,26 @@ describe("the shipped target, examples/targets/pinball.wnft, on ground truth", (
         // target (worst point 7.37 / 8.24 / 7.65), 0.34–0.36 in view (worst
         // 0.72). Every other TRACK frame is within 0.55 px RMS.
         const { results, truths, states } = shippedLeaveAndReturn(cv, K);
-        // Frames 39 and 68 are 4-inlier detections, refused (#137).
+        // Frames 39 and 68 are 4-inlier detections, refused (#137); frames 67
+        // and 69 are detections that do not show the target facing the camera,
+        // refused (#202).
         expect(states).toBe(
-            "D" + "T".repeat(38) + "L".repeat(28) + "DL" + "D".repeat(24) + "T".repeat(13),
+            "D" + "T".repeat(38) + "L".repeat(31) + "D".repeat(23) + "T".repeat(13),
         );
         for (const i of [39, 68]) {
             const r = results[i];
             expect(r.ok).toBe(false);
             if (!r.ok) expect(r.reason).toBe("too-few-inliers");
             expect(r.numInliers).toBe(4);
+        }
+        for (const [i, n] of [
+            [67, 5],
+            [69, 8],
+        ]) {
+            const r = results[i];
+            expect(r.ok).toBe(false);
+            if (!r.ok) expect(r.reason).toBe("not-facing");
+            expect(r.numInliers).toBe(n);
         }
         const tracked = results.flatMap((r, i) => (r.state === "TRACK" ? [i] : []));
         const whole = tracked.map((i) => centreRms(results[i].H!, truths[i]));
