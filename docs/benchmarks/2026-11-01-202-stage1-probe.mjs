@@ -372,6 +372,34 @@ for (const [rel, want] of INPUTS) {
     if (got !== want) fatal(`${rel}: SHA-256 ${got}, expected ${want}`);
 }
 
+/**
+ * Input 1's exports, pinned (Qodo's review of #218, finding 4, on the maintainer's ruling): the
+ * SHA-256 of each committed export, and the target fields inputOne() reads. Checked here, fatal,
+ * before any mode computes a figure; a passing check prints nothing.
+ */
+const WALL_EXPORTS = [
+    ["sync-wall-1", "7add742ca4da4bd7c2d714dbb4bfa07003c013087873c86effbd7dfad948b727"],
+    ["sync-wall-2", "138a8b3e7f41941d56ea79b143e83e576091e3f2246e6aebf610cd640f282f62"],
+    ["sync-wall-3", "2967378d48371ebb437e68fde822b12bc9b6d96c98ceb68d49d25fb8c7ea400c"],
+    ["sync-wall-4", "4c624542acbb75b508a5b4f84ebb231a164b00eba0c903b6f08fa5c84700cb6c"],
+    ["worker-wall-1", "62d2cae31839cd42f37817c6902c3dec5341ab39891ab22f5304709e156e1890"],
+    ["worker-wall-2", "8b21146a070eee73f26784e760c334ef7ea3af549be1018e20ba28c306c16c64"],
+    ["worker-wall-3", "6bc3de1e19efde05668620da140d944acdbc90fe1ad2490fab4aa8f9d55a332b"],
+    ["worker-wall-4", "14c44313bea83dd557d00d91d2f0a983d1850bf54da8030ee3c920a6dd6a4484"],
+];
+const WALL_TARGET = { widthPx: 512, heightPx: 640, patches: 48, patchSize: 16, sha256: "9e8eb4863b58b635ad7fc2bd9f937d924b369a9002580e52a35ef0db7b0d5282" };
+for (const [name, want0] of WALL_EXPORTS) {
+    const rel = `docs/benchmarks/2026-10-01-tab9-m3-${name}.json`;
+    const path = join(ROOT, rel);
+    if (!existsSync(path)) fatal(`${rel}: missing under ${ROOT}`);
+    const bytes = readFileSync(path);
+    const want = BREAK === "export-hash" && name === "sync-wall-1" ? "0".repeat(64) : want0;
+    const got = sha256(bytes);
+    if (got !== want) fatal(`${rel}: SHA-256 ${got}, expected ${want}`);
+    const t = JSON.parse(bytes).target ?? {};
+    for (const [k, v] of Object.entries(WALL_TARGET)) if (t[k] !== v) fatal(`${rel}: target.${k} ${JSON.stringify(t[k])}, expected ${JSON.stringify(v)}`);
+}
+
 const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
 const LOOPS = 6;
 const COUNTED = Object.freeze({ firstLoop: 1, loopCount: 4 });
