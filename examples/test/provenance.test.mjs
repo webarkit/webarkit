@@ -37,12 +37,15 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { provenanceFindings, provenanceRefusal } from "../js/bench-metrics.mjs";
+import { provenanceFindings, provenanceRefusal, servedShapeError } from "../js/bench-metrics.mjs";
 import { SERVED } from "../../scripts/build-provenance.mjs";
 
 const ROOT = new URL("../../", import.meta.url);
 const bytes = (path) => readFileSync(new URL(path, ROOT));
 const sha256 = (path) => createHash("sha256").update(bytes(path)).digest("hex");
+
+/** A well-formed SHA-256 for a fixture, one hex digit repeated: `served`'s entries need one (#209). */
+const hex = (digit) => digit.repeat(64);
 
 describe("provenanceRefusal", () => {
     const manifest = {
@@ -51,14 +54,14 @@ describe("provenanceRefusal", () => {
         dirtyPaths: [],
         bundle: { path: "examples/dist/webarkit-packages.mjs", sha256: "b" },
         served: {
-            "examples/bench-nft.html": { sha256: "h" },
-            "examples/js/a.mjs": { sha256: "a" },
+            "examples/bench-nft.html": { sha256: hex("1"), side: "page" },
+            "examples/js/a.mjs": { sha256: hex("a"), side: "both" },
         },
     };
     const observed = {
         manifestChanged: false,
         bundleSha256: "b",
-        served: { "examples/bench-nft.html": "h", "examples/js/a.mjs": "a" },
+        served: { "examples/bench-nft.html": hex("1"), "examples/js/a.mjs": hex("a") },
         loaded: ["examples/dist/webarkit-packages.mjs", "examples/js/a.mjs"],
     };
     const session = { sessionRun: true };
@@ -96,7 +99,7 @@ describe("provenanceRefusal", () => {
         [
             "a served file that could not be fetched",
             manifest,
-            { ...observed, served: { "examples/bench-nft.html": "h" } },
+            { ...observed, served: { "examples/bench-nft.html": hex("1") } },
             /differ from the build: examples\/js\/a\.mjs/,
         ],
         [
@@ -317,6 +320,117 @@ describe("provenanceRefusal", () => {
         }
     });
 
+    // #209: Start read `served` with no check of its shape, so a null entry and a primitive
+    // `served` threw, and the page threw on a key `new URL` cannot resolve. Each is now refused
+    // by name, as the flags are, and no reader of `served` runs: the one finding is the refusal.
+    describe("a served map no build writes", () => {
+        const page = "examples/bench-nft.html";
+        const entry = { sha256: hex("5"), side: "both" };
+        const withServed = (served) => ({ ...manifest, served });
+        const withKey = (key) => withServed({ ...manifest.served, [key]: entry });
+        const withEntry = (value) => withServed({ ...manifest.served, [page]: value });
+        const refusal = (why) =>
+            `Provenance: ${why}, so it was hand-edited or written by a broken build. To fix: run \`npm run build\`.`;
+        const cases = [
+            [
+                "a null entry",
+                withEntry(null),
+                `the manifest's served["examples/bench-nft.html"] null is not an object`,
+            ],
+            [
+                "served a string",
+                withServed("x"),
+                `the manifest's served "x" is not an object of paths`,
+            ],
+            ["served a number", withServed(5), "the manifest's served 5 is not an object of paths"],
+            [
+                "served null",
+                withServed(null),
+                "the manifest's served null is not an object of paths",
+            ],
+            ["served a list", withServed([]), "the manifest's served [] is not an object of paths"],
+            ["no served map", withServed(undefined), "the manifest records no served map"],
+            ...[
+                ["a URL that does not parse", "http://["],
+                ["a scheme", "https://example.com/x.mjs"],
+                ["a drive letter", "C:/examples/x.mjs"],
+                ["a leading slash", "/examples/x.mjs"],
+                ["a backslash", "examples\\x.mjs"],
+                ["a .. segment", "examples/../x.mjs"],
+                // What the URL parser strips at the ends, or drops inside, before it reads a scheme.
+                ["a leading space", " http://["],
+                ["a tab inside", "ht\ttp://["],
+                ["a control character", "\u0001http://["],
+            ].map(([what, key]) => [
+                `a key with ${what}`,
+                withKey(key),
+                `the manifest's served key ${JSON.stringify(key)} is not a repository-relative path`,
+            ]),
+            [
+                "an entry whose sha256 is not a SHA-256",
+                withEntry({ sha256: "h", side: "page" }),
+                `the manifest's served["examples/bench-nft.html"].sha256 "h" is not a SHA-256`,
+            ],
+            [
+                "an entry whose sha256 is upper-case hex",
+                withEntry({ sha256: hex("A"), side: "page" }),
+                `the manifest's served["examples/bench-nft.html"].sha256 "${hex("A")}" is not a SHA-256`,
+            ],
+            [
+                "an entry with an unknown side",
+                withEntry({ sha256: hex("1"), side: "server" }),
+                `the manifest's served["examples/bench-nft.html"].side "server" is not a side: page, both, worker or bundled`,
+            ],
+            [
+                "an entry with no side",
+                withEntry({ sha256: hex("1") }),
+                `the manifest's served["examples/bench-nft.html"].side undefined is not a side: page, both, worker or bundled`,
+            ],
+        ];
+
+        it.each(cases)("refuses a session run on %s, naming the field", (_, m, why) => {
+            expect(servedShapeError(m)).toBe(
+                `${why}, so it was hand-edited or written by a broken build`,
+            );
+            expect(provenanceRefusal(m, observed, session)).toBe(refusal(why));
+        });
+
+        it("reads nothing else: beside a changed manifest, the shape is the one finding", () => {
+            const [, m, why] = cases[0];
+            expect(provenanceFindings(m, { ...observed, manifestChanged: true })).toBe(
+                refusal(why),
+            );
+        });
+
+        it("names the first malformed entry, in the map's order", () => {
+            const m = withServed({
+                "examples/js/a.mjs": null,
+                "examples/js/b.mjs": { sha256: "h", side: "both" },
+            });
+            expect(servedShapeError(m)).toMatch(
+                /^the manifest's served\["examples\/js\/a\.mjs"\] null/,
+            );
+        });
+
+        it("accepts a served map a build writes, an empty one included", () => {
+            expect(servedShapeError(manifest)).toBeNull();
+            // Every side SERVED names, and no blob: the page reads none.
+            const sides = Object.fromEntries(
+                [...new Set(Object.values(SERVED))].map((side) => [
+                    `examples/js/${side}.mjs`,
+                    { sha256: hex("6"), side },
+                ]),
+            );
+            expect(servedShapeError(withServed(sides))).toBeNull();
+            // An empty map is not refused for its shape: the modules the page loaded are then
+            // unlisted, a finding of their own.
+            expect(servedShapeError(withServed({}))).toBeNull();
+            expect(provenanceRefusal(withServed({}), observed, session)).toMatch(
+                /does not list: examples\/js\/a\.mjs/,
+            );
+        });
+    });
+
     it("refuses nothing outside a session run, and still reports what it found", () => {
         expect(provenanceRefusal(null, observed, { sessionRun: false })).toBeNull();
         const mismatch = { ...observed, bundleSha256: "x" };
@@ -332,20 +446,20 @@ describe("provenanceRefusal", () => {
             ...manifest,
             served: {
                 ...manifest.served,
-                "examples/js/p.mjs": { sha256: "p", side: "page" },
-                "examples/js/w.mjs": { sha256: "w", side: "worker" },
-                "examples/js/both.mjs": { sha256: "o", side: "both" },
-                "examples/js/entry.mjs": { sha256: "e", side: "bundled" },
+                "examples/js/p.mjs": { sha256: hex("2"), side: "page" },
+                "examples/js/w.mjs": { sha256: hex("3"), side: "worker" },
+                "examples/js/both.mjs": { sha256: hex("4"), side: "both" },
+                "examples/js/entry.mjs": { sha256: hex("e"), side: "bundled" },
             },
         };
         const seen = {
             ...observed,
             served: {
                 ...observed.served,
-                "examples/js/p.mjs": "p",
-                "examples/js/w.mjs": "w",
-                "examples/js/both.mjs": "o",
-                "examples/js/entry.mjs": "e",
+                "examples/js/p.mjs": hex("2"),
+                "examples/js/w.mjs": hex("3"),
+                "examples/js/both.mjs": hex("4"),
+                "examples/js/entry.mjs": hex("e"),
             },
             loaded: [
                 ...observed.loaded,
@@ -418,6 +532,10 @@ describe("the manifest npm run build writes", () => {
             manifest.clean,
             `clean is ${manifest.clean}, dirtyPaths ${JSON.stringify(manifest.dirtyPaths)}`,
         ).toBe(manifest.dirtyPaths.length === 0);
+    });
+
+    it("has a served map Start's shape check accepts (#209)", () => {
+        expect(servedShapeError(manifest)).toBeNull();
     });
 
     it("records every hash well-formed: SHA-256 in hex, blob ids as full git object ids", () => {
