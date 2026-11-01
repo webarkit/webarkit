@@ -306,6 +306,51 @@ describe("stallCheck with nothing to read", () => {
         const r = stallCheck(exportOf([0, 0.0625, null, 0.1875]));
         expect(r).toEqual({ fails: ["frame 2: no finite media time"], maxGap: null, loops: 0 });
     });
+
+    // #206: each of these threw a TypeError, or read a string's characters as frames.
+    it("fails an export whose frames is not a list, naming its type, and reads no frame", () => {
+        for (const [frames, type] of [
+            [{}, "object"],
+            [5, "number"],
+            ["ab", "string"],
+        ]) {
+            expect(stallCheck({ clipDurationS: D, frames }), type).toEqual({
+                fails: [`frames is not a list (${type})`],
+                maxGap: null,
+                loops: 0,
+            });
+        }
+        // Without a clip duration too: the list is what cannot be read.
+        expect(stallCheck({ frames: {} }).fails).toEqual(["frames is not a list (object)"]);
+        // A null list is no list, as an absent one: no frames to read.
+        expect(stallCheck({ clipDurationS: D, frames: null }).fails).toEqual([
+            "no clip duration or no frames to read (12, 0 frames)",
+        ]);
+    });
+
+    it("stops at a frame that is not an object, frame 0 included", () => {
+        expect(stallCheck({ clipDurationS: D, frames: [null, null] })).toEqual({
+            fails: ["frame 0: not an object (null)"],
+            maxGap: null,
+            loops: 0,
+        });
+        expect(stallCheck({ clipDurationS: D, frames: [{ mediaTimeSeconds: 0 }, null] })).toEqual({
+            fails: ["frame 1: not an object (null)"],
+            maxGap: null,
+            loops: 0,
+        });
+        expect(
+            stallCheck({ clipDurationS: D, frames: [{ mediaTimeSeconds: 0 }, 5] }).fails,
+        ).toEqual(["frame 1: not an object (number)"]);
+        // After a loop wrap: the loops counted so far.
+        const wrapped = exportOf([11.9375, 0, 0.0625]);
+        wrapped.frames.push(null);
+        expect(stallCheck(wrapped)).toEqual({
+            fails: ["frame 3: not an object (null)"],
+            maxGap: null,
+            loops: 1,
+        });
+    });
 });
 
 /** Every committed export with frames, read as check-committed.mjs reads them. */
@@ -425,6 +470,38 @@ describe("scripts/stall-check.mjs", () => {
 
     it("exits 2 naming the path on a file that is not JSON", () => {
         refused(exec(write("bad.json", "{ not json")), /^cannot parse .*bad\.json as JSON: /);
+    });
+
+    it("exits 2 naming the path on JSON that is not an object: there is no export to check", () => {
+        for (const [name, text, what] of [
+            ["null.json", "null", "null"],
+            ["number.json", "42", "a number"],
+            ["string.json", '"x"', "a string"],
+            ["array.json", "[]", "an array"],
+        ]) {
+            refused(
+                exec(write(name, text)),
+                new RegExp(`^.*${name.replace(".", "\\.")} is not a JSON object: ${what}$`),
+            );
+        }
+    });
+
+    it("exits 1, no stack, on an export whose frames cannot be read: a FAIL verdict naming why", () => {
+        for (const [e, line] of [
+            [{ clipDurationS: 12, frames: {} }, "frames is not a list (object)"],
+            [{ clipDurationS: 12, frames: 5 }, "frames is not a list (number)"],
+            [{ clipDurationS: 12, frames: "ab" }, "frames is not a list (string)"],
+            [{ clipDurationS: 12, frames: [null, null] }, "frame 0: not an object (null)"],
+            [
+                { clipDurationS: 12, frames: [{ mediaTimeSeconds: 0 }, null] },
+                "frame 1: not an object (null)",
+            ],
+        ]) {
+            const { status, stdout, stderr } = exec(write("unreadable.json", JSON.stringify(e)));
+            expect(status, line).toBe(1);
+            expect(stdout.trim().split("\n"), line).toEqual([`FAIL ${line}`, "stall check: FAIL"]);
+            expect(stderr, line).toBe("");
+        }
     });
 
     it("exits 1 on an export it parses but cannot read: a completed check that fails", () => {

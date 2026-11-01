@@ -217,6 +217,7 @@ import {
     transferPlan,
 } from "../examples/js/bench-metrics.mjs";
 import { fitSize } from "../examples/js/pinball-shared.mjs";
+import { sequenceResolutionRefusal, trackTimeShareRefusal } from "./replay-checks.mjs";
 import { createStepProbe } from "./tuning-probe.mjs";
 
 const EXAMPLES = fileURLToPath(new URL("../examples/", import.meta.url));
@@ -904,10 +905,9 @@ function armExport({
         jobs,
         accounting,
     };
-    if (!e.runSummary.trackTimeShare.complete) {
-        console.error(
-            `replay-clips: ${clip}, ${arm.schedule}: trackTimeShare is incomplete: the run does not reach loop ${M3_COUNTED.firstLoop + M3_COUNTED.loopCount}`,
-        );
+    const short = trackTimeShareRefusal(e.runSummary.trackTimeShare, M3_COUNTED);
+    if (short) {
+        console.error(`replay-clips: ${clip}, ${arm.schedule}: ${short}`);
         process.exit(1);
     }
     return e;
@@ -1199,11 +1199,12 @@ if (sequencePath) {
     // The export's own box and tracker options, so the replay does the device's work.
     const settings = sequenceSettings(e);
     const { frames, pts, width, height } = await loadClip(e.bundledClip, settings.box);
-    if (width !== e.processingResolution.width || height !== e.processingResolution.height) {
-        refuse(
-            `its box ${settings.box.width}x${settings.box.height} fits the clip to ${width}x${height} here, but it ran at ${e.processingResolution.width}x${e.processingResolution.height}`,
-        );
-    }
+    const misfit = sequenceResolutionRefusal(
+        settings.box,
+        { width, height },
+        e.processingResolution,
+    );
+    if (misfit) refuse(misfit);
     let order;
     try {
         order = framesAt(

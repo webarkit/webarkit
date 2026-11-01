@@ -32,11 +32,12 @@
  *
  * Moved in from the copy embedded in
  * `docs/benchmarks/2026-10-01-m3-session-additions.md`, "The scripts"
- * (SHA-256 `cccb475b…`), with its logic unchanged; that copy stays as the
- * record of what ran. The arms and where their bounds come from are in the
- * same record, "A per-run check for a stalled clip". Neither the page nor the
- * worker imports this module, so `bench-metrics.mjs` does not re-export it and
- * it is not served.
+ * (SHA-256 `cccb475b…`), with its logic unchanged but for #206's two guards on
+ * frames it cannot read, where the copy threw or read a string's characters as
+ * frames; that copy stays as the record of what ran. The arms and where their
+ * bounds come from are in the same record, "A per-run check for a stalled
+ * clip". Neither the page nor the worker imports this module, so
+ * `bench-metrics.mjs` does not re-export it and it is not served.
  *
  * A gap is the media time between two consecutive processed frames. Across a
  * loop wrap (media time going back) it is the clip's end after the first frame
@@ -54,6 +55,12 @@
  * frame of the loop after them. An older export, a window of its run, is read
  * over every loop wholly inside the window, and the inner ends of the two
  * partial ones.
+ *
+ * An export it cannot read is a FAIL that says why, not a throw (#206): a
+ * `frames` that is not a list, before any frame is read; no clip duration, or
+ * fewer than two frames; and then, reading the frames in order, the first that
+ * is not an object, or the first step whose two media times are not both
+ * finite, named by its second frame.
  */
 
 export const BOUND_MS = 500; // round 2's largest gap on the tablet, 240.8 ms, doubled and rounded up
@@ -66,8 +73,19 @@ export const CLIP_S = {
     "pinball-static.mp4": 12.166667,
 };
 
+/**
+ * A value's type as a FAIL line names it, `null` apart from `object`. Never an
+ * array here: a `frames` that is one is a list, and a frame that is one is an
+ * object, read on to its media time.
+ */
+const typeOf = (v) => (v === null ? "null" : typeof v);
+const isObject = (v) => typeof v === "object" && v !== null;
+
 export function stallCheck(e) {
     const D = e.clipDurationS ?? CLIP_S[e.bundledClip];
+    if (e.frames != null && !Array.isArray(e.frames)) {
+        return { fails: [`frames is not a list (${typeOf(e.frames)})`], maxGap: null, loops: 0 };
+    }
     const f = e.frames ?? [];
     const fails = [];
     if (!(D > 0) || f.length < 2) {
@@ -82,8 +100,17 @@ export function stallCheck(e) {
     let maxAt = null;
     const span = new Map(); // loop -> [first media time, last media time]
     const excess = new Map(); // loop -> ms by which its gaps exceed DEVICE_MAX_MS
+    if (!isObject(f[0])) {
+        fails.push(`frame 0: not an object (${typeOf(f[0])})`);
+        return { fails, maxGap: null, loops: loop };
+    }
     span.set(0, [f[0].mediaTimeSeconds, f[0].mediaTimeSeconds]);
     for (let i = 1; i < f.length; i++) {
+        // Frame i - 1 was read on the step before, or above.
+        if (!isObject(f[i])) {
+            fails.push(`frame ${i}: not an object (${typeOf(f[i])})`);
+            return { fails, maxGap: null, loops: loop };
+        }
         const prev = f[i - 1].mediaTimeSeconds;
         const cur = f[i].mediaTimeSeconds;
         if (!Number.isFinite(prev) || !Number.isFinite(cur)) {

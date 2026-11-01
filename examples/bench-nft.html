@@ -443,6 +443,7 @@
         percentile,
         provenanceFindings,
         provenanceRefusal,
+        servedShapeError,
         sessionRunGaps,
         sha256Hex,
         stageSamples,
@@ -1520,8 +1521,10 @@
             return null;
           }
         };
+        // A malformed `served` is neither hashed nor listed: provenanceFindings names it (#209).
+        const listedServed = manifest && servedShapeError(manifest) === null ? manifest.served : {};
         const served = {};
-        for (const path of Object.keys(manifest?.served ?? {})) served[path] = await hash(new URL(path, REPO_ROOT));
+        for (const path of Object.keys(listedServed)) served[path] = await hash(new URL(path, REPO_ROOT));
         // Modules only: this check's own fetches are in the timeline too.
         const entries = performance.getEntriesByType("resource");
         const modules = entries.filter((e) => e.initiatorType !== "fetch");
@@ -1535,7 +1538,7 @@
           !(typeof e.encodedBodySize === "number" && e.encodedBodySize > 0) ||
           e.responseStatus === 304 ||
           !(e.transferSize > e.encodedBodySize);
-        const listed = (p) => p === manifest?.bundle?.path || (p in (manifest?.served ?? {}));
+        const listed = (p) => p === manifest?.bundle?.path || p in listedServed;
         const unfetched = new Set(modules.filter(blind).map(modulePath).filter((p) => p !== null && listed(p)));
         const page = performance.getEntriesByType("navigation")[0];
         if (!page || blind(page)) unfetched.add("examples/bench-nft.html");
@@ -1883,9 +1886,12 @@
           try {
             provenance = await checkProvenance(TUNING.loops !== null || TUNING.run !== null);
           } catch (e) {
-            // Start stays off, as it did when this threw unhandled; the probe is as it was.
-            clearPendingStart();
-            probeButton.disabled = !probeAllowed();
+            // A check that throws is a failed start, and ends as one: the controls
+            // are set as after a refusal, so Start can be tried again once the
+            // manifest is rebuilt (#205). A manifest that cannot be fetched or
+            // parsed does not throw: fetchManifest catches it, and a session
+            // run refuses it.
+            endStart();
             showError(e.message);
             return;
           }

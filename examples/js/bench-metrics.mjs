@@ -100,6 +100,7 @@ export {
     provenanceFindings,
     bundleManifestRefusal,
     provenanceRefusal,
+    servedShapeError,
 } from "./bench-provenance.mjs";
 export {
     sequenceRefusal,

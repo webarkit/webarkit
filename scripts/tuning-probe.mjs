@@ -115,6 +115,21 @@ const STAT_KEYS = [
     "fitConverged",
 ];
 
+/**
+ * The frame's first `width · height` bytes, through a view, when the buffer is
+ * longer and both sizes are integers; the frame unchanged otherwise, so that a
+ * shorter buffer is still left for `buildFramePyramid` to refuse. A copy of
+ * `firstPixels` in `packages/nft-tracker/src/tracking/track_frame.ts`, which
+ * `trackFrame` builds its pyramid from: that one is private, and this tool may
+ * not change the package (#207, milestone 8, is the instrument only).
+ */
+function firstPixels(frame) {
+    const { width, height, data } = frame;
+    const n = width * height;
+    if (!(Number.isInteger(width) && Number.isInteger(height) && data.length > n)) return frame;
+    return { width, height, data: data.subarray(0, n) };
+}
+
 function project(H, X, Y) {
     const w = H[6] * X + H[7] * Y + H[8];
     return [(H[0] * X + H[1] * Y + H[2]) / w, (H[3] * X + H[4] * Y + H[5]) / w];
@@ -169,7 +184,7 @@ export function createStepProbe(target, overrides = {}, { rightPx = 1 } = {}) {
         if (r.stats.frameLevels === 0) return; // no prediction: nothing was aligned
         const predicted = predictHomography(previous, current);
         if (!predicted.ok) diverged("the tracker aligned, the probe's prediction failed");
-        const built = buildFramePyramid(frame, {
+        const built = buildFramePyramid(firstPixels(frame), {
             levels: r.stats.frameLevels,
             scaleStep: track.scaleStep,
         });

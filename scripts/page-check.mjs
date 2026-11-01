@@ -53,6 +53,13 @@
  *   it cannot read; Start's provenance check on a `?run=1` session run, under
  *   nine faults, one per Start; a worker run whose detection post throws; and
  *   the worker failing while the source starts, at the page's first Start;
+ * - Start's provenance check throwing, on a resource-timing entry whose name
+ *   is not a URL (#205): the start ends as a failed one, with
+ *   Start and the probe enabled, and a second Start passes the check;
+ * - Start's provenance check on a manifest whose `served` no build writes, a
+ *   null entry, a key that is not a path, then `served` a string beside a
+ *   module from the cache (#209): each start refused by name, Start and the
+ *   probe enabled, and a fourth Start passes;
  * - and one smoke check of the pose demo,
  *   `examples/pinball-pose-jsfeatnext-backend.html` (#200): its pose drawn
  *   under `"TRACK"`, with the pose filter off and then on.
@@ -239,9 +246,9 @@ function findChrome() {
  * - `workerFailsOnPlay`, a message: the next `play()` of a media element first
  *   fails the page's worker, an `ErrorEvent` with it and the worker
  *   terminated, as a worker's uncaught error arrives; then the fault is spent;
- * - `fetch`, `{ path, appendByte, cacheControl }`: the response to a `fetch`
- *   of `path`, as served, with a space appended to its body or its
- *   `Cache-Control` replaced;
+ * - `fetch`, `{ path, appendByte, cacheControl, body }`: the response to a
+ *   `fetch` of `path`, as served, with a space appended to its body, its
+ *   `Cache-Control` replaced, or its body replaced by the string `body`;
  * - `timeline`, `{ type, path, set, remove, add }`: what
  *   `performance.getEntriesByType(type)` returns, with the entry of `path`
  *   given `set`'s fields, or removed, or with `add` appended.
@@ -309,9 +316,12 @@ function instrument({ fabricatedWrap = null } = {}) {
         const fault = pc.faults.fetch;
         if (!fault) return fetch.apply(this, args);
         const response = await fetch.apply(this, args);
-        const { path, appendByte, cacheControl } = fault;
+        const { path, appendByte, cacheControl, body: replaced } = fault;
         if (new URL(response.url).pathname !== path) return response;
-        let body = await response.arrayBuffer();
+        let body =
+            replaced === undefined
+                ? await response.arrayBuffer()
+                : new TextEncoder().encode(replaced).buffer;
         if (appendByte) {
             // A space: the manifest, so changed, still parses.
             const longer = new Uint8Array(body.byteLength + 1).fill(0x20);
@@ -418,6 +428,7 @@ async function openPage(browser, base, query, faults = {}) {
         status: () => page.evaluate(() => document.getElementById("status")?.textContent ?? ""),
         error: () => page.evaluate(() => document.getElementById("error").textContent),
         startDisabled: () => page.evaluate(() => document.getElementById("start").disabled),
+        probeDisabled: () => page.evaluate(() => document.getElementById("probe").disabled),
         stopDisabled: () => page.evaluate(() => document.getElementById("stop").disabled),
         console: () => page.evaluate(() => window.__pageCheck.console),
         exports: () => page.evaluate(() => window.__pageCheck.exports.length),
@@ -1082,6 +1093,181 @@ async function syncProvenanceFaults(browser, base) {
     );
 }
 
+/**
+ * Start's provenance check throwing rather than refusing (#205): a sync
+ * `?run=1` page, and at Start a resource-timing entry whose name is not a URL,
+ * which `modulePath` (`new URL(entry.name)`) throws on. The start is a failed
+ * one: the error line names the failure, and Start and the probe are enabled,
+ * as `startAllowed` and `probeAllowed` allow on a sync page. With the fault
+ * undone, a second Start passes the check and its run starts.
+ *
+ * The fault was a manifest whose `served` held a null entry, which
+ * `provenanceFindings` throws on, reading its `sha256`. #209 refuses such a
+ * manifest by name instead, so the throw is made in the timeline, which no
+ * manifest reaches. A browser names every entry by its absolute URL, so only an
+ * injected one reaches this throw: if it is ever refused instead, this check
+ * needs another way to make the check throw, not a looser assertion.
+ */
+async function syncProvenanceThrows(browser, base) {
+    const names = [
+        "sync ?run=1 Start, a timeline entry whose name is not a URL: the check throws, the start fails, and a second Start passes",
+    ];
+    await scenario(names, async (check) => {
+        const timeline = {
+            type: "resource",
+            add: {
+                // No scheme: "page-check: …" would parse, as a URL of scheme `page-check`.
+                name: "not a URL",
+                initiatorType: "script",
+                transferSize: 1300,
+                encodedBodySize: 1000,
+                responseStatus: 200,
+            },
+        };
+        const p = await openPage(
+            browser,
+            base,
+            "mode=tracking&target=wnft&clip=pinball-bench.mp4&run=1&window=2000",
+        );
+        try {
+            await p.waitReady();
+            await check(names[0], async () => {
+                await p.page.evaluate((timeline) => {
+                    window.__pageCheck.faults = { timeline };
+                }, timeline);
+                try {
+                    await p.clickStart();
+                } finally {
+                    await p.page.evaluate(() => {
+                        window.__pageCheck.faults = {};
+                    });
+                }
+                const status = await p.read.status();
+                const error = await p.read.error();
+                expect(
+                    status === "failed" && error.includes("Invalid URL"),
+                    `status "${status}", error line "${error}": expected the check's TypeError, an invalid URL`,
+                );
+                expect(await p.read.stopDisabled(), "Stop is enabled: a run started");
+                expect(
+                    !(await p.read.startDisabled()),
+                    "Start is disabled after the failed start: expected it enabled, as startAllowed() allows on a sync page",
+                );
+                expect(
+                    !(await p.read.probeDisabled()),
+                    "the probe is disabled after the failed start: expected it enabled, as probeAllowed() allows",
+                );
+                await p.clickStart();
+                expect(
+                    !(await p.read.stopDisabled()),
+                    `no run started on the second Start (status "${await p.read.status()}", error line "${await p.read.error()}")`,
+                );
+                await p.click("stop");
+            });
+        } finally {
+            await p.close();
+        }
+    });
+}
+
+/**
+ * Start's provenance check on a manifest whose `served` no build writes
+ * (#209): a sync `?run=1` page, and the manifest served at Start as the build
+ * wrote it but for one fault, a Start each: a null entry, which
+ * `provenanceFindings` threw on; an entry under `"http://["`, a key the page's
+ * `new URL` threw on, hashing; and `served` a string beside a module's timeline
+ * entry made a cache hit, so that the page's `listed()` reads `served`, which
+ * threw on `p in "x"`. Each start is refused, by the refusal that names the
+ * field, not failed with a `TypeError`'s message, and leaves Start and the
+ * probe enabled. With the faults undone, a fourth Start passes the check and
+ * its run starts.
+ */
+async function syncServedMalformed(browser, base) {
+    const names = [
+        "sync ?run=1 Start, a malformed served (a null entry, a key that is not a path, served a string): refused by name each time, and a fourth Start passes",
+    ];
+    const manifest = JSON.parse(readFileSync(join(SERVED, "dist/provenance.json"), "utf8"));
+    const broken =
+        ", so it was hand-edited or written by a broken build. To fix: run `npm run build`.";
+    await scenario(names, async (check) => {
+        const page = "examples/bench-nft.html";
+        expect(page in (manifest.served ?? {}), `the build's manifest does not list ${page}`);
+        const faults = [
+            {
+                served: { ...manifest.served, [page]: null },
+                why: `the manifest's served["${page}"] null is not an object`,
+            },
+            {
+                served: { ...manifest.served, "http://[": manifest.served[page] },
+                why: `the manifest's served key "http://[" is not a repository-relative path`,
+            },
+            {
+                served: "x",
+                // A module run from the cache: listed() is asked only of those.
+                timeline: {
+                    type: "resource",
+                    path: "/examples/js/run-lifecycle.mjs",
+                    set: { transferSize: 0 },
+                },
+                why: `the manifest's served "x" is not an object of paths`,
+            },
+        ];
+        const p = await openPage(
+            browser,
+            base,
+            "mode=tracking&target=wnft&clip=pinball-bench.mp4&run=1&window=2000",
+        );
+        try {
+            await p.waitReady();
+            await check(names[0], async () => {
+                for (const { served, timeline, why } of faults) {
+                    const body = JSON.stringify({ ...manifest, served });
+                    await p.page.evaluate(
+                        (body, timeline) => {
+                            window.__pageCheck.faults = {
+                                fetch: { path: "/examples/dist/provenance.json", body },
+                                ...(timeline && { timeline }),
+                            };
+                        },
+                        body,
+                        timeline ?? null,
+                    );
+                    try {
+                        await p.clickStart();
+                    } finally {
+                        await p.page.evaluate(() => {
+                            window.__pageCheck.faults = {};
+                        });
+                    }
+                    const status = await p.read.status();
+                    const error = await p.read.error();
+                    expect(
+                        status === "failed" && error === `Provenance: ${why}${broken}`,
+                        `status "${status}", error line "${error}": expected the refusal "Provenance: ${why}${broken}"`,
+                    );
+                    expect(await p.read.stopDisabled(), "Stop is enabled: a run started");
+                    expect(
+                        !(await p.read.startDisabled()),
+                        "Start is disabled after the refusal: expected it enabled, as startAllowed() allows on a sync page",
+                    );
+                    expect(
+                        !(await p.read.probeDisabled()),
+                        "the probe is disabled after the refusal: expected it enabled, as probeAllowed() allows",
+                    );
+                }
+                await p.clickStart();
+                expect(
+                    !(await p.read.stopDisabled()),
+                    `no run started on the fourth Start (status "${await p.read.status()}", error line "${await p.read.error()}")`,
+                );
+                await p.click("stop");
+            });
+        } finally {
+            await p.close();
+        }
+    });
+}
+
 /** The bundled wall clip on the worker path, on the committed target. */
 const WORKER_QUERY =
     "mode=tracking&target=wnft&detection=worker&clip=pinball-bench.mp4&window=2000";
@@ -1362,6 +1548,8 @@ async function main() {
         await syncAbsentTarget(browser, base);
         await syncParamRefusal(browser, base);
         await syncProvenanceFaults(browser, base);
+        await syncProvenanceThrows(browser, base);
+        await syncServedMalformed(browser, base);
         await workerDetectPostThrows(browser, base);
         await workerFailsWhileSourceStarts(browser, base);
         await poseDemo(browser, base);

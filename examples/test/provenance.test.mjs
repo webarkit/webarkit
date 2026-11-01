@@ -27,23 +27,25 @@
 
 /**
  * The provenance check (#110, §4–5): Start's refusal, decided by
- * `provenanceRefusal`; the manifest `npm run build` writes, against the files
- * on disk; and its list of served files, against the imports the page and the
- * worker actually make. What the page fetches at Start, and what the browser
+ * `provenanceRefusal`; the manifest `npm run build` writes, against itself and
+ * the bundle beside it (against the tree as it is now, it is
+ * provenance-preflight.test.mjs's); and its list of served files, against the
+ * imports the page and the worker actually make. What the page fetches at Start, and what the browser
  * caches, no test here can see: those are shown by a browser run.
  */
 
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { provenanceFindings, provenanceRefusal } from "../js/bench-metrics.mjs";
+import { provenanceFindings, provenanceRefusal, servedShapeError } from "../js/bench-metrics.mjs";
 import { SERVED } from "../../scripts/build-provenance.mjs";
 
 const ROOT = new URL("../../", import.meta.url);
 const bytes = (path) => readFileSync(new URL(path, ROOT));
 const sha256 = (path) => createHash("sha256").update(bytes(path)).digest("hex");
+
+/** A well-formed SHA-256 for a fixture, one hex digit repeated: `served`'s entries need one (#209). */
+const hex = (digit) => digit.repeat(64);
 
 describe("provenanceRefusal", () => {
     const manifest = {
@@ -52,14 +54,14 @@ describe("provenanceRefusal", () => {
         dirtyPaths: [],
         bundle: { path: "examples/dist/webarkit-packages.mjs", sha256: "b" },
         served: {
-            "examples/bench-nft.html": { sha256: "h" },
-            "examples/js/a.mjs": { sha256: "a" },
+            "examples/bench-nft.html": { sha256: hex("1"), side: "page" },
+            "examples/js/a.mjs": { sha256: hex("a"), side: "both" },
         },
     };
     const observed = {
         manifestChanged: false,
         bundleSha256: "b",
-        served: { "examples/bench-nft.html": "h", "examples/js/a.mjs": "a" },
+        served: { "examples/bench-nft.html": hex("1"), "examples/js/a.mjs": hex("a") },
         loaded: ["examples/dist/webarkit-packages.mjs", "examples/js/a.mjs"],
     };
     const session = { sessionRun: true };
@@ -97,7 +99,7 @@ describe("provenanceRefusal", () => {
         [
             "a served file that could not be fetched",
             manifest,
-            { ...observed, served: { "examples/bench-nft.html": "h" } },
+            { ...observed, served: { "examples/bench-nft.html": hex("1") } },
             /differ from the build: examples\/js\/a\.mjs/,
         ],
         [
@@ -318,6 +320,117 @@ describe("provenanceRefusal", () => {
         }
     });
 
+    // #209: Start read `served` with no check of its shape, so a null entry and a primitive
+    // `served` threw, and the page threw on a key `new URL` cannot resolve. Each is now refused
+    // by name, as the flags are, and no reader of `served` runs: the one finding is the refusal.
+    describe("a served map no build writes", () => {
+        const page = "examples/bench-nft.html";
+        const entry = { sha256: hex("5"), side: "both" };
+        const withServed = (served) => ({ ...manifest, served });
+        const withKey = (key) => withServed({ ...manifest.served, [key]: entry });
+        const withEntry = (value) => withServed({ ...manifest.served, [page]: value });
+        const refusal = (why) =>
+            `Provenance: ${why}, so it was hand-edited or written by a broken build. To fix: run \`npm run build\`.`;
+        const cases = [
+            [
+                "a null entry",
+                withEntry(null),
+                `the manifest's served["examples/bench-nft.html"] null is not an object`,
+            ],
+            [
+                "served a string",
+                withServed("x"),
+                `the manifest's served "x" is not an object of paths`,
+            ],
+            ["served a number", withServed(5), "the manifest's served 5 is not an object of paths"],
+            [
+                "served null",
+                withServed(null),
+                "the manifest's served null is not an object of paths",
+            ],
+            ["served a list", withServed([]), "the manifest's served [] is not an object of paths"],
+            ["no served map", withServed(undefined), "the manifest records no served map"],
+            ...[
+                ["a URL that does not parse", "http://["],
+                ["a scheme", "https://example.com/x.mjs"],
+                ["a drive letter", "C:/examples/x.mjs"],
+                ["a leading slash", "/examples/x.mjs"],
+                ["a backslash", "examples\\x.mjs"],
+                ["a .. segment", "examples/../x.mjs"],
+                // What the URL parser strips at the ends, or drops inside, before it reads a scheme.
+                ["a leading space", " http://["],
+                ["a tab inside", "ht\ttp://["],
+                ["a control character", "\u0001http://["],
+            ].map(([what, key]) => [
+                `a key with ${what}`,
+                withKey(key),
+                `the manifest's served key ${JSON.stringify(key)} is not a repository-relative path`,
+            ]),
+            [
+                "an entry whose sha256 is not a SHA-256",
+                withEntry({ sha256: "h", side: "page" }),
+                `the manifest's served["examples/bench-nft.html"].sha256 "h" is not a SHA-256`,
+            ],
+            [
+                "an entry whose sha256 is upper-case hex",
+                withEntry({ sha256: hex("A"), side: "page" }),
+                `the manifest's served["examples/bench-nft.html"].sha256 "${hex("A")}" is not a SHA-256`,
+            ],
+            [
+                "an entry with an unknown side",
+                withEntry({ sha256: hex("1"), side: "server" }),
+                `the manifest's served["examples/bench-nft.html"].side "server" is not a side: page, both, worker or bundled`,
+            ],
+            [
+                "an entry with no side",
+                withEntry({ sha256: hex("1") }),
+                `the manifest's served["examples/bench-nft.html"].side undefined is not a side: page, both, worker or bundled`,
+            ],
+        ];
+
+        it.each(cases)("refuses a session run on %s, naming the field", (_, m, why) => {
+            expect(servedShapeError(m)).toBe(
+                `${why}, so it was hand-edited or written by a broken build`,
+            );
+            expect(provenanceRefusal(m, observed, session)).toBe(refusal(why));
+        });
+
+        it("reads nothing else: beside a changed manifest, the shape is the one finding", () => {
+            const [, m, why] = cases[0];
+            expect(provenanceFindings(m, { ...observed, manifestChanged: true })).toBe(
+                refusal(why),
+            );
+        });
+
+        it("names the first malformed entry, in the map's order", () => {
+            const m = withServed({
+                "examples/js/a.mjs": null,
+                "examples/js/b.mjs": { sha256: "h", side: "both" },
+            });
+            expect(servedShapeError(m)).toMatch(
+                /^the manifest's served\["examples\/js\/a\.mjs"\] null/,
+            );
+        });
+
+        it("accepts a served map a build writes, an empty one included", () => {
+            expect(servedShapeError(manifest)).toBeNull();
+            // Every side SERVED names, and no blob: the page reads none.
+            const sides = Object.fromEntries(
+                [...new Set(Object.values(SERVED))].map((side) => [
+                    `examples/js/${side}.mjs`,
+                    { sha256: hex("6"), side },
+                ]),
+            );
+            expect(servedShapeError(withServed(sides))).toBeNull();
+            // An empty map is not refused for its shape: the modules the page loaded are then
+            // unlisted, a finding of their own.
+            expect(servedShapeError(withServed({}))).toBeNull();
+            expect(provenanceRefusal(withServed({}), observed, session)).toMatch(
+                /does not list: examples\/js\/a\.mjs/,
+            );
+        });
+    });
+
     it("refuses nothing outside a session run, and still reports what it found", () => {
         expect(provenanceRefusal(null, observed, { sessionRun: false })).toBeNull();
         const mismatch = { ...observed, bundleSha256: "x" };
@@ -333,20 +446,20 @@ describe("provenanceRefusal", () => {
             ...manifest,
             served: {
                 ...manifest.served,
-                "examples/js/p.mjs": { sha256: "p", side: "page" },
-                "examples/js/w.mjs": { sha256: "w", side: "worker" },
-                "examples/js/both.mjs": { sha256: "o", side: "both" },
-                "examples/js/entry.mjs": { sha256: "e", side: "bundled" },
+                "examples/js/p.mjs": { sha256: hex("2"), side: "page" },
+                "examples/js/w.mjs": { sha256: hex("3"), side: "worker" },
+                "examples/js/both.mjs": { sha256: hex("4"), side: "both" },
+                "examples/js/entry.mjs": { sha256: hex("e"), side: "bundled" },
             },
         };
         const seen = {
             ...observed,
             served: {
                 ...observed.served,
-                "examples/js/p.mjs": "p",
-                "examples/js/w.mjs": "w",
-                "examples/js/both.mjs": "o",
-                "examples/js/entry.mjs": "e",
+                "examples/js/p.mjs": hex("2"),
+                "examples/js/w.mjs": hex("3"),
+                "examples/js/both.mjs": hex("4"),
+                "examples/js/entry.mjs": hex("e"),
             },
             loaded: [
                 ...observed.loaded,
@@ -398,92 +511,76 @@ describe("provenanceRefusal", () => {
     });
 });
 
+/**
+ * What holds on any build, a branch's or a campaign's (#136): the manifest
+ * agrees with itself and with the bundle written beside it. Whether it
+ * describes the tree as it is now (its head HEAD, the tree clean, each source
+ * and served file's hash the file's, `served` what SERVED names now) fails
+ * after every edit until the next build, so it is not asked here: it is
+ * `npm run check:provenance` (scripts/provenance-preflight.mjs), which CI runs
+ * after the build. No git here.
+ */
 describe("the manifest npm run build writes", () => {
     const manifest = JSON.parse(bytes("examples/dist/provenance.json"));
+    const jsfeat = manifest.dependencies["@webarkit/jsfeat-next"];
 
-    /**
-     * Why a hash in the manifest differs from the file on disk, as one line per
-     * condition with both values, and the remedy. A hash that differs has one of
-     * two causes with different remedies: the manifest was built at another
-     * commit, or at this one with a dirty tree. The checkout's state comes from
-     * git; without git the lines say so. (#135: the root build overwrote an
-     * attested build without a word, and this message was the only account.)
-     */
-    const whyStale = () => {
-        const git = (...args) => {
-            try {
-                return execFileSync("git", args, {
-                    cwd: fileURLToPath(ROOT),
-                    encoding: "utf8",
-                }).trim();
-            } catch {
-                return null;
-            }
-        };
-        const head = git("rev-parse", "HEAD");
-        const status = git("status", "--porcelain", "--untracked-files=no");
-        const dirty = status === null ? null : status.split("\n").filter(Boolean);
-        return [
-            `manifest head: ${manifest.head}; checkout HEAD: ${head ?? "unknown (git unavailable)"}${head && head !== manifest.head ? " -- built at another commit" : ""}`,
-            `manifest clean: ${manifest.clean}; tree clean now: ${dirty === null ? "unknown (git unavailable)" : dirty.length === 0}${dirty && dirty.length > 0 ? " -- dirty: " + dirty.join(", ") : ""}${manifest.dirtyPaths?.length ? "; manifest dirtyPaths: " + manifest.dirtyPaths.join(", ") : ""}`,
-            `remedy: rebuild from a clean tree at ${head ?? "the expected commit"} (npm run build)`,
-        ].join("\n");
-    };
-
-    /**
-     * `h` is `path`'s hash in the manifest. The message is built only when the
-     * hashes differ: `whyStale` runs git twice, and as an eager argument it ran
-     * for every file, which on Windows took the test past vitest's 5 s timeout.
-     */
-    const expectHash = (path, h) => {
-        const onDisk = sha256(path);
-        expect(
-            h,
-            h === onDisk
-                ? undefined
-                : `${path}: the manifest's hash is not the file's\n${whyStale()}`,
-        ).toBe(onDisk);
-    };
-
-    it("hashes the files on disk, the bundle and jsfeat-next's included (rebuild after an edit)", () => {
+    it("is a git build's, and says it is clean exactly when it lists no dirty path", () => {
         expect(manifest.schema).toBe("webarkit-bench-provenance/1");
-        expect(manifest.head).toMatch(/^[0-9a-f]{40}$/);
-        for (const [path, { sha256: h }] of Object.entries({
-            ...manifest.sources,
-            ...manifest.served,
-        })) {
-            expectHash(path, h);
+        expect(manifest.head).toMatch(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
+        expect(manifest.dirtyPaths).toBeInstanceOf(Array);
+        expect(
+            manifest.clean,
+            `clean is ${manifest.clean}, dirtyPaths ${JSON.stringify(manifest.dirtyPaths)}`,
+        ).toBe(manifest.dirtyPaths.length === 0);
+    });
+
+    it("has a served map Start's shape check accepts (#209)", () => {
+        expect(servedShapeError(manifest)).toBeNull();
+    });
+
+    it("records every hash well-formed: SHA-256 in hex, blob ids as full git object ids", () => {
+        const sha = /^[0-9a-f]{64}$/;
+        const groups = {
+            sources: manifest.sources,
+            served: manifest.served,
+            build: manifest.build,
+        };
+        for (const [group, entries] of Object.entries(groups)) {
+            for (const [path, { sha256: h, blob }] of Object.entries(entries)) {
+                expect(h, `${group} ${path}: sha256`).toMatch(sha);
+                expect(blob, `${group} ${path}: blob`).toMatch(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
+            }
         }
-        expectHash(manifest.bundle.path, manifest.bundle.sha256);
-        const jsfeat = manifest.dependencies["@webarkit/jsfeat-next"];
-        expect(jsfeat.sha256).toBe(sha256(jsfeat.file));
+        for (const [path, h] of Object.entries(manifest.bundledInputs)) {
+            expect(h, `bundledInputs ${path}`).toMatch(sha);
+        }
+        expect(manifest.bundle.sha256, "bundle").toMatch(sha);
+        expect(jsfeat.sha256, "jsfeat-next").toMatch(sha);
+    });
+
+    // Written with the manifest by the same build, so these hold until node_modules or the bundle
+    // is replaced, and `npm install` and `npm ci` rebuild (`prepare`).
+    it("hashes the bundle written beside it, and the jsfeat-next file the bundle holds", () => {
+        expect(manifest.bundle.sha256, `${manifest.bundle.path}: the manifest's hash`).toBe(
+            sha256(manifest.bundle.path),
+        );
+        expect(jsfeat.sha256, `${jsfeat.file}: the manifest's hash`).toBe(sha256(jsfeat.file));
         expect(jsfeat.installedVersion).toBe(jsfeat.version);
     });
 
     it("hashes its producer and the root package.json, which run it (#127)", () => {
-        const build = ["scripts/build-provenance.mjs", "package.json"];
-        expect(Object.keys(manifest.build ?? {}).sort()).toEqual([...build].sort());
-        for (const path of build) {
-            const { sha256: h, blob } = manifest.build[path];
-            expectHash(path, h);
-            const onDisk = execFileSync("git", ["hash-object", path], {
-                cwd: fileURLToPath(ROOT),
-                encoding: "utf8",
-            }).trim();
-            expect(blob, `${path}: the manifest's blob id is not the file's`).toBe(onDisk);
-        }
+        expect(Object.keys(manifest.build ?? {}).sort()).toEqual(
+            ["package.json", "scripts/build-provenance.mjs"].sort(),
+        );
     });
 
-    it("lists every package source, and served exactly what SERVED names, with its side", () => {
+    it("lists every package's sources and the lockfile", () => {
         const sources = Object.keys(manifest.sources);
         for (const p of ["cv-backend-spec", "cv-backend-jsfeatnext", "nft-tracker"]) {
             expect(sources).toContain(`packages/${p}/package.json`);
             expect(sources.some((s) => s.startsWith(`packages/${p}/src/`))).toBe(true);
         }
         expect(sources).toContain("package-lock.json");
-        expect(
-            Object.fromEntries(Object.entries(manifest.served).map(([p, e]) => [p, e.side])),
-        ).toEqual(SERVED);
     });
 });
 
