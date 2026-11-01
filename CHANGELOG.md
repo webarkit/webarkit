@@ -14,6 +14,18 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+The "M6 — the instrument's guards, tested" milestone
+([milestone 8](https://github.com/webarkit/webarkit/milestone/8)), which tested the evidence
+guards that M7's probe of [#202](https://github.com/webarkit/webarkit/issues/202) will read
+through, before it reads. It closes on [#205](https://github.com/webarkit/webarkit/issues/205),
+[#136](https://github.com/webarkit/webarkit/issues/136) and
+[#207](https://github.com/webarkit/webarkit/issues/207);
+[#206](https://github.com/webarkit/webarkit/issues/206) and
+[#209](https://github.com/webarkit/webarkit/issues/209) were fixed in it and closed. Instrument
+and tests only: no package changed, so every package and crate moves to 0.6.1 by
+[ADR-0002](docs/adr/0002-lockstep-versioning.md)'s lockstep alone. `.wnft` format: still **0.3**,
+in both codecs, so this tag freezes no new corpus.
+
 ### Added
 
 - **A provenance preflight, which CI runs after the build**
@@ -23,9 +35,9 @@ release pull request's body and the GitHub Release's notes.
   every file it hashes hashes the same on disk, the bundle's inputs (`bundledInputs`) among them,
   `served` listing what `SERVED` names), 1 when it does not, one line per finding and the remedy,
   and 2, naming the field, on a manifest it cannot read or whose fields have the wrong shape. It
-  asks git three times per run, however many files the manifest lists. `npm test` no longer asks whether the manifest describes the tree, which
-  failed after every edit until the next build: it asserts the manifest's agreement with itself and
-  with the bundle beside it, with no git call.
+  asks git three times per run, however many files the manifest lists. `npm test` no longer asks
+  whether the manifest describes the tree, which failed after every edit until the next build: it
+  asserts the manifest's agreement with itself and with the bundle beside it, with no git call.
 - **`npm run check:replay`, the desktop replay's refusals against real decoding**
   ([#207](https://github.com/webarkit/webarkit/issues/207)): `scripts/replay-decoding-check.mjs`
   runs `scripts/replay-clips.mjs` on a `--sequence` export recorded at another resolution, and on
@@ -54,6 +66,34 @@ release pull request's body and the GitHub Release's notes.
   repository-relative path, and an entry without a SHA-256 or a side `SERVED` uses now refuse a
   session run with a line that names the field, as a malformed `head`, `clean` or `dirtyPaths`
   already did.
+
+### What M6 did not deliver
+
+- **Two issues were moved out of milestone 8, with no milestone**, each with its reason in a
+  comment of 2026-11-01:
+    - [#196](https://github.com/webarkit/webarkit/issues/196), the loop-wrap rule's "at most
+      0.5 s" against µs-rounded media times, and `bench-locks.mjs`'s untested epsilon: tolerating
+      the rounding would change the definition of a counted rule rather than add a guard, and M7's
+      probe of #202 does not read that edge. It is decided by the work that next changes the rule,
+      or before the next device campaign's first counted run.
+    - [#135](https://github.com/webarkit/webarkit/issues/135), the root build overwriting
+      `examples/dist` silently: `npm run check:provenance` shows the overwrite when it is run, but
+      the build still gives no warning. The remedy, a warning or a refusal with an override flag,
+      changes every round's build workflow, and belongs in the next device campaign's plan.
+- **Left inside closed issues, from their closing comments:**
+    - [#136](https://github.com/webarkit/webarkit/issues/136): a mutant of the preflight's
+      `dirtyPaths` reader that always returns nothing survives; it passes a tree whose only change
+      is an untracked file. No test dirties a real repository, so only manual runs cover it.
+    - [#207](https://github.com/webarkit/webarkit/issues/207): RE1's script branch is untested,
+      because no input unbalances the accounting: the tracker asks for a detection only when it
+      has no lock, so `ignored` stays 0.
+    - [#207](https://github.com/webarkit/webarkit/issues/207): four of TPR1's nine sites compare
+      the probe with its own `trackFrame` call, and only a data accessor that changes between
+      reads reaches them; no real frame does.
+- **One issue opened during the window is not in it:**
+  [#212](https://github.com/webarkit/webarkit/issues/212), three tests that time out at Vitest's
+  5 s default under the full suite on Windows, and pass alone.
+- **No device session** was run, as the milestone's description planned.
 
 ## [0.6.0] - 2026-10-30
 
