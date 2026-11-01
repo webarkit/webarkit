@@ -14,6 +14,95 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-01
+
+The "M7 — what detection accepts" milestone
+([milestone 9](https://github.com/webarkit/webarkit/milestone/9)), which decided which
+homographies the tracker accepts from a detection. It took
+[#202](https://github.com/webarkit/webarkit/issues/202) through
+[`docs/benchmarks/step-protocol.md`](docs/benchmarks/step-protocol.md) to a rule registered before
+its code, and closes on #202 by the first of the milestone's two ways: a rule registered,
+implemented and accepted on its registered criteria. Its three steps are the seeded Stage 1 probe
+([#218](https://github.com/webarkit/webarkit/pull/218)), the registration
+([#219](https://github.com/webarkit/webarkit/pull/219)) and the rule
+([#220](https://github.com/webarkit/webarkit/pull/220)). `@webarkit/nft-tracker` changes, so the
+version is a minor: it gains a failure reason, an exported function with its type, and a required
+field, and it refuses detections it used to accept. Every other package and crate moves to 0.7.0 by
+[ADR-0002](docs/adr/0002-lockstep-versioning.md)'s lockstep. `.wnft` format: still **0.3**, in
+both codecs, so this tag freezes no new corpus.
+
+### Fixed
+
+- **Detection refuses a homography that does not show the target facing the camera**
+  ([#202](https://github.com/webarkit/webarkit/issues/202)). A detection whose `H` showed the
+  target from behind, or mapped part of it to infinity, was accepted with 5 or more inliers and
+  returned a pose with no corners (what [#200](https://github.com/webarkit/webarkit/issues/200)'s
+  demo drew). `detectTarget` now classifies an accepted fit with the new exported `targetSide`, on
+  the target's 5 × 5 level-0 grid: its `w` all of one sign and none zero, then the sign of
+  `s · det H`. It refuses every fit that is not `"facing"` (reversed, mixed-w, or singular) as a
+  failed detection with a new reason, `"not-facing"`, carrying the fit's own count, after G5's
+  refusal; the tracker makes the frame LOST with no lock, and the detection worker runs the same
+  code. `DetectionFailure` and `TrackFailure` gain the value, the index gains `targetSide` and its
+  type `TargetSide`, and `DetectionSetup` gains a required field, `grid`, which `prepareDetection`
+  fills (a setup built by hand needs it). The bench page's stateless mode applies the same function
+  through its `deps` ([#191](https://github.com/webarkit/webarkit/issues/191)'s precedent), so a
+  stateless export from before this change and one from after are not comparable on the hand-held
+  clips.
+  On the ground truth's leave-and-return sequence, frames 67 and 69 (5 and 8 inliers, both wrong)
+  are now refused, and three pinned state strings change by them. The rule is GWM of the seeded
+  probe ([#218](https://github.com/webarkit/webarkit/pull/218),
+  [the record](docs/benchmarks/2026-11-01-202-stage1-probe.md)); its criteria were registered
+  before the code ([#219](https://github.com/webarkit/webarkit/pull/219),
+  [the registration](docs/benchmarks/2026-11-01-202-stage3-registration.md)), and
+  [its addendum](docs/benchmarks/2026-11-01-202-stage3-addendum.md) records them run against this
+  code: C0 to C4 held (no result field changes outside the refused frames, on every clip, seed and
+  sequence; the refused frames are the probe's GWM refusals, frame for frame, 60 to 74 a run on
+  the wall clip and 81 to 95 on the table clip; the sequences' frames 67 and 69 are refused and no
+  other). Of the prediction on the device's scaled-step schedule, the half on fits whose `w` are
+  of both signs, and every posed frame having corners, held on both hand-held clips and are void
+  on the static clip; the half on reversed fits is void on every clip, since the control showed no
+  reversed detection there. It does not reach detections that face the camera and are wrong (the
+  sequence's frames 70 to 72, [#92](https://github.com/webarkit/webarkit/issues/92)), and its half
+  on reversed fits has no must-fire set on the corpus: it rests on geometry and on a constructed
+  unit case.
+
+### What M7 did not deliver
+
+- **Not in it, by the milestone's description:**
+    - [#92](https://github.com/webarkit/webarkit/issues/92), the residual limit: it waits for a
+      corpus with ground truth on moving sequences.
+    - [#133](https://github.com/webarkit/webarkit/issues/133), IPPE's guard near
+      fronto-parallel: it waits for the next campaign's plan.
+    - [#143](https://github.com/webarkit/webarkit/issues/143), the LOST rename: it waits for work
+      that opens the state machine. A refusal adds a failure reason, not a state, as G5 did.
+    - [#109](https://github.com/webarkit/webarkit/issues/109), real-footage ground truth: it waits
+      for webarkit/artoolkit-nft-bench's own real-footage milestone.
+    - No device campaign. `METRICS_VERSION` stays at 1: the rule is a refusal, which changes which
+      frames are posed, not a definition.
+- **Left by the rule, from
+  [#202's closing comment](https://github.com/webarkit/webarkit/issues/202#issuecomment-6562649361):**
+    - Detections that face the camera and are wrong (the leave-and-return sequence's frames
+      70 to 72) are not reached. That is #92.
+    - GM's half, on reversed fits, has no must-fire set on the corpus. It rests on geometry and on
+      a constructed unit case.
+    - [#42](https://github.com/webarkit/webarkit/issues/42)'s promotion condition: the probe
+      measured the spatial distribution of the inliers on the wrong frames, and whether the
+      condition is met is decided on #42.
+      [The ruling of 2026-11-01 on #202](https://github.com/webarkit/webarkit/issues/202#issuecomment-6559359479)
+      records it as not triggered on the probe's hull figures, and not decided there. #42 has had
+      no comment since 2026-10-02, so the condition is open.
+- **Follow-ups that #202's closing comment lists, not applied**, because each would change a file
+  after the measurements:
+    - building the bench page's stateless grid once per run, instead of per frame;
+    - a comment in `targetSide` on a non-finite determinant;
+    - `--only` in `docs/benchmarks/2026-11-01-202-stage3-c0.mjs`: a selection that matches no
+      clip-and-seed pair, and is not `sequences`, compares nothing and exits 0. The registered run
+      used no `--only`.
+- **One issue opened during the window is not in it:**
+  [#217](https://github.com/webarkit/webarkit/issues/217), two manifests that no build writes
+  passing the provenance preflight (a source outside the repository, a bundled input left out),
+  and its CLI test assuming SHA-1.
+
 ## [0.6.1] - 2026-11-01
 
 The "M6 — the instrument's guards, tested" milestone
@@ -68,36 +157,6 @@ in both codecs, so this tag freezes no new corpus.
   repository-relative path, and an entry without a SHA-256 or a side `SERVED` uses now refuse a
   session run with a line that names the field, as a malformed `head`, `clean` or `dirtyPaths`
   already did.
-- **Detection refuses a homography that does not show the target facing the camera**
-  ([#202](https://github.com/webarkit/webarkit/issues/202)). A detection whose `H` showed the
-  target from behind, or mapped part of it to infinity, was accepted with 5 or more inliers and
-  returned a pose with no corners (what [#200](https://github.com/webarkit/webarkit/issues/200)'s
-  demo drew). `detectTarget` now classifies an accepted fit with the new exported `targetSide`, on
-  the target's 5 × 5 level-0 grid: its `w` all of one sign and none zero, then the sign of
-  `s · det H`. It refuses every fit that is not `"facing"` (reversed, mixed-w, or singular) as a
-  failed detection with a new reason, `"not-facing"`, carrying the fit's own count, after G5's
-  refusal; the tracker makes the frame LOST with no lock, and the detection worker runs the same
-  code. `DetectionFailure` and `TrackFailure` gain the value, the index gains `targetSide` and its
-  type `TargetSide`, and `DetectionSetup` gains a required field, `grid`, which `prepareDetection`
-  fills (a setup built by hand needs it). The bench page's stateless mode applies the same function through its
-  `deps` ([#191](https://github.com/webarkit/webarkit/issues/191)'s precedent), so a stateless
-  export from before this change and one from after are not comparable on the hand-held clips.
-  On the ground truth's leave-and-return sequence, frames 67 and 69 (5 and 8 inliers, both wrong)
-  are now refused, and three pinned state strings change by them. The rule is GWM of the seeded
-  probe ([#218](https://github.com/webarkit/webarkit/pull/218),
-  [the record](docs/benchmarks/2026-11-01-202-stage1-probe.md)); its criteria were registered
-  before the code ([#219](https://github.com/webarkit/webarkit/pull/219),
-  [the registration](docs/benchmarks/2026-11-01-202-stage3-registration.md)), and
-  [its addendum](docs/benchmarks/2026-11-01-202-stage3-addendum.md) records them run against this
-  code: C0 to C4 held (no result field changes outside the refused frames, on every clip, seed and
-  sequence; the refused frames are the probe's GWM refusals, frame for frame, 60 to 74 a run on
-  the wall clip and 81 to 95 on the table clip; the sequences' frames 67 and 69 are refused and no
-  other). Of the prediction on the device's scaled-step schedule, the half on fits whose `w` are
-  of both signs, and every posed frame having corners, held on both hand-held clips and are void
-  on the static clip; the half on reversed fits is void on every clip, since the control showed no
-  reversed detection there. It does not reach detections that face the camera and are wrong (the sequence's frames 70 to 72,
-  [#92](https://github.com/webarkit/webarkit/issues/92)), and its half on reversed fits has no
-  must-fire set on the corpus: it rests on geometry and on a constructed unit case.
 
 ### What M6 did not deliver
 
@@ -699,7 +758,8 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 - The original single-page jsartoolkitNFT demo the repository started as. It is kept at the tag
   `archive/original-nft-demo`.
 
-[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.6.1...dev
+[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.7.0...dev
+[0.7.0]: https://github.com/webarkit/webarkit/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/webarkit/webarkit/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/webarkit/webarkit/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/webarkit/webarkit/compare/v0.5.0...v0.5.1
