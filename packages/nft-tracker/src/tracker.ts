@@ -439,6 +439,13 @@ export type TrackFailure =
      */
     | "too-few-inliers"
     /**
+     * RANSAC accepted a model on enough inliers whose `H` does not show the
+     * target facing the camera (`targetSide`, webarkit/webarkit#202), and the
+     * detection refused it: no lock was set and no pose computed.
+     * `numInliers` is the fit's own count.
+     */
+    | "not-facing"
+    /**
      * No lock, and no detection: with `externalDetection`, the tracker runs
      * none itself, and none was handed to `process` this frame. The result
      * says `needsDetection`.

@@ -251,9 +251,12 @@ match → estimateHomography → poseFromHomography` calls as the static demo,
   accepted on fewer than `MIN_DETECTION_INLIERS` (5) inliers, as a LOST frame
   with the reason `too-few-inliers`
   ([#191](https://github.com/webarkit/webarkit/issues/191), from commit
-  `7d3b914`); a test holds the two to the same answer. Before that commit it
-  posed such fits, so a stateless export from before it and one from after are
-  not comparable on the hand-held clips. Each export's
+  `7d3b914`), and, like it, one whose `H` does not show the target facing
+  the camera (`targetSide`), with the reason `not-facing`
+  ([#202](https://github.com/webarkit/webarkit/issues/202)); a test holds the
+  two to the same answer. Before each of the two changes it posed the fits that
+  change refuses, so a stateless export from before one and one from after it
+  are not comparable on the hand-held clips. Each export's
   `provenance.manifest.served` records the served files' hashes, which tell the
   two apart.
 - **NftTracker, detection-only** (`detection-only`) — `tracker.process(frame,

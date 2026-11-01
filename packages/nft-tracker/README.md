@@ -305,11 +305,15 @@ if (result.ok) {
 
 `process` does not throw on a frame it cannot use; `result.ok` narrows the
 union. Besides `H`, `pose`, `numMatches`, `numInliers`, `sceneKeypoints` and,
-when not `ok`, a `reason` (`"too-few-matches"`, `"no-consensus"` or
-`"too-few-inliers"` from a detection, the last when RANSAC accepted a fit on
-fewer than 5 inliers (`MIN_DETECTION_INLIERS`): with jsfeatNext a 4-point fit,
-whose residual on its own points is zero by construction
-([#137](https://github.com/webarkit/webarkit/issues/137)); `"no-detection"`
+when not `ok`, a `reason` (`"too-few-matches"`, `"no-consensus"`,
+`"too-few-inliers"` or `"not-facing"` from a detection: `"too-few-inliers"`
+when RANSAC accepted a fit on fewer than 5 inliers (`MIN_DETECTION_INLIERS`):
+with jsfeatNext a 4-point fit, whose residual on its own points is zero by
+construction ([#137](https://github.com/webarkit/webarkit/issues/137));
+`"not-facing"` when it accepted one on enough inliers whose `H` does not show
+the target facing the camera (`targetSide`: the target seen from behind, the
+camera's plane crossing it, or a singular `H`;
+[#202](https://github.com/webarkit/webarkit/issues/202)); `"no-detection"`
 when `externalDetection` is on and no detection was handed in; `"unconfirmed"` when one was handed in and the tracking step
 refused it — see **External detection** below; `"conditioning"` when the
 conditioning signal, in its refusing state, refused a detection's homography
@@ -413,8 +417,10 @@ for bit, with M2's detections one frame later.
 **Detection-only.** With `detectionOnly: true`, or a target that cannot be
 tracked — no patches (format spec §5.7), fewer than `minTrackedPatches`, or
 smaller than 3 × 3 — every frame runs detection and nothing is carried between
-frames: M1, with the refusal of a fit on fewer than 5 inliers that
-[#137](https://github.com/webarkit/webarkit/issues/137) added to detection.
+frames: M1, with the refusals detection gained since: a fit on fewer than 5
+inliers ([#137](https://github.com/webarkit/webarkit/issues/137)), and one
+whose `H` does not show the target facing the camera
+([#202](https://github.com/webarkit/webarkit/issues/202)).
 `tracker.detectionOnly` says which mode a tracker is in.
 Targets from `buildTargetFromImage` carry no patches; `compile-target` writes
 them. Combined with `externalDetection`, a detection-only tracker runs no
@@ -437,6 +443,9 @@ pipeline with its four options below. Its one adoption, 48 patches, is
 against degeneracy are constants, not tuning thresholds: the detection's
 `MIN_DETECTION_INLIERS` (5), which refuses a fit whose residual is zero by
 construction ([#137](https://github.com/webarkit/webarkit/issues/137)),
+the detection's facing rule (`targetSide`), which refuses a fit that does not
+show the target facing the camera
+([#202](https://github.com/webarkit/webarkit/issues/202)),
 `alignPatch`'s floor for a singular patch, and the
 numerical singularity tests in `predictHomography` and `robustHomography`
 (`SINGULAR_RELATIVE_DET`, `SINGULAR_PIVOT_RATIO`). Each option is

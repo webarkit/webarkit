@@ -53,6 +53,8 @@ import {
     DEFAULT_RATIO,
     DEFAULT_SCENE_LEVELS,
     MIN_DETECTION_INLIERS,
+    targetGrid,
+    targetSide,
 } from "../../packages/nft-tracker/dist/index.js";
 import { runStatelessPipeline } from "../js/bench-stateless.mjs";
 
@@ -63,6 +65,8 @@ const DEPS = {
     DEFAULT_RATIO,
     DEFAULT_RANSAC_THRESHOLD,
     MIN_DETECTION_INLIERS,
+    targetSide,
+    targetGrid,
 };
 
 const decoded = decode(readFileSync(new URL("../targets/pinball.wnft", import.meta.url)));
@@ -73,13 +77,32 @@ const FRAME = { width: 270, height: 360, data: new Uint8Array(270 * 360) };
 const H = new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
 /**
+ * #202's two refused columns on pinball.wnft's level-0 grid (512 × 640), built as the probe's
+ * self-test builds them (docs/benchmarks/2026-11-01-202-stage1-probe.mjs, lines 232 to 250):
+ * H = K·[r1 r2 t] for the camera on the plane's back with every grid point in front (reversed),
+ * and for a steep pose whose plane crosses z = 0 inside the grid (mixed-w).
+ */
+const KC = [300, 0, 135, 0, 300, 180, 0, 0, 1];
+function fromPose(R, t) {
+    const M = [R[0], R[1], t[0], R[3], R[4], t[1], R[6], R[7], t[2]];
+    const out = new Float64Array(9);
+    for (let r = 0; r < 3; r++)
+        for (let c = 0; c < 3; c++)
+            for (let k = 0; k < 3; k++) out[r * 3 + c] += KC[r * 3 + k] * M[k * 3 + c];
+    return out;
+}
+const rotX = (a) => [1, 0, 0, 0, Math.cos(a), -Math.sin(a), 0, Math.sin(a), Math.cos(a)];
+const REVERSED = fromPose(rotX(Math.PI - 0.2), [-256, 320, 2000]);
+const MIXED = fromPose(rotX(-1.2), [-256, -320, 200]);
+
+/**
  * A backend whose every answer is scripted: `matches` correspondences between
  * scene keypoint i and the first target level's keypoint i, and `ransac`'s
  * `{ ok, numInliers }` as `estimateHomography`'s result, its mask marking the
- * first `numInliers` correspondences. With `filter`, a `filterMatches` that
+ * first `numInliers` correspondences, and `fit` its `H` (the identity unless given). With `filter`, a `filterMatches` that
  * keeps the first `filter` matches; without, none, and both paths skip it.
  */
-function stubBackend({ matches, ransac, filter }) {
+function stubBackend({ matches, ransac, filter, fit = H }) {
     let firstLevel = null;
     const filterMatches = (m) => m.slice(0, filter);
     return {
@@ -108,7 +131,7 @@ function stubBackend({ matches, ransac, filter }) {
             const inliers = new Uint8Array(n);
             for (let i = 0; i < Math.min(ransac.numInliers, n); i++) inliers[i] = 1;
             return ransac.ok
-                ? { ok: true, H, inliers, numInliers: ransac.numInliers }
+                ? { ok: true, H: fit, inliers, numInliers: ransac.numInliers }
                 : { ok: false, H: null, inliers, numInliers: ransac.numInliers };
         },
         poseFromHomography: () => ({
@@ -206,6 +229,33 @@ describe("the stateless pipeline agrees with detectTarget on every refusal (#191
                 numSceneKeypoints: 12,
             },
         ],
+        [
+            "an accepted reversed fit on 7 inliers, which both refuse as not-facing (#202)",
+            { matches: 12, ransac: { ok: true, numInliers: 7 }, fit: REVERSED },
+            {
+                ok: false,
+                reason: "not-facing",
+                numInliers: 7,
+                numMatches: 12,
+                numSceneKeypoints: 12,
+            },
+        ],
+        [
+            "an accepted mixed-w fit on 7 inliers, which both refuse as not-facing (#202)",
+            { matches: 12, ransac: { ok: true, numInliers: 7 }, fit: MIXED },
+            {
+                ok: false,
+                reason: "not-facing",
+                numInliers: 7,
+                numMatches: 12,
+                numSceneKeypoints: 12,
+            },
+        ],
+        [
+            "an accepted facing fit on 7 inliers, which both accept (#202)",
+            { matches: 12, ransac: { ok: true, numInliers: 7 } },
+            { ok: true, reason: null, numInliers: 7, numMatches: 12, numSceneKeypoints: 12 },
+        ],
     ])("%s", (_, script, expected) => {
         const { stateless, tracker } = bothPaths(script);
         expect(view(tracker), "detectTarget").toEqual(expected);
@@ -216,6 +266,16 @@ describe("the stateless pipeline agrees with detectTarget on every refusal (#191
 
     // Missing, the constant would turn the gate off with no error (`h.numInliers < undefined` is
     // false): the 4-inlier frame would be posed again, and every case above would pass on DEPS.
+    // #202's fits are what the cases above say they are, on the target's level-0 grid.
+    it("builds its #202 cases in the columns they are named for", () => {
+        const grid = targetGrid(...target.pyramid.levelSizes[0]);
+        expect([REVERSED, MIXED, H].map((h) => targetSide(h, grid))).toEqual([
+            "reversed",
+            "mixed-w",
+            "facing",
+        ]);
+    });
+
     it.each(Object.keys(DEPS))("refuses deps without %s, rather than run without it", (name) => {
         const { [name]: _, ...deps } = DEPS;
         expect(() =>
