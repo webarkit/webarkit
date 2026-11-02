@@ -181,8 +181,6 @@ A copy of a script outside the repository reads the checkout that
       replay and the bench page to an injected generator.
     - `test/pose/ippe.test.ts` and `test/pose/s2_oracle_hash.test.ts` only
       count reads, passing each to the real `Math.random`.
-      #151, the per-frame seeding policy, is related work on the same RNG and
-      does not name this file.
 - **The build does not see this directory.** `tsconfig.json` compiles `src/`
   alone; `tsconfig.test.json` includes `ground-truth/` for the typecheck.
 - **Prettier sees the two modules, not `fixtures/`.** `npm run format:check`
