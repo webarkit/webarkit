@@ -141,6 +141,12 @@ the call is what it was before
 ([#24](https://github.com/webarkit/webarkit/issues/24)): `ransac_params_t`'s
 default, `() => Math.random()`.
 
+**`poseFromHomography` returns `good: false` on a degenerate `K`**, as the
+contract's `Pose` says: a focal length that is zero or not finite, the `K`
+jsfeatNext's `pose_estimator` refuses. It does not throw; `R` and `t` are zero,
+this adapter's choice; and the estimator it keeps between calls is left as it
+was ([#94](https://github.com/webarkit/webarkit/issues/94)).
+
 **Returned arrays belong to the caller.** Every typed array is copied out.
 jsfeatNext reuses its scratch matrices between calls, so handing back views
 would hand back storage the next call overwrites.
