@@ -132,12 +132,18 @@
  * **On determinism.** Point 7 also asks that every random choice go through an
  * injectable RNG. This class makes none: the one random choice in the pipeline
  * is the minimal-sample draw inside `estimateHomography`, which is below the
- * contract. Since webarkit/webarkit#24 the contract's `RansacOptions` carries
- * an `rng` a caller can seed, but `detectTarget` does not pass one yet, so
- * there is no `rng` option here yet either — it would accept a generator and
- * have nowhere to pass it. Until `detectTarget` forwards one, `process` is
- * exactly as reproducible as the backend's RANSAC is, and the tests are
- * explicit about that. The
+ * contract and seedable through its `RansacOptions.rng`
+ * (webarkit/webarkit#24). The `rngFor` option reaches it: for each detection
+ * the tracker runs itself, it asks the factory for a generator, with the
+ * frame's `timestampMs`, and `detectTarget` passes the answer to the
+ * estimate (#188). The tracker chooses no policy: a caller seeding a whole
+ * run returns the same generator every time, and one seeding each frame
+ * builds one from the frame (#151 decides which the bench uses). Absent, or
+ * answering `undefined`, the backend draws from its own source, as before
+ * #188. The tracker does not read `capabilities.deterministicRansac`, since
+ * a backend that does not honour the option ignores it as the contract
+ * allows; a caller that relies on the draws checks the flag first
+ * (#137, "Usage rule, 2026-10-15"). The
  * tracking state draws nothing: a sequence of frames gives the same states
  * and homographies, bit for bit, for the same RANSAC draws in its
  * detections.
@@ -532,6 +538,24 @@ export interface NftTrackerOptions {
      * its own (ADR-0001 point 7).
      */
     readonly clock?: () => number;
+    /**
+     * The RANSAC generator for a detection the tracker runs itself: called
+     * once per such detection, with the frame's `timestampMs` as given to
+     * {@link NftTracker.process} and nothing else, never on a frame that
+     * tracks. The generator it returns, a uniform source in [0, 1), is passed
+     * to {@link detectTarget} and from there to `estimateHomography` as
+     * `RansacOptions.rng` (webarkit/webarkit#24). Returning the same
+     * generator every time seeds the run as a whole; the tracker has no
+     * per-frame policy of its own. `undefined`, or no option, leaves the
+     * draw to the backend, as before webarkit/webarkit#188. A function, or a
+     * `RangeError`; so is an answer that is neither a function nor
+     * `undefined`, on the frame that gets it.
+     *
+     * A detection handed in from outside (`externalDetection`, or the third
+     * argument of `process`) is the caller's: it passes its own `rng` to
+     * `detectTarget`, and this factory is not called for it.
+     */
+    readonly rngFor?: (frame: { readonly timestampMs: number }) => (() => number) | undefined;
 }
 
 /** Where a frame's time went, ms, by the `clock` option. */
@@ -719,6 +743,8 @@ export class NftTracker {
     private readonly track: TrackTarget | null;
     private readonly trackOptions: TrackFrameOptions;
     private readonly clock: (() => number) | null;
+    /** The `rngFor` option, or `null`. */
+    private readonly rngFor: NonNullable<NftTrackerOptions["rngFor"]> | null;
     /** The last two homographies while locked: `previous` is `null` right after a detection. */
     private lock: { readonly previous: Mat3 | null; readonly current: Mat3 } | null = null;
     /** The target's 5 × 5 grid, level-0 px: the pose selection's depth rule reads it. */
@@ -764,6 +790,7 @@ export class NftTracker {
         this.setup = prepareDetection(cv, target, options);
         this.trackOptions = tracking.track;
         this.clock = tracking.clock;
+        this.rngFor = tracking.rngFor;
         const p = target.patches;
         this.track =
             !tracking.detectionOnly &&
@@ -1085,7 +1112,13 @@ export class NftTracker {
      * match per level, filter, estimate, decompose.
      */
     private detect(frame: GrayImage, timestampMs: number): Detected {
-        return this.detected(detectTarget(this.cv, this.setup, frame, timestampMs));
+        const rng = this.rngFor === null ? undefined : this.rngFor({ timestampMs });
+        if (rng !== undefined && typeof rng !== "function") {
+            throw new RangeError(
+                `NftTracker: rngFor returned ${String(rng)}, not a function or undefined`,
+            );
+        }
+        return this.detected(detectTarget(this.cv, this.setup, frame, timestampMs, rng));
     }
 
     /** M1's result for a detection: its `state`, `quality` and `pose` added. */
@@ -1177,6 +1210,7 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
     readonly detectionOnly: boolean;
     readonly externalDetection: boolean;
     readonly clock: (() => number) | null;
+    readonly rngFor: NonNullable<NftTrackerOptions["rngFor"]> | null;
     readonly track: TrackFrameOptions;
     readonly conditioning: ConditioningOptions;
     readonly poseFilter: PoseFilterLayers | null;
@@ -1355,10 +1389,14 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
     if (o.clock !== undefined && typeof o.clock !== "function") {
         throw new RangeError(`NftTracker: clock must be a function, got ${String(o.clock)}`);
     }
+    if (o.rngFor !== undefined && typeof o.rngFor !== "function") {
+        throw new RangeError(`NftTracker: rngFor must be a function, got ${String(o.rngFor)}`);
+    }
     return {
         detectionOnly: flag("detectionOnly", o.detectionOnly ?? false),
         externalDetection: flag("externalDetection", o.externalDetection ?? false),
         clock: o.clock ?? null,
+        rngFor: o.rngFor ?? null,
         conditioning: conditioningOptions(o.conditioning ?? DEFAULT_CONDITIONING),
         poseFilter: poseFilterLayers(o.poseFilter ?? DEFAULT_POSE_FILTER),
         track: {

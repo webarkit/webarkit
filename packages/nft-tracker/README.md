@@ -479,6 +479,23 @@ have made in the default mode.
 | `conditioning`                             | `{ mode: "off" }` | The conditioning signal's state: `"off"`, `"report"`, or `"refuse"` with `maxDScale` and `maxDOrth`, both required, numbers ≥ 0, `Infinity` for no bound; a threshold in another state is refused (below) |
 | `poseFilter`                               | `{ mode: "off" }` | One Euro filtering of `pose`: `"off"`, or `"one-euro"` with `rotation`, `translation` (`{ minCutOff, beta }`) and `dCutOff`; an omitted one takes its derived value (below)                               |
 | `clock`                                    | none              | `() => ms`, for `timings`                                                                                                                                                                                 |
+| `rngFor`                                   | none              | `({ timestampMs }) => rng`, called once per detection the tracker runs itself: the generator RANSAC draws from, passed on as `RansacOptions.rng`; `undefined` leaves the draw to the backend (below)      |
+
+**Seeding RANSAC.** The one random choice in the pipeline is RANSAC's
+minimal-sample draw inside `estimateHomography`. `detectTarget` takes an
+optional fifth argument, `rng`, a uniform source in [0, 1), and passes it to
+the estimate as the contract's `RansacOptions.rng`
+([#24](https://github.com/webarkit/webarkit/issues/24),
+[#188](https://github.com/webarkit/webarkit/issues/188)); absent, the
+options are what they were before, with no `rng` key. The tracker's `rngFor`
+supplies that argument for the detections it runs itself, and returning the
+same generator every time seeds a whole run. A detection handed to `process`
+was seeded, or not, by whoever ran `detectTarget`. A backend that does not
+declare `capabilities.deterministicRansac` ignores the option, as the contract
+allows, and the tracker does not check the flag: a caller that relies on the
+draws checks it first
+([#137](https://github.com/webarkit/webarkit/issues/137), "Usage rule,
+2026-10-15").
 
 **The conditioning signal** ([#104](https://github.com/webarkit/webarkit/issues/104),
 M4's step 2). Two quantities read on a fit's homography under `K` before the
