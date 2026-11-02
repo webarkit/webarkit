@@ -14,6 +14,13 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+### Changed
+
+- `@webarkit/cv-backend-jsfeatnext` requires `@webarkit/jsfeat-next` `^1.1.0` (was `^0.17.0`),
+  so the bench page's bundle carries 1.1.0. The backend's per-frame output is unchanged on the
+  seeded replays and on the ground truth's sequences
+  ([#94](https://github.com/webarkit/webarkit/issues/94)).
+
 ## [0.7.0] - 2026-11-01
 
 The "M7 — what detection accepts" milestone

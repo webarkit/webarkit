@@ -159,7 +159,11 @@ regardless of which backend is plugged in:
 
 ## Requirements
 
-`@webarkit/jsfeat-next` **≥ 0.17.0** — earlier releases lack `bfmatcher`,
+`@webarkit/jsfeat-next` **`^1.1.0`** (webarkit/webarkit#94). The backend
+needs nothing that 1.x added; 1.1.0 is required because it is the version
+whose per-frame output was compared with 0.17.0's, on the seeded replays and
+the ground truth, and found the same. 0.17.0 is the floor below which the
+backend cannot work: earlier releases lack `bfmatcher`,
 `pose_estimator` and `orb.ic_angle` (needed since 0.15.0), lack
 `motion_estimator.find_homography` (needed since 0.16.0 — see above), and
 carry the `fast_corners` candidate-buffer bug that made `detect` read
