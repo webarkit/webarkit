@@ -139,8 +139,8 @@ describe("poseFromHomography on a K jsfeatNext refuses (#94)", () => {
 // A principal point that is not finite is not the adapter's to refuse: the
 // library's constructor accepts that K, and since 1.1.0 its `estimate` answers
 // it with `good: false`. Under 0.17.0 the same K gave `good: true` with a NaN
-// pose. Only `good` is asserted: on that path the library leaves R and t as
-// the last estimate wrote them.
+// pose. Only `good` is asserted here: R and t on that path, zero since #224,
+// are asserted in refused_pose.test.ts.
 describe("poseFromHomography on a K whose principal point is not finite (#94)", () => {
     const PRINCIPAL_POINT: [string, 2 | 5, number][] = [
         ["cx = NaN", 2, NaN],

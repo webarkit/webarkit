@@ -231,11 +231,14 @@ export class JsfeatNextBackend implements CvBackend {
     /**
      * Runs FAST into the pool, growing it until it fits.
      *
-     * The detector has no cap of its own and no bounds check, so a textured
-     * frame at a low threshold can produce more corners than any fixed pool.
-     * Doubling on failure terminates because the retry is capped at the number
-     * of pixels the detector can actually consider — corners come from distinct
-     * positions inside the border, so it cannot exceed that.
+     * The detector has no cap of its own, so a textured frame at a low
+     * threshold can produce more corners than any fixed pool, and it throws
+     * once the pool is full: since 1.1.0 its own `Error` ("corners pool of N is
+     * full"), under 0.17 a TypeError from writing past the end. That throw is
+     * what triggers the retry here. Doubling on failure terminates because the
+     * retry is capped at the number of pixels the detector can actually
+     * consider — corners come from distinct positions inside the border, so it
+     * cannot exceed that.
      */
     private detectInto(img: matrix_t, border: number): number {
         const hardCap = Math.max(1, (img.cols - 2 * border) * (img.rows - 2 * border));
@@ -593,6 +596,13 @@ export class JsfeatNextBackend implements CvBackend {
         }
 
         this.poseEstimator.estimate(toMat3(H, "H"), this.pose);
+        // On an (H, K) it refuses, `estimate` sets `good = false` and leaves R
+        // and t as the last good call wrote them into the kept pose_t. Answered
+        // with zeros, as the guard above does, so a refused pose depends only on
+        // its arguments, as the contract's purity requires (#224).
+        if (!this.pose.good) {
+            return { R: new Float64Array(9), t: new Float64Array(3), good: false };
+        }
         return {
             R: new Float64Array(this.pose.R.data.subarray(0, 9)),
             t: new Float64Array(this.pose.t),
