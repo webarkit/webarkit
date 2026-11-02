@@ -201,9 +201,9 @@ function toMat3(m: Mat3, what: string): matrix_t {
 /**
  * A pool of `keypoint_t` for the detectors to fill.
  *
- * `fast_corners.detect` writes `corners[n]` with **no bounds check** — run out
- * of slots and it dereferences `undefined` and throws a TypeError from inside
- * the library. So the pool cannot be sized by optimism; {@link detectInto}
+ * `fast_corners.detect` throws once the pool is full: since 1.1.0 its own
+ * `Error` ("corners pool of N is full"), under 0.17 a TypeError from writing
+ * past the end. So the pool cannot be sized by optimism; {@link detectInto}
  * grows and retries against a hard bound.
  */
 function makePool(n: number): InstanceType<typeof jsfeatNext.keypoint_t>[] {

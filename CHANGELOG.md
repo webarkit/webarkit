@@ -26,8 +26,9 @@ release pull request's body and the GitHub Release's notes.
 - `@webarkit/cv-backend-jsfeatnext`'s `poseFromHomography` returns `good: false` for a `K` whose
   focal length is zero or not finite, as the contract's `Pose` says. Under jsfeat-next 0.17 it
   returned `good: true`, with a NaN pose (or, for an infinite focal length, a finite but
-  meaningless one), and 1.1.0 would have thrown
-  ([#94](https://github.com/webarkit/webarkit/issues/94)).
+  meaningless one), and 1.1.0 would have thrown. A `K` whose principal point is not finite gives
+  `good: false` too, from jsfeat-next 1.1.0's own check; under 0.17 it also returned `good: true`
+  with a NaN pose ([#94](https://github.com/webarkit/webarkit/issues/94)).
 
 ## [0.7.0] - 2026-11-01
 

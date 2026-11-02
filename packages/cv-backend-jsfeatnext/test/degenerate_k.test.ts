@@ -135,3 +135,26 @@ describe("poseFromHomography on a K jsfeatNext refuses (#94)", () => {
         expect(b.poseFromHomography(HM, K2)).toEqual(fresh2);
     });
 });
+
+// A principal point that is not finite is not the adapter's to refuse: the
+// library's constructor accepts that K, and since 1.1.0 its `estimate` answers
+// it with `good: false`. Under 0.17.0 the same K gave `good: true` with a NaN
+// pose. Only `good` is asserted: on that path the library leaves R and t as
+// the last estimate wrote them.
+describe("poseFromHomography on a K whose principal point is not finite (#94)", () => {
+    const PRINCIPAL_POINT: [string, 2 | 5, number][] = [
+        ["cx = NaN", 2, NaN],
+        ["cx = Infinity", 2, Infinity],
+        ["cy = NaN", 5, NaN],
+        ["cy = Infinity", 5, Infinity],
+    ];
+
+    for (const [name, index, value] of PRINCIPAL_POINT) {
+        it(`${name}: good false and no throw`, async () => {
+            const cv = await createJsfeatNextBackend();
+            const K = intrinsics(W, H);
+            K[index] = value;
+            expect(cv.poseFromHomography(HM, K).good).toBe(false);
+        });
+    }
+});
