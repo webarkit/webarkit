@@ -145,7 +145,11 @@ default, `() => Math.random()`.
 contract's `Pose` says: a focal length that is zero or not finite, the `K`
 jsfeatNext's `pose_estimator` refuses. It does not throw; `R` and `t` are zero,
 this adapter's choice; and the estimator it keeps between calls is left as it
-was ([#94](https://github.com/webarkit/webarkit/issues/94)).
+was ([#94](https://github.com/webarkit/webarkit/issues/94)). Every `good: false`
+result has zero `R` and `t`, whether the adapter or the library refused it (a
+degenerate or non-finite `H`, a principal point that is not finite), so a refused
+pose depends only on its arguments
+([#224](https://github.com/webarkit/webarkit/issues/224)).
 
 **Returned arrays belong to the caller.** Every typed array is copied out.
 jsfeatNext reuses its scratch matrices between calls, so handing back views

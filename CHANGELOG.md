@@ -29,6 +29,13 @@ release pull request's body and the GitHub Release's notes.
   meaningless one), and 1.1.0 would have thrown. A `K` whose principal point is not finite gives
   `good: false` too, from jsfeat-next 1.1.0's own check; under 0.17 it also returned `good: true`
   with a NaN pose ([#94](https://github.com/webarkit/webarkit/issues/94)).
+- `@webarkit/cv-backend-jsfeatnext`'s `poseFromHomography` returns zero `R` and `t` whenever
+  `good` is false, as it already did for a `K` it refuses itself. When jsfeat-next refused the
+  pose (a degenerate or non-finite `H`, a principal point that is not finite),
+  `poseFromHomography` returned the last good call's `R` and `t`, so the same refused input gave a
+  different pose depending on what ran before it; a refused pose now depends only on its
+  arguments, as the contract's purity says
+  ([#224](https://github.com/webarkit/webarkit/issues/224)).
 
 ## [0.7.0] - 2026-11-01
 
