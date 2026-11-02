@@ -42,9 +42,10 @@
 // detects itself. Every test is synchronous: "elsewhere" is this file, which
 // calls `detectTarget` on one frame and hands the result to a later `process`
 // call, the way a worker's message would arrive. RANSAC draws only inside
-// `detectTarget`, under a seed; the tracker's own calls draw nothing, and the
-// tests say so. The frames are the camera path of tracker_state_machine.test.ts,
-// whose helpers are copied here rather than imported, so that file stays
+// `detectTarget`, from a seeded generator passed to it; the tracker's own
+// calls draw nothing, and the tests say so. The frames are the camera path of
+// tracker_state_machine.test.ts, whose helpers are copied here rather than
+// imported, so that file stays
 // exactly as M2 left it. Since #130 those helpers are in
 // ground-truth/tracker_sequences.ts, which can be imported; the copies stay as
 // written.
@@ -59,7 +60,8 @@ import type { Detection, DetectionSetup } from "../src/detection.js";
 import type { TargetDb } from "../src/target/types.js";
 import { pinballTrackingTarget } from "../ground-truth/fixtures/tracking_target.js";
 import { readPgm, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
-import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import { seededSource, withSeededRng } from "../ground-truth/fixtures/seeded_rng.js";
+import type { SeededSource } from "../ground-truth/fixtures/seeded_rng.js";
 import { renderWarp, view } from "../ground-truth/fixtures/warped_frames.js";
 
 /** The reference device's camera path: 270 × 360 grey frames, the target at about 0.45. */
@@ -127,6 +129,7 @@ function countingBackend(cv: CvBackend): { cv: CvBackend; calls: Record<string, 
 }
 
 let cv: CvBackend;
+let seeded: SeededSource;
 let K: Mat3;
 let target: TargetDb;
 let setup: DetectionSetup;
@@ -138,20 +141,25 @@ let d0: Detection;
 
 beforeAll(async () => {
     cv = await createJsfeatNextBackend();
+    seeded = seededSource(cv);
     K = intrinsics(CAMERA.width, CAMERA.height);
     target = pinballTrackingTarget(cv);
     setup = prepareDetection(cv, target);
     f0 = frameAt(wander(0), 0);
     f1 = frameAt(wander(1), 1);
     f2 = frameAt(wander(2), 2);
-    d0 = withSeededRandom(SEED, () => detectTarget(cv, setup, f0, 0)).value;
+    d0 = withSeededRng(cv, SEED, (rng) => detectTarget(cv, setup, f0, 0, rng)).value;
     if (!d0.ok) throw new Error(`fixture: frame 0 did not detect (${d0.reason})`);
 });
 
 /** An external-mode tracker on a counting backend. */
 function external(options: { detectionOnly?: boolean } = {}) {
     const counted = countingBackend(cv);
-    const tracker = new NftTracker(counted.cv, target, K, { externalDetection: true, ...options });
+    const tracker = new NftTracker(counted.cv, target, K, {
+        externalDetection: true,
+        ...options,
+        rngFor: seeded.rngFor,
+    });
     return { tracker, calls: counted.calls };
 }
 
@@ -224,7 +232,9 @@ describe("NftTracker with a detection handed in (M3)", () => {
     });
 
     it("returns a failed detection as LOST with its own reason and counts, needsDetection true, no backend call", () => {
-        const failed = withSeededRandom(SEED, () => detectTarget(cv, setup, flat, 0)).value;
+        const failed = withSeededRng(cv, SEED, (rng) =>
+            detectTarget(cv, setup, flat, 0, rng),
+        ).value;
         expect(failed.ok).toBe(false);
         if (failed.ok) return;
         const { tracker, calls } = external();
@@ -260,7 +270,9 @@ describe("NftTracker with a detection handed in (M3)", () => {
     it("a frame that drops its lock and consumes a detection reports the confirming step, not the first", () => {
         // The lock drops on the covered lens; the failed detection handed in
         // with it is consumed, and the result is the detection's.
-        const failed = withSeededRandom(SEED, () => detectTarget(cv, setup, flat, 66)).value;
+        const failed = withSeededRng(cv, SEED, (rng) =>
+            detectTarget(cv, setup, flat, 66, rng),
+        ).value;
         const a = external();
         a.tracker.process(f0, 0);
         expect(a.tracker.process(f1, 33, d0).state).toBe("TRACK");
@@ -280,7 +292,9 @@ describe("NftTracker with a detection handed in (M3)", () => {
             view({ target: image, frame: CAMERA, scale: 0.45, shift: [25, 0] }),
             { ...CAMERA, blurPasses: 1, noiseSigma: 2, seed: 3 },
         );
-        const dJumped = withSeededRandom(SEED, () => detectTarget(cv, setup, jumped, 66)).value;
+        const dJumped = withSeededRng(cv, SEED, (rng) =>
+            detectTarget(cv, setup, jumped, 66, rng),
+        ).value;
         expect(dJumped.ok).toBe(true);
         // A clock that ticks once per read: the frame's timings then count
         // clock reads, and two steps read it more than one does.
@@ -342,11 +356,11 @@ describe("NftTracker with a detection handed in (M3)", () => {
         expect(next.needsDetection).toBe(true);
     });
 
-    it("draws nothing from Math.random on any frame in external mode", () => {
+    it("draws nothing, from its generator or the global Math.random, on any frame in external mode", () => {
         const { tracker } = external();
-        expect(withSeededRandom(SEED, () => tracker.process(f0, 0)).draws).toBe(0);
-        expect(withSeededRandom(SEED, () => tracker.process(f1, 33, d0)).draws).toBe(0);
-        expect(withSeededRandom(SEED, () => tracker.process(f2, 66)).draws).toBe(0);
+        expect(seeded.run(SEED, () => tracker.process(f0, 0)).draws).toBe(0);
+        expect(seeded.run(SEED, () => tracker.process(f1, 33, d0)).draws).toBe(0);
+        expect(seeded.run(SEED, () => tracker.process(f2, 66)).draws).toBe(0);
     });
 });
 
@@ -389,11 +403,10 @@ type Path = (i: number) => Pose;
  * caller draws when it detects frame `i`.
  */
 function runM2(t: TargetDb, path: Path, n: number) {
-    const tracker = new NftTracker(cv, t, K);
+    const tracker = new NftTracker(cv, t, K, { rngFor: seeded.rngFor });
     const results = Array.from(
         { length: n },
-        (_, i) =>
-            withSeededRandom(SEED + i, () => tracker.process(frameAt(path(i), i), i * 33)).value,
+        (_, i) => seeded.run(SEED + i, () => tracker.process(frameAt(path(i), i), i * 33)).value,
     );
     return { results, states: results.map((r) => r.state[0]).join("") };
 }
@@ -405,7 +418,7 @@ function runM2(t: TargetDb, path: Path, n: number) {
  * `process` `latency` frames later. The tracker's own calls draw nothing.
  */
 function runExternal(t: TargetDb, path: Path, n: number, latency: number) {
-    const tracker = new NftTracker(cv, t, K, { externalDetection: true });
+    const tracker = new NftTracker(cv, t, K, { externalDetection: true, rngFor: seeded.rngFor });
     const detections = new Map<number, Detection>();
     let pending: { due: number; detection: Detection } | null = null;
     const results: TrackResult[] = [];
@@ -416,14 +429,14 @@ function runExternal(t: TargetDb, path: Path, n: number, latency: number) {
             handed = pending.detection;
             pending = null;
         }
-        const { value: r, draws } = withSeededRandom(SEED + i, () =>
+        const { value: r, draws } = seeded.run(SEED + i, () =>
             tracker.process(frame, i * 33, handed),
         );
         expect(draws).toBe(0);
         results.push(r);
         if (r.needsDetection && pending === null) {
-            const detection: Detection = withSeededRandom(SEED + i, () =>
-                detectTarget(cv, setup, frame, i * 33),
+            const detection: Detection = withSeededRng(cv, SEED + i, (rng) =>
+                detectTarget(cv, setup, frame, i * 33, rng),
             ).value;
             detections.set(i, detection);
             pending = { due: i + latency, detection };

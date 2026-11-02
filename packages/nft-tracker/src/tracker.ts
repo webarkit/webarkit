@@ -547,9 +547,11 @@ export interface NftTrackerOptions {
      * `RansacOptions.rng` (webarkit/webarkit#24). Returning the same
      * generator every time seeds the run as a whole; the tracker has no
      * per-frame policy of its own. `undefined`, or no option, leaves the
-     * draw to the backend, as before webarkit/webarkit#188. A function, or a
-     * `RangeError`; so is an answer that is neither a function nor
-     * `undefined`, on the frame that gets it.
+     * draw to the backend, as before webarkit/webarkit#188. An option that is
+     * not a function is a `RangeError` at construction; an answer that is
+     * neither a function nor `undefined` is a `RangeError` from the
+     * `process` call that gets it, after which the tracker's state is
+     * unspecified, as after any contract violation.
      *
      * A detection handed in from outside (`externalDetection`, or the third
      * argument of `process`) is the caller's: it passes its own `rng` to

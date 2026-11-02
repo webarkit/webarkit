@@ -56,7 +56,7 @@ import type { TargetDb } from "../src/target/types.js";
 import { trackTarget } from "../src/tracking/track_frame.js";
 import { PINBALL_STEP, pinballPatches } from "./fixtures/tracking_target.js";
 import { readPgm, TARGET_FIXTURE } from "./fixtures/pgm.js";
-import { withSeededRandom } from "./fixtures/seeded_rng.js";
+import { seededSource } from "./fixtures/seeded_rng.js";
 import { project, renderWarp, view } from "./fixtures/warped_frames.js";
 
 /** The reference device's camera path: 270 × 360 grey frames, the target at about 0.45. */
@@ -150,7 +150,13 @@ export const settlePath = (i: number): Pose => ({
     shift: [i < SETTLE_SLIDE_FRAMES ? 260 * (1 - smoothstep(i / SETTLE_SLIDE_FRAMES)) : 0, 0],
 });
 
-/** A whole path through one tracker, under one seeded RANSAC. States as "D", "T", "L". */
+/**
+ * A whole path through one tracker, under one seeded RANSAC: one
+ * `mulberry32(SEED)` for the run, injected through the tracker's `rngFor`
+ * (webarkit/webarkit#188), on a backend that must declare
+ * `deterministicRansac`, and no read of the global `Math.random` allowed.
+ * An `rngFor` in `options` is replaced. States as "D", "T", "L".
+ */
 export function run(
     cv: CvBackend,
     K: Mat3,
@@ -159,9 +165,10 @@ export function run(
     n: number,
     options?: NftTrackerOptions,
 ) {
-    const tracker = new NftTracker(cv, t, K, options);
+    const seeded = seededSource(cv);
+    const tracker = new NftTracker(cv, t, K, { ...options, rngFor: seeded.rngFor });
     const truths: Mat3[] = [];
-    const { value: results } = withSeededRandom(SEED, () =>
+    const { value: results } = seeded.run(SEED, () =>
         Array.from({ length: n }, (_, i) => {
             const { frame, H } = frameAt(path(i), i);
             truths.push(H);
