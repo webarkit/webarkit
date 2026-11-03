@@ -170,10 +170,11 @@ A copy of a script outside the repository reads the checkout that
   swap on 2026-11-02 (above).
   [#151](https://github.com/webarkit/webarkit/issues/151) moved
   `scripts/replay-clips.mjs`'s `--seed` to an injected generator on
-  2026-11-03, a fresh one per detection by default (`--seed-policy frame`);
-  the ground truth stays per run, one generator for each seeded region, and
-  its results are unchanged. Outside this directory the global is still
-  replaced in seven files, four of which seed it:
+  2026-11-03, a fresh one per detection by default (`--seed-policy frame`),
+  and the bench page (`?seed=`) and the worker's tests the same day; the
+  ground truth stays per run, one generator for each seeded region, and its
+  results are unchanged. Outside this directory the global is still
+  replaced in seven files, three of which seed it:
     - `cv-backend-jsfeatnext`'s `test/ransac_rng.test.ts` seeds it on
       purpose: its hash measures the backend with no `rng`, the evidence
       that an absent `rng` keeps the backend's behaviour (#24).
@@ -181,12 +182,11 @@ A copy of a script outside the repository reads the checkout that
       draws (#137's item 4); it calls no `estimateHomography`.
     - `scripts/jitter-dry-run.mjs` seeds it on purpose: it seeds two builds
       alike, a control that can predate `rngFor` included (#151).
-    - `examples/test/detection-worker-core.test.mjs` (two helpers) seeds it
-      for the worker's tests, and belongs with #151, which moves the replay
-      and the bench page to an injected generator.
-    - `test/pose/ippe.test.ts`, `test/pose/s2_oracle_hash.test.ts` and
-      `scripts/replay-seeding.mjs` only count reads, passing each to the real
-      `Math.random`; the last refuses a seeded replay that reads it (#151).
+    - `test/pose/ippe.test.ts`, `test/pose/s2_oracle_hash.test.ts`,
+      `scripts/replay-seeding.mjs` and
+      `examples/test/detection-worker-core.test.mjs` only count reads,
+      passing each to the real `Math.random`; the last two refuse a seeded
+      region that reads it (#151).
 - **The build does not see this directory.** `tsconfig.json` compiles `src/`
   alone; `tsconfig.test.json` includes `ground-truth/` for the typecheck.
 - **Prettier sees the two modules, not `fixtures/`.** `npm run format:check`

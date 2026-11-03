@@ -53,7 +53,7 @@ import {
 } from "../../packages/nft-tracker/ground-truth/fixtures/warped_frames.ts";
 import { sha256Hex } from "../js/bench-metrics.mjs";
 import { prepareWorkerDetection, runWorkerDetection } from "../js/detection-worker-core.mjs";
-import { frameRng } from "../js/frame-rng.mjs";
+import { frameRng, mulberry32 } from "../js/frame-rng.mjs";
 
 const OPTIONS = {
     sceneLevels: DEFAULT_SCENE_LEVELS,
@@ -86,71 +86,67 @@ const frame = renderWarp(image, view({ target: image, frame: CAMERA, scale: 0.45
     seed: 1,
 });
 
-/** mulberry32: four lines, identical across platforms, which `Math.random` is not. */
-function mulberry32(seed) {
-    let a = seed >>> 0;
-    return () => {
-        a = (a + 0x6d2b79f5) >>> 0;
-        let t = Math.imul(a ^ (a >>> 15), 1 | a);
-        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
-
 /**
- * `run()` with `Math.random` seeded, restored however it ends. Synchronous only:
- * the seed is in place exactly while `run()` is on the stack, so a `run()` that
- * returns a promise would have the real `Math.random` restored before the
- * awaited work draws, and the seed would reach none of it. Refused rather than
- * supported: an async-aware helper invites nesting, and these two helpers are
- * already duplicated once.
+ * `run()` with the global `Math.random`'s reads counted, each passed to the real
+ * one, which is put back however `run()` ends: `{ value, draws }`, `draws` the
+ * reads. A counting wrapper, not a seed: the region draws what it always would.
+ * Synchronous only: `draws` is read when `run()` returns, so a `run()` that
+ * returns a promise would report 0 for work that had not run yet, and a check
+ * that `draws` is 0 could not tell "zero draws" from "did not observe the
+ * draws". Such a check is blind, so the shape is refused.
  */
-function seeded(seed, run) {
-    const original = Math.random;
-    Math.random = mulberry32(seed);
-    try {
-        const value = run();
-        if (typeof value?.then === "function") {
-            throw new TypeError(
-                "seeded(): run() returned a thenable; Math.random is restored when run() " +
-                    "returns, before the awaited work draws, so none of it would be seeded",
-            );
-        }
-        return value;
-    } finally {
-        Math.random = original;
-    }
-}
-
-/**
- * `seeded`, with the draws `run()` makes counted: `{ value, draws }`. Synchronous
- * only, for the reason above and one more: `draws` is read when `run()` returns,
- * so a `run()` that returns a promise would report 0 for work that had not run
- * yet, and a check that `draws` is 0 could not tell "zero draws" from "did not
- * observe the draws". Such a check is blind, so the shape is refused.
- */
-function counted(seed, run) {
-    const original = Math.random;
-    const next = mulberry32(seed);
+function globalReads(run) {
+    const real = Math.random;
     let draws = 0;
     Math.random = () => {
         draws++;
-        return next();
+        return real();
     };
     try {
         const value = run();
         if (typeof value?.then === "function") {
             throw new TypeError(
-                "counted(): run() returned a thenable; draws is read and Math.random is " +
+                "globalReads(): run() returned a thenable; draws is read and Math.random is " +
                     "restored when run() returns, before the awaited work draws, so the " +
                     "count would be 0 without observing anything",
             );
         }
         return { value, draws };
     } finally {
-        Math.random = original;
+        Math.random = real;
     }
 }
+
+/**
+ * `run(rng)` with an injected generator (#151): `rng` is a fresh `mulberry32(seed)`
+ * (examples/js/frame-rng.mjs), counted, which `run` hands on through the
+ * contract's `RansacOptions.rng` (#24). Returns `{ value, draws }`, `draws` the
+ * draws `rng` gave. The global `Math.random` is not seeded: its reads are
+ * counted ({@link globalReads}), and any is refused, since with the generator
+ * injected a read of the global is a draw the seed does not reach.
+ */
+function withCountedRng(seed, run) {
+    const next = mulberry32(seed);
+    let draws = 0;
+    const rng = () => {
+        draws++;
+        return next();
+    };
+    const { value, draws: reads } = globalReads(() => run(rng));
+    if (reads !== 0) {
+        throw new Error(`${reads} read(s) of the global Math.random with the rng injected`);
+    }
+    return { value, draws };
+}
+
+/** {@link withCountedRng}'s value alone. */
+const withRng = (seed, run) => withCountedRng(seed, run).value;
+
+/** The worker's run deps, with `rng` injected into its `detectTarget`, as a page's seed reaches it. */
+const injected = (rng) => ({
+    ...RUN_DEPS,
+    detectTarget: (cv, setup, f, timestampMs) => detectTarget(cv, setup, f, timestampMs, rng),
+});
 
 describe("prepareWorkerDetection", () => {
     it("prepares the same setup the tracker builds, and reports the target's SHA-256", async () => {
@@ -204,8 +200,12 @@ describe("runWorkerDetection", () => {
             { targetBytes: bytes, options: OPTIONS },
             PREPARE_DEPS,
         );
-        const worker = counted(42, () =>
-            runWorkerDetection(state, { jobId: 1, runId: 1, frame, timestampMs: 12.5 }, RUN_DEPS),
+        const worker = withCountedRng(42, (rng) =>
+            runWorkerDetection(
+                state,
+                { jobId: 1, runId: 1, frame, timestampMs: 12.5 },
+                injected(rng),
+            ),
         );
         const reply = worker.value;
 
@@ -219,7 +219,7 @@ describe("runWorkerDetection", () => {
         // unseeded, which is sound only while `prepareDetection` draws nothing; the
         // test below holds that.
         const setup = prepareDetection(cv2, decoded.target, OPTIONS);
-        const direct = counted(42, () => detectTarget(cv2, setup, frame, 12.5));
+        const direct = withCountedRng(42, (rng) => detectTarget(cv2, setup, frame, 12.5, rng));
 
         // The comparison means something only if the frame is one the target is found in.
         expect(direct.value.ok).toBe(true);
@@ -347,18 +347,18 @@ describe("runWorkerDetection", () => {
     // #95, Task 1: the comparison above builds both setups outside the seed. That is
     // sound only while `prepareDetection` draws nothing, since an unseeded draw could
     // build two different setups; the day it draws, both preparations need the seed,
-    // and this test says so. Counted at the seam `seeded` replaces, the global
-    // `Math.random`; `detectTarget` is the control that the counter sees a draw.
+    // and this test says so. Counted at the global `Math.random`, the seam an
+    // unseeded draw reads; `detectTarget`, unseeded, is the control that the counter sees a draw.
     it("prepareDetection draws nothing from Math.random, which the seeded comparison above rests on", async () => {
         const cv2 = await createJsfeatNextBackend();
         const decoded = decode(targetBytes());
         expect(decoded.ok).toBe(true);
 
-        const prepared = counted(42, () => prepareDetection(cv2, decoded.target, OPTIONS));
+        const prepared = globalReads(() => prepareDetection(cv2, decoded.target, OPTIONS));
         expect(prepared.draws).toBe(0);
 
         // RANSAC's minimal-sample draws, through the same seam: the count is live.
-        const detected = counted(42, () => detectTarget(cv2, prepared.value, frame, 12.5));
+        const detected = globalReads(() => detectTarget(cv2, prepared.value, frame, 12.5));
         expect(detected.value.ok).toBe(true);
         expect(detected.draws).toBeGreaterThan(0);
     });
@@ -368,8 +368,12 @@ describe("runWorkerDetection", () => {
             { targetBytes: targetBytes(), options: OPTIONS },
             PREPARE_DEPS,
         );
-        const reply = seeded(42, () =>
-            runWorkerDetection(state, { jobId: 7, runId: 3, frame, timestampMs: 12.5 }, RUN_DEPS),
+        const reply = withRng(42, (rng) =>
+            runWorkerDetection(
+                state,
+                { jobId: 7, runId: 3, frame, timestampMs: 12.5 },
+                injected(rng),
+            ),
         );
 
         expect(structuredClone(reply)).toEqual(reply);
@@ -400,11 +404,11 @@ describe("runWorkerDetection", () => {
             PREPARE_DEPS,
         );
         const message = { jobId: 1, runId: 1, frame, timestampMs: 0 };
-        seeded(42, () => runWorkerDetection(state, message, RUN_DEPS));
+        withRng(42, (rng) => runWorkerDetection(state, message, injected(rng)));
 
         // What a previous frame left behind, far beyond what one detection can cost.
         for (const key of Object.keys(state.timings)) state.timings[key] = 1e9;
-        const reply = seeded(42, () => runWorkerDetection(state, message, RUN_DEPS));
+        const reply = withRng(42, (rng) => runWorkerDetection(state, message, injected(rng)));
 
         for (const ms of Object.values(reply.workerMs)) expect(ms).toBeLessThan(1e6);
     });
