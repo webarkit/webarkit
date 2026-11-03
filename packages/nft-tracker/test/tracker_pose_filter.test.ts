@@ -61,7 +61,8 @@ import type { NftTrackerOptions, TrackResult } from "../src/tracker.js";
 import { PoseFilter } from "../src/pose/pose_filter.js";
 import { detectTarget, prepareDetection } from "../src/detection.js";
 import type { TargetDb } from "../src/target/types.js";
-import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import { seededSource, withSeededRng } from "../ground-truth/fixtures/seeded_rng.js";
+import type { SeededSource } from "../ground-truth/fixtures/seeded_rng.js";
 import {
     CAMERA,
     frameAt,
@@ -76,6 +77,7 @@ import {
 } from "../ground-truth/tracker_sequences.js";
 
 let cv: CvBackend;
+let seeded: SeededSource;
 let K: Mat3;
 let target: TargetDb;
 
@@ -93,6 +95,7 @@ const ARMS: Record<string, NftTrackerOptions | undefined> = {
 
 beforeAll(async () => {
     cv = await createJsfeatNextBackend();
+    seeded = seededSource(cv);
     K = intrinsics(CAMERA.width, CAMERA.height);
     target = shippedTarget();
     for (const [p, { path, n }] of Object.entries(PATHS)) {
@@ -238,7 +241,7 @@ describe("the poseFilter option: every result reaches the filter, a LOST one inc
             data: new Uint8Array(CAMERA.width * CAMERA.height),
         };
         const detect = (i: number, ts: number) =>
-            withSeededRandom(SEED, () => detectTarget(cv, setup, frame(i), ts)).value;
+            withSeededRng(cv, SEED, (rng) => detectTarget(cv, setup, frame(i), ts, rng)).value;
         const tracker = new NftTracker(cv, target, K, {
             externalDetection: true,
             poseFilter: { mode: "one-euro" },
@@ -425,8 +428,8 @@ describe("the poseFilter option: a timestamp that is not finite", () => {
     const frame = (i: number) => frameAt(restPath(i), i).frame;
     /** Frames through one tracker under one seeded generator; a call that throws is recorded as "threw". */
     const through = (options: NftTrackerOptions | undefined, calls: [number, number][]) => {
-        const tracker = new NftTracker(cv, target, K, options);
-        return withSeededRandom(SEED, () =>
+        const tracker = new NftTracker(cv, target, K, { ...options, rngFor: seeded.rngFor });
+        return seeded.run(SEED, () =>
             calls.map(([i, ts]) => {
                 try {
                     return tracker.process(frame(i), ts);

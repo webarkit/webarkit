@@ -441,15 +441,22 @@ export function prepareDetection(
  * posts to a worker (ADR-0001 point 7).
  *
  * The one random choice is RANSAC's minimal-sample draw inside
- * `estimateHomography`, below the contract. It is seedable through
- * `RansacOptions.rng` since webarkit/webarkit#24, but `detectTarget` does not
- * pass one yet; everything else is a pure function of its arguments.
+ * `estimateHomography`, below the contract; everything else is a pure
+ * function of its arguments. `rng`, when given, is passed to it as
+ * `RansacOptions.rng` (webarkit/webarkit#24, #188): a uniform source in
+ * [0, 1) that makes the draw, and so the detection, a function of the
+ * arguments too. Absent, the options are exactly what they were before #188,
+ * with no `rng` key at all, and the backend draws from its own source. A
+ * backend that does not declare `capabilities.deterministicRansac` ignores
+ * the option, as the contract allows, so a caller that relies on the draws
+ * checks that flag first (webarkit/webarkit#137, "Usage rule, 2026-10-15").
  */
 export function detectTarget(
     cv: CvBackend,
     setup: DetectionSetup,
     frame: GrayImage,
     timestampMs: number,
+    rng?: () => number,
 ): Detection {
     const sceneKeypoints = cv.detect(frame, {
         levels: setup.sceneLevels,
@@ -496,7 +503,13 @@ export function detectTarget(
         dst[i * 2 + 1] = sceneKeypoints[m.queryIdx].y;
     }
 
-    const h = cv.estimateHomography(src, dst, { threshold: setup.ransacThreshold });
+    const h = cv.estimateHomography(
+        src,
+        dst,
+        rng === undefined
+            ? { threshold: setup.ransacThreshold }
+            : { threshold: setup.ransacThreshold, rng },
+    );
     if (!h.ok) {
         return {
             ok: false,

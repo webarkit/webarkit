@@ -52,7 +52,7 @@ import type { TrackResult } from "../../src/tracker.js";
 import { decode } from "../../src/target/format/index.js";
 import type { TargetDb } from "../../src/target/types.js";
 import { readPgm, TARGET_FIXTURE } from "../../ground-truth/fixtures/pgm.js";
-import { withSeededRandom } from "../../ground-truth/fixtures/seeded_rng.js";
+import { seededSource } from "../../ground-truth/fixtures/seeded_rng.js";
 import { renderWarp, view } from "../../ground-truth/fixtures/warped_frames.js";
 import { grid, poseError } from "./pose_metric.js";
 
@@ -126,9 +126,10 @@ beforeAll(async () => {
 
 function run(n: number, options?: ConstructorParameters<typeof NftTracker>[3]) {
     const { cv, calls } = counting(backend);
-    const tracker = new NftTracker(cv, target, K, options);
+    const seeded = seededSource(cv);
+    const tracker = new NftTracker(cv, target, K, { ...options, rngFor: seeded.rngFor });
     const truths: Mat3[] = [];
-    const { value: results } = withSeededRandom(SEED, () =>
+    const { value: results } = seeded.run(SEED, () =>
         Array.from({ length: n }, (_, i) => {
             const { frame, H } = frameAt(i);
             truths.push(H);

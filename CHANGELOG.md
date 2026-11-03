@@ -14,6 +14,16 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+### Added
+
+- `@webarkit/nft-tracker` can seed RANSAC through the contract's `RansacOptions.rng`:
+  `detectTarget` takes an optional `rng` as its fifth argument, and `NftTracker` an optional
+  `rngFor`, a factory it calls with the frame's `timestampMs` for each detection it runs itself.
+  Without them nothing changes: the options `estimateHomography` receives are exactly as before.
+  An `rngFor` that is not a function throws a `RangeError` at construction, and one that
+  returns something other than a function or `undefined` throws a `RangeError` from `process`
+  ([#188](https://github.com/webarkit/webarkit/issues/188)).
+
 ### Changed
 
 - `@webarkit/cv-backend-jsfeatnext` requires `@webarkit/jsfeat-next` `^1.1.0` (was `^0.17.0`),

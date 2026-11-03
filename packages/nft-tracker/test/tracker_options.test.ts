@@ -51,7 +51,8 @@ import { buildTargetFromImage } from "../src/target/build_from_image.js";
 import type { TargetDb } from "../src/target/types.js";
 import { pinballPatches, pinballTrackingTarget } from "../ground-truth/fixtures/tracking_target.js";
 import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
-import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import { seededSource } from "../ground-truth/fixtures/seeded_rng.js";
+import type { SeededSource } from "../ground-truth/fixtures/seeded_rng.js";
 import { renderWarp, view } from "../ground-truth/fixtures/warped_frames.js";
 
 /** The reference device's camera path: 270 × 360 grey frames, the target at 0.45. */
@@ -59,6 +60,7 @@ const CAMERA = { width: 270, height: 360 };
 const image = readPgm(TARGET_FIXTURE);
 
 let cv: CvBackend;
+let seeded: SeededSource;
 let tracked: TargetDb;
 let K: Mat3;
 /** Two renders of one camera-path view, differing only in their noise. */
@@ -66,6 +68,7 @@ let still: [GrayImage, GrayImage];
 
 beforeAll(async () => {
     cv = await createJsfeatNextBackend();
+    seeded = seededSource(cv);
     tracked = pinballTrackingTarget(cv);
     K = intrinsics(CAMERA.width, CAMERA.height);
     const H = view({ target: image, frame: CAMERA, scale: 0.45 });
@@ -76,7 +79,7 @@ beforeAll(async () => {
 
 /** Every frame through one tracker, under one seeded RANSAC. */
 function run(tracker: NftTracker, frames: readonly GrayImage[]): TrackResult[] {
-    return withSeededRandom(1, () => frames.map((f, i) => tracker.process(f, i * 33))).value;
+    return seeded.run(1, () => frames.map((f, i) => tracker.process(f, i * 33))).value;
 }
 
 describe("NftTracker options (M2)", () => {
@@ -139,9 +142,10 @@ describe("NftTracker options (M2)", () => {
 
     it("carries the M2 fields on an M1-shaped result: null tracking, null trackLoss, no timings without a clock", () => {
         const scene = readPgm(SCENE_FIXTURE);
-        const { value: r } = withSeededRandom(1, () =>
+        const { value: r } = seeded.run(1, () =>
             new NftTracker(cv, tracked, intrinsics(scene.width, scene.height), {
                 maxSceneKeypoints: 900,
+                rngFor: seeded.rngFor,
             }).process(scene, 0),
         );
         expect(r.state).toBe("DETECT");
@@ -151,7 +155,10 @@ describe("NftTracker options (M2)", () => {
     });
 
     it("carries the M3 fields on an M2 result: needsDetection false, detectionUse internal on a detected frame, none on a tracked one, latency null", () => {
-        const [detected, trackedFrame] = run(new NftTracker(cv, tracked, K), still);
+        const [detected, trackedFrame] = run(
+            new NftTracker(cv, tracked, K, { rngFor: seeded.rngFor }),
+            still,
+        );
         expect(detected.state).toBe("DETECT");
         expect(detected.needsDetection).toBe(false);
         expect(detected.detectionUse).toBe("internal");
@@ -172,7 +179,7 @@ describe("NftTracker options (M2)", () => {
 
 describe("NftTracker state machine (M2)", () => {
     it("locks on a detection and tracks the next frame: DETECT, then TRACK", () => {
-        const [a, b] = run(new NftTracker(cv, tracked, K), still);
+        const [a, b] = run(new NftTracker(cv, tracked, K, { rngFor: seeded.rngFor }), still);
         expect(a.state).toBe("DETECT");
         expect(b.state).toBe("TRACK");
         expect(b.ok).toBe(true);
@@ -187,7 +194,10 @@ describe("NftTracker state machine (M2)", () => {
     });
 
     it("in detection-only mode, detects every frame and tracks none", () => {
-        const results = run(new NftTracker(cv, tracked, K, { detectionOnly: true }), still);
+        const results = run(
+            new NftTracker(cv, tracked, K, { detectionOnly: true, rngFor: seeded.rngFor }),
+            still,
+        );
         expect(results.map((r) => r.state)).toEqual(["DETECT", "DETECT"]);
         expect(results.map((r) => r.tracking)).toEqual([null, null]);
     });
@@ -197,11 +207,10 @@ describe("NftTracker state machine (M2)", () => {
             ...CAMERA,
             data: new Uint8Array(CAMERA.width * CAMERA.height).fill(128),
         };
-        const [locked, covered, again] = run(new NftTracker(cv, tracked, K), [
-            still[0],
-            flat,
-            still[1],
-        ]);
+        const [locked, covered, again] = run(
+            new NftTracker(cv, tracked, K, { rngFor: seeded.rngFor }),
+            [still[0], flat, still[1]],
+        );
         expect(locked.state).toBe("DETECT");
         // The lens covered: every patch lost, the lock dropped, and the
         // same frame's detection finds nothing.
@@ -222,7 +231,10 @@ describe("NftTracker state machine (M2)", () => {
             view({ target: image, frame: CAMERA, scale: 0.45, shift: [25, 0] }),
             { ...CAMERA, blurPasses: 1, noiseSigma: 2, seed: 3 },
         );
-        const [locked, found] = run(new NftTracker(cv, tracked, K), [still[0], jumped]);
+        const [locked, found] = run(new NftTracker(cv, tracked, K, { rngFor: seeded.rngFor }), [
+            still[0],
+            jumped,
+        ]);
         expect(locked.state).toBe("DETECT");
         expect(found.state).toBe("DETECT");
         expect(found.trackLoss).not.toBeNull();
@@ -231,7 +243,10 @@ describe("NftTracker state machine (M2)", () => {
     });
 
     it("times each frame with an injected clock, detection and tracking apart, and reads none of its own", () => {
-        const tracker = new NftTracker(cv, tracked, K, { clock: () => performance.now() });
+        const tracker = new NftTracker(cv, tracked, K, {
+            clock: () => performance.now(),
+            rngFor: seeded.rngFor,
+        });
         const [detected, trackedFrame] = run(tracker, still);
         const d = detected.timings!;
         expect(d.detectMs).toBeGreaterThan(0);

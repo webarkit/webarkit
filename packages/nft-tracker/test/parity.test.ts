@@ -50,7 +50,7 @@ import { createJsfeatNextBackend, intrinsics } from "@webarkit/cv-backend-jsfeat
 import { NftTracker } from "../src/tracker.js";
 import { buildTargetFromImage } from "../src/target/build_from_image.js";
 import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
-import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import { countGlobalRandomReads, withSeededRng } from "../ground-truth/fixtures/seeded_rng.js";
 
 /*
  * ---------------------------------------------------------------------------
@@ -129,12 +129,16 @@ interface ReferenceResult {
 /**
  * The static demo's `run()`, minus the drawing.
  *
- * Call it inside `withSeededRandom`: the `estimateHomography` below draws from
- * `Math.random`, because the contract exposes no RNG to pass one in. Nothing
- * else here draws, so the seeded region is larger than it strictly needs to be
- * and costs nothing.
+ * `rng` is the `estimateHomography` below's `RansacOptions.rng`
+ * (webarkit/webarkit#24): the demo passes none, and this file passes a seeded
+ * one so that both sides draw the same samples. Nothing else here draws.
  */
-function referencePipeline(cv: CvBackend, target: GrayImage, scene: GrayImage): ReferenceResult {
+function referencePipeline(
+    cv: CvBackend,
+    target: GrayImage,
+    scene: GrayImage,
+    rng: () => number,
+): ReferenceResult {
     const LEVELS = 8;
     const kScene = cv.detect(scene, { levels: 1, maxKeypoints: 900 });
     const kTarget = cv.detect(target, { levels: LEVELS, maxKeypoints: LEVELS * 260 });
@@ -164,7 +168,7 @@ function referencePipeline(cv: CvBackend, target: GrayImage, scene: GrayImage): 
         dst[i * 2 + 1] = kScene[m.queryIdx].y;
     });
 
-    const h = cv.estimateHomography(src, dst, { threshold: 4 });
+    const h = cv.estimateHomography(src, dst, { threshold: 4, rng });
     return { ok: h.ok, numMatches: matches.length, numInliers: h.numInliers, H: h.ok ? h.H : null };
 }
 
@@ -214,8 +218,8 @@ function maxCornerDisplacement(a: Mat3, b: Mat3, width: number, height: number):
  * rounding, and widening this number would only hide that.
  *
  * This argument depends on both sides drawing the same RANSAC samples, which
- * is what withSeededRandom buys and why it is worth its ugliness until
- * RansacOptions carries an rng.
+ * is what one fresh seeded generator per side buys, injected through
+ * RansacOptions.rng (webarkit/webarkit#188).
  *
  * Measured on these fixtures: 4.71e-06 px, roughly four orders of magnitude
  * inside this bound.
@@ -248,17 +252,20 @@ beforeAll(async () => {
 
 describe("NftTracker reproduces the demo pipeline", () => {
     it("locks on where the demo locks on, with the same matches and inliers", () => {
-        // Each side runs under its OWN freshly seeded Math.random, so both
+        // Each side runs with its OWN freshly seeded generator, so both
         // consume the identical sequence from their first draw. Building the
         // target is left outside the seeded region: it draws nothing, and
         // keeping the region down to the pipelines makes the symmetry visible.
         const targetDb = buildTargetFromImage(cv, target, { levels: 8 });
-        const { value: reference } = withSeededRandom(SEED, () =>
-            referencePipeline(cv, target, scene),
+        const { value: reference } = withSeededRng(cv, SEED, (rng) =>
+            referencePipeline(cv, target, scene, rng),
         );
-        const { value: tracked } = withSeededRandom(SEED, () =>
+        const { value: tracked } = withSeededRng(cv, SEED, (rng) =>
             // 900 is the STATIC demo's budget; the webcam demo's 300 is the default.
-            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0),
+            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900, rngFor: () => rng }).process(
+                scene,
+                0,
+            ),
         );
 
         // Guard the fixture itself: if the reference pipeline no longer finds
@@ -275,11 +282,14 @@ describe("NftTracker reproduces the demo pipeline", () => {
 
     it("recovers the same homography, to within the f32 storage of the target's coordinates", () => {
         const targetDb = buildTargetFromImage(cv, target, { levels: 8 });
-        const { value: reference } = withSeededRandom(SEED, () =>
-            referencePipeline(cv, target, scene),
+        const { value: reference } = withSeededRng(cv, SEED, (rng) =>
+            referencePipeline(cv, target, scene, rng),
         );
-        const { value: tracked } = withSeededRandom(SEED, () =>
-            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0),
+        const { value: tracked } = withSeededRng(cv, SEED, (rng) =>
+            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900, rngFor: () => rng }).process(
+                scene,
+                0,
+            ),
         );
 
         expect(reference.ok && tracked.ok).toBe(true);
@@ -308,8 +318,11 @@ describe("NftTracker reproduces the demo pipeline", () => {
         // against that class of impurity coming back.
         const expected = cv.detect(scene, { levels: 1, maxKeypoints: 900 });
         const targetDb = buildTargetFromImage(cv, target, { levels: 8 });
-        const { value: tracked } = withSeededRandom(SEED, () =>
-            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0),
+        const { value: tracked } = withSeededRng(cv, SEED, (rng) =>
+            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900, rngFor: () => rng }).process(
+                scene,
+                0,
+            ),
         );
 
         expect(tracked.sceneKeypoints.length).toBe(expected.length);
@@ -319,14 +332,16 @@ describe("NftTracker reproduces the demo pipeline", () => {
     });
 
     it("draws randomness only inside RANSAC, and the same amount on both sides", () => {
-        // This test guards the instrument the two above depend on. Seeding a
-        // GLOBAL reaches every consumer of Math.random in the process, which is
-        // harmless only while nothing but RANSAC draws -- true of jsfeatNext
-        // today, but a fact about a dependency, not a guarantee. Left
-        // undefended, a new draw site upstream would shift the sequence under
-        // every comparison in this file and the symptom would surface as a
-        // mysterious tolerance failure somewhere else.
-        const deterministic = withSeededRandom(SEED, () => {
+        // This test guards the instrument the two above depend on. The
+        // seeded generator reaches RANSAC alone, through RansacOptions.rng; a
+        // stage that drew from the global Math.random instead would be a
+        // random choice outside it -- jsfeatNext has none today, but that is a
+        // fact about a dependency, not a guarantee. Left undefended, it would
+        // make every comparison in this file depend on a source no seed
+        // controls, and the symptom would surface as a mysterious tolerance
+        // failure somewhere else. So the stages before RANSAC are counted for
+        // global reads, and every seeded region refuses any (#188).
+        const deterministic = countGlobalRandomReads(() => {
             // Everything both pipelines do before RANSAC: the tracker's target
             // preparation, and the frame-side work, through this file's own
             // transcriptions rather than the package's helpers.
@@ -348,12 +363,17 @@ describe("NftTracker reproduces the demo pipeline", () => {
         expect(deterministic.value).toBeGreaterThan(0);
         // The assertion that names the culprit. If detect, describe, match or
         // the target builder ever starts drawing, this fails and points here.
-        expect(deterministic.draws).toBe(0);
+        expect(deterministic.reads).toBe(0);
 
         const targetDb = buildTargetFromImage(cv, target, { levels: 8 });
-        const reference = withSeededRandom(SEED, () => referencePipeline(cv, target, scene));
-        const tracked = withSeededRandom(SEED, () =>
-            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900 }).process(scene, 0),
+        const reference = withSeededRng(cv, SEED, (rng) =>
+            referencePipeline(cv, target, scene, rng),
+        );
+        const tracked = withSeededRng(cv, SEED, (rng) =>
+            new NftTracker(cv, targetDb, K, { maxSceneKeypoints: 900, rngFor: () => rng }).process(
+                scene,
+                0,
+            ),
         );
 
         expect(reference.draws).toBeGreaterThan(0);
@@ -361,8 +381,9 @@ describe("NftTracker reproduces the demo pipeline", () => {
         // what the tolerance argument above rests on.
         //
         // A mismatch has two possible causes, and they are distinguishable. A
-        // new Math.random site: the zero-draw assertion above catches that
-        // first, so if it passed and this failed, look elsewhere. Or RANSAC's
+        // new Math.random site: the zero-read assertion above, and the seeded
+        // regions' own refusal, catch that first, so if they passed and this
+        // failed, look elsewhere. Or RANSAC's
         // adaptive iteration budget diverging -- update_iters() shortens the
         // loop from an improving hypothesis's inlier ratio, so an f32-perturbed
         // coordinate flipping one intermediate hypothesis changes how many

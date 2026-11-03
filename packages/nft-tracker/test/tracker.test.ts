@@ -44,15 +44,18 @@ import { NftTracker } from "../src/tracker.js";
 import { buildTargetFromImage } from "../src/target/build_from_image.js";
 import type { TargetDb } from "../src/target/types.js";
 import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
-import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import { seededSource } from "../ground-truth/fixtures/seeded_rng.js";
+import type { SeededSource } from "../ground-truth/fixtures/seeded_rng.js";
 
 let cv: CvBackend;
+let seeded: SeededSource;
 let target: TargetDb;
 let scene: GrayImage;
 let K: Mat3;
 
 beforeAll(async () => {
     cv = await createJsfeatNextBackend();
+    seeded = seededSource(cv);
     target = buildTargetFromImage(cv, readPgm(TARGET_FIXTURE), { levels: 8 });
     scene = readPgm(SCENE_FIXTURE);
     K = intrinsics(scene.width, scene.height);
@@ -60,11 +63,15 @@ beforeAll(async () => {
 
 describe("NftTracker.process", () => {
     it("locks on to the target in the scene, and reports the pose separately", () => {
-        const tracker = new NftTracker(cv, target, K, { maxSceneKeypoints: 900 });
-        // Seeded because RANSAC draws from Math.random and nothing else can
-        // reach it yet -- see withSeededRandom's own comment. `draws` is
-        // ignored here; the parity test is where it is asserted.
-        const { value: result } = withSeededRandom(1, () => tracker.process(scene, 0));
+        const tracker = new NftTracker(cv, target, K, {
+            maxSceneKeypoints: 900,
+            rngFor: seeded.rngFor,
+        });
+        // Seeded because RANSAC's draw is the pipeline's one random choice:
+        // the generator reaches it through `rngFor` (see seededSource's own
+        // comment). `draws` is ignored here; the parity test is where it is
+        // asserted.
+        const { value: result } = seeded.run(1, () => tracker.process(scene, 0));
 
         expect(result.ok).toBe(true);
         if (!result.ok) return; // narrows the union for the assertions below
@@ -77,15 +84,19 @@ describe("NftTracker.process", () => {
     });
 
     it("echoes the timestamp it was handed, and keeps no clock of its own", () => {
-        const tracker = new NftTracker(cv, target, K, { maxSceneKeypoints: 900 });
-        expect(withSeededRandom(1, () => tracker.process(scene, 1234.5)).value.timestampMs).toBe(
-            1234.5,
-        );
+        const tracker = new NftTracker(cv, target, K, {
+            maxSceneKeypoints: 900,
+            rngFor: seeded.rngFor,
+        });
+        expect(seeded.run(1, () => tracker.process(scene, 1234.5)).value.timestampMs).toBe(1234.5);
     });
 
     it("exposes the frame's keypoints so an overlay can draw them", () => {
-        const tracker = new NftTracker(cv, target, K, { maxSceneKeypoints: 900 });
-        const { value: result } = withSeededRandom(1, () => tracker.process(scene, 0));
+        const tracker = new NftTracker(cv, target, K, {
+            maxSceneKeypoints: 900,
+            rngFor: seeded.rngFor,
+        });
+        const { value: result } = seeded.run(1, () => tracker.process(scene, 0));
         expect(result.sceneKeypoints.length).toBeGreaterThan(100);
         expect(result.sceneKeypoints.length).toBeLessThanOrEqual(900);
     });
@@ -96,8 +107,8 @@ describe("NftTracker.process", () => {
             width: 320,
             height: 240,
         };
-        const tracker = new NftTracker(cv, target, K);
-        const { value: result } = withSeededRandom(1, () => tracker.process(blank, 0));
+        const tracker = new NftTracker(cv, target, K, { rngFor: seeded.rngFor });
+        const { value: result } = seeded.run(1, () => tracker.process(blank, 0));
 
         expect(result.ok).toBe(false);
         if (result.ok) return;
@@ -108,8 +119,11 @@ describe("NftTracker.process", () => {
     });
 
     it("reports a DETECT state and an inlier-share quality when detection locks on", () => {
-        const tracker = new NftTracker(cv, target, K, { maxSceneKeypoints: 900 });
-        const { value: result } = withSeededRandom(1, () => tracker.process(scene, 0));
+        const tracker = new NftTracker(cv, target, K, {
+            maxSceneKeypoints: 900,
+            rngFor: seeded.rngFor,
+        });
+        const { value: result } = seeded.run(1, () => tracker.process(scene, 0));
 
         expect(result.ok).toBe(true);
         if (!result.ok) return;
@@ -125,8 +139,8 @@ describe("NftTracker.process", () => {
             width: 320,
             height: 240,
         };
-        const tracker = new NftTracker(cv, target, K);
-        const { value: result } = withSeededRandom(1, () => tracker.process(blank, 0));
+        const tracker = new NftTracker(cv, target, K, { rngFor: seeded.rngFor });
+        const { value: result } = seeded.run(1, () => tracker.process(blank, 0));
 
         expect(result.ok).toBe(false);
         expect(result.state).toBe("LOST");
@@ -145,9 +159,12 @@ describe("NftTracker.process", () => {
         // record-replay tape to say anything about the tracker at all. With
         // the backend pure, a failure here means real hidden state -- in
         // the tracker or in a backend stage -- and is a finding, not noise.
-        const tracker = new NftTracker(cv, target, K, { maxSceneKeypoints: 900 });
-        const { value: a } = withSeededRandom(7, () => tracker.process(scene, 0));
-        const { value: b } = withSeededRandom(7, () => tracker.process(scene, 0));
+        const tracker = new NftTracker(cv, target, K, {
+            maxSceneKeypoints: 900,
+            rngFor: seeded.rngFor,
+        });
+        const { value: a } = seeded.run(7, () => tracker.process(scene, 0));
+        const { value: b } = seeded.run(7, () => tracker.process(scene, 0));
 
         expect(a.ok && b.ok).toBe(true);
         if (!a.ok || !b.ok) return;
@@ -157,8 +174,11 @@ describe("NftTracker.process", () => {
     });
 
     it("honours maxSceneKeypoints rather than a hard-coded budget", () => {
-        const { value: few } = withSeededRandom(1, () =>
-            new NftTracker(cv, target, K, { maxSceneKeypoints: 50 }).process(scene, 0),
+        const { value: few } = seeded.run(1, () =>
+            new NftTracker(cv, target, K, { maxSceneKeypoints: 50, rngFor: seeded.rngFor }).process(
+                scene,
+                0,
+            ),
         );
         expect(few.sceneKeypoints.length).toBeLessThanOrEqual(50);
     });

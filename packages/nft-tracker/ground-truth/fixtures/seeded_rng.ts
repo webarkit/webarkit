@@ -37,6 +37,8 @@
  *
  */
 
+import type { CvBackend } from "@webarkit/cv-backend-spec";
+
 /**
  * mulberry32 — a 32-bit PRNG, four lines, period 2^32. Far longer than any
  * RANSAC run will consume, and identical across platforms, which `Math.random`
@@ -52,61 +54,128 @@ export function mulberry32(seed: number): () => number {
     };
 }
 
+/** `mulberry32(seed)`, and how many numbers it has handed out. */
+export interface CountedRng {
+    /** The generator: the same sequence as `mulberry32(seed)`. */
+    readonly rng: () => number;
+    /** Draws made from `rng` so far. */
+    readonly draws: () => number;
+}
+
+/** `mulberry32(seed)` wrapped in a counter. */
+export function countedMulberry32(seed: number): CountedRng {
+    const next = mulberry32(seed);
+    let draws = 0;
+    return {
+        rng: () => {
+            draws++;
+            return next();
+        },
+        draws: () => draws,
+    };
+}
+
+/**
+ * Throws unless `cv` declares `capabilities.deterministicRansac`. A backend
+ * that does not honour `RansacOptions.rng` ignores it, as the contract
+ * allows, so a seeded run on it would be silently unseeded: every caller that
+ * relies on the draws checks first (webarkit/webarkit#137, "Usage rule,
+ * 2026-10-15", point 1).
+ */
+export function requireDeterministicRansac(cv: CvBackend): void {
+    if (cv.capabilities.deterministicRansac !== true) {
+        throw new Error(
+            `seeded_rng: backend "${cv.capabilities.name}" does not declare deterministicRansac, so an injected rng may be ignored; refusing to run seeded`,
+        );
+    }
+}
+
+/**
+ * Runs `run` with the global `Math.random` counted, then puts the real one
+ * back, even when `run` throws. A counting wrapper, not a seeded one: each
+ * read is passed to the real `Math.random`, so the region's results are what
+ * they would be without it.
+ */
+export function countGlobalRandomReads<T>(run: () => T): {
+    readonly value: T;
+    readonly reads: number;
+} {
+    const real = Math.random;
+    let reads = 0;
+    Math.random = () => {
+        reads++;
+        return real();
+    };
+    try {
+        // `value` is evaluated before `reads` is read, so the count is final.
+        return { value: run(), reads };
+    } finally {
+        Math.random = real;
+    }
+}
+
 /** What a seeded region produced, and how much randomness it consumed. */
 export interface SeededRun<T> {
     readonly value: T;
-    /** `Math.random` calls made inside the region. */
+    /** Draws made from the region's generator. */
     readonly draws: number;
 }
 
 /**
- * Runs `run` with `Math.random` replaced by a seeded, counting generator, then
- * puts the real one back.
+ * Seeded regions whose generator a tracker built outside them can reach:
+ * `rngFor` is the `NftTrackerOptions.rngFor` to give it.
  *
- * TEMPORARY, and the least pleasant thing in this test suite. The only random
- * choice in the tracker's pipeline is the minimal-sample draw inside
- * `estimateHomography`, and the contract's `RansacOptions` carries no RNG for
- * a caller to seed — jsfeatNext's `ransac_params_t` accepts one as its fifth
- * argument, but `cv-backend-jsfeatnext` does not pass it through
- * (webarkit/webarkit#24). Until that lands, reaching the generator means
- * reaching the global.
+ * Each `run` makes a FRESH `countedMulberry32(seed)`, which is the point: two
+ * pipelines drawing in turn from one generator would consume different
+ * tails, and comparing them would prove nothing. Inside a region `rngFor`
+ * answers with that region's generator, the same one on every call: one
+ * generator per run, as before webarkit/webarkit#188, so the draws are the
+ * ones the global swap made. Outside a region it answers `undefined`, which
+ * leaves the draw to the backend, exactly as an unseeded call was before.
  *
- * Each call installs a FRESH generator, which is the point: two pipelines
- * drawing in turn from one generator would consume different tails, and
- * comparing them would prove nothing. `finally` restores the real
- * `Math.random` even when `run` throws, so one failing test cannot leave the
- * rest of the file running on a stub.
- *
- * **Why it counts.** Swapping a global reaches every consumer of
- * `Math.random` in the process, not just RANSAC. That is harmless only for as
- * long as nothing else in the pipeline draws — true of jsfeatNext today, but
- * an observation about a dependency, not a guarantee, and exactly the kind of
- * assumption that rots silently. A new draw site upstream would shift the
- * sequence underneath every comparison built on this helper, and every symptom
- * would show up somewhere else. `draws` makes that self-checking: the parity
- * test asserts the deterministic stages draw zero and that both pipelines draw
- * the same amount, so a new site fails an assertion that names it instead of
- * quietly moving the numbers.
- *
- * When webarkit/webarkit#24 lands, DELETE the global swap — pass
- * `rng: mulberry32(seed)` to `estimateHomography` (and to `NftTrackerOptions`)
- * instead. **Keep the counting.** It is not a workaround for the global; it
- * pins where randomness is allowed to be consumed at all, which stays worth
- * knowing with an injected generator — the counter simply moves onto that
- * generator.
+ * **Why it counts.** The region's `draws` pins where randomness is consumed:
+ * the parity test asserts that both pipelines draw the same amount, so a
+ * change in how RANSAC consumes the generator fails an assertion that names
+ * it instead of quietly moving the numbers. And every region counts reads of
+ * the global `Math.random` and throws on any (#137's usage rule, point 3):
+ * with the generator injected, a read of the global is a random choice that
+ * bypassed it.
  */
-export function withSeededRandom<T>(seed: number, run: () => T): SeededRun<T> {
-    const real = Math.random;
-    const seeded = mulberry32(seed);
-    let draws = 0;
-    Math.random = () => {
-        draws++;
-        return seeded();
+export interface SeededSource {
+    readonly rngFor: () => (() => number) | undefined;
+    run<T>(seed: number, run: (rng: () => number) => T): SeededRun<T>;
+}
+
+/** A {@link SeededSource} for `cv`, which must declare `deterministicRansac`. */
+export function seededSource(cv: CvBackend): SeededSource {
+    requireDeterministicRansac(cv);
+    let current: CountedRng | null = null;
+    return {
+        rngFor: () => current?.rng,
+        run<T>(seed: number, run: (rng: () => number) => T): SeededRun<T> {
+            if (current !== null) throw new Error("seeded_rng: seeded regions do not nest");
+            const counted = countedMulberry32(seed);
+            current = counted;
+            try {
+                const { value, reads } = countGlobalRandomReads(() => run(counted.rng));
+                if (reads !== 0) {
+                    throw new Error(
+                        `seeded_rng: ${reads} read(s) of the global Math.random in a seeded region, with the rng injected`,
+                    );
+                }
+                return { value, draws: counted.draws() };
+            } finally {
+                current = null;
+            }
+        },
     };
-    try {
-        // `value` is evaluated before `draws` is read, so the count is final.
-        return { value: run(), draws };
-    } finally {
-        Math.random = real;
-    }
+}
+
+/** One seeded region on `cv`: `seededSource(cv).run(seed, run)`. */
+export function withSeededRng<T>(
+    cv: CvBackend,
+    seed: number,
+    run: (rng: () => number) => T,
+): SeededRun<T> {
+    return seededSource(cv).run(seed, run);
 }
