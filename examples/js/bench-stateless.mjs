@@ -64,6 +64,10 @@ function requireNumber(name, value) {
  * off with no error, since `h.numInliers < undefined` is false (#191). The
  * facing rule uses the package's own `targetSide` on the package's own grid,
  * so the two paths cannot classify a fit differently.
+ *
+ * `rng`, optional, is RANSAC's generator (`RansacOptions.rng`, #24), as
+ * `detectTarget`'s fifth argument: a seeded page passes the frame's
+ * `frameRng` (#151). Without it the options are exactly as before.
  */
 export function runStatelessPipeline(
     icv,
@@ -83,6 +87,7 @@ export function runStatelessPipeline(
         targetSide,
         targetGrid,
     },
+    rng,
 ) {
     for (const [name, fn] of [
         ["matchPerLevel", matchPerLevel],
@@ -140,7 +145,13 @@ export function runStatelessPipeline(
         dst[i * 2 + 1] = sceneKeypoints[m.queryIdx].y;
     }
 
-    const h = icv.estimateHomography(src, dst, { threshold: DEFAULT_RANSAC_THRESHOLD });
+    const h = icv.estimateHomography(
+        src,
+        dst,
+        rng === undefined
+            ? { threshold: DEFAULT_RANSAC_THRESHOLD }
+            : { threshold: DEFAULT_RANSAC_THRESHOLD, rng },
+    );
     if (!h.ok) {
         return {
             ok: false,

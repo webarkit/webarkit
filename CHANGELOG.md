@@ -23,8 +23,29 @@ release pull request's body and the GitHub Release's notes.
   An `rngFor` that is not a function throws a `RangeError` at construction, and one that
   returns something other than a function or `undefined` throws a `RangeError` from `process`
   ([#188](https://github.com/webarkit/webarkit/issues/188)).
+- `scripts/replay-clips.mjs` takes `--seed-policy run|frame` with `--seed`, and every export
+  records it as `seedPolicy`, beside `seed` (both null without a seed). `frame` builds a fresh
+  generator for each detection from the seed and the detected frame's media time
+  (`examples/js/frame-rng.mjs`), so the same frame draws the same RANSAC samples in any run; `run`
+  is one generator for the whole run, #188's. A seeded replay refuses a backend that does not
+  declare `deterministicRansac` and any read of the global `Math.random`, exit 1
+  ([#151](https://github.com/webarkit/webarkit/issues/151)).
+- `examples/bench-nft.html` takes `?seed=<n>`, which seeds every detection's RANSAC per frame,
+  from the seed and the frame's media time, on the synchronous path, the worker path (whose
+  `detect` message gains `seed` and `mediaTimeSeconds`) and the stateless mode. The export
+  records `seed` and `seedPolicy` (`frame`), both null without a seed, which draws as before.
+  Start refuses a seeded run on a backend that does not declare `deterministicRansac`, and a
+  `?seed=` it cannot read; `check:page` gains a check of seeded runs
+  ([#151](https://github.com/webarkit/webarkit/issues/151)).
 
 ### Changed
+
+- `scripts/replay-clips.mjs`'s `--seed` seeds RANSAC through the contract's `rng`, never the
+  global `Math.random`, and per frame by default (`--seed-policy frame`): two seeded replays now
+  detect a frame alike whatever else each processed, and a seeded replay's detections differ
+  from the same seed's before. `--seed-policy run` gives back the earlier draws: its
+  step-independent outputs are byte for byte those of the global swap, `seedPolicy` aside
+  ([#151](https://github.com/webarkit/webarkit/issues/151)).
 
 - `@webarkit/cv-backend-jsfeatnext` requires `@webarkit/jsfeat-next` `^1.1.0` (was `^0.17.0`),
   so the bench page's bundle carries 1.1.0. The backend's per-frame output is unchanged on the

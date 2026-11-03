@@ -42,7 +42,7 @@ const TARGET_SHA = "9e8eb486";
 const WHERE_TARGET = "targets/pinball.wnft";
 
 /** A lifecycle over a stand-in page: what it shows and enables is recorded in `page`. */
-function harness({ path = "worker", loops = null, hidden = false, frames = 3 } = {}) {
+function harness({ path = "worker", loops = null, hidden = false, frames = 3, seed } = {}) {
     const button = () => ({ disabled: false });
     const page = {
         startButton: button(),
@@ -58,7 +58,7 @@ function harness({ path = "worker", loops = null, hidden = false, frames = 3 } =
     };
     const lc = createRunLifecycle({
         detectionPath: path,
-        tuning: { loops, run: null },
+        tuning: seed === undefined ? { loops, run: null } : { loops, run: null, seed },
         targets: {
             wnft: { bytes: new Uint8Array([1, 2, 3]).buffer, record: { sha256: TARGET_SHA } },
         },
@@ -303,6 +303,19 @@ describe("postDetection's reply timeout (PG29)", () => {
             outcome: null,
         });
         expect(run.jobs).toEqual([run.jobInFlight]);
+    });
+
+    // #151: with ?seed=, the worker builds the frame's generator from the seed and
+    // the frame's media time, which the post carries; without, it carries null.
+    it.each([
+        [3, 3],
+        [null, null],
+    ])("posts the page's seed (%s) and the frame's media time", (seed, posted) => {
+        const h = harness({ seed });
+        const run = start(h.lc);
+        askingFrame(h.lc, run, 7);
+        expect(h.posted[0].message).toMatchObject({ seed: posted, mediaTimeSeconds: 7 / 30 });
+        expect(h.posted[0].message.seed).toBe(posted);
     });
 
     it("fails the run when the worker has not answered within the timeout", () => {

@@ -48,7 +48,7 @@ import { countLateReply, failedRuns, routeReply } from "./detection-replies.mjs"
  * own, so each function reads as it did there):
  *
  * - `detectionPath` and `tuning`: `?detection=`, and `parseRunParams`' result,
- *   of which `loops` and `run` are read;
+ *   of which `loops`, `run` and `seed` are read;
  * - `targets`, `targetPath` and `targetFile`: the page's targets (`wnft`'s
  *   `bytes` and `record.sha256` are read), and the `.wnft`'s path and URL;
  * - `replyTimeoutMs`: how long a job may go unanswered before its run fails;
@@ -511,7 +511,10 @@ export function createRunLifecycle({
      * buffer every frame, and nothing reads this one after `process`). The job
      * names its frame by `t0` — equal to that frame record's `timestampMs`,
      * which is how `summarizeRun` tells the frames that posted it — and media
-     * time. A job the worker has not answered in 5 s stops the run.
+     * time. The message carries `?seed=` (null without one) and the frame's
+     * media time, from which the worker builds the frame's generator, as the
+     * synchronous path does (#151). A job the worker has not answered in 5 s
+     * stops the run.
      */
     function postDetection(run, { frame, t0, mediaTimeSeconds, tick }) {
         const postedAtMs = performance.now();
@@ -537,6 +540,8 @@ export function createRunLifecycle({
                 runId: run.id,
                 frame: { width: frame.width, height: frame.height, data: frame.data },
                 timestampMs: t0,
+                seed: TUNING.seed ?? null,
+                mediaTimeSeconds,
             },
             [frame.data.buffer],
         );

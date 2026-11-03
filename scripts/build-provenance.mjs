@@ -113,6 +113,7 @@ export const SERVED = {
     "examples/js/detection-replies.mjs": "page",
     "examples/js/detection-worker-core.mjs": "worker",
     "examples/js/detection-worker.mjs": "worker",
+    "examples/js/frame-rng.mjs": "both",
     "examples/js/instrument-backend.mjs": "both",
     "examples/js/packages-bundle.mjs": "bundled",
     "examples/js/pinball-shared.mjs": "page",

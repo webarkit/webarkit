@@ -75,6 +75,12 @@ export function parsePositiveInt(raw) {
  * clip loops a run lasts) and `?run=` (its place in the session's order) are
  * positive integers, `null` when absent; one present and unreadable goes in
  * `paramErrors`.
+ *
+ * `?seed=` the same way (#151): an integer in [-4294967295, 4294967295], the
+ * replay's `--seed` domain, or `null` when absent; one present and
+ * unreadable goes in `paramErrors`. With a seed every detection draws from
+ * `frameRng(seed, its frame's media time)` (`./frame-rng.mjs`); without one
+ * the page draws as it always has.
  */
 export function parseRunParams(search, { bundledClips }) {
     const p = new URLSearchParams(search);
@@ -114,6 +120,14 @@ export function parseRunParams(search, { bundledClips }) {
     };
     const loops = positive("loops");
     const run = positive("run");
+    const rawSeed = p.get("seed");
+    let seed = null;
+    if (rawSeed !== null) {
+        // Digits only, as ?loops=: ?seed=1.5 (or 1e3, 0x10) is unreadable, never 1.
+        const n = /^\s*-?\d+\s*$/.test(rawSeed) ? Number(rawSeed) : NaN;
+        if (Number.isSafeInteger(n) && Math.abs(n) <= 0xffffffff) seed = n;
+        else paramErrors.push(`?seed=${rawSeed}: expected an integer in [-4294967295, 4294967295]`);
+    }
     return {
         maxKeypoints: parsePositiveInt(p.get("maxKeypoints")),
         procWidth: parsePositiveInt(p.get("procWidth")),
@@ -128,6 +142,7 @@ export function parseRunParams(search, { bundledClips }) {
         detection,
         loops,
         run,
+        seed,
         paramErrors,
     };
 }
@@ -283,8 +298,15 @@ export function startRefusal({
     detection = "sync",
     source = null,
     loops = null,
+    seed = null,
+    backend = null,
 }) {
     if (!MODES.includes(mode)) return `Unknown mode "${mode}": choose one of ${MODES.join(", ")}.`;
+    // #151: a backend free to ignore the injected generator would run the seeded
+    // run unseeded, and say nothing. `backend` is its capabilities.
+    if (seed !== null && backend?.deterministicRansac !== true) {
+        return `?seed=${seed}: the backend "${backend?.name}" does not declare deterministicRansac, so it may ignore the injected rng: refusing to run seeded.`;
+    }
     if (!target) {
         return loadFailure
             ? `${file} could not be loaded (${loadFailure}).`

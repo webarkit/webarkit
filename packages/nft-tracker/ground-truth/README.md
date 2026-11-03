@@ -167,20 +167,26 @@ A copy of a script outside the repository reads the checkout that
   [#24](https://github.com/webarkit/webarkit/issues/24)'s comment of
   2026-10-24, which says `seeded_rng.ts` "stays until #92 and #130".
   [#188](https://github.com/webarkit/webarkit/issues/188) retired the global
-  swap on 2026-11-02 (above). Outside this directory the global is still
-  replaced in seven files, five of which seed it:
+  swap on 2026-11-02 (above).
+  [#151](https://github.com/webarkit/webarkit/issues/151) moved
+  `scripts/replay-clips.mjs`'s `--seed` to an injected generator on
+  2026-11-03, a fresh one per detection by default (`--seed-policy frame`),
+  and the bench page (`?seed=`) and the worker's tests the same day; the
+  ground truth stays per run, one generator for each seeded region, and its
+  results are unchanged. Outside this directory the global is still
+  replaced in seven files, three of which seed it:
     - `cv-backend-jsfeatnext`'s `test/ransac_rng.test.ts` seeds it on
       purpose: its hash measures the backend with no `rng`, the evidence
       that an absent `rng` keeps the backend's behaviour (#24).
     - `bin/compile-target.mjs` seeds it during a compile to enforce zero
       draws (#137's item 4); it calls no `estimateHomography`.
-    - `scripts/jitter-dry-run.mjs`, `scripts/replay-clips.mjs`'s `--seed`
-      and `examples/test/detection-worker-core.test.mjs` (two helpers) seed it for the
-      tracker or the bench page, and belong with
-      [#151](https://github.com/webarkit/webarkit/issues/151), which moves the
-      replay and the bench page to an injected generator.
-    - `test/pose/ippe.test.ts` and `test/pose/s2_oracle_hash.test.ts` only
-      count reads, passing each to the real `Math.random`.
+    - `scripts/jitter-dry-run.mjs` seeds it on purpose: it seeds two builds
+      alike, a control that can predate `rngFor` included (#151).
+    - `test/pose/ippe.test.ts`, `test/pose/s2_oracle_hash.test.ts`,
+      `scripts/replay-seeding.mjs` and
+      `examples/test/detection-worker-core.test.mjs` only count reads,
+      passing each to the real `Math.random`; the last two refuse a seeded
+      region that reads it (#151).
 - **The build does not see this directory.** `tsconfig.json` compiles `src/`
   alone; `tsconfig.test.json` includes `ground-truth/` for the typecheck.
 - **Prettier sees the two modules, not `fixtures/`.** `npm run format:check`

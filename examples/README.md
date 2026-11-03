@@ -444,9 +444,23 @@ runs after 50 warm-up), downloaded as its own JSON.
 and `?camera=`: `?mode=`, `?target=`, `?window=` (10–2000 frames) and
 `?clip=` (a bundled clip's file name, which also selects that source) — e.g.
 `bench-nft.html?mode=tracking&window=300&clip=pinball-static.mp4`
-(tracking defaults to `target=wnft`); and `?detection=`, `?loops=` and
-`?run=`, below. A value of one of those three that cannot be read refuses
-Start rather than fall back to a default.
+(tracking defaults to `target=wnft`); and `?detection=`, `?loops=`,
+`?run=` and `?seed=`, below. A value of one of those four that cannot be
+read refuses Start rather than fall back to a default.
+
+**Seeded RANSAC: `?seed=`.** An integer in [-4294967295, 4294967295] seeds
+every detection's RANSAC from the seed and the media time of the frame it
+detects (`frameRng` in [`js/frame-rng.mjs`](./js/frame-rng.mjs), #151): the
+tracker's own detection through its `rngFor`, the worker's from the seed and
+media time each `detect` message carries, and the stateless pipeline's through
+`estimateHomography`'s `rng`. The same frame draws the same samples in any run,
+on either path. The export records `seed` and `seedPolicy` (`frame`), both
+`null` without a seed, which draws as the page always has. Start refuses a
+seeded run on a backend that does not declare `deterministicRansac`. A media
+time does not fix a frame's pixels: under load the page's grab can return
+another frame's for the same `mediaTime`, and a seed cannot make different
+pixels detect alike (`check:page`'s seeded check compares only frames whose
+grabbed pixels are identical).
 
 ### Detection off the frame loop: `?detection=worker`
 

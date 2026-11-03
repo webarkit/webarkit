@@ -60,6 +60,16 @@
  *   null entry, a key that is not a path, then `served` a string beside a
  *   module from the cache (#209): each start refused by name, Start and the
  *   probe enabled, and a fourth Start passes;
+ * - two synchronous `?seed=1` session runs, and a worker one, on the wall clip
+ *   (#151): on frames whose grabbed pixels are identical, the two synchronous
+ *   runs detect alike at every media time both detected (`ok`, the refusal's
+ *   reason, `numMatches`, `numInliers` and the corners, compared exactly), and
+ *   the worker's replies, recorded as they arrive, detect what the first
+ *   synchronous run detected at the media time each job names, its `H` turned
+ *   into corners by the export's own `reprojectCorners`; with the seed
+ *   withheld from the worker's `detect` messages, the worker leg finds a
+ *   detection that differs. Each leg must compare a floor of media times;
+ *   the page's `getImageData` is wrapped to hash each frame's pixels;
  * - and one smoke check of the pose demo,
  *   `examples/pinball-pose-jsfeatnext-backend.html` (#200): its pose drawn
  *   under `"TRACK"`, with the pose filter off and then on.
@@ -67,8 +77,9 @@
  * Nothing in the page is changed. Faults are injected from outside, through
  * the DevTools protocol, before the page's own scripts run: the page's
  * `Worker` is kept so that an `ErrorEvent` can be dispatched on it, the
- * video's frame callback is wrapped, in two scenarios only, so that one frame's
- * `mediaTime` can be replaced, an
+ * video's frame callback is wrapped, in two scenarios so that one frame's
+ * `mediaTime` can be replaced, and in the seeded runs' so that the pixels the
+ * callback grabs (`getImageData`, wrapped) are hashed with its `mediaTime`, an
  * export's `Blob` is kept as `URL.createObjectURL` receives it, `console.warn`
  * and `console.error` are recorded, and the promise of Start's click handler
  * is kept, so that the outcome of a click is read when the handler has
@@ -104,6 +115,7 @@ import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 import { UNKNOWN_CHUNK_TARGET_PARAM, writeUnknownChunkTarget } from "./unknown-chunk-target.mjs";
+import { reprojectCorners, targetCorners } from "../examples/js/bench-frames.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SERVED = join(ROOT, "examples");
@@ -253,7 +265,7 @@ function findChrome() {
  *   `performance.getEntriesByType(type)` returns, with the entry of `path`
  *   given `set`'s fields, or removed, or with `add` appended.
  */
-function instrument({ fabricatedWrap = null } = {}) {
+function instrument({ fabricatedWrap = null, hashGrabs = false } = {}) {
     const pc = {
         workers: [],
         exports: [],
@@ -261,6 +273,11 @@ function instrument({ fabricatedWrap = null } = {}) {
         console: [],
         fabricatedWrap,
         faults: {},
+        // Each worker's `result` reply, as it arrives (#151).
+        replies: [],
+        // Each frame's pixels as the page grabbed them (#151): `{ mediaTime,
+        // hash }` per `getImageData` made inside a video frame callback.
+        grabs: [],
     };
     window.__pageCheck = pc;
     if (fabricatedWrap) {
@@ -286,17 +303,78 @@ function instrument({ fabricatedWrap = null } = {}) {
             });
         };
     }
+    // #151: the pixels each frame's detection reads, as the page grabs them in
+    // its frame callback (toGrayTimed's `getImageData`, whose RGBA the page
+    // turns grey deterministically), tagged with the media time the callback
+    // was given. Installed after the fabricated wrap, so it records the media
+    // time the page receives. Two 32-bit FNV-1a passes, the second over the
+    // bytes reversed, make a 64-bit hash. Only with `hashGrabs`: a pass over
+    // every frame's RGBA inside its timed acquisition is cost no other
+    // scenario should carry.
+    if (hashGrabs) {
+        let mediaTime = null;
+        const requestVideoFrameCallback = HTMLVideoElement.prototype.requestVideoFrameCallback;
+        HTMLVideoElement.prototype.requestVideoFrameCallback = function (callback) {
+            const video = this;
+            return requestVideoFrameCallback.call(this, function (now, metadata) {
+                mediaTime = metadata?.mediaTime ?? video.currentTime;
+                try {
+                    return callback.call(this, now, metadata);
+                } finally {
+                    mediaTime = null;
+                }
+            });
+        };
+        const hash = (bytes) => {
+            let a = 0x811c9dc5;
+            let b = 0x811c9dc5;
+            for (let i = 0, j = bytes.length - 1; i < bytes.length; i++, j--) {
+                a = Math.imul(a ^ bytes[i], 0x01000193);
+                b = Math.imul(b ^ bytes[j], 0x01000193);
+            }
+            return `${(a >>> 0).toString(16)}:${(b >>> 0).toString(16)}:${bytes.length}`;
+        };
+        for (const Context of [
+            globalThis.CanvasRenderingContext2D,
+            globalThis.OffscreenCanvasRenderingContext2D,
+        ]) {
+            if (!Context) continue;
+            const getImageData = Context.prototype.getImageData;
+            Context.prototype.getImageData = function (...args) {
+                const image = getImageData.apply(this, args);
+                if (mediaTime !== null) pc.grabs.push({ mediaTime, hash: hash(image.data) });
+                return image;
+            };
+        }
+    }
     const NativeWorker = window.Worker;
     window.Worker = class extends NativeWorker {
         constructor(...args) {
             super(...args);
             pc.workers.push(this);
+            this.addEventListener("message", ({ data }) => {
+                if (data?.type !== "result") return;
+                const d = data.detection;
+                pc.replies.push({
+                    jobId: data.jobId,
+                    runId: data.runId,
+                    ok: d.ok,
+                    reason: d.ok ? null : d.reason,
+                    numMatches: d.numMatches,
+                    numInliers: d.numInliers,
+                    H: d.ok ? Array.from(d.H) : null,
+                });
+            });
         }
         postMessage(message, ...rest) {
             const thrown = pc.faults.detectPost;
             if (thrown && message?.type === "detect") {
                 pc.faults.detectPost = null;
                 throw new Error(thrown);
+            }
+            if (pc.faults.withholdSeed && message?.type === "detect") {
+                const { seed: _, ...unseeded } = message;
+                return super.postMessage(unseeded, ...rest);
             }
             return super.postMessage(message, ...rest);
         }
@@ -1370,6 +1448,228 @@ async function workerFailsWhileSourceStarts(browser, base) {
     });
 }
 
+/** A seeded session run on the wall clip (#151): `?run=1`, so Start checks the manifest. */
+const SEEDED_QUERY =
+    "mode=tracking&target=wnft&clip=pinball-bench.mp4&loops=1&run=1&window=2000&seed=1";
+
+/**
+ * The fewest media times each leg of {@link seededRuns} must compare on
+ * pixel-identical frames, or it fails rather than pass on next to nothing:
+ * 40, about half of the 89 (sync against sync) and 86 (worker against sync)
+ * common detected media times two runs of 300 frames had at normal load on
+ * the PC that wrote this check, so that a run under load, which sets more of
+ * them aside, still clears it, and a leg that compared almost nothing does
+ * not.
+ */
+const SEEDED_FLOOR = 40;
+
+/** A detection as compared (#151): `corners` stand for `H`, through the export's own function. */
+const detectionView = (d) =>
+    JSON.stringify([d.ok, d.ok ? null : (d.reason ?? null), d.numMatches, d.numInliers, d.corners]);
+
+/**
+ * Each frame of export `e` with the hash of the pixels the page grabbed for
+ * it: the page grabs once per frame it processes, in its frame callback, so
+ * `grabs` and `e.frames` pair in order; they must be as many, and each pair
+ * must name the same media time, or the run cannot be read.
+ */
+function framesWithPixels(e, grabs, what) {
+    expect(
+        grabs.length === e.frames.length,
+        `${what}: ${grabs.length} grabs for ${e.frames.length} frames`,
+    );
+    return e.frames.map((f, i) => {
+        expect(
+            grabs[i].mediaTime === f.mediaTimeSeconds,
+            `${what}: frame ${i} at ${f.mediaTimeSeconds} s, its grab at ${grabs[i].mediaTime} s`,
+        );
+        return { ...f, pixels: grabs[i].hash };
+    });
+}
+
+/** Detections by media time in µs, each `{ view, pixels }`. */
+function byMediaTime(entries) {
+    const out = new Map();
+    for (const { mediaTimeSeconds, view, pixels } of entries) {
+        const key = Math.round(mediaTimeSeconds * 1e6);
+        if (!out.has(key)) out.set(key, []);
+        out.get(key).push({ view, pixels });
+    }
+    return out;
+}
+
+/** A run's own detections (`detectionUse` `internal`). */
+const internalDetections = (frames) =>
+    byMediaTime(
+        frames
+            .filter((f) => f.detectionUse === "internal")
+            .map((f) => ({
+                mediaTimeSeconds: f.mediaTimeSeconds,
+                view: detectionView(f),
+                pixels: f.pixels,
+            })),
+    );
+
+/**
+ * The worker's recorded replies to export `e`'s jobs, each with the pixels of
+ * the frame the job posted (`e.frames[job.tick]`, the frame record of that
+ * tick, which names the job's media time).
+ */
+function workerDetections(e, frames, replies) {
+    const points = targetCorners(e.target.widthPx, e.target.heightPx);
+    const jobs = new Map(e.detection.jobs.map((j) => [j.jobId, j]));
+    const entries = [];
+    for (const r of replies) {
+        const job = jobs.get(r.jobId);
+        if (!job) continue;
+        const frame = frames[job.tick];
+        expect(
+            frame?.mediaTimeSeconds === job.frameMediaTimeSeconds,
+            `job ${job.jobId}: tick ${job.tick} is not its frame`,
+        );
+        const corners = r.ok ? reprojectCorners(r.H, points) : null;
+        entries.push({
+            mediaTimeSeconds: job.frameMediaTimeSeconds,
+            view: detectionView({ ...r, corners }),
+            pixels: frame.pixels,
+        });
+    }
+    return byMediaTime(entries);
+}
+
+/**
+ * Every detection of `a` against every one of `b` at each media time both
+ * hold, on pixel-identical frames only: `{ common, setAside, compared, posed,
+ * differ }`, `posed` the compared media times where a pixel-identical pair has
+ * corners, so that a leg of refusals alone cannot pass as a comparison.
+ * A media time is set aside when no pair there has identical pixels, and
+ * compared otherwise; `differ` are the compared media times where a
+ * pixel-identical pair is not equal. A detection without corners is compared
+ * by `ok`, its reason and its counts, and is never equal by default.
+ */
+function compareDetections(a, b) {
+    let common = 0;
+    let setAside = 0;
+    let posed = 0;
+    const differ = [];
+    for (const [key, xs] of a) {
+        const ys = b.get(key);
+        if (!ys) continue;
+        common++;
+        const pairs = xs.flatMap((x) => ys.filter((y) => y.pixels === x.pixels).map((y) => [x, y]));
+        if (pairs.length === 0) {
+            setAside++;
+            continue;
+        }
+        if (pairs.some(([x]) => JSON.parse(x.view)[4] !== null)) posed++;
+        if (pairs.some(([x, y]) => x.view !== y.view)) differ.push(key / 1e6);
+    }
+    return { common, setAside, compared: common - setAside, posed, differ };
+}
+
+const legLine = (name, c) =>
+    `${name}: ${c.common} common detected media times, ${c.setAside} set aside for differing pixels, ${c.compared} compared (${c.posed} posed), ${c.differ.length} differ`;
+
+/**
+ * #151's page evidence: two synchronous `?seed=1` session runs, each to its
+ * end (`?loops=1`), detect alike at every media time both detected on
+ * identical pixels; a worker run with the same seed detects, at each media
+ * time a job names, what the first synchronous run detected there on
+ * identical pixels; and the same worker run with the seed withheld from its
+ * `detect` messages does not, which is what shows the worker leg can fail.
+ *
+ * Pixels, because a media time does not fix them: under load the page's grab
+ * can return a different frame's pixels for the same `mediaTime` (#151's
+ * finding: `numMatches` 8 against 6 at one media time, counted before any
+ * RANSAC draw), and a seed cannot make different pixels detect alike. Each
+ * frame's grab is hashed as the page makes it ({@link instrument}); a media
+ * time where no pair of detections had identical pixels is set aside, and
+ * each leg must compare at least {@link SEEDED_FLOOR}. The worker's
+ * detections are read from its replies, recorded as they arrive, joined to
+ * the export's `detection.jobs` by `jobId`: the export records no detection's
+ * `H`. Each run has a page of its own, so the replies and grabs are that
+ * run's. Prints one line per leg.
+ */
+async function seededRuns(browser, base) {
+    const names = [
+        "seeded ?seed=1 runs: on identical pixels, two sync runs detect alike, a worker run as the first, and not with the seed withheld",
+    ];
+    /** One run on its own page, to its end: its export, its frames with their pixels, the worker's replies. */
+    const runToEnd = async (query, faults = {}) => {
+        const p = await openPage(browser, base, query, { hashGrabs: true });
+        try {
+            await p.waitReady();
+            await p.page.evaluate((faults) => {
+                window.__pageCheck.faults = faults;
+            }, faults);
+            await p.clickStart();
+            await waitRunEnd(p);
+            const status = await p.read.status();
+            expect(
+                status === "done",
+                `${query}: status "${status}", error line "${await p.read.error()}"`,
+            );
+            await p.click("download");
+            const e = await p.read.lastExport();
+            expect(
+                e.seed === 1 && e.seedPolicy === "frame",
+                `${query}: seed ${e.seed}, seedPolicy ${e.seedPolicy}`,
+            );
+            const { replies, grabs } = await p.page.evaluate(() => ({
+                replies: window.__pageCheck.replies,
+                grabs: window.__pageCheck.grabs,
+            }));
+            return { e, frames: framesWithPixels(e, grabs, query), replies };
+        } finally {
+            await p.close();
+        }
+    };
+    await scenario(names, async (check) => {
+        const first = await runToEnd(SEEDED_QUERY);
+        const second = await runToEnd(SEEDED_QUERY);
+        const worker = await runToEnd(`${SEEDED_QUERY}&detection=worker`);
+        const withheld = await runToEnd(`${SEEDED_QUERY}&detection=worker`, { withholdSeed: true });
+        await check(names[0], async () => {
+            const sync1 = internalDetections(first.frames);
+            const legs = [
+                ["sync against sync", compareDetections(sync1, internalDetections(second.frames))],
+                [
+                    "worker against sync",
+                    compareDetections(
+                        workerDetections(worker.e, worker.frames, worker.replies),
+                        sync1,
+                    ),
+                ],
+                [
+                    "seed withheld, worker against sync",
+                    compareDetections(
+                        workerDetections(withheld.e, withheld.frames, withheld.replies),
+                        sync1,
+                    ),
+                ],
+            ];
+            for (const [name, c] of legs) console.log(`seeded runs, ${legLine(name, c)}`);
+            for (const [name, c] of legs) {
+                expect(
+                    c.compared >= SEEDED_FLOOR,
+                    `${legLine(name, c)}: fewer than ${SEEDED_FLOOR} compared`,
+                );
+                expect(c.posed >= 1, `${legLine(name, c)}: none of them posed`);
+            }
+            const [[, sync], [, work], [, fault]] = legs;
+            expect(sync.differ.length === 0, `the sync runs differ at ${sync.differ.join(", ")} s`);
+            expect(
+                work.differ.length === 0,
+                `the worker differs from the sync run at ${work.differ.join(", ")} s`,
+            );
+            expect(
+                fault.differ.length > 0,
+                `with the seed withheld, the worker matched the sync run at all ${fault.compared} media times compared`,
+            );
+        });
+    });
+}
+
 /** The pose demo (#200), which is not the bench page and has no manifest. */
 const POSE_PAGE = "examples/pinball-pose-jsfeatnext-backend.html";
 
@@ -1552,6 +1852,7 @@ async function main() {
         await syncServedMalformed(browser, base);
         await workerDetectPostThrows(browser, base);
         await workerFailsWhileSourceStarts(browser, base);
+        await seededRuns(browser, base);
         await poseDemo(browser, base);
     } finally {
         await browser?.close();
