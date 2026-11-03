@@ -37,6 +37,9 @@
  *     node scripts/replay-clips.mjs --external <latencyMs> [--seed <n>] [--out <dir>]
  *     node scripts/replay-clips.mjs --transfer <dir> [--seed <n>] [--out <dir>]
  *
+ * Every form takes `--seed <n>` and, with it, `--seed-policy <run|frame>`
+ * (default `frame`); see the tuning rounds below.
+ *
  * Every form takes `--packages <dist|bundle>` (default `dist`): the packages'
  * `dist/`, or the bench page's shared bundle (see `PACKAGES` below).
  *
@@ -73,10 +76,28 @@
  *   (`parseTrackerOverrides`), applied to every run. Not with `--sequence`,
  *   which runs the export's own options, nor with `--transfer`, which replays
  *   a session's runs, all at the tracker's defaults.
- * - `--seed <n>`: `Math.random` seeded (mulberry32) at the start of every run,
- *   so RANSAC draws in the detections repeat, and a candidate's run differs
- *   from the baseline's by the candidate, not by the draws — until the two
- *   runs' frames diverge. Without it the replay draws as it always has.
+ * - `--seed <n>`: RANSAC seeded, so its draws in the detections repeat, and a
+ *   candidate's run differs from the baseline's by the candidate, not by the
+ *   draws. The generators reach the backend through the contract's
+ *   `RansacOptions.rng` (#24): the tracker's `rngFor` and, in the external
+ *   arms, `detectTarget`'s `rng` (#188); the global `Math.random` is never
+ *   swapped. `--seed-policy` (scripts/replay-seeding.mjs) says how:
+ *   - `frame` (the default): a fresh generator for each detection,
+ *     `frameRng(seed, t)` (examples/js/frame-rng.mjs), `t` the detected
+ *     frame's media time, the clip's own `pts`. The same frame draws the same
+ *     samples in any run, whatever the run processed before it, so two runs'
+ *     detections of a frame differ by the candidate even after their frames
+ *     diverge.
+ *   - `run`: one `mulberry32(seed)` for the whole run, the draws the global
+ *     swap made before #151: they repeat only while the runs process the same
+ *     frames.
+ *
+ *   A seeded run needs a backend that declares `deterministicRansac`, and may
+ *   not read the global `Math.random` once: either failure stops it, exit 1
+ *   (the second is `check:replay`'s RG1).
+ *   The exports record `seed` and `seedPolicy` (null without a seed; an export
+ *   without `seedPolicy` is a `run` one). Without `--seed` the replay draws as
+ *   it always has, and `--seed-policy` is refused.
  * - `--tracking-only`: skip the detection-only runs. They do not depend on the
  *   patches or the tracking options, so a round needs them once per seed, for
  *   the static clip's jitter ratio. The default runs only: `--external`,
@@ -160,8 +181,12 @@
  *
  * The draws come from their own seeded stream (mulberry32 of the seed XOR a
  * constant), at the start of each arm, so a run repeats, and neither arm's
- * draws move the RANSAC draws' `Math.random`. `--seed` defaults to 1 here,
- * and is printed. Files are read in name order, since the draws index the
+ * draws move the RANSAC draws' generators. `--seed` defaults to 1 here, and
+ * is printed with its policy. Under `--seed-policy frame`, the default, both
+ * arms detect a frame alike whenever both detect it, so what differs between
+ * them is the latencies and the frames those let each arm detect; under
+ * `run`, a frame's RANSAC draws also differ with the jobs the arm posted
+ * before it. Files are read in name order, since the draws index the
  * samples. The replay's target must be the one the exports name (`target.sha256`):
  * a clip whose exports name another, or that has exports of one path only, is
  * refused (exit 1), before any clip is decoded; so is a worker export whose
@@ -216,8 +241,17 @@ import {
     targetRecord,
     transferPlan,
 } from "../examples/js/bench-metrics.mjs";
+import { mulberry32 } from "../examples/js/frame-rng.mjs";
 import { fitSize } from "../examples/js/pinball-shared.mjs";
 import { sequenceResolutionRefusal, trackTimeShareRefusal } from "./replay-checks.mjs";
+import { loopPeriod, loopTimes, replayRun } from "./replay-run.mjs";
+import {
+    countGlobalRandomReads,
+    DEFAULT_SEED_POLICY,
+    runSeeding,
+    SEED_POLICIES,
+    seedingRefusal,
+} from "./replay-seeding.mjs";
 import { createStepProbe } from "./tuning-probe.mjs";
 
 const EXAMPLES = fileURLToPath(new URL("../examples/", import.meta.url));
@@ -362,6 +396,16 @@ const SEED = arg("--seed") === null ? (TRANSFER_DIR === null ? null : 1) : Numbe
 if (SEED !== null && !(Number.isSafeInteger(SEED) && Math.abs(SEED) <= 0xffffffff)) {
     usage(`--seed expects an integer in [-4294967295, 4294967295], got "${arg("--seed")}"`);
 }
+// A policy with no seed to apply would say a run was seeded that never was.
+const SEED_POLICY_ARG = arg("--seed-policy");
+if (SEED_POLICY_ARG !== null && !SEED_POLICIES.includes(SEED_POLICY_ARG)) {
+    usage(`--seed-policy expects run or frame, got "${SEED_POLICY_ARG}"`);
+}
+if (SEED_POLICY_ARG !== null && SEED === null) {
+    usage("--seed-policy says how --seed seeds RANSAC, and --seed was not given: drop it");
+}
+/** `--seed-policy`, or null without a seed. */
+const SEED_POLICY = SEED === null ? null : (SEED_POLICY_ARG ?? DEFAULT_SEED_POLICY);
 const TRACKING_ONLY = process.argv.includes("--tracking-only");
 const DEVICE_RATIO = Number(arg("--device-ratio") ?? 3.15);
 if (!(Number.isFinite(DEVICE_RATIO) && DEVICE_RATIO > 0)) {
@@ -415,27 +459,22 @@ if (TRACKING_ONLY) {
     }
 }
 
-/** mulberry32, as compile-target and the tests' seeded_rng use it. */
-function mulberry32(seed) {
-    let a = seed >>> 0;
-    return () => {
-        a = (a + 0x6d2b79f5) >>> 0;
-        let t = Math.imul(a ^ (a >>> 15), 1 | a);
-        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
-
-/** `run()` with `Math.random` seeded by `--seed`, or unchanged without one. */
-function seeded(run) {
-    if (SEED === null) return run();
-    const real = Math.random;
-    Math.random = mulberry32(SEED);
-    try {
-        return run();
-    } finally {
-        Math.random = real;
+/**
+ * `run(seeding)` with this run's generators (`runSeeding`), or with null
+ * without a seed. A seeded run that reads the global `Math.random` exits 1,
+ * one line naming `what`: with the generators injected, such a read is a
+ * random choice `--seed` does not reach.
+ */
+function seeded(what, run) {
+    if (SEED === null) return run(null);
+    const { value, reads } = countGlobalRandomReads(() => run(runSeeding(SEED, SEED_POLICY)));
+    if (reads !== 0) {
+        console.error(
+            `replay-clips: ${what}: ${reads} read(s) of the global Math.random in a run seeded through the backend's rng (--seed ${SEED}, --seed-policy ${SEED_POLICY}): the seed does not reach them`,
+        );
+        process.exit(1);
     }
+    return value;
 }
 
 function probe(path) {
@@ -508,6 +547,15 @@ async function loadClip(clip, box = BOX) {
 }
 
 const cv = await createJsfeatNextBackend();
+if (SEED !== null) {
+    // Before anything is decoded: a backend free to ignore the generators
+    // would run every seeded run unseeded, and say nothing.
+    const refused = seedingRefusal(cv);
+    if (refused) {
+        console.error(`replay-clips: --seed ${SEED}: ${refused}`);
+        process.exit(1);
+    }
+}
 const wnft = readFileSync(TARGET_PATH);
 const decoded = decode(new Uint8Array(wnft));
 if (!decoded.ok) throw new Error(`${TARGET_PATH}: ${decoded.error}`);
@@ -538,28 +586,21 @@ const targetRec = targetRecord({
     db: target,
 });
 
-/** A clip's duration on the looping timeline, seconds: its span plus the gap the first two frames show. */
-const loopPeriod = (pts) => pts[pts.length - 1] - pts[0] + (pts[1] - pts[0]);
-
-/** `loops` loops of the clip's frame times on one continuous timeline, seconds, as the page's looping <video> plays them. */
-function loopTimes(pts, loops) {
-    const period = loopPeriod(pts);
-    return Array.from(
-        { length: loops * pts.length },
-        (_, k) => pts[k % pts.length] + Math.floor(k / pts.length) * period,
-    );
-}
-
 /**
- * One replay: `order` is the frame indices to process, or null for the device
- * schedule over `loops` loops (`LOOPS` unless a caller says more); `options` are
- * the tracker's (its defaults unless an export recorded others). `acquireMs` is
+ * One replay (`replayRun`, scripts/replay-run.mjs), inside the run's seed:
+ * `order` is the frame indices to process, or null for the device schedule
+ * over `loops` loops (`LOOPS` unless a caller says more); `options` are the
+ * tracker's (its defaults unless an export recorded others). `acquireMs` is
  * the device schedule's acquisition (the clip's `DEVICE_ACQUIRE_MS` unless a
  * caller says another), and `unwrapped` stamps each frame with its time on the
  * loops' continuous timeline rather than its media time, which goes back to
- * about 0 at every wrap.
+ * about 0 at every wrap: `--external`'s arms 1 and 4 set it, and the default
+ * runs and `--sequence` stamp each frame `pts[i] * 1000`. Under
+ * `--seed-policy frame` a detection is keyed on `pts[i]` either way, never
+ * on the stamp. `what` names the run in a refusal.
  */
 function replay({
+    what,
     clip,
     frames,
     pts,
@@ -573,8 +614,13 @@ function replay({
     acquireMs = DEVICE_ACQUIRE_MS[clip],
     unwrapped = false,
 }) {
-    return seeded(() =>
+    return seeded(`${clip}, ${what}`, (seeding) =>
         replayRun({
+            NftTracker,
+            cv,
+            target,
+            targetPoints,
+            detectMs: DEVICE_DETECT_MS,
             frames,
             pts,
             K,
@@ -586,62 +632,9 @@ function replay({
             loops,
             acquireMs,
             unwrapped,
+            seeding,
         }),
     );
-}
-
-function replayRun({
-    frames,
-    pts,
-    K,
-    mode,
-    stepMs,
-    order,
-    options,
-    probe,
-    loops,
-    acquireMs,
-    unwrapped,
-}) {
-    const tracker = new NftTracker(cv, target, K, {
-        ...options,
-        detectionOnly: mode === "detection-only",
-        clock: () => performance.now(),
-    });
-    const records = [];
-    const push = (i, timestampMs = pts[i] * 1000) => {
-        const result = tracker.process(frames[i], timestampMs);
-        probe?.frame(frames[i], result);
-        records.push(
-            frameRecord({
-                mode,
-                result,
-                stageTimings: {},
-                timestampMs,
-                mediaTimeSeconds: pts[i],
-                targetPoints,
-            }),
-        );
-        return result;
-    };
-    if (order) {
-        for (const i of order) push(i);
-        return records;
-    }
-    const times = loopTimes(pts, loops);
-    for (let k = 0; k < times.length; ) {
-        const result = push(k % pts.length, unwrapped ? times[k] * 1000 : undefined);
-        if (stepMs === null) {
-            k++;
-            continue;
-        }
-        const busy =
-            acquireMs +
-            (result.tracking ? stepMs : 0) +
-            (result.state === "TRACK" ? 0 : DEVICE_DETECT_MS);
-        k = nextFrameIndex(times, k, busy);
-    }
-    return records;
 }
 
 /**
@@ -649,9 +642,10 @@ function replayRun({
  * `--transfer`'s: the tracker in `externalDetection` mode, and the page's own
  * on-demand policy (`createDetectionPolicy`) deciding what is asked and what is
  * handed in. On a frame whose result says `needsDetection`, with nothing in
- * flight or held, this detects that very frame now (inside the run's seed, so
- * it repeats) and holds the result back until the first frame processed at or
- * after
+ * flight or held, this detects that very frame now, with `seeding`'s
+ * generator for it (`runSeeding`: under `frame`, keyed on the detected
+ * frame's media time, `pts[i]`, never on its stamp on the timeline), and
+ * holds the result back until the first frame processed at or after
  *
  *     post + latencyMs, where post = the frame's time + acquireMs + stepMs,
  *
@@ -679,12 +673,25 @@ function replayRun({
  * `handlerMs` and `workerMs` not modelled) and the policy's accounting, which
  * the caller asserts.
  */
-function replayExternal({ frames, pts, K, options, stepMs, everyFrame, latencyMs, acquireMs }) {
+function replayExternal({
+    frames,
+    pts,
+    K,
+    options,
+    stepMs,
+    everyFrame,
+    latencyMs,
+    acquireMs,
+    seeding,
+}) {
     const latencyOf = typeof latencyMs === "function" ? latencyMs : () => latencyMs;
     const tracker = new NftTracker(cv, target, K, {
         ...options,
         externalDetection: true,
         clock: () => performance.now(),
+        // Never called here: an externalDetection tracker does not detect
+        // itself. Given all the same, so that one that did would be seeded.
+        rngFor: seeding?.rngFor,
     });
     // The tracker's own setup, from the options it was given.
     const setup = prepareDetection(cv, target, options);
@@ -704,6 +711,7 @@ function replayExternal({ frames, pts, K, options, stepMs, everyFrame, latencyMs
         if (settled) pending = null;
         const inFlight = policy.inFlight;
         const tick = records.length;
+        seeding?.frame(pts[i]);
         const result = tracker.process(frames[i], timestampMs, handed);
         const workMs = acquireMs + (result.tracking ? stepMs : 0);
         policy.afterProcess(result, () => {
@@ -724,7 +732,13 @@ function replayExternal({ frames, pts, K, options, stepMs, everyFrame, latencyMs
             jobs.push(job);
             pending = {
                 job,
-                detection: detectTarget(cv, setup, frames[i], timestampMs),
+                detection: detectTarget(
+                    cv,
+                    setup,
+                    frames[i],
+                    timestampMs,
+                    seeding?.detectionRng(pts[i]),
+                ),
                 readyS: times[k] + (workMs + latency) / 1000,
             };
         });
@@ -836,7 +850,9 @@ function writeExport(clip, planned, e) {
  * one exits 1, one line naming the clip and the arm.
  */
 function runExternal(clip, arm, params) {
-    const run = seeded(() => replayExternal(params));
+    const run = seeded(`${clip}, ${arm.schedule}`, (seeding) =>
+        replayExternal({ ...params, seeding }),
+    );
     const unbalanced = accountingError(run.accounting);
     if (unbalanced) {
         console.error(`replay-clips: ${clip}, ${arm.schedule}: ${unbalanced}`);
@@ -894,6 +910,7 @@ function armExport({
     }
     e.trackerOptions = OVERRIDES;
     e.seed = SEED;
+    e.seedPolicy = SEED_POLICY;
     e.loops = M3_COUNTED;
     e.clipDurationS = clipDurationS;
     e.stepMs = stepMs;
@@ -999,7 +1016,10 @@ async function externalArms() {
                     acquireMs,
                 }));
             } else {
+                // Arms 1 and 4, stamped on the loops' timeline (`unwrapped`);
+                // a frame-seeded detection is keyed on its media time all the same.
                 records = replay({
+                    what: arm.schedule,
                     clip,
                     frames,
                     pts,
@@ -1040,8 +1060,8 @@ async function externalArms() {
 
 /**
  * XORed into the seed for the latency draws' own stream, so that they neither
- * consume nor shift the RANSAC draws' (`Math.random`, seeded from the seed
- * itself).
+ * consume nor shift the RANSAC draws' (`runSeeding`'s generators, seeded from
+ * the seed itself).
  */
 const LATENCY_STREAM = 0x9e3779b9;
 
@@ -1105,7 +1125,7 @@ async function transferArms() {
     }
     const seedNote = arg("--seed") === null ? " (the default: --seed was not given)" : "";
     console.log(
-        `latency transfer from ${TRANSFER_DIR}: ${files.length - plan.skipped.length} page exports; each job's latency drawn with replacement from its mode's samples, counted from the post, seed ${SEED}${seedNote}; each mode's acquisition (acquire + gray p50 on frames that are not TRACK) and tracking step (trackMs p50 on TRACK frames) from its own exports; the device schedule; ${M3_LOOPS} loops a run, ${countedLoopsText(M3_COUNTED)}
+        `latency transfer from ${TRANSFER_DIR}: ${files.length - plan.skipped.length} page exports; each job's latency drawn with replacement from its mode's samples, counted from the post, seed ${SEED}${seedNote}, RANSAC seed policy ${SEED_POLICY}; each mode's acquisition (acquire + gray p50 on frames that are not TRACK) and tracking step (trackMs p50 on TRACK frames) from its own exports; the device schedule; ${M3_LOOPS} loops a run, ${countedLoopsText(M3_COUNTED)}
 `,
     );
     for (const { clip, sync, worker } of plan.clips) {
@@ -1218,6 +1238,7 @@ if (sequencePath) {
     const replayed = () =>
         summarizeRun(
             replay({
+                what: "--sequence",
                 clip: e.bundledClip,
                 frames,
                 pts,
@@ -1255,7 +1276,7 @@ const outDir = arg("--out");
 if (outDir) mkdirSync(outDir, { recursive: true });
 const patchTable = target.patches;
 console.log(
-    `target ${targetFile} (sha256 ${targetRec.sha256.slice(0, 12)}…): ${patchTable ? `${patchTable.count} patches of ${patchTable.patchSize} × ${patchTable.patchSize}` : "no patches"}; options ${Object.keys(OVERRIDES).length > 0 ? JSON.stringify(OVERRIDES) : "defaults"}; seed ${SEED ?? "none"}${TRANSFER_DIR === null ? `; device ratio ${DEVICE_RATIO}` : ""}
+    `target ${targetFile} (sha256 ${targetRec.sha256.slice(0, 12)}…): ${patchTable ? `${patchTable.count} patches of ${patchTable.patchSize} × ${patchTable.patchSize}` : "no patches"}; options ${Object.keys(OVERRIDES).length > 0 ? JSON.stringify(OVERRIDES) : "defaults"}; seed ${SEED === null ? "none" : `${SEED}, policy ${SEED_POLICY}`}${TRANSFER_DIR === null ? `; device ratio ${DEVICE_RATIO}` : ""}
 `,
 );
 if (TRANSFER_DIR !== null) {
@@ -1287,6 +1308,7 @@ for (const clip of CLIPS) {
         const probe =
             everyFrameTracking && target.patches ? createStepProbe(target, OVERRIDES) : null;
         const records = replay({
+            what: `${run.mode}, ${run.schedule}`,
             clip,
             frames,
             pts,
@@ -1301,6 +1323,7 @@ for (const clip of CLIPS) {
         // not the probe ran on it.
         e.trackerOptions = OVERRIDES;
         e.seed = SEED;
+        e.seedPolicy = SEED_POLICY;
         if (probe) {
             probeSummary = probe.summary();
             e.tuningProbe = probeSummary;

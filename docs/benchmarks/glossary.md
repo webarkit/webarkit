@@ -450,6 +450,8 @@ list to the module.
 - `quality`
 - `reacquisitions`
 - `reacquisitionsAtLoopWrap`
+- `seed`
+- `seedPolicy`
 - `spreadPx`
 - `staleReplies`
 - `states`

@@ -129,6 +129,7 @@ describe("replay-clips.mjs command line", () => {
         "--target",
         "--options",
         "--seed",
+        "--seed-policy",
         "--device-ratio",
         "--out",
         "--sequence",
@@ -318,6 +319,82 @@ describe("replay-clips.mjs command line", () => {
                 expect(r.status).toBe(2);
                 expect(r.stderr.trim().split("\n")).toHaveLength(1);
             }
+        });
+    });
+
+    // #151: --seed-policy says how --seed seeds RANSAC. The later refusal stops each command
+    // that gets past the policy's checks, before any decode.
+    describe("--seed-policy", () => {
+        it.each(["frames", "Run", ""])("refuses a policy that is not run or frame (%j)", (p) => {
+            const r = run("--seed", "1", "--seed-policy", p, "--options", "minTrackedPatches:100");
+            expect(r.stderr).toMatch(/^replay-clips: --seed-policy expects run or frame, got "/);
+            expect(r.status).toBe(2);
+            expect(r.stderr.trim().split("\n")).toHaveLength(1);
+        });
+
+        it("refuses a policy without --seed, which it would not apply to", () => {
+            const r = run("--seed-policy", "run", "--options", "minTrackedPatches:100");
+            expect(r.stderr).toMatch(/^replay-clips: --seed-policy says how --seed seeds RANSAC/);
+            expect(r.status).toBe(2);
+            expect(r.stderr.trim().split("\n")).toHaveLength(1);
+        });
+
+        it.each(["run", "frame"])("accepts %s with --seed", (p) => {
+            const r = run("--seed", "1", "--seed-policy", p, "--options", "minTrackedPatches:100");
+            expect(r.stderr).toMatch(/minTrackedPatches \(100\).*detection-only/);
+            expect(r.status).toBe(2);
+        });
+    });
+
+    // #151: a seeded run reaches the backend's RANSAC only through the injected generator,
+    // which a backend that does not declare deterministicRansac may ignore. Refused before
+    // the target's own check, so before any decode; an unseeded run does not need it.
+    describe("a seeded run on a backend that does not declare deterministicRansac", () => {
+        const head = "0".repeat(40);
+        const unseedable = [
+            'export * from "../../packages/nft-tracker/dist/index.js";',
+            'export * from "../../packages/cv-backend-jsfeatnext/dist/index.js";',
+            'import { createJsfeatNextBackend as real } from "../../packages/cv-backend-jsfeatnext/dist/index.js";',
+            "export async function createJsfeatNextBackend() {",
+            "    const cv = await real();",
+            "    const capabilities = { ...cv.capabilities, deterministicRansac: false };",
+            "    return Object.create(cv, { capabilities: { value: capabilities } });",
+            "}",
+        ].join("\n");
+        const dist = {
+            "provenance.json": JSON.stringify({
+                schema: "webarkit-bench-provenance/1",
+                head,
+                clean: true,
+                dirtyPaths: [],
+                bundle: {
+                    path: "examples/dist/webarkit-packages.mjs",
+                    sha256: createHash("sha256").update(unseedable).digest("hex"),
+                },
+            }),
+            "webarkit-packages.mjs": unseedable,
+        };
+
+        it("is refused, exit 1, naming the backend", () => {
+            const r = runInTree(
+                dist,
+                "--packages",
+                "bundle",
+                "--seed",
+                "1",
+                "--options",
+                "minTrackedPatches:100",
+            );
+            expect(r.stderr).toBe(
+                'replay-clips: --seed 1: the backend "jsfeatnext" does not declare deterministicRansac, so it may ignore an injected rng: refusing to run seeded\n',
+            );
+            expect(r.status).toBe(1);
+        });
+
+        it("is not refused unseeded: the run goes on to the target's check", () => {
+            const r = runInTree(dist, "--packages", "bundle", "--options", "minTrackedPatches:100");
+            expect(r.stderr).toMatch(/minTrackedPatches \(100\).*detection-only/);
+            expect(r.status).toBe(2);
         });
     });
 
