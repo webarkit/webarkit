@@ -53,6 +53,7 @@ import {
 } from "../../packages/nft-tracker/ground-truth/fixtures/warped_frames.ts";
 import { sha256Hex } from "../js/bench-metrics.mjs";
 import { prepareWorkerDetection, runWorkerDetection } from "../js/detection-worker-core.mjs";
+import { frameRng } from "../js/frame-rng.mjs";
 
 const OPTIONS = {
     sceneLevels: DEFAULT_SCENE_LEVELS,
@@ -240,6 +241,107 @@ describe("runWorkerDetection", () => {
         // randomness only inside RANSAC, and the same amount on both sides".
         expect(direct.draws).toBeGreaterThan(0);
         expect(worker.draws).toBe(direct.draws);
+    });
+
+    // #151: a seeded page posts its seed and the frame's media time, and the worker
+    // builds the frame's generator, so that it detects what the synchronous path
+    // detects on the same frame (frameRng, examples/js/frame-rng.mjs).
+    it.each([
+        [1, 2178 / 73],
+        [2, 1 / 30],
+        [-7, 4.5],
+    ])(
+        "given seed %i and the frame's media time %f, detects exactly what detectTarget detects with frameRng",
+        async (seed, mediaTimeSeconds) => {
+            const bytes = targetBytes();
+            const state = await prepareWorkerDetection(
+                { targetBytes: bytes, options: OPTIONS },
+                PREPARE_DEPS,
+            );
+            const message = {
+                jobId: 1,
+                runId: 1,
+                frame,
+                timestampMs: 12.5,
+                seed,
+                mediaTimeSeconds,
+            };
+            const reply = runWorkerDetection(state, message, RUN_DEPS);
+
+            const cv2 = await createJsfeatNextBackend();
+            const setup = prepareDetection(cv2, decode(bytes).target, OPTIONS);
+            const direct = detectTarget(cv2, setup, frame, 12.5, frameRng(seed, mediaTimeSeconds));
+            expect(direct.ok).toBe(true);
+            expect(reply.detection).toEqual(direct);
+        },
+    );
+
+    it("hands detectTarget frameRng(seed, mediaTimeSeconds), and every draw comes from it", async () => {
+        const state = await prepareWorkerDetection(
+            { targetBytes: targetBytes(), options: OPTIONS },
+            PREPARE_DEPS,
+        );
+        const drawn = [];
+        let args = null;
+        const deps = {
+            ...RUN_DEPS,
+            detectTarget: (...a) => {
+                args = a;
+                const rng = a[4];
+                return detectTarget(a[0], a[1], a[2], a[3], () => {
+                    const x = rng();
+                    drawn.push(x);
+                    return x;
+                });
+            },
+        };
+        const message = {
+            jobId: 1,
+            runId: 1,
+            frame,
+            timestampMs: 12.5,
+            seed: 5,
+            mediaTimeSeconds: 3,
+        };
+        runWorkerDetection(state, message, deps);
+        expect(args.slice(0, 4)).toEqual([state.cv, state.setup, frame, 12.5]);
+        expect(typeof args[4]).toBe("function");
+        expect(drawn.length).toBeGreaterThan(0);
+        const fresh = frameRng(5, 3);
+        expect(drawn).toEqual(drawn.map(() => fresh()));
+    });
+
+    it("hands detectTarget no rng without a seed: the backend draws as it always has", async () => {
+        const state = await prepareWorkerDetection(
+            { targetBytes: targetBytes(), options: OPTIONS },
+            PREPARE_DEPS,
+        );
+        for (const seed of [undefined, null]) {
+            let args = null;
+            const deps = {
+                ...RUN_DEPS,
+                detectTarget: (...a) => {
+                    args = a;
+                    return { ok: false };
+                },
+            };
+            runWorkerDetection(state, { jobId: 1, runId: 1, frame, timestampMs: 0, seed }, deps);
+            expect(args.length, String(seed)).toBe(4);
+        }
+    });
+
+    it("refuses a seed without the frame's media time, which keys its generator", async () => {
+        const state = await prepareWorkerDetection(
+            { targetBytes: targetBytes(), options: OPTIONS },
+            PREPARE_DEPS,
+        );
+        expect(() =>
+            runWorkerDetection(
+                state,
+                { jobId: 1, runId: 1, frame, timestampMs: 0, seed: 1 },
+                RUN_DEPS,
+            ),
+        ).toThrow(RangeError);
     });
 
     // #95, Task 1: the comparison above builds both setups outside the seed. That is

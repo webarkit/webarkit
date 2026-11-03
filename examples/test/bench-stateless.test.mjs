@@ -283,3 +283,43 @@ describe("the stateless pipeline agrees with detectTarget on every refusal (#191
         ).toThrow(`deps.${name}`);
     });
 });
+
+// #151: a seeded page hands the stateless mode the frame's generator, which must
+// reach estimateHomography as detectTarget hands it on, and nothing else changes.
+describe("the stateless pipeline's rng", () => {
+    /** The options each path's estimateHomography received, on the stub's frame. */
+    function ransacOptions(rng) {
+        const script = { matches: 12, ransac: { ok: true, numInliers: 7 } };
+        const seen = [];
+        const recording = () => {
+            const cv = stubBackend(script);
+            const estimate = cv.estimateHomography;
+            cv.estimateHomography = (src, dst, options) => {
+                seen.push(options);
+                return estimate(src, dst, options);
+            };
+            return cv;
+        };
+        const cv = recording();
+        const levels = buildLevelIndex(chooseDescriptorSet(cv, target));
+        runStatelessPipeline(cv, target, levels, null, null, FRAME, 40, 500, DEPS, rng);
+        const cvTracker = recording();
+        const setup = prepareDetection(cvTracker, target, { maxSceneKeypoints: 500 });
+        detectTarget(cvTracker, setup, FRAME, 40, rng);
+        return seen;
+    }
+
+    it("hands estimateHomography the rng it is given, in the options detectTarget hands it", () => {
+        const rng = () => 0.5;
+        const [stateless, tracker] = ransacOptions(rng);
+        expect(stateless.rng).toBe(rng);
+        expect(stateless).toEqual(tracker);
+    });
+
+    it("without one, hands estimateHomography exactly the options it always has", () => {
+        const [stateless, tracker] = ransacOptions(undefined);
+        expect(stateless).toEqual({ threshold: DEFAULT_RANSAC_THRESHOLD });
+        expect("rng" in stateless).toBe(false);
+        expect(stateless).toEqual(tracker);
+    });
+});

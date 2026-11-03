@@ -432,6 +432,7 @@
       import { instrumentBackend } from "./js/instrument-backend.mjs";
       import { runStatelessPipeline } from "./js/bench-stateless.mjs";
       import { createRunLifecycle, advanceLoop } from "./js/run-lifecycle.mjs";
+      import { frameRng } from "./js/frame-rng.mjs";
       import {
         accountingError,
         clockResolution,
@@ -477,6 +478,18 @@
        * 2026-09-29), in the tracking mode only.
        */
       const DETECTION_PATH = TUNING.detection;
+      /**
+       * `?seed=` (#151): RANSAC's seed, or null. With one, every detection draws
+       * from `frameRng(SEED, its frame's media time)` (./js/frame-rng.mjs), on
+       * every path: the tracker's own through `rngFor`, the worker's from the
+       * seed and media time its `detect` message carries, and the stateless
+       * pipeline's through `estimateHomography`'s `rng`. The policy is always
+       * `frame`: the same frame draws the same samples in any run. Without one,
+       * the page draws as it always has. Start refuses a seeded run on a
+       * backend that does not declare `deterministicRansac`.
+       */
+      const SEED = TUNING.seed;
+      const SEED_POLICY = SEED === null ? null : "frame";
       /** The worker's module, which imports the packages from this page's bundle by URL. */
       const WORKER_MODULE = "js/detection-worker.mjs";
       const DETECTION_POLICY = "on-demand, one in flight, dropped not queued";
@@ -1274,6 +1287,10 @@
         lastProcessingResolution = { width: probe.width, height: probe.height };
         const K = intrinsics(probe.width, probe.height);
         lastTracker = null;
+        // The media time of the frame being processed, which a seeded detection
+        // is keyed on (frameRng), never its timestamp `t0`: set before each
+        // `process` and each stateless detection.
+        let seedMediaTime = null;
         const tracker =
           mode === "stateless"
             ? null
@@ -1283,6 +1300,9 @@
                 detectionOnly: mode === "detection-only",
                 externalDetection: run.path === "worker",
                 clock,
+                // Called by the tracker only when it detects itself (never in a
+                // worker run, whose worker builds the same generator).
+                rngFor: SEED === null ? undefined : () => frameRng(SEED, seedMediaTime),
               });
         // Start already refused an untrackable target (trackabilityError, the
         // constructor's own rule); this only guards the two drifting apart.
@@ -1315,6 +1335,7 @@
           const endsRun = loop !== null && loopIndex > run.loops.loopCount;
 
           const frame = toGrayTimed(video, video.videoWidth, video.videoHeight, box.width, box.height, timings);
+          seedMediaTime = mediaTimeSeconds;
           // Read before `process`: whether a detection was in flight while it ran.
           const inFlight = run.policy?.inFlight ?? false;
           let result;
@@ -1335,7 +1356,18 @@
           } else {
             result = tracker
               ? tracker.process(frame, t0, null)
-              : runStatelessPipeline(icv, targetDb, targetLevels, targetKeypoints, K, frame, t0, maxKeypoints, STATELESS_DEPS);
+              : runStatelessPipeline(
+                  icv,
+                  targetDb,
+                  targetLevels,
+                  targetKeypoints,
+                  K,
+                  frame,
+                  t0,
+                  maxKeypoints,
+                  STATELESS_DEPS,
+                  SEED === null ? undefined : frameRng(SEED, mediaTimeSeconds),
+                );
           }
 
           timings.total = performance.now() - t0;
@@ -1637,6 +1669,11 @@
           // How the run detected (detectionRecord); absent in exports older
           // than the worker path, which all detected on the frame loop.
           detection: run ? detectionRecord(run) : null,
+          // RANSAC's seed (?seed=) and its policy, always frame with a seed,
+          // both null without one (DEFINITIONS.seed, seedPolicy); absent in
+          // exports older than #151, which were all unseeded.
+          seed: SEED,
+          seedPolicy: SEED_POLICY,
           // The run's place in the session's order (?run=), its wall-clock
           // start and end, for the thermal rule, how it ended (done, stopped or
           // failed), and why it failed, if it did (the cause failRun showed).
@@ -1877,6 +1914,8 @@
                   detection: DETECTION_PATH,
                   source,
                   loops: TUNING.loops,
+                  seed: SEED,
+                  backend: cv.capabilities,
                 });
           if (refusal) {
             showError(refusal);

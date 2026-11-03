@@ -30,6 +30,13 @@ release pull request's body and the GitHub Release's notes.
   is one generator for the whole run, #188's. A seeded replay refuses a backend that does not
   declare `deterministicRansac` and any read of the global `Math.random`, exit 1
   ([#151](https://github.com/webarkit/webarkit/issues/151)).
+- `examples/bench-nft.html` takes `?seed=<n>`, which seeds every detection's RANSAC per frame,
+  from the seed and the frame's media time, on the synchronous path, the worker path (whose
+  `detect` message gains `seed` and `mediaTimeSeconds`) and the stateless mode. The export
+  records `seed` and `seedPolicy` (`frame`), both null without a seed, which draws as before.
+  Start refuses a seeded run on a backend that does not declare `deterministicRansac`, and a
+  `?seed=` it cannot read; `check:page` gains a check of seeded runs
+  ([#151](https://github.com/webarkit/webarkit/issues/151)).
 
 ### Changed
 

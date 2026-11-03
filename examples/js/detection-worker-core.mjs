@@ -35,9 +35,11 @@
  *
  * It imports none of the packages and no backend: every one of those arrives
  * in `deps`, which is how the Node test injects the real modules and the
- * worker entry injects the bundled ones. It does import two pure local
- * modules, `./instrument-backend.mjs` and `./bench-metrics.mjs`, so that the
- * worker times a backend stage by the page's own definition.
+ * worker entry injects the bundled ones. It does import three pure local
+ * modules: `./instrument-backend.mjs` and `./bench-metrics.mjs`, so that the
+ * worker times a backend stage by the page's own definition, and
+ * `./frame-rng.mjs`, so that it seeds a frame as the page's own detection
+ * does (#151).
  *
  * **Message protocol** (structured-clone values; nothing here posts):
  *
@@ -47,9 +49,13 @@
  *   maxSceneKeypoints, ratio, ransacThreshold } }`: once. `options` is
  *   `prepareDetection`'s, the values the page's own detection runs with.
  * - `{ type: "detect", jobId, runId, frame: { width, height, data },
- *   timestampMs }`: one grey frame (`data` a `Uint8Array` of `width × height`),
- *   to detect the target in. `jobId` names the request and `runId` the
- *   benchmark run it belongs to; the worker only echoes both.
+ *   timestampMs, seed, mediaTimeSeconds }`: one grey frame (`data` a
+ *   `Uint8Array` of `width × height`), to detect the target in. `jobId` names
+ *   the request and `runId` the benchmark run it belongs to; the worker only
+ *   echoes both. `seed` is the page's `?seed=`, null (or absent) without one,
+ *   and `mediaTimeSeconds` the frame's media time: with a seed, RANSAC draws
+ *   from `frameRng(seed, mediaTimeSeconds)`, the generator the page's
+ *   synchronous path builds for the same frame (#151).
  *
  * worker → page
  *
@@ -66,6 +72,7 @@
  */
 
 import { DETECTION_STAGES } from "./bench-metrics.mjs";
+import { frameRng } from "./frame-rng.mjs";
 import { instrumentBackend } from "./instrument-backend.mjs";
 
 /**
@@ -113,15 +120,28 @@ export async function prepareWorkerDetection({ targetBytes, options }, deps) {
  * its own frame's cost and never the sum of the frames before it; `total`
  * exceeds their sum by what `detectTarget` does between backend calls.
  *
+ * With a `seed`, `detectTarget` is handed `frameRng(seed, mediaTimeSeconds)`,
+ * built before the clock starts; without one, no `rng`, and the backend draws
+ * as it always has. A seed without a finite media time throws `frameRng`'s
+ * `RangeError`, which the worker answers with an `error`.
+ *
  * The reply is a plain structure of numbers, strings and typed arrays, which
  * `postMessage` clones intact (`Detection` is documented to survive
  * `structuredClone`).
  */
-export function runWorkerDetection(state, { jobId, runId, frame, timestampMs }, deps) {
+export function runWorkerDetection(
+    state,
+    { jobId, runId, frame, timestampMs, seed = null, mediaTimeSeconds },
+    deps,
+) {
     for (const stage of Object.keys(state.timings)) state.timings[stage] = 0;
 
+    const rng = seed === null ? null : frameRng(seed, mediaTimeSeconds);
     const t0 = deps.now();
-    const detection = deps.detectTarget(state.cv, state.setup, frame, timestampMs);
+    const detection =
+        rng === null
+            ? deps.detectTarget(state.cv, state.setup, frame, timestampMs)
+            : deps.detectTarget(state.cv, state.setup, frame, timestampMs, rng);
     const total = deps.now() - t0;
 
     const workerMs = {};
