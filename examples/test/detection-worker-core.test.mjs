@@ -344,6 +344,25 @@ describe("runWorkerDetection", () => {
         ).toThrow(RangeError);
     });
 
+    // #151: the page checks its own backend at Start; the worker builds its own,
+    // and a seed must not reach one that may ignore the injected generator.
+    it("refuses a seed on a backend that does not declare deterministicRansac, and detects unseeded on it", async () => {
+        const createBackend = async () => {
+            const cv = await createJsfeatNextBackend();
+            const capabilities = { ...cv.capabilities, deterministicRansac: false };
+            return Object.create(cv, { capabilities: { value: capabilities } });
+        };
+        const state = await prepareWorkerDetection(
+            { targetBytes: targetBytes(), options: OPTIONS },
+            { ...PREPARE_DEPS, createBackend },
+        );
+        const message = { jobId: 1, runId: 1, frame, timestampMs: 0, mediaTimeSeconds: 1 };
+        expect(() => runWorkerDetection(state, { ...message, seed: 1 }, RUN_DEPS)).toThrow(
+            'the worker\'s backend "jsfeatnext" does not declare deterministicRansac, so it may ignore the injected rng: refusing to detect seeded',
+        );
+        expect(runWorkerDetection(state, message, RUN_DEPS).type).toBe("result");
+    });
+
     // #95, Task 1: the comparison above builds both setups outside the seed. That is
     // sound only while `prepareDetection` draws nothing, since an unseeded draw could
     // build two different setups; the day it draws, both preparations need the seed,

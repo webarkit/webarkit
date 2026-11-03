@@ -123,7 +123,10 @@ export async function prepareWorkerDetection({ targetBytes, options }, deps) {
  * With a `seed`, `detectTarget` is handed `frameRng(seed, mediaTimeSeconds)`,
  * built before the clock starts; without one, no `rng`, and the backend draws
  * as it always has. A seed without a finite media time throws `frameRng`'s
- * `RangeError`, which the worker answers with an `error`.
+ * `RangeError`, and a seed on a backend that does not declare
+ * `deterministicRansac` throws too, since it may ignore the generator (the
+ * page checks its own backend at Start; the worker builds its own): the
+ * worker answers either with an `error`.
  *
  * The reply is a plain structure of numbers, strings and typed arrays, which
  * `postMessage` clones intact (`Detection` is documented to survive
@@ -136,6 +139,11 @@ export function runWorkerDetection(
 ) {
     for (const stage of Object.keys(state.timings)) state.timings[stage] = 0;
 
+    if (seed !== null && state.cv.capabilities.deterministicRansac !== true) {
+        throw new Error(
+            `the worker's backend "${state.cv.capabilities.name}" does not declare deterministicRansac, so it may ignore the injected rng: refusing to detect seeded`,
+        );
+    }
     const rng = seed === null ? null : frameRng(seed, mediaTimeSeconds);
     const t0 = deps.now();
     const detection =

@@ -28,6 +28,7 @@
 import { describe, expect, it } from "vitest";
 import { frameKey, frameRng, frameSeed, mulberry32, runRng } from "../js/frame-rng.mjs";
 import { mulberry32 as fixtureMulberry32 } from "../../packages/nft-tracker/ground-truth/fixtures/seeded_rng.ts";
+import { mediaKey } from "../js/bench-metrics.mjs";
 
 const draws = (rng, n) => Array.from({ length: n }, () => rng());
 
@@ -55,6 +56,20 @@ describe("frameKey", () => {
         expect(frameKey(2178 / 73)).toBe(29835616);
         expect(frameKey(1.0000004)).toBe(1000000);
         expect(frameKey(1.0000006)).toBe(1000001);
+    });
+
+    // The key framesAt matches a page export's media times to the replay's pts by: a
+    // frame keyed alike there is seeded alike here only while the two agree.
+    it("is bench-metrics.mjs's mediaKey, on every frame of a 30 and a 25 fps clip and odd times", () => {
+        const times = [
+            ...Array.from({ length: 2000 }, (_, i) => i / 30),
+            ...Array.from({ length: 2000 }, (_, i) => i * 0.04),
+            2178 / 73,
+            0.1 + 0.2,
+            1.0000005,
+            12.3456785,
+        ];
+        for (const t of times) expect(frameKey(t), String(t)).toBe(mediaKey(t));
     });
 
     it("gives the same key to times that differ only by floating-point noise", () => {

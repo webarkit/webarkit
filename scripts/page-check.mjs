@@ -78,8 +78,8 @@
  * the DevTools protocol, before the page's own scripts run: the page's
  * `Worker` is kept so that an `ErrorEvent` can be dispatched on it, the
  * video's frame callback is wrapped, in two scenarios so that one frame's
- * `mediaTime` can be replaced, and in all so that the pixels the callback
- * grabs (`getImageData`, wrapped) are hashed with its `mediaTime`, an
+ * `mediaTime` can be replaced, and in the seeded runs' so that the pixels the
+ * callback grabs (`getImageData`, wrapped) are hashed with its `mediaTime`, an
  * export's `Blob` is kept as `URL.createObjectURL` receives it, `console.warn`
  * and `console.error` are recorded, and the promise of Start's click handler
  * is kept, so that the outcome of a click is read when the handler has
@@ -265,7 +265,7 @@ function findChrome() {
  *   `performance.getEntriesByType(type)` returns, with the entry of `path`
  *   given `set`'s fields, or removed, or with `add` appended.
  */
-function instrument({ fabricatedWrap = null } = {}) {
+function instrument({ fabricatedWrap = null, hashGrabs = false } = {}) {
     const pc = {
         workers: [],
         exports: [],
@@ -308,8 +308,10 @@ function instrument({ fabricatedWrap = null } = {}) {
     // turns grey deterministically), tagged with the media time the callback
     // was given. Installed after the fabricated wrap, so it records the media
     // time the page receives. Two 32-bit FNV-1a passes, the second over the
-    // bytes reversed, make a 64-bit hash.
-    {
+    // bytes reversed, make a 64-bit hash. Only with `hashGrabs`: a pass over
+    // every frame's RGBA inside its timed acquisition is cost no other
+    // scenario should carry.
+    if (hashGrabs) {
         let mediaTime = null;
         const requestVideoFrameCallback = HTMLVideoElement.prototype.requestVideoFrameCallback;
         HTMLVideoElement.prototype.requestVideoFrameCallback = function (callback) {
@@ -1446,7 +1448,6 @@ async function workerFailsWhileSourceStarts(browser, base) {
     });
 }
 
-/** The pose demo (#200), which is not the bench page and has no manifest. */
 /** A seeded session run on the wall clip (#151): `?run=1`, so Start checks the manifest. */
 const SEEDED_QUERY =
     "mode=tracking&target=wnft&clip=pinball-bench.mp4&loops=1&run=1&window=2000&seed=1";
@@ -1538,7 +1539,9 @@ function workerDetections(e, frames, replies) {
 
 /**
  * Every detection of `a` against every one of `b` at each media time both
- * hold, on pixel-identical frames only: `{ common, setAside, compared, differ }`.
+ * hold, on pixel-identical frames only: `{ common, setAside, compared, posed,
+ * differ }`, `posed` the compared media times where a pixel-identical pair has
+ * corners, so that a leg of refusals alone cannot pass as a comparison.
  * A media time is set aside when no pair there has identical pixels, and
  * compared otherwise; `differ` are the compared media times where a
  * pixel-identical pair is not equal. A detection without corners is compared
@@ -1547,6 +1550,7 @@ function workerDetections(e, frames, replies) {
 function compareDetections(a, b) {
     let common = 0;
     let setAside = 0;
+    let posed = 0;
     const differ = [];
     for (const [key, xs] of a) {
         const ys = b.get(key);
@@ -1557,13 +1561,14 @@ function compareDetections(a, b) {
             setAside++;
             continue;
         }
+        if (pairs.some(([x]) => JSON.parse(x.view)[4] !== null)) posed++;
         if (pairs.some(([x, y]) => x.view !== y.view)) differ.push(key / 1e6);
     }
-    return { common, setAside, compared: common - setAside, differ };
+    return { common, setAside, compared: common - setAside, posed, differ };
 }
 
 const legLine = (name, c) =>
-    `${name}: ${c.common} common detected media times, ${c.setAside} set aside for differing pixels, ${c.compared} compared, ${c.differ.length} differ`;
+    `${name}: ${c.common} common detected media times, ${c.setAside} set aside for differing pixels, ${c.compared} compared (${c.posed} posed), ${c.differ.length} differ`;
 
 /**
  * #151's page evidence: two synchronous `?seed=1` session runs, each to its
@@ -1591,7 +1596,7 @@ async function seededRuns(browser, base) {
     ];
     /** One run on its own page, to its end: its export, its frames with their pixels, the worker's replies. */
     const runToEnd = async (query, faults = {}) => {
-        const p = await openPage(browser, base, query);
+        const p = await openPage(browser, base, query, { hashGrabs: true });
         try {
             await p.waitReady();
             await p.page.evaluate((faults) => {
@@ -1649,6 +1654,7 @@ async function seededRuns(browser, base) {
                     c.compared >= SEEDED_FLOOR,
                     `${legLine(name, c)}: fewer than ${SEEDED_FLOOR} compared`,
                 );
+                expect(c.posed >= 1, `${legLine(name, c)}: none of them posed`);
             }
             const [[, sync], [, work], [, fault]] = legs;
             expect(sync.differ.length === 0, `the sync runs differ at ${sync.differ.join(", ")} s`);
@@ -1664,6 +1670,7 @@ async function seededRuns(browser, base) {
     });
 }
 
+/** The pose demo (#200), which is not the bench page and has no manifest. */
 const POSE_PAGE = "examples/pinball-pose-jsfeatnext-backend.html";
 
 /**
