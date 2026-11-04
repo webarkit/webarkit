@@ -99,6 +99,7 @@ export {
 export {
     provenanceFindings,
     bundleManifestRefusal,
+    isRelativePath,
     provenanceRefusal,
     servedShapeError,
 } from "./bench-provenance.mjs";

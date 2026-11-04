@@ -361,6 +361,8 @@ describe("provenanceRefusal", () => {
                 ["a leading space", " http://["],
                 ["a tab inside", "ht\ttp://["],
                 ["a control character", "\u0001http://["],
+                // The preflight's rule is this one (#217), and it refused an empty key already.
+                ["nothing in it", ""],
             ].map(([what, key]) => [
                 `a key with ${what}`,
                 withKey(key),
