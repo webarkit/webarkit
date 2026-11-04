@@ -169,7 +169,7 @@ describe("scripts/build-provenance.mjs, run in a clone", () => {
         expect(m.clean, `clean beside dirtyPaths ${JSON.stringify(m.dirtyPaths)}`).toBe(
             m.dirtyPaths.length === 0,
         );
-        expect(m.head).toMatch(/^[0-9a-f]{40}$/);
+        expect(m.head).toMatch(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
     });
 
     // #120 (BB8): without the packages' build first, the bundle was made from the stale dist/

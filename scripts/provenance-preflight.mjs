@@ -38,7 +38,8 @@
  * clean over the paths the build's `clean` covers (`CLEAN_PATHS`, the M4
  * runbook's step 2), and every file the manifest hashes (`sources`, `served`,
  * `build`, `bundledInputs`, the bundle and jsfeat-next's file) hashes the same
- * on disk, with `served` listing exactly what `SERVED` names. CI runs it after
+ * on disk, with `served` listing exactly what `SERVED` names and `bundledInputs`
+ * exactly what the bundle takes now. CI runs it after
  * the build; a device session runs it on the serving PC before measuring. A
  * developer's checkout fails it after any edit until the next build, which is
  * why it is a command and not part of `npm test` (#136).
@@ -56,7 +57,16 @@ import { readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isRelativePath } from "../examples/js/bench-provenance.mjs";
-import { BUNDLE, CLEAN_PATHS, JSFEAT_FILE, PRODUCER, SERVED } from "./build-provenance.mjs";
+import { buildSync } from "esbuild";
+import {
+    BUNDLE,
+    BUNDLE_OPTIONS,
+    bundledInputPaths,
+    CLEAN_PATHS,
+    JSFEAT_FILE,
+    PRODUCER,
+    SERVED,
+} from "./build-provenance.mjs";
 
 const SCHEMA = "webarkit-bench-provenance/1";
 const JSFEAT = "@webarkit/jsfeat-next";
@@ -181,6 +191,21 @@ export function outsideRoot(root, path) {
 }
 
 /**
+ * What the bundle takes now: `{ inputs }`, from esbuild run with the build's own
+ * options and nothing written, or `{ error }`, its message on one line. An
+ * inventory that does not come from the manifest, which is the point (#217):
+ * nothing else can say that a gitignored file is missing from `bundledInputs`.
+ */
+export function bundleInputsNow(options = BUNDLE_OPTIONS) {
+    try {
+        const { metafile } = buildSync({ ...options, write: false, logLevel: "silent" });
+        return { inputs: bundledInputPaths(metafile) };
+    } catch (e) {
+        return { error: e.message.replace(/\s*\n\s*/g, " ") };
+    }
+}
+
+/**
  * The first path the preflight would read that resolves outside the repository,
  * by the field that names it, or null. After `shapeError`, so every path here has
  * passed its rule, and before anything is read.
@@ -209,7 +234,8 @@ function containmentError(m, t) {
  * `clean` would call dirty now, `t.blobs(paths)` their git blob ids (each null
  * without git), `t.sha256(path)` a file's hash (null if it cannot be read),
  * `t.resolvesOutside(path)` whether a path leaves the repository once resolved,
- * and `t.served` what `SERVED` names. Each git reader is called once per run,
+ * `t.bundleInputs()` what the bundle takes now ({@link bundleInputsNow}), and
+ * `t.served` what `SERVED` names. Each git reader is called once per run,
  * however many entries the manifest has (#136: the test this replaces ran git
  * twice per entry, past vitest's timeout on Windows), and none is called on a
  * manifest whose shape is wrong or that names a path outside the repository.
@@ -258,6 +284,28 @@ export function preflight(manifest, t) {
         findings.push(
             `${path}: the manifest's hash ${h.slice(0, 12)}… is not the file's${onDisk === null ? ": none on disk" : ` ${onDisk.slice(0, 12)}…`}`,
         );
+    }
+    // Against the tree as it is now, so a difference means the manifest no longer describes it,
+    // and the remedy is to rebuild: a finding, as `served` against `SERVED` is below (#217).
+    const taken = t.bundleInputs();
+    if (taken.error !== undefined) {
+        ok = false;
+        findings.push(`bundle: esbuild could not list its inputs: ${taken.error}`);
+    } else {
+        for (const path of taken.inputs) {
+            if (Object.hasOwn(m.bundledInputs, path)) continue;
+            ok = false;
+            findings.push(
+                `bundledInputs: the bundle takes ${path}, which the manifest does not list`,
+            );
+        }
+        for (const path of Object.keys(m.bundledInputs)) {
+            if (taken.inputs.includes(path)) continue;
+            ok = false;
+            findings.push(
+                `bundledInputs: the manifest lists ${path}, which the bundle does not take`,
+            );
+        }
     }
     // The blob ids of the build's producer (#127), in one call. Only these: a served or source
     // file's blob id adds nothing its SHA-256 has not said.
@@ -365,6 +413,7 @@ if (
             }
         },
         resolvesOutside: (p) => outsideRoot(ROOT, p),
+        bundleInputs: bundleInputsNow,
         served: SERVED,
     });
     if (r.code === 2) refuse(`${path}: ${r.lines[0]}`);
