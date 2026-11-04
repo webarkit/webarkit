@@ -9,12 +9,13 @@
   "files": [
     "dist"
   ],
+  "//": "#212: --testTimeout=15000 on test, against contention on loaded machines: the slowest sighting was 11.3 s (#210), the slowest measured 8.61 s with three suites at once.",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepack": "npm run build",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "test": "vitest run",
+    "test": "vitest run --testTimeout=15000",
     "test:watch": "vitest"
   },
   "keywords": [
