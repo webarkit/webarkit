@@ -77,6 +77,27 @@ export const JSFEAT_FILE = `node_modules/${JSFEAT}/dist/jsfeatNext.mjs`;
  * Hashed as they are on disk when the manifest is written, after the build.
  */
 export const PRODUCER = ["scripts/build-provenance.mjs", "package.json"];
+/**
+ * How the bundle is made: everything that decides what it takes. One source,
+ * because `scripts/provenance-preflight.mjs` runs esbuild with these again, with
+ * `write: false`, to ask what the bundle takes now (#217).
+ */
+export const BUNDLE_OPTIONS = {
+    absWorkingDir: ROOT,
+    entryPoints: [ENTRY],
+    outfile: BUNDLE,
+    bundle: true,
+    format: "esm",
+    platform: "browser",
+    target: "es2022",
+    metafile: true,
+    logLevel: "warning",
+};
+/** The files a metafile says the bundle took, as `bundledInputs` lists them: all but the entry. */
+export const bundledInputPaths = (metafile) =>
+    Object.keys(metafile.inputs)
+        .map((p) => p.replace(/\\/g, "/"))
+        .filter((p) => p !== ENTRY);
 /** What `clean` covers: the M4 runbook's guarded paths, and what installs the packages. */
 export const CLEAN_PATHS = [
     "examples/bench-nft.html",
@@ -171,23 +192,11 @@ if (
         execSync(`npm run build -w ${name}`, { cwd: ROOT, stdio: "inherit" });
 
     // 2. The bundle.
-    const { metafile } = await build({
-        absWorkingDir: ROOT,
-        entryPoints: [ENTRY],
-        outfile: BUNDLE,
-        bundle: true,
-        format: "esm",
-        platform: "browser",
-        target: "es2022",
-        metafile: true,
-        logLevel: "warning",
-    });
+    const { metafile } = await build(BUNDLE_OPTIONS);
     const dists = PACKAGES.map((name) => `packages/${name.slice("@webarkit/".length)}/dist/`);
     const allowed = (p) =>
-        p === ENTRY ||
-        p === JSFEAT_FILE ||
-        (dists.some((d) => p.startsWith(d)) && p.endsWith(".js"));
-    const inputs = Object.keys(metafile.inputs).map((p) => p.replace(/\\/g, "/"));
+        p === JSFEAT_FILE || (dists.some((d) => p.startsWith(d)) && p.endsWith(".js"));
+    const inputs = bundledInputPaths(metafile);
     const foreign = inputs.filter((p) => !allowed(p));
     if (foreign.length > 0)
         throw new Error(`the bundle took inputs it may not: ${foreign.join(", ")}`);
@@ -259,9 +268,7 @@ if (
                 { ...h, side: SERVED[p] },
             ]),
         ),
-        bundledInputs: Object.fromEntries(
-            inputs.filter((p) => p !== ENTRY).map((p) => [p, sha256(read(p))]),
-        ),
+        bundledInputs: Object.fromEntries(inputs.map((p) => [p, sha256(read(p))])),
         dependencies: {
             [JSFEAT]: {
                 version: lock.version,

@@ -38,30 +38,41 @@
  * clean over the paths the build's `clean` covers (`CLEAN_PATHS`, the M4
  * runbook's step 2), and every file the manifest hashes (`sources`, `served`,
  * `build`, `bundledInputs`, the bundle and jsfeat-next's file) hashes the same
- * on disk, with `served` listing exactly what `SERVED` names. CI runs it after
+ * on disk, with `served` listing exactly what `SERVED` names and `bundledInputs`
+ * exactly what the bundle takes now. CI runs it after
  * the build; a device session runs it on the serving PC before measuring. A
  * developer's checkout fails it after any edit until the next build, which is
  * why it is a command and not part of `npm test` (#136).
  *
  * Exits 0 if the manifest describes the tree, 1 if it does not, with one line
  * per finding and the remedy, and 2, with one line naming the field, when the
- * manifest cannot be read, is not JSON or has a field of the wrong shape: then
- * there is nothing to compare, and git is not asked.
+ * manifest cannot be read, is not JSON, has a field of the wrong shape or names
+ * a path that resolves outside the repository: then there is nothing to compare,
+ * and git is not asked.
  */
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BUNDLE, CLEAN_PATHS, JSFEAT_FILE, PRODUCER, SERVED } from "./build-provenance.mjs";
+import { isRelativePath } from "../examples/js/bench-provenance.mjs";
+import { buildSync } from "esbuild";
+import {
+    BUNDLE,
+    BUNDLE_OPTIONS,
+    bundledInputPaths,
+    CLEAN_PATHS,
+    JSFEAT_FILE,
+    PRODUCER,
+    SERVED,
+} from "./build-provenance.mjs";
 
 const SCHEMA = "webarkit-bench-provenance/1";
 const JSFEAT = "@webarkit/jsfeat-next";
 const SHA256 = /^[0-9a-f]{64}$/;
 /** A full object id, SHA-1's or SHA-256's, as the page reads `head`. */
 const OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-/** A repository-relative path as the build writes one: forward slashes, no root, no drive. */
-const RELATIVE = /^(?![/]|[A-Za-z]:)[^\\]+$/;
 
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const show = (v) => (v === undefined ? "undefined" : JSON.stringify(v));
@@ -70,8 +81,10 @@ const show = (v) => (v === undefined ? "undefined" : JSON.stringify(v));
  * The first field of `m` whose shape is wrong, as `field: value is not …`, or
  * null. Only what the comparison reads is checked, and the paths the build
  * always writes (the bundle's, jsfeat-next's file, the producer's): any other
- * would leave a file the page reads unchecked. A path is hashed once: two
- * entries for one path would have only one of their hashes compared.
+ * would leave a file the page reads unchecked. Every path key passes the page's
+ * rule, `isRelativePath` (#217), so that a key can only name a file by a path
+ * inside the repository. A path is hashed once: two entries for one path would
+ * have only one of their hashes compared.
  */
 function shapeError(m) {
     if (!isObject(m)) return `the manifest is not a JSON object: ${show(m)}`;
@@ -108,6 +121,7 @@ function shapeError(m) {
         }
         for (const [path, e] of Object.entries(m[group])) {
             const field = `${group}[${JSON.stringify(path)}]`;
+            if (!isRelativePath(path)) return bad(field, path, "a relative path");
             if (!isObject(e)) return bad(field, e, "an object");
             if (typeof e.sha256 !== "string" || !SHA256.test(e.sha256)) {
                 return bad(`${field}.sha256`, e.sha256, "a SHA-256");
@@ -149,12 +163,65 @@ function shapeError(m) {
     }
     for (const [path, h] of Object.entries(m.bundledInputs)) {
         const input = `bundledInputs[${JSON.stringify(path)}]`;
-        if (!RELATIVE.test(path) || path.split("/").includes("..")) {
-            return bad(input, path, "a relative path");
-        }
+        if (!isRelativePath(path)) return bad(input, path, "a relative path");
         if (typeof h !== "string" || !SHA256.test(h)) return bad(input, h, "a SHA-256");
         if (path === JSFEAT_FILE && h !== dep.sha256) {
             return `${input}: ${h} is not ${field}.sha256 ${dep.sha256}`;
+        }
+    }
+    return null;
+}
+
+/**
+ * Whether `path`, under `root`, is a file whose real path lies outside `root`'s:
+ * what a key's text cannot show, a link inside the repository to a file outside
+ * it. False for a path that does not resolve: the read then fails, and that is
+ * its own finding. Both real paths, so a root reached through a link is not itself
+ * read as outside (#217).
+ */
+export function outsideRoot(root, path) {
+    let real;
+    try {
+        real = realpathSync(resolve(root, path));
+    } catch {
+        return false;
+    }
+    const rel = relative(realpathSync(root), real);
+    return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+}
+
+/**
+ * What the bundle takes now: `{ inputs }`, from esbuild run with the build's own
+ * options and nothing written, or `{ error }`, its message on one line. An
+ * inventory that does not come from the manifest, which is the point (#217):
+ * nothing else can say that a gitignored file is missing from `bundledInputs`.
+ */
+export function bundleInputsNow(options = BUNDLE_OPTIONS) {
+    try {
+        const { metafile } = buildSync({ ...options, write: false, logLevel: "silent" });
+        return { inputs: bundledInputPaths(metafile) };
+    } catch (e) {
+        return { error: e.message.replace(/\s*\n\s*/g, " ") };
+    }
+}
+
+/**
+ * The first path the preflight would read that resolves outside the repository,
+ * by the field that names it, or null. After `shapeError`, so every path here has
+ * passed its rule, and before anything is read.
+ */
+function containmentError(m, t) {
+    const keys = (group) => Object.keys(m[group]).map((p) => [`${group}[${JSON.stringify(p)}]`, p]);
+    for (const [field, path] of [
+        ...keys("sources"),
+        ...keys("build"),
+        ...keys("served"),
+        ["bundle.path", BUNDLE],
+        [`dependencies[${JSON.stringify(JSFEAT)}].file`, JSFEAT_FILE],
+        ...keys("bundledInputs"),
+    ]) {
+        if (t.resolvesOutside(path)) {
+            return `${field}: ${show(path)} resolves outside the repository`;
         }
     }
     return null;
@@ -166,13 +233,15 @@ function shapeError(m) {
  * `t.head()` is the checkout's `HEAD`, `t.dirtyPaths()` the paths the build's
  * `clean` would call dirty now, `t.blobs(paths)` their git blob ids (each null
  * without git), `t.sha256(path)` a file's hash (null if it cannot be read),
- * and `t.served` what `SERVED` names. Each git reader is called once per run,
+ * `t.resolvesOutside(path)` whether a path leaves the repository once resolved,
+ * `t.bundleInputs()` what the bundle takes now ({@link bundleInputsNow}), and
+ * `t.served` what `SERVED` names. Each git reader is called once per run,
  * however many entries the manifest has (#136: the test this replaces ran git
  * twice per entry, past vitest's timeout on Windows), and none is called on a
- * manifest whose shape is wrong.
+ * manifest whose shape is wrong or that names a path outside the repository.
  */
 export function preflight(manifest, t) {
-    const malformed = shapeError(manifest);
+    const malformed = shapeError(manifest) ?? containmentError(manifest, t);
     if (malformed !== null) return { code: 2, lines: [malformed] };
     const m = manifest;
     const head = t.head();
@@ -215,6 +284,28 @@ export function preflight(manifest, t) {
         findings.push(
             `${path}: the manifest's hash ${h.slice(0, 12)}… is not the file's${onDisk === null ? ": none on disk" : ` ${onDisk.slice(0, 12)}…`}`,
         );
+    }
+    // Against the tree as it is now, so a difference means the manifest no longer describes it,
+    // and the remedy is to rebuild: a finding, as `served` against `SERVED` is below (#217).
+    const taken = t.bundleInputs();
+    if (taken.error !== undefined) {
+        ok = false;
+        findings.push(`bundle: esbuild could not list its inputs: ${taken.error}`);
+    } else {
+        for (const path of taken.inputs) {
+            if (Object.hasOwn(m.bundledInputs, path)) continue;
+            ok = false;
+            findings.push(
+                `bundledInputs: the bundle takes ${path}, which the manifest does not list`,
+            );
+        }
+        for (const path of Object.keys(m.bundledInputs)) {
+            if (taken.inputs.includes(path)) continue;
+            ok = false;
+            findings.push(
+                `bundledInputs: the manifest lists ${path}, which the bundle does not take`,
+            );
+        }
     }
     // The blob ids of the build's producer (#127), in one call. Only these: a served or source
     // file's blob id adds nothing its SHA-256 has not said.
@@ -321,6 +412,8 @@ if (
                 return null;
             }
         },
+        resolvesOutside: (p) => outsideRoot(ROOT, p),
+        bundleInputs: bundleInputsNow,
         served: SERVED,
     });
     if (r.code === 2) refuse(`${path}: ${r.lines[0]}`);
