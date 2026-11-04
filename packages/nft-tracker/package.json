@@ -7,12 +7,13 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "//": "#212: --testTimeout=15000 on test and test:watch, against contention on loaded machines: the slowest sighting was 11.3 s (#210), the slowest measured 11.49 s with three suites at once, about 1.3× under 15 s.",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --testTimeout=15000",
+    "test:watch": "vitest --testTimeout=15000",
     "fixtures": "npm run build && node scripts/generate-fixtures.mjs",
     "compile-target": "node bin/compile-target.mjs",
     "validate-target": "node bin/validate-target.mjs"
