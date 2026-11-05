@@ -623,6 +623,23 @@ the same reason `startAtSeconds` does.
   rotation tag (the frame is stored portrait, so the rotation pitfall below
   does not apply), and `moov` ahead of `mdat` (the `+faststart` layout). The
   command that produced it was not recorded.
+- **`pinball-tilt-cross.mp4`** — 14.00s (13.995633), 720×1280 (portrait), 417
+  frames, ~1.2 MB (1,187,889 bytes). The tablet still, the printed target on a
+  rigid board tilted by raising its upper edge, with the lower edge resting on
+  the table: held nearly frontal, then raised slowly in one direction and held.
+  Meant to cross the threshold of #133's guard once. Original frames #32 (1.032978 s)
+  to #448 (14.995289 s). SHA-256
+  `3a332a308f6fa36d6b72508892f737700fbb55fb4efb651f1e9fefafc695308e`.
+- **`pinball-tilt-mid.mp4`** — 21.99s (21.993122), 720×1280 (portrait), 657
+  frames, ~1.7 MB (1,699,104 bytes). The same setup: held at a moderate tilt,
+  raised slowly, held, lowered slowly, held. Original frames #32 (1.032989 s)
+  to #688 (22.993267 s). SHA-256
+  `f29c37d71fa074bc8ae4e8c94a89a2f9b6654e458a6d4b144ee5bdf85267e915`.
+- **`pinball-tilt-sweep.mp4`** — 28.99s (28.991344), 720×1280 (portrait), 868
+  frames, ~2.6 MB (2,552,520 bytes). The same setup: held at a larger tilt,
+  raised slowly, held, lowered slowly, held. Original frames #32 (1.033022 s)
+  to #899 (29.991044 s). SHA-256
+  `90c5af74401577b29f7090f07b9205d7d5e6524baed7f48d44a6dc9ea4eb9dcf`.
 
 The first two are re-encoded from a phone-captured original with `-an` (audio dropped;
 nothing here reads it) and `-crf 28` (visually lossless at this content and
@@ -661,6 +678,60 @@ _higher_ processing resolution could be benchmarked against later. The table
 clip is left at its native 1080×1920 rather than downscaled to match, since
 after the rotation incident above the priority was verifying orientation over
 minimizing size a second time; revisit if its ~2.3 MB becomes a real problem.
+
+The three `pinball-tilt-*` clips were recorded on 2026-11-05 on the Tab_9_WiFi
+for [#228](https://github.com/webarkit/webarkit/issues/228)'s repeated Stage 1.
+The page's dropdown does not offer them yet, and `scripts/replay-clips.mjs` does
+not read them. `ambiguous-rate.mjs` and `jitter-dry-run.mjs`, in
+`packages/nft-tracker/scripts/`, sweep this directory when given no clip, so they
+do include them. The authority for adding them is item 2 of the
+[maintainer's rulings on #228](https://github.com/webarkit/webarkit/issues/228#issuecomment-6671748262),
+posted on 2026-11-05. What motivates it is in the
+[Stage 1 record](../docs/benchmarks/2026-11-04-228-stage1-probe.md), at
+`e55a3da`: "At 10° and above the corpus gives no verdict between IPPE and CF"
+(line 29), "a rigid path holding tilts from 10° to 30° with the lock held through
+the sweep" (lines 746–747), and "A rigid slow sweep of tilt through 0° to 15° would
+express the switch alone. Whether that footage is needed is for the ruling."
+(lines 781–782). The tilt each clip spans is not stated here: the repeated
+Stage 1 measures it.
+
+Like the table clip's source, their originals are landscape-coded with a -90°
+display matrix; here 1280×720, H.264 Baseline, with an AAC track, at about 30 fps,
+variable. They are encoded with ffmpeg 9.0.2:
+
+```bash
+# pinball-tilt-*.mp4 -- <start> is the pts_time of the first frame kept, read from the original with ffprobe
+ffmpeg -ss <start> -to <end> -i original.mp4 -an -map_metadata -1 -fps_mode passthrough -enc_time_base demux -c:v libx264 -preset medium -crf 28 -movflags +faststart videos/<name>.mp4
+```
+
+| Clip    | `<start>` | `<end>` |
+| ------- | --------- | ------- |
+| `cross` | 1.032978  | 15.0    |
+| `mid`   | 1.032989  | 23.0    |
+| `sweep` | 1.033022  | 30.0    |
+
+- **No `-vf`, and no `setpts`:** the rotation pitfall above is why no filter is
+  used. It is caution, not a failure seen on this build: on ffmpeg 9.0.2,
+  `-vf null` and `-vf setpts=PTS` gave `cross` the same bytes. The frames are
+  stored portrait, 720×1280, with no rotation tag.
+- **`-ss` at the first kept frame's `pts_time`:** that frame maps to 0, so the clip
+  starts at 0.000000 like the original three, with no filter. The first second is
+  dropped for the touch that starts the recording, and `-to` on `cross` and `mid`
+  drops the touch that stops it.
+- **`-enc_time_base demux`:** keeps the original's timestamps exactly. Without
+  it they are snapped to a 1/30 s grid.
+- **`-fps_mode passthrough`:** states that no frame is added to reach a constant
+  rate, so the command does not rest on a build's default. A duplicated frame is a
+  frame with zero motion, which a jitter metric would read as stability. On
+  ffmpeg 9.0.2 the default gives `cross` the same bytes; with `-fps_mode cfr`, and
+  without `-enc_time_base demux`, it has 420 frames, not 417.
+- **`-map_metadata -1`:** states that nothing from the original's metadata is
+  carried. On ffmpeg 9.0.2 `cross` has no creation time or Android tag without it
+  either; what it changes there is the stream's language and handler tags.
+
+Frame count: 417, 657 and 868 frames, in the original's window and in the output.
+
+Timestamps: 0 frames off the original time, comparing the output's `pts` plus the first kept frame's against the original's, in integer ticks at 1/90000 s.
 
 `pinball-bench.mp4` has an [ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md)
 action item 6 baseline measured against it, run **on** the reference device
