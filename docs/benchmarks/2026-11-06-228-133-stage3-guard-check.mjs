@@ -466,6 +466,8 @@ async function main() {
     if (!NEGATIVE) {
         if (REPLAY_DIR === null) fatal("--replay <dir holding replay-clips' ext/ at --seed 1> is required for a counted run");
         if (start.status !== "") fatal(`the tree is not clean, and a counted run reads a build of a commit:\n${start.status}`);
+        if (arg("--clip") !== null || arg("--only") !== null) fatal("--clip and --only are for --negative: a counted run is every clip, schedule and seed");
+        if (existsSync(OUT_DIR)) fatal(`${OUT_DIR} exists, and a counted run reads no earlier run's results`);
     }
     mkdirSync(OUT_DIR, { recursive: true });
     const clips = arg("--clip") ? [arg("--clip")] : CLIPS;
@@ -606,7 +608,7 @@ async function child(clip) {
             if (pose !== null) fatal(`${label}, frame ${k}: G5: the pose is not the filter on the guard's output: ${pose}`);
             const guard = firstDifference(b.poseGuard, g.poseGuard);
             if (guard !== null) fatal(`${label}, frame ${k}: G5: the guard's reading: ${guard}`);
-            if (b.pose !== want || samePose(b.pose, g.pose) !== null) filtered++;
+            if (samePose(b.pose, g.pose) !== null) filtered++;
         }
         if (filtered === 0) fatal(`${label}: G5: the filter filtered no frame`);
         return { posed, filtered };
@@ -881,7 +883,7 @@ function report(R) {
     for (const clip of G5_CLIPS) say(`${clip}: ${R[clip].g5[0].posed} posed frames, ${R[clip].g5[0].filtered} of them filtered`);
     say();
     say("# Stage 2's covariates, per clip. The control arm: the guard and the filter off. Each is a read, and nothing here judges the guard");
-    say("The assumed K: intrinsics(w, h), 60° of horizontal field, the same for every arm; no calibration. What lower means is not per frame: on moving footage the metric reads attenuated motion as lower jitter, and this document reads no jitter of the guard's.");
+    say("The assumed K: intrinsics(w, h), 60° of horizontal field, the same for every arm; no calibration. What lower means is not per frame: on moving footage the metric reads attenuated motion as lower jitter. The only jitter of the guard's above is G4's registered cells, checked equal; no comparison of it is made here.");
     for (const clip of CLIPS) {
         const c = R[clip];
         say();
@@ -938,6 +940,7 @@ function negatives(dir) {
     const READ = "return { pose, poseGuard: reading };";
     const CF_LINE = "const closedForm = closedFormPose(H, K);";
     const TILT_LINE = "const tiltDeg = tiltDegOf(closedForm.R);";
+    const POSE_LINE = "return { pose: guarded ? closedForm : selected, reading: { tiltDeg, guarded } };";
     const TEST = ["vitest", ["test/tracker_pose_guard.test.ts", "test/pose/pose_guard.test.ts"]];
     const child1 = (clip, only = "every:1") => ["child", clip, only];
     const LIST = [
@@ -947,7 +950,12 @@ function negatives(dir) {
         ["G1", "one element of the result's H moved by 1e-9", [[TRACKER, READ, "return { pose, poseGuard: reading, H: Float64Array.from(H, (v, i) => (i === 4 ? v + 1e-9 : v)) } as never;"]], child1("pinball-bench.mp4"), /G1: another field: \$\.H\[4\]/],
         ["G1", "one element of H moved by 1e-9 in the guard's input", [[GUARD, CF_LINE, "const closedForm = closedFormPose(Float64Array.from(H, (v, i) => (i === 4 ? v + 1e-9 : v)), K);"]], child1("pinball-bench.mp4"), /G1: the reading/],
         ["G1", "the tilt read from IPPE's pose", [[GUARD, TILT_LINE, "const tiltDeg = tiltDegOf(selected.R);"]], child1("pinball-bench.mp4"), /G1: the reading/],
-        ["G1", "the previous frame's tilt", [[GUARD, TILT_LINE, "const tiltDeg = previousTilt; previousTilt = tiltDegOf(closedForm.R);"], [GUARD, "/** `acos(clamp(R[8], −1, 1))`, degrees. */", "let previousTilt = 0;\n/** `acos(clamp(R[8], −1, 1))`, degrees. */"]], child1("pinball-bench.mp4"), /G1: the reading/],
+        // Seeded with the first frame's own tilt, so that only staleness on a later frame can fire.
+        ["G1", "the previous frame's tilt", [[GUARD, TILT_LINE, "const tiltDeg = previousTilt ?? tiltDegOf(closedForm.R); previousTilt = tiltDegOf(closedForm.R);"], [GUARD, "/** `acos(clamp(R[8], −1, 1))`, degrees. */", "let previousTilt: number | null = null;\n/** `acos(clamp(R[8], −1, 1))`, degrees. */"]], child1("pinball-bench.mp4"), /frame (?!73:)\d+: G1: the reading/],
+        // The reading right and the pose wrong, each of which only the pose comparison can catch.
+        ["G1", "the reading right, the selection's pose below T", [[GUARD, POSE_LINE, "return { pose: selected, reading: { tiltDeg, guarded } };"]], child1("pinball-bench.mp4"), /G1: the pose/],
+        ["G1", "the reading right, the closed form's pose at T and above", [[GUARD, POSE_LINE, "return { pose: closedForm, reading: { tiltDeg, guarded } };"]], child1("pinball-bench.mp4"), /G1: the pose/],
+        ["G1", "the reading right, one element of the guard's pose moved by 1e-9", [[GUARD, POSE_LINE, "return { pose: guarded ? { ...closedForm, t: Float64Array.from(closedForm.t, (v, i) => (i === 2 ? v + 1e-9 : v)) } : selected, reading: { tiltDeg, guarded } };"]], child1("pinball-bench.mp4"), /G1: the pose/],
         ["G1", "poseSelection carrying the guarded pose", [[TRACKER, "...this.guarded(r.H, selection),\n            poseSelection: selection,", "...this.guarded(r.H, selection),\n            poseSelection: { ...selection, pose: guardPose(r.H, this.K, selection.pose, this.poseGuardThresholdDeg ?? 0).pose },"]], child1("pinball-static.mp4"), /G1: another field: \$\.poseSelection/],
         ["G1", "a frame guarded at the threshold's other side: the closed form at and above T", [[GUARD, "const guarded = tiltDeg < thresholdDeg;", "const guarded = tiltDeg >= thresholdDeg;"]], child1("pinball-bench.mp4"), /G1: the reading/],
         ["G2", "a frame both guarded and fallen back counted twice", [[TRACKER, COUNT, "if (reading.guarded) this.fallbacks++;"]], child1("pinball-bench-table.mp4"), /G2: fallbackFrames/],
@@ -981,7 +989,10 @@ function negatives(dir) {
     say("| criterion | the mutant | how it was read | failed as it must |");
     say("|---|---|---|---|");
     let survivors = 0;
+    // --match tries a few while writing one. A partial list stands for nothing, and says so at the end.
+    const MATCH = arg("--match");
     for (const [g, name, edits, how, expected] of LIST) {
+        if (MATCH !== null && !name.includes(MATCH)) continue;
         const originals = new Map();
         let verdict;
         let reading = "";
@@ -1032,5 +1043,5 @@ function negatives(dir) {
         process.stdout.write(out.join("\n") + "\n");
         fatal(`${survivors} mutants survived`);
     }
-    say(`every mutant failed as it must, ${LIST.length} of them; the tree and the build are as they were`);
+    say(MATCH !== null ? `a partial list, --match ${MATCH}: it stands for nothing` : `every mutant failed as it must, ${LIST.length} of them; the tree and the build are as they were`);
 }

@@ -338,9 +338,10 @@ describe("the poseGuard option: the counter (G2, on a synthetic path)", () => {
         }
     }, 120_000);
 
-    it("counts a frame both guarded and fallen back once", () => {
-        // On the corpus such frames are G2's negative in the dated check. Here,
-        // the counter's own inputs over every frame this path reaches.
+    it("adds to the off run's count only the frames guarded that had not fallen back", () => {
+        // A frame both guarded and fallen back is G2's negative on the corpus, in
+        // the dated check; this path is not required to reach one. Here, the
+        // counter's own inputs over every frame it does reach.
         const on = counted(leaveAndReturn, 106, ON);
         const off = counted(leaveAndReturn, 106);
         const posed = on.results.filter(ok);
