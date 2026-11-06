@@ -478,6 +478,7 @@ have made in the default mode.
 | `minPatchZncc`                             | 0.6               | A converged patch's correlation with its window                                                                                                                                                           |
 | `conditioning`                             | `{ mode: "off" }` | The conditioning signal's state: `"off"`, `"report"`, or `"refuse"` with `maxDScale` and `maxDOrth`, both required, numbers ≥ 0, `Infinity` for no bound; a threshold in another state is refused (below) |
 | `poseFilter`                               | `{ mode: "off" }` | One Euro filtering of `pose`: `"off"`, or `"one-euro"` with `rotation`, `translation` (`{ minCutOff, beta }`) and `dCutOff`; an omitted one takes its derived value (below)                               |
+| `poseGuard`                                | `{ mode: "off" }` | The closed form below a tilt threshold: `"off"`, or `"closed-form-below"` with `thresholdDeg` in `[0, 180]`, 10 when omitted; no claim that 10° suits a real camera (below)                               |
 | `clock`                                    | none              | `() => ms`, for `timings`                                                                                                                                                                                 |
 | `rngFor`                                   | none              | `({ timestampMs }) => rng`, called once per detection the tracker runs itself: the generator RANSAC draws from, passed on as `RansacOptions.rng`; `undefined` leaves the draw to the backend (below)      |
 
@@ -605,6 +606,47 @@ tracker and feeds nothing back.
   only. **No device claim**: no exported value of the bench page is a
   function of the pose, so the filter is measured on synthetic sequences only.
   The filter's step is not in `timings`.
+
+**The pose guard** ([#133](https://github.com/webarkit/webarkit/issues/133),
+registered in
+[`docs/benchmarks/2026-11-06-228-133-stage3-registration.md`](../../docs/benchmarks/2026-11-06-228-133-stage3-registration.md)).
+On the characterisation's table, which renders and estimates with one `K`,
+IPPE first reads no worse than the closed form at the grid's 10°; below a
+threshold the guard gives the frame the closed form. **Off by default** (`{ mode: "off" }`): nothing is
+computed, and no result carries a `poseGuard` key. **On**
+(`{ mode: "closed-form-below", thresholdDeg }`, an omitted threshold taking
+`DEFAULT_POSE_GUARD_THRESHOLD_DEG`, 10): each frame reads its tilt, the angle
+between the plane's normal and the optical axis, from `closedFormPose` on its
+own `H` through the tracker's `K`. Below the threshold `pose` is that closed
+form, on `"TRACK"` and `"DETECT"` alike; at the threshold and above it `pose`
+is the selection, its own fallbacks included. A closed form with `good: false`
+has no tilt, and the frame keeps its selection. At 0 no frame is guarded.
+
+- **The scope.** The threshold was derived from a construction that renders
+  and estimates with the same `K`, and it moves under a focal-length mismatch:
+  in opposite directions on the two readings measured, and no true focal
+  length tried leaves it at 10° on either. A tilt read through an assumed `K`
+  is not one true tilt. **No claim is made that 10° suits any real camera**,
+  which is why it is a parameter. Adopting the guard, and choosing its
+  threshold for a calibrated camera, wait for
+  [#109](https://github.com/webarkit/webarkit/issues/109).
+- **The result.** `poseSelection` is untouched, so IPPE's selection remains on
+  every result. With the guard on, an `ok` result carries
+  `poseGuard: { tiltDeg, guarded }`, `tiltDeg` being `null` where the closed
+  form has no tilt. `fallbackFrames` counts a frame once when it is guarded or
+  its selection fell back, and each result's `poseGuard` says when it was the
+  guard.
+- **With the filter.** The filter reads `pose`, which is then the guarded
+  pose; nothing in the filter changes. That the two compose so is checked; no
+  figure of the composition has been measured.
+- **Refused**, each a `RangeError` at construction: an unknown mode, a key the
+  option does not read, by name, with the key it may have meant when one is
+  near, a threshold on
+  `{ mode: "off" }`, and a threshold that is not finite or lies outside
+  `[0, 180]`.
+- **Not reachable from the bench page,** which has no option for it, as it has
+  none for the filter. The stateless mode has no tracker, and the detection
+  worker computes no pose, so neither changes.
 
 **What it survives**, measured on synthetic frames of the camera path (the
 pinball target at 0.45 in 270 × 360; `test/tracking/track_frame.test.ts`,

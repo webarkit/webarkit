@@ -121,6 +121,13 @@ export {
 } from "./tracker.js";
 export type { PoseFilterLayerOptions, PoseFilterOptions } from "./tracker.js";
 
+// The guard of #133: the tracker's option, off by default, and its threshold's
+// default, a parameter (the Stage 3 registration of #228 and #133, "The scope").
+// The guard's module itself is not exported here, as the filter's is not.
+export { DEFAULT_POSE_GUARD, DEFAULT_POSE_GUARD_THRESHOLD_DEG } from "./tracker.js";
+export type { PoseGuardOptions } from "./tracker.js";
+export type { PoseGuardReading } from "./pose/pose_guard.js";
+
 // The tracking state (M2). Every function is exported here up front, stub or
 // not, so the branches implementing them never need to touch this file.
 export { levelScale } from "./tracking/level_scale.js";

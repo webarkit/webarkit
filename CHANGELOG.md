@@ -37,6 +37,12 @@ release pull request's body and the GitHub Release's notes.
   Start refuses a seeded run on a backend that does not declare `deterministicRansac`, and a
   `?seed=` it cannot read; `check:page` gains a check of seeded runs
   ([#151](https://github.com/webarkit/webarkit/issues/151)).
+- `@webarkit/nft-tracker` has a `poseGuard` option, off by default: `pose` is the closed form
+  on a frame whose tilt reads below `thresholdDeg`, and the selection at it and above it, with
+  `poseSelection` untouched. The threshold is a parameter, 10° when omitted, derived under a
+  matched `K`: it moves under a focal-length mismatch, no claim is made that 10° suits a real
+  camera, and adoption waits for [#109](https://github.com/webarkit/webarkit/issues/109)
+  ([#133](https://github.com/webarkit/webarkit/issues/133)).
 
 ### Changed
 
