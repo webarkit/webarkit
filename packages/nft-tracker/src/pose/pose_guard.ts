@@ -64,9 +64,17 @@ export interface PoseGuardReading {
      */
     readonly tiltDeg: number | null;
     /**
-     * Whether the frame's `pose` is the guard's closed form: the tilt is below
-     * the threshold. On a frame whose selection had already fallen back to the
-     * closed form it is `true` too, and the two poses are equal.
+     * The guard's own decision on the frame, taken before any filter: the tilt
+     * is below the threshold, so the unfiltered pose is the guard's closed
+     * form. With the `poseFilter` option on, the result's `pose` is the
+     * filter's output on that pose, and this still reads `true`.
+     *
+     * It is not a report of whether the pose is a closed form. On a frame whose
+     * selection had already fallen back to the closed form, it is `true` only
+     * when that closed form's tilt is below the threshold, and the two poses
+     * are then equal. At the threshold and above it, or with no tilt, it is
+     * `false`, and the unfiltered pose is still that closed form, the
+     * selection's own.
      */
     readonly guarded: boolean;
 }
