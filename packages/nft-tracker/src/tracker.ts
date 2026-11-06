@@ -730,8 +730,14 @@ export type TrackResult =
            */
           readonly pose: Pose;
           /**
-           * What the `poseGuard` option read on this frame, and whether
-           * {@link pose} is its closed form. Absent with the option off.
+           * What the `poseGuard` option read on this frame, and its decision,
+           * taken before the filter: `guarded` says the unfiltered pose is the
+           * guard's closed form, so with the `poseFilter` option on {@link pose}
+           * is the filter's output on it. On a frame whose selection fell back,
+           * `guarded` is `true` only when the closed form's tilt is below the
+           * threshold; otherwise it is `false`, and the unfiltered pose is the
+           * selection's own closed form. See {@link PoseGuardReading}. Absent
+           * with the option off.
            */
           readonly poseGuard?: PoseGuardReading;
           /**
