@@ -84,7 +84,7 @@ function arg(name) {
 }
 /** A defect in the check's inputs, for exercising a cell the wrong way. Mutants of the code are --negatives'. */
 const BREAK = arg("--break");
-for (const known of [null, "T-9.36", "low-8", "input-hash"]) if (BREAK === known) break; else if (known === "input-hash") fatal(`--break ${BREAK}: unknown`);
+for (const known of [null, "T-9.36", "T-half", "low-8", "input-hash"]) if (BREAK === known) break; else if (known === "input-hash") fatal(`--break ${BREAK}: unknown`);
 
 // =============================================================================================
 // The definitions: pure functions, each tested on constructed cases (--self-test).
@@ -428,7 +428,9 @@ function poseCorners(pose, K, points) {
 const LOOPS = 6;
 const COUNTED = Object.freeze({ firstLoop: 1, loopCount: 4 });
 /** The arm's threshold: a broken run moves it in the tracker and the check together, so that only the cells can fire. */
-const T_ARM = BREAK === "T-9.36" ? 9.36 : T;
+// The registration's negative reads "T 9.36" and "172 for 216". The 172 is the first record's row for its half-of-the-fits
+// interpolation, 9.357142857142858, printed to two decimals: at 9.36 as written the same cell reads 176. Both legs run.
+const T_ARM = BREAK === "T-9.36" ? 9.36 : BREAK === "T-half" ? 9.357142857142858 : T;
 const T_LOW = BREAK === "low-8" ? 8 : 7;
 const SCHEDULES = [
     { key: "every", stepMs: null, name: "every frame" },
@@ -950,7 +952,8 @@ function negatives(dir) {
         ["G1", "a frame guarded at the threshold's other side: the closed form at and above T", [[GUARD, "const guarded = tiltDeg < thresholdDeg;", "const guarded = tiltDeg >= thresholdDeg;"]], child1("pinball-bench.mp4"), /G1: the reading/],
         ["G2", "a frame both guarded and fallen back counted twice", [[TRACKER, COUNT, "if (reading.guarded) this.fallbacks++;"]], child1("pinball-bench-table.mp4"), /G2: fallbackFrames/],
         ["G2", "a guarded frame not counted", [[TRACKER, COUNT, ""]], child1("pinball-bench.mp4"), /G2: fallbackFrames/],
-        ["G3", "T 9.36 in place of 10", [], ["break", "T-9.36", "pinball-bench.mp4", "every:all"], /G3, handed to CF reads 172 \/ 172 \/ 176, registered 216 \/ 216 \/ 220/],
+        ["G3", "T 9.36 in place of 10, as the registration writes it", [], ["break", "T-9.36", "pinball-bench.mp4", "every:all"], /G3, handed to CF reads 176 \/ 176 \/ 180, registered 216 \/ 216 \/ 220/],
+        ["G3", "T 9.357142857142858 in place of 10, the value the registration's 172 was read at", [], ["break", "T-half", "pinball-bench.mp4", "every:all"], /G3, handed to CF reads 172 \/ 172 \/ 176, registered 216 \/ 216 \/ 220/],
         ["G4", "T = 8 in place of 7, against the first record's rows", [], ["break", "low-8", "pinball-bench-table.mp4", "every:all"], /G4, T = 7, handed to CF reads/],
         ["G4", "a threshold hard-coded at 10", [[TRACKER, "guardPose(H, this.K, selection.pose, thresholdDeg)", "guardPose(H, this.K, selection.pose, 10)"]], TEST, /the threshold is a parameter/],
         ["G4", "<= for <", [[GUARD, "const guarded = tiltDeg < thresholdDeg;", "const guarded = tiltDeg <= thresholdDeg;"]], TEST, /at exactly/],
@@ -1025,6 +1028,9 @@ function negatives(dir) {
     rmSync(join(dir, "truth.json"), { force: true });
     if (firstDifference(start, end) !== null) fatal(`the tree is not as it was: ${JSON.stringify(start)} and ${JSON.stringify(end)}`);
     if (treeDigest("packages/nft-tracker/dist", (p) => p.endsWith(".js")).digest !== distBefore) fatal("the build is not as it was");
-    if (survivors > 0) fatal(`${survivors} mutants survived`);
+    if (survivors > 0) {
+        process.stdout.write(out.join("\n") + "\n");
+        fatal(`${survivors} mutants survived`);
+    }
     say(`every mutant failed as it must, ${LIST.length} of them; the tree and the build are as they were`);
 }
