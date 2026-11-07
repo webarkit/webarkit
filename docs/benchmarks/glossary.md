@@ -198,7 +198,7 @@ The words #102 listed on 2026-10-02, from M2's and M3's plans.
 
 ## Metric terms
 
-Written against `METRICS_VERSION` 1.
+Written against `METRICS_VERSION` 2.
 
 Every metric term is defined by its entry in `DEFINITIONS`, in
 [`examples/js/bench-metrics.mjs`](../../examples/js/bench-metrics.mjs).
@@ -436,6 +436,7 @@ list to the module.
 - `frameLevels`
 - `frameMs`
 - `frames`
+- `H`
 - `heldLockSteps`
 - `jitterPx`
 - `jitterWindows`
@@ -443,13 +444,21 @@ list to the module.
 - `loopWraps`
 - `lostVisibility`
 - `lowQualityTrackFrames`
+- `poseCornerDistancePx`
+- `poseCorners`
 - `posedFrames`
+- `poseJitterPx`
+- `poseJitterWindows`
+- `posePosedFrames`
+- `poseSpreadPx`
 - `protocol`
 - `provenance`
 - `pyramidMs`
 - `quality`
 - `reacquisitions`
 - `reacquisitionsAtLoopWrap`
+- `seed`
+- `seedPolicy`
 - `spreadPx`
 - `staleReplies`
 - `states`

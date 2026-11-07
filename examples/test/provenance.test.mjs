@@ -359,8 +359,14 @@ describe("provenanceRefusal", () => {
                 ["a .. segment", "examples/../x.mjs"],
                 // What the URL parser strips at the ends, or drops inside, before it reads a scheme.
                 ["a leading space", " http://["],
+                ["a leading slash behind a space", " /examples/x.mjs"],
+                ["a .. segment behind a space", " ../x.mjs"],
+                ["a .. segment before a space", "examples/.. "],
+                ["spaces only", "   "],
                 ["a tab inside", "ht\ttp://["],
                 ["a control character", "\u0001http://["],
+                // The preflight's rule is this one (#217), and it refused an empty key already.
+                ["nothing in it", ""],
             ].map(([what, key]) => [
                 `a key with ${what}`,
                 withKey(key),
@@ -411,6 +417,16 @@ describe("provenanceRefusal", () => {
                 /^the manifest's served\["examples\/js\/a\.mjs"\] null/,
             );
         });
+
+        // Legal git paths (#217). The URL parser strips a space at either end and encodes one
+        // inside; none of these throws, and a path it then reads wrongly is a hash finding.
+        it.each(["examples/js/a b.mjs", " examples/js/a.mjs", "examples/js/a.mjs ", "http ://["])(
+            "accepts a key with a space: %j",
+            (key) => {
+                expect(servedShapeError(withKey(key))).toBeNull();
+                expect(() => new URL(key, "http://localhost/")).not.toThrow();
+            },
+        );
 
         it("accepts a served map a build writes, an empty one included", () => {
             expect(servedShapeError(manifest)).toBeNull();

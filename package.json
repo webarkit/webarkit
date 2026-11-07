@@ -6,11 +6,12 @@
   "workspaces": [
     "packages/*"
   ],
+  "//": "#212: --testTimeout=15000 on test:examples, against contention on loaded machines: the slowest sighting was 11.3 s (#210), the slowest measured 11.49 s with three suites at once, about 1.3× under 15 s.",
   "scripts": {
     "build": "node scripts/build-provenance.mjs",
     "prepare": "npm run build",
     "test": "npm run test --workspaces --if-present && npm run test:examples",
-    "test:examples": "vitest run --root examples",
+    "test:examples": "vitest run --root examples --testTimeout=15000",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "check:contract": "node scripts/check-contract-sync.mjs",
     "check:page": "node scripts/page-check.mjs",

@@ -212,7 +212,8 @@ describe("frameRecord", () => {
         fitMs: 0.1,
     };
     const stageTimings = { acquire: 20, total: 25 };
-    const base = { stageTimings, timestampMs: 1000, mediaTimeSeconds: 1.5, targetPoints };
+    const K = [100, 0, 50, 0, 100, 60, 0, 0, 1];
+    const base = { stageTimings, timestampMs: 1000, mediaTimeSeconds: 1.5, targetPoints, K };
 
     it("copies what the tracker reports on a TRACK frame, as it reports it", () => {
         const result = {
@@ -255,6 +256,8 @@ describe("frameRecord", () => {
                 [7, 8],
                 [5, 8],
             ],
+            H,
+            poseCorners: null,
         });
         // Copies: the page reuses one timings object every tick.
         expect(r.tracking).not.toBe(tracking);
@@ -1903,6 +1906,10 @@ describe("summarizeRun", () => {
         "detectionTime",
         "detectionAccounting",
         "detectionUseFallbackFrames",
+        "posePosedFrames",
+        "poseJitterWindows",
+        "poseJitterPx",
+        "poseSpreadPx",
     ];
     const withoutNew = (s) =>
         Object.fromEntries(Object.entries(s).filter(([k]) => !NEW_KEYS.includes(k)));
@@ -1984,7 +1991,7 @@ describe("summarizeRun", () => {
         expect(Object.keys(full)).toEqual(Object.keys(summarizeRun(window)));
         for (const key of NEW_KEYS) expect(DEFINITIONS, key).toHaveProperty(key);
         expect(Object.isFrozen(DEFINITIONS)).toBe(true);
-        expect(METRICS_VERSION).toBe(1);
+        expect(METRICS_VERSION).toBe(2);
     });
 
     it("leaves every existing summary key unchanged when no options are given", () => {
@@ -2361,6 +2368,7 @@ describe("parsePositiveInt and parseRunParams", () => {
             detection: "sync",
             loops: null,
             run: null,
+            seed: null,
             paramErrors: [],
         });
     });
@@ -2402,6 +2410,43 @@ describe("parsePositiveInt and parseRunParams", () => {
             expect(p.paramErrors, query).toHaveLength(1);
             expect(p.paramErrors[0], query).toMatch(new RegExp(`\\?${key}=`));
             expect(p.paramErrors[0], query).not.toMatch(/\n/);
+        }
+    });
+
+    // #151: ?seed= seeds RANSAC, per frame. Absent, the page draws as it always has.
+    it("reads ?seed=, an integer in ±4294967295, and is null without one", () => {
+        expect(parseRunParams("?mode=tracking", { bundledClips: clips }).seed).toBeNull();
+        for (const [query, seed] of [
+            ["?seed=1", 1],
+            ["?seed=0", 0],
+            ["?seed=-7", -7],
+            ["?seed=4294967295", 4294967295],
+            ["?seed=-4294967295", -4294967295],
+            ["?seed=%201%20", 1],
+        ]) {
+            const p = parseRunParams(query, { bundledClips: clips });
+            expect(p.seed, query).toBe(seed);
+            expect(p.paramErrors, query).toEqual([]);
+        }
+    });
+
+    it("refuses, rather than drops, a ?seed= it cannot read", () => {
+        // "%2B1" is a literal "+1"; a bare "+" in a query string is a space.
+        for (const [query, raw] of [
+            ["", ""],
+            ["abc", "abc"],
+            ["1.5", "1.5"],
+            ["1e3", "1e3"],
+            ["0x10", "0x10"],
+            ["4294967296", "4294967296"],
+            ["-4294967296", "-4294967296"],
+            ["%2B1", "+1"],
+        ]) {
+            const p = parseRunParams(`?seed=${query}`, { bundledClips: clips });
+            expect(p.seed, raw).toBeNull();
+            expect(p.paramErrors, raw).toEqual([
+                `?seed=${raw}: expected an integer in [-4294967295, 4294967295]`,
+            ]);
         }
     });
 
@@ -2705,6 +2750,31 @@ describe("startRefusal names the target file it was given", () => {
         );
         expect(startRefusal(failed)).toBe("targets/pinball.wnft is not loaded.");
     });
+});
+
+// #151: a seeded run reaches RANSAC only through the injected generator, which a
+// backend that does not declare deterministicRansac may ignore.
+describe("startRefusal and ?seed=", () => {
+    const wnft = { db: { patches: { count: 64, patchSize: 16 } }, record: { source: "wnft" } };
+    const run = { mode: "tracking", target: wnft, minTrackedPatches: 8 };
+    const backend = (deterministicRansac) => ({ name: "b", deterministicRansac });
+
+    it("starts a seeded run on a backend that declares deterministicRansac, and any unseeded one", () => {
+        expect(startRefusal({ ...run, seed: 1, backend: backend(true) })).toBeNull();
+        expect(startRefusal({ ...run, seed: null, backend: backend(false) })).toBeNull();
+        expect(startRefusal(run)).toBeNull();
+    });
+
+    it.each([false, undefined])(
+        "refuses a seeded run on a backend whose deterministicRansac is %s, naming it",
+        (value) => {
+            for (const mode of ["tracking", "detection-only", "stateless"]) {
+                expect(startRefusal({ ...run, mode, seed: 3, backend: backend(value) }), mode).toBe(
+                    '?seed=3: the backend "b" does not declare deterministicRansac, so it may ignore the injected rng: refusing to run seeded.',
+                );
+            }
+        },
+    );
 });
 
 describe("startRefusal and the detection worker", () => {

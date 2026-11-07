@@ -141,6 +141,16 @@ the call is what it was before
 ([#24](https://github.com/webarkit/webarkit/issues/24)): `ransac_params_t`'s
 default, `() => Math.random()`.
 
+**`poseFromHomography` returns `good: false` on a degenerate `K`**, as the
+contract's `Pose` says: a focal length that is zero or not finite, the `K`
+jsfeatNext's `pose_estimator` refuses. It does not throw; `R` and `t` are zero,
+this adapter's choice; and the estimator it keeps between calls is left as it
+was ([#94](https://github.com/webarkit/webarkit/issues/94)). Every `good: false`
+result has zero `R` and `t`, whether the adapter or the library refused it (a
+degenerate or non-finite `H`, a principal point that is not finite), so a refused
+pose depends only on its arguments
+([#224](https://github.com/webarkit/webarkit/issues/224)).
+
 **Returned arrays belong to the caller.** Every typed array is copied out.
 jsfeatNext reuses its scratch matrices between calls, so handing back views
 would hand back storage the next call overwrites.
@@ -159,7 +169,11 @@ regardless of which backend is plugged in:
 
 ## Requirements
 
-`@webarkit/jsfeat-next` **≥ 0.17.0** — earlier releases lack `bfmatcher`,
+`@webarkit/jsfeat-next` **`^1.1.0`** (webarkit/webarkit#94). The backend
+needs nothing that 1.x added; 1.1.0 is required because it is the version
+whose per-frame output was compared with 0.17.0's, on the seeded replays and
+the ground truth, and found the same. 0.17.0 is the floor below which the
+backend cannot work: earlier releases lack `bfmatcher`,
 `pose_estimator` and `orb.ic_angle` (needed since 0.15.0), lack
 `motion_estimator.find_homography` (needed since 0.16.0 — see above), and
 carry the `fast_corners` candidate-buffer bug that made `detect` read

@@ -215,7 +215,8 @@ describe("compile-target", () => {
         // refusal below: it spawns a real `npm run`, so it pays npm's own
         // start-up (through a shell on Windows) on top of a full compile.
         // Measured on Windows: 2.5 s alone, up to 5.4 s while the rest of the
-        // suite runs beside it — past vitest's 5 s default. What it checks is
+        // suite runs beside it, and up to 23.69 s with three suites at once
+        // (#212) — past the suite's 15 s default. What it checks is
         // that the script writes a valid target where it was asked to, not
         // how fast.
         it("works through the real npm script, from the repository root", () => {

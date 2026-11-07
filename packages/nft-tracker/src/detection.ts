@@ -122,6 +122,14 @@ export type TargetSide = "facing" | "reversed" | "mixed-w" | "singular";
  * `w` is `"singular"`: the target mapped to a line or a point, which shows no
  * face. {@link detectTarget} accepts `"facing"` only.
  *
+ * On non-finite input the same comparisons give these results. A `NaN` in any
+ * `w` is `"mixed-w"`, before the determinant is computed. With one-signed `w`,
+ * a `NaN` determinant is `"reversed"`, and an `s · det H` of `±∞` follows its
+ * sign, so `+∞` is `"facing"` and {@link detectTarget} accepts the fit. A
+ * finite `H` whose determinant overflows is read as computed, which can be
+ * `NaN`, or an infinity of the sign opposite to the exact determinant's. The
+ * behaviour on non-finite input is an open question: webarkit/webarkit#239.
+ *
  * The definition and its arithmetic are axis A of #202's probe
  * (`docs/benchmarks/2026-11-01-202-stage1-probe.mjs`, `sideOf`), as its
  * Stage 3 registration (`2026-11-01-202-stage3-registration.md`) registers it.
@@ -441,15 +449,22 @@ export function prepareDetection(
  * posts to a worker (ADR-0001 point 7).
  *
  * The one random choice is RANSAC's minimal-sample draw inside
- * `estimateHomography`, below the contract. It is seedable through
- * `RansacOptions.rng` since webarkit/webarkit#24, but `detectTarget` does not
- * pass one yet; everything else is a pure function of its arguments.
+ * `estimateHomography`, below the contract; everything else is a pure
+ * function of its arguments. `rng`, when given, is passed to it as
+ * `RansacOptions.rng` (webarkit/webarkit#24, #188): a uniform source in
+ * [0, 1) that makes the draw, and so the detection, a function of the
+ * arguments too. Absent, the options are exactly what they were before #188,
+ * with no `rng` key at all, and the backend draws from its own source. A
+ * backend that does not declare `capabilities.deterministicRansac` ignores
+ * the option, as the contract allows, so a caller that relies on the draws
+ * checks that flag first (webarkit/webarkit#137, "Usage rule, 2026-10-15").
  */
 export function detectTarget(
     cv: CvBackend,
     setup: DetectionSetup,
     frame: GrayImage,
     timestampMs: number,
+    rng?: () => number,
 ): Detection {
     const sceneKeypoints = cv.detect(frame, {
         levels: setup.sceneLevels,
@@ -496,7 +511,13 @@ export function detectTarget(
         dst[i * 2 + 1] = sceneKeypoints[m.queryIdx].y;
     }
 
-    const h = cv.estimateHomography(src, dst, { threshold: setup.ransacThreshold });
+    const h = cv.estimateHomography(
+        src,
+        dst,
+        rng === undefined
+            ? { threshold: setup.ransacThreshold }
+            : { threshold: setup.ransacThreshold, rng },
+    );
     if (!h.ok) {
         return {
             ok: false,

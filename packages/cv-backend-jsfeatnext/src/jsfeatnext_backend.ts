@@ -201,9 +201,9 @@ function toMat3(m: Mat3, what: string): matrix_t {
 /**
  * A pool of `keypoint_t` for the detectors to fill.
  *
- * `fast_corners.detect` writes `corners[n]` with **no bounds check** — run out
- * of slots and it dereferences `undefined` and throws a TypeError from inside
- * the library. So the pool cannot be sized by optimism; {@link detectInto}
+ * `fast_corners.detect` throws once the pool is full: since 1.1.0 its own
+ * `Error` ("corners pool of N is full"), under 0.17 a TypeError from writing
+ * past the end. So the pool cannot be sized by optimism; {@link detectInto}
  * grows and retries against a hard bound.
  */
 function makePool(n: number): InstanceType<typeof jsfeatNext.keypoint_t>[] {
@@ -231,11 +231,14 @@ export class JsfeatNextBackend implements CvBackend {
     /**
      * Runs FAST into the pool, growing it until it fits.
      *
-     * The detector has no cap of its own and no bounds check, so a textured
-     * frame at a low threshold can produce more corners than any fixed pool.
-     * Doubling on failure terminates because the retry is capped at the number
-     * of pixels the detector can actually consider — corners come from distinct
-     * positions inside the border, so it cannot exceed that.
+     * The detector has no cap of its own, so a textured frame at a low
+     * threshold can produce more corners than any fixed pool, and it throws
+     * once the pool is full: since 1.1.0 its own `Error` ("corners pool of N is
+     * full"), under 0.17 a TypeError from writing past the end. That throw is
+     * what triggers the retry here. Doubling on failure terminates because the
+     * retry is capped at the number of pixels the detector can actually
+     * consider — corners come from distinct positions inside the border, so it
+     * cannot exceed that.
      */
     private detectInto(img: matrix_t, border: number): number {
         const hardCap = Math.max(1, (img.cols - 2 * border) * (img.rows - 2 * border));
@@ -573,6 +576,17 @@ export class JsfeatNextBackend implements CvBackend {
 
     poseFromHomography(H: Mat3, K: Mat3): Pose {
         const Km = toMat3(K, "K");
+        // jsfeatNext's pose_estimator throws on a K it refuses (constructor and
+        // setIntrinsics: a focal length that is zero or not finite). The
+        // contract's Pose says such a K gives `good: false`, so it is answered
+        // here, with the library's own predicate, before the estimator is built
+        // or re-intrinsed: the estimator and `lastK` stay as they were (#94).
+        const fx = Km.data[0];
+        const fy = Km.data[4];
+        if (!(Number.isFinite(fx) && fx !== 0 && Number.isFinite(fy) && fy !== 0)) {
+            toMat3(H, "H");
+            return { R: new Float64Array(9), t: new Float64Array(3), good: false };
+        }
         if (!this.poseEstimator) {
             this.poseEstimator = new jsfeatNext.pose_estimator(Km);
             this.lastK = new Float64Array(K);
@@ -582,6 +596,13 @@ export class JsfeatNextBackend implements CvBackend {
         }
 
         this.poseEstimator.estimate(toMat3(H, "H"), this.pose);
+        // On an (H, K) it refuses, `estimate` sets `good = false` and leaves R
+        // and t as the last good call wrote them into the kept pose_t. Answered
+        // with zeros, as the guard above does, so a refused pose depends only on
+        // its arguments, as the contract's purity requires (#224).
+        if (!this.pose.good) {
+            return { R: new Float64Array(9), t: new Float64Array(3), good: false };
+        }
         return {
             R: new Float64Array(this.pose.R.data.subarray(0, 9)),
             t: new Float64Array(this.pose.t),

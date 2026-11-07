@@ -49,7 +49,14 @@ export const DETECTION_STAGES = Object.freeze([
 ]);
 
 /** Bumped whenever a definition in {@link DEFINITIONS} changes meaning; every export records it. */
-export const METRICS_VERSION = 1;
+export const METRICS_VERSION = 2;
+
+/**
+ * The versions `compareExports` and `sequenceRefusal` read. Version 2 adds keys and changes the
+ * meaning of none, so `corners` and every figure under `H` read alike in both; a pair with a
+ * version 1 export has no pose part. An export with no version, or another, is refused.
+ */
+export const READABLE_METRICS_VERSIONS = Object.freeze([1, 2]);
 
 /** The quality at or below which a TRACK frame is counted in `lowQualityTrackFrames`. */
 export const LOW_QUALITY = 0.2;
@@ -106,6 +113,9 @@ export const DEFINITIONS = Object.freeze({
         "Two exports of the same footage compared on common frames: each restricted to its frames with corners at the media times, to the microsecond, where both have a frame with corners (every occurrence kept when a loop revisits one); jitterPx and spreadPx are then taken over each restricted run as defined above.",
     detectionPath:
         "The run's detection path, from ?detection=. sync: the tracker detects on the frame loop (M2); worker: a module worker detects, under the on-demand policy (docs/benchmarks/README.md, 2026-09-29).",
+    seed: "The integer RANSAC was seeded with (the page's ?seed=, replay-clips --seed), or null: unseeded, the backend draws from Math.random. Seeded, each detection's generator reaches the backend through the contract's RansacOptions.rng (#24), never through the global Math.random, and a backend that does not declare deterministicRansac is refused; seedPolicy says how the seed is used. The generator reads the seed as a 32-bit unsigned integer, so a negative seed s draws as s + 2^32 does: -1 and 4294967295 are one seed recorded two ways.",
+    seedPolicy:
+        "How seed seeds RANSAC (examples/js/frame-rng.mjs, #151): frame, a fresh generator for each detection, mulberry32 of a 32-bit hash of the seed and the detected frame's media time in microseconds, rounded, so the same frame draws the same samples in any run, whatever the run processed before it; run, one mulberry32 of the seed for the whole run, whose draws repeat only while two runs process the same frames. The page's policy is always frame. null without a seed. An export with a seed and no seedPolicy, older than #151, is a run one.",
     summaryMs:
         "Per stage, { p50, p95, max } of its timing in ms (stageSummary): each stage over the frames that ran it (framesForStage), a worker run's detectionPost over the frames that posted, over the frames summaryMsFrames names. In a ?loops= run those are the counted loops' frames, as the run summary's, never the warm-up loop's, whose first acquisition is cold. A worker run's frame without detectionUse is refused here as in the run summary (detectionUseFallbackFrames).",
     summaryMsFrames:
@@ -143,4 +153,15 @@ export const DEFINITIONS = Object.freeze({
         "{ n, min, p50, p95, max } of timings.total − timings.acquire − timings.gray − timings.detectionPost, per unlocked frame (state not TRACK), each frame's own: a frame that did not post carries no detectionPost and subtracts none. What is left of an unlocked frame once its acquisition, its grey conversion and its post are taken off: in a worker run, a process call that finds no lock and no detection; in a synchronous run, the tracker's own detection.",
     detectionTime:
         "Where detection's time goes, on the frame loop and off it, over the window's frames and the jobs (one per detection posted to the worker) posted from them. onLoop: the main thread's detection-related time, the sum of the detection stages (detect, describe, match, filterMatches, estimateHomography) of the frames that ran the tracker's own detection (detectionUse internal; an export older than the field reads every frame that is not TRACK so), timings.detectionPost of the frames that posted, and each job's handlerMs, the result handler, which runs between frames and is outside timings.total. share: that time ÷ (Σ timings.total + Σ handlerMs). msPerVideoSecond: that time per second of video covered, which is the counted loops' whole duration (their number × clipDurationS) in a summary that has them, and null there unless the run covered those loops whole (trackTimeShare.complete): an empty or partial window covers less than that duration, and would read 0 or a rate biased low; else the media time between consecutive frames, a loop wrap counting nothing, and null when that is 0. postMs: { n, min, p50, p95, max } of timings.detectionPost over the frames that carry one (a frame that did not post carries none), and handlerMs the same of the jobs' handlerMs. offLoop: workerMs, { n, min, p50, p95, max } of each job's workerMs.total, the worker's pipeline time on its own clock, and msPerVideoSecond, the sum of those per second of video covered. postToArrivalMs: { n, min, p50, p95, max } of each job's arrivedAtMs − postedAtMs, both on the main thread's clock: the latency of a detection from its post to its result's arrival.",
+    H: "Per frame: the frame's homography as the tracker or the stateless pipeline returned it, its nine elements in row order, or null on a frame that is not ok. On a detection-only tracker's frame that consumed a detection, the detected frame's, as result.H is. With intrinsics(width, height) of processingResolution it gives the frame's closed-form pose and tilt, which no key exports.",
+    poseCorners:
+        "Per frame: the target's corners, as in corners, projected through K · [r1 r2 t] of the result's pose, in frame px, K being intrinsics(width, height) of processingResolution: assumed, the same for every arm, and no calibration. The result's pose is the filtered pose with the poseFilter option on, the guarded pose with the tracker's guard option on, and poseFromHomography's in the stateless mode. null without a pose, when the pose's good is false, when any corner's depth R[6]x + R[7]y + t[2] is not positive, or when the four do not all project to finite points.",
+    posePosedFrames: "Frames with poseCorners.",
+    poseJitterWindows:
+        "The one-second windows poseJitterPx pools: those holding at least 4 frames with poseCorners.",
+    poseJitterPx:
+        "jitterPx's formula, unchanged, over poseCorners in place of corners. A stability metric: how much the pose-projected corners move about their own straight line within a second, with no truth in it. It reads jitter, not accuracy, so a lower figure is not a nearer pose. A line is fitted in each window, so it cannot see a constant offset between two arms, nor, at a constant rate, a constant lag; and it cannot decide between IPPE and the closed form where they differ by an offset. On moving footage it reads attenuated motion as lower jitter. It pools DETECT and TRACK frames, as jitterPx does, and a single wrong pose weighs on it heavily.",
+    poseSpreadPx: "spreadPx's formula, unchanged, over poseCorners in place of corners.",
+    poseCornerDistancePx:
+        "Two exports of the same footage, both of metricsVersion 2: the median over their common frames of the mean distance between one frame's four poseCorners in each, in frame px. Beside poseJitterPx, as a descriptive reading and never a criterion: it sees the offset and the lag that metric cannot, and has no truth in it, so it says how far apart two arms are and not which is nearer.",
 });

@@ -141,7 +141,7 @@ describe("scripts/build-provenance.mjs, run in a clone", () => {
         );
 
         // One at a time: three at once loaded the machine enough to push a CLI test elsewhere in
-        // the suite past its 5 s timeout.
+        // the suite past its timeout, then 5 s, now the suite's 15 s (#212).
         for (const [name, root] of Object.entries({ changed, noGit, foreign })) {
             runs[name] = { root, ...(await build(root)) };
         }
@@ -169,7 +169,7 @@ describe("scripts/build-provenance.mjs, run in a clone", () => {
         expect(m.clean, `clean beside dirtyPaths ${JSON.stringify(m.dirtyPaths)}`).toBe(
             m.dirtyPaths.length === 0,
         );
-        expect(m.head).toMatch(/^[0-9a-f]{40}$/);
+        expect(m.head).toMatch(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
     });
 
     // #120 (BB8): without the packages' build first, the bundle was made from the stale dist/

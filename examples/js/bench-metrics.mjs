@@ -51,6 +51,7 @@ export {
 export {
     DETECTION_STAGES,
     METRICS_VERSION,
+    READABLE_METRICS_VERSIONS,
     LOW_QUALITY,
     JITTER_WINDOW_S,
     TRACK_TIME_BIN_MS,
@@ -99,6 +100,7 @@ export {
 export {
     provenanceFindings,
     bundleManifestRefusal,
+    isRelativePath,
     provenanceRefusal,
     servedShapeError,
 } from "./bench-provenance.mjs";

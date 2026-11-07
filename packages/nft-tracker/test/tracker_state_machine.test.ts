@@ -52,7 +52,8 @@ import type { NftTrackerOptions, TrackResult } from "../src/tracker.js";
 import { buildTargetFromImage } from "../src/target/build_from_image.js";
 import type { TargetDb } from "../src/target/types.js";
 import { pinballTrackingTarget } from "../ground-truth/fixtures/tracking_target.js";
-import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import { seededSource } from "../ground-truth/fixtures/seeded_rng.js";
+import type { SeededSource } from "../ground-truth/fixtures/seeded_rng.js";
 import {
     CAMERA,
     centreMax,
@@ -73,11 +74,13 @@ import {
 import type { Pose } from "../ground-truth/tracker_sequences.js";
 
 let cv: CvBackend;
+let seeded: SeededSource;
 let K: Mat3;
 let target: TargetDb;
 
 beforeAll(async () => {
     cv = await createJsfeatNextBackend();
+    seeded = seededSource(cv);
     K = intrinsics(CAMERA.width, CAMERA.height);
     target = pinballTrackingTarget(cv);
 });
@@ -93,10 +96,10 @@ function runSeededPerFrame(
     n: number,
     options?: NftTrackerOptions,
 ) {
-    const tracker = new NftTracker(cv, t, K, options);
+    const tracker = new NftTracker(cv, t, K, { ...options, rngFor: seeded.rngFor });
     return Array.from({ length: n }, (_, i) => {
         const { frame } = frameAt(path(i), i);
-        const result = withSeededRandom(SEED + i, () => tracker.process(frame, i * 33)).value;
+        const result = seeded.run(SEED + i, () => tracker.process(frame, i * 33)).value;
         return { frame, result };
     });
 }
@@ -113,9 +116,9 @@ function errors(results: TrackResult[], truths: Mat3[]): (number | null)[] {
 
 /** Locks a fresh tracker on the first wander frame, and returns it with its result. */
 function locked(): { tracker: NftTracker; first: TrackResult } {
-    const tracker = new NftTracker(cv, target, K);
+    const tracker = new NftTracker(cv, target, K, { rngFor: seeded.rngFor });
     const { frame } = frameAt(wander(0), 0);
-    const first = withSeededRandom(SEED, () => tracker.process(frame, 0)).value;
+    const first = seeded.run(SEED, () => tracker.process(frame, 0)).value;
     return { tracker, first };
 }
 
@@ -158,8 +161,8 @@ describe("NftTracker on camera-path sequences", () => {
         expect(run(target, wander, 6, { detectionOnly: true }).states).toBe("DDDDDD");
         runSeededPerFrame(target, wander, 6, { detectionOnly: true }).forEach(
             ({ frame, result }, i) => {
-                const fresh = withSeededRandom(SEED + i, () =>
-                    new NftTracker(cv, target, K).process(frame, i * 33),
+                const fresh = seeded.run(SEED + i, () =>
+                    new NftTracker(cv, target, K, { rngFor: seeded.rngFor }).process(frame, i * 33),
                 ).value;
                 expect(result.state).toBe("DETECT");
                 expect(fresh.state).toBe("DETECT");
@@ -261,7 +264,7 @@ describe("NftTracker on camera-path sequences", () => {
         expect(first.state).toBe("DETECT");
         const size = { width: 360, height: 270 };
         const { frame } = frameAt(wander(1), 1, size);
-        const r = withSeededRandom(SEED + 1, () => tracker.process(frame, 33)).value;
+        const r = seeded.run(SEED + 1, () => tracker.process(frame, 33)).value;
         expect(r.state).toBe("DETECT");
         expect(r.trackLoss).toBe("too-few-patches");
         expect(r.tracking!.observed).toBe(5);
@@ -273,13 +276,13 @@ describe("NftTracker on camera-path sequences", () => {
             ...CAMERA,
             data: new Uint8Array(CAMERA.width * CAMERA.height).fill(128),
         };
-        const covered = withSeededRandom(SEED, () => tracker.process(flat, 33)).value;
+        const covered = seeded.run(SEED, () => tracker.process(flat, 33)).value;
         expect(covered.state).toBe("LOST");
         expect(covered.trackLoss).toBe("too-few-patches");
         expect(covered.tracking!.lost).toBe(covered.tracking!.attempted);
         if (!covered.ok) expect(covered.reason).toBe("too-few-matches");
         const { frame } = frameAt(wander(2), 2);
-        const again = withSeededRandom(SEED, () => tracker.process(frame, 66)).value;
+        const again = seeded.run(SEED, () => tracker.process(frame, 66)).value;
         expect(again.state).toBe("DETECT");
     }, 60_000);
 
@@ -302,14 +305,14 @@ describe("NftTracker on camera-path sequences", () => {
         };
         const { frame: f0 } = frameAt(wander(0), 0);
         const { frame: f1 } = frameAt(wander(1), 1);
-        const plain = new NftTracker(cv, target, K);
-        const longer = new NftTracker(cv, target, K);
+        const plain = new NftTracker(cv, target, K, { rngFor: seeded.rngFor });
+        const longer = new NftTracker(cv, target, K, { rngFor: seeded.rngFor });
         for (const [i, f] of [f0, f1].entries()) {
-            const a = withSeededRandom(SEED, () => plain.process(f, 33 * i)).value;
-            const b = withSeededRandom(SEED, () => longer.process(padded(f), 33 * i)).value;
+            const a = seeded.run(SEED, () => plain.process(f, 33 * i)).value;
+            const b = seeded.run(SEED, () => longer.process(padded(f), 33 * i)).value;
             expect(b).toEqual(a);
         }
-        const last = withSeededRandom(SEED, () => longer.process(padded(f1), 66)).value;
+        const last = seeded.run(SEED, () => longer.process(padded(f1), 66)).value;
         expect(last.state).toBe("TRACK");
     }, 60_000);
 
@@ -342,22 +345,22 @@ describe("NftTracker on camera-path sequences", () => {
         const { frame: f1 } = frameAt(wander(1), 1);
 
         const four = cutTo(4);
-        const t4 = new NftTracker(four.backend, target, K);
-        const r0 = withSeededRandom(SEED, () => t4.process(f0, 0)).value;
+        const t4 = new NftTracker(four.backend, target, K, { rngFor: seeded.rngFor });
+        const r0 = seeded.run(SEED, () => t4.process(f0, 0)).value;
         expect(r0.state).toBe("LOST");
         expect(r0.ok).toBe(false);
         if (!r0.ok) expect(r0.reason).toBe("too-few-inliers");
         expect(r0.numInliers).toBe(4);
         expect(r0.H).toBeNull();
         expect(r0.pose).toBeNull();
-        const r1 = withSeededRandom(SEED, () => t4.process(f1, 33)).value;
+        const r1 = seeded.run(SEED, () => t4.process(f1, 33)).value;
         expect(r1.state).not.toBe("TRACK");
         expect(four.calls()).toBe(2); // no lock: frame 1 detected again
 
         const five = cutTo(5);
-        const t5 = new NftTracker(five.backend, target, K);
-        expect(withSeededRandom(SEED, () => t5.process(f0, 0)).value.state).toBe("DETECT");
-        expect(withSeededRandom(SEED, () => t5.process(f1, 33)).value.state).toBe("TRACK");
+        const t5 = new NftTracker(five.backend, target, K, { rngFor: seeded.rngFor });
+        expect(seeded.run(SEED, () => t5.process(f0, 0)).value.state).toBe("DETECT");
+        expect(seeded.run(SEED, () => t5.process(f1, 33)).value.state).toBe("TRACK");
         expect(five.calls()).toBe(1); // locked: frame 1 tracked, no detection
     }, 60_000);
 });

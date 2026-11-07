@@ -132,12 +132,18 @@
  * **On determinism.** Point 7 also asks that every random choice go through an
  * injectable RNG. This class makes none: the one random choice in the pipeline
  * is the minimal-sample draw inside `estimateHomography`, which is below the
- * contract. Since webarkit/webarkit#24 the contract's `RansacOptions` carries
- * an `rng` a caller can seed, but `detectTarget` does not pass one yet, so
- * there is no `rng` option here yet either — it would accept a generator and
- * have nowhere to pass it. Until `detectTarget` forwards one, `process` is
- * exactly as reproducible as the backend's RANSAC is, and the tests are
- * explicit about that. The
+ * contract and seedable through its `RansacOptions.rng`
+ * (webarkit/webarkit#24). The `rngFor` option reaches it: for each detection
+ * the tracker runs itself, it asks the factory for a generator, with the
+ * frame's `timestampMs`, and `detectTarget` passes the answer to the
+ * estimate (#188). The tracker chooses no policy: a caller seeding a whole
+ * run returns the same generator every time, and one seeding each frame
+ * builds one from the frame (#151 decides which the bench uses). Absent, or
+ * answering `undefined`, the backend draws from its own source, as before
+ * #188. The tracker does not read `capabilities.deterministicRansac`, since
+ * a backend that does not honour the option ignores it as the contract
+ * allows; a caller that relies on the draws checks the flag first
+ * (#137, "Usage rule, 2026-10-15"). The
  * tracking state draws nothing: a sequence of frames gives the same states
  * and homographies, bit for bit, for the same RANSAC draws in its
  * detections.
@@ -150,6 +156,8 @@ import { conditioning, conditioningRefuses } from "./pose/conditioning.js";
 import type { ConditioningReading, ConditioningThresholds } from "./pose/conditioning.js";
 import { PoseFilter } from "./pose/pose_filter.js";
 import type { PoseFilterLayers } from "./pose/pose_filter.js";
+import { guardPose } from "./pose/pose_guard.js";
+import type { PoseGuardReading } from "./pose/pose_guard.js";
 import {
     DEFAULT_MAX_SCENE_KEYPOINTS,
     DEFAULT_RANSAC_THRESHOLD,
@@ -362,8 +370,10 @@ export interface PoseFilterLayerOptions {
  * `docs/benchmarks/2026-10-29-106-stage3-registration.md`).
  *
  * - `"off"`, the default: nothing is computed, and `pose` is
- *   `poseSelection.pose` on every result.
- * - `"one-euro"`: `pose` is filtered; `poseSelection.pose` stays the selected,
+ *   `poseSelection.pose` on every result (with the `poseGuard` option on, the
+ *   guarded pose instead).
+ * - `"one-euro"`: `pose` is filtered: the guarded pose with the `poseGuard`
+ *   option on, else the selected one. `poseSelection.pose` stays the selected,
  *   unfiltered pose, and `H`, the state and every other field are what the
  *   tracker computes without the filter, which feeds nothing back. Cutoffs
  *   are in Hz and `timestampMs` is read as **milliseconds**: the period is
@@ -406,6 +416,54 @@ export type PoseFilterOptions =
  * ruling of 2026-10-29 on #106, decision 2).
  */
 export const DEFAULT_POSE_FILTER: PoseFilterOptions = Object.freeze({ mode: "off" });
+
+/**
+ * The guard of #133: the closed form below a tilt threshold, the selection at
+ * it and above it, on `"TRACK"` and `"DETECT"` frames alike
+ * (`src/pose/pose_guard.ts`; the treatment registered in
+ * `docs/benchmarks/2026-11-06-228-133-stage3-registration.md`, "Stage 3, A").
+ *
+ * - `"off"`, the default: nothing is computed, and a result has no
+ *   `poseGuard` key.
+ * - `"closed-form-below"`: the tilt is `acos(clamp(R[8], −1, 1))`, degrees, of
+ *   the closed form on the frame's own `H` and the tracker's `K`. Below
+ *   `thresholdDeg`, `pose` is that closed form; at it and above it, the
+ *   selection, including its own fallbacks, so IPPE is what a tilt of exactly
+ *   the threshold gets. A closed form with `good: false` has no tilt, and the
+ *   frame keeps its selection. An omitted `thresholdDeg` takes
+ *   {@link DEFAULT_POSE_GUARD_THRESHOLD_DEG}. At 0 no frame is guarded.
+ *
+ * `poseSelection` stays the selection on every frame, IPPE's pose included;
+ * `H`, the state and every other field are what the tracker computes without
+ * the guard, which feeds nothing back. A frame guarded is counted by
+ * {@link NftTracker.fallbackFrames}, and each `ok` result's `poseGuard` reads
+ * the tilt and says whether it was. The pose filter, with its option on, reads
+ * the guarded pose.
+ *
+ * **The scope.** The default threshold was derived from a construction that
+ * renders and estimates with the same `K`, and the crossover moves under a
+ * focal-length mismatch, in opposite directions on two readings (#233,
+ * question E). So it is a parameter, no claim is made that 10° suits any real
+ * camera, and the guard's adoption, and its threshold for a calibrated camera,
+ * wait for #109.
+ *
+ * A threshold given with the guard off, one that is not finite or lies outside
+ * `[0, 180]`, an unknown mode, and a key the option does not read are each a
+ * `RangeError` at construction.
+ */
+export type PoseGuardOptions =
+    | { readonly mode: "off" }
+    | { readonly mode: "closed-form-below"; readonly thresholdDeg?: number };
+
+/** Off: the pose is the tracker's as it was before the guard existed. */
+export const DEFAULT_POSE_GUARD: PoseGuardOptions = Object.freeze({ mode: "off" });
+
+/**
+ * `"closed-form-below"`'s threshold, degrees, when it is omitted: where both
+ * rules first hold at the grid of the characterisation's table, a construction
+ * that renders and estimates with the same `K` (see {@link PoseGuardOptions}).
+ */
+export const DEFAULT_POSE_GUARD_THRESHOLD_DEG = 10;
 
 /**
  * The derived values, `"one-euro"` mode's defaults: each layer's from its own
@@ -527,11 +585,36 @@ export interface NftTrackerOptions {
      */
     readonly poseFilter?: PoseFilterOptions;
     /**
+     * See {@link PoseGuardOptions} and {@link DEFAULT_POSE_GUARD}. A threshold
+     * given with `mode: "off"` is refused, as `poseFilter` refuses a parameter.
+     */
+    readonly poseGuard?: PoseGuardOptions;
+    /**
      * A clock in milliseconds, e.g. `() => performance.now()`. When given,
      * every result carries {@link TrackTimings}; the tracker reads no clock of
      * its own (ADR-0001 point 7).
      */
     readonly clock?: () => number;
+    /**
+     * The RANSAC generator for a detection the tracker runs itself: called
+     * once per such detection, with the frame's `timestampMs` as given to
+     * {@link NftTracker.process} and nothing else, never on a frame that
+     * tracks. The generator it returns, a uniform source in [0, 1), is passed
+     * to {@link detectTarget} and from there to `estimateHomography` as
+     * `RansacOptions.rng` (webarkit/webarkit#24). Returning the same
+     * generator every time seeds the run as a whole; the tracker has no
+     * per-frame policy of its own. `undefined`, or no option, leaves the
+     * draw to the backend, as before webarkit/webarkit#188. An option that is
+     * not a function is a `RangeError` at construction; an answer that is
+     * neither a function nor `undefined` is a `RangeError` from the
+     * `process` call that gets it, after which the tracker's state is
+     * unspecified, as after any contract violation.
+     *
+     * A detection handed in from outside (`externalDetection`, or the third
+     * argument of `process`) is the caller's: it passes its own `rng` to
+     * `detectTarget`, and this factory is not called for it.
+     */
+    readonly rngFor?: (frame: { readonly timestampMs: number }) => (() => number) | undefined;
 }
 
 /** Where a frame's time went, ms, by the `clock` option. */
@@ -635,21 +718,34 @@ export type TrackResult =
            */
           readonly H: Mat3;
           /**
-           * The frame's pose. With the `poseFilter` option off, the default,
-           * the decomposition of {@link H}, `poseSelection.pose` itself. With
-           * it on, that pose filtered over the frames before it, except on a
-           * frame the filter passes through — a reset frame, and the seeding
-           * frame after it — where it is `poseSelection.pose` itself. Present
-           * whenever `ok`, but check `pose.good`: a homography RANSAC agreed
-           * on can still be geometrically degenerate.
+           * The frame's pose. With the `poseFilter` and `poseGuard` options
+           * off, the defaults, the decomposition of {@link H},
+           * `poseSelection.pose` itself. With the guard on, the closed form on
+           * a frame it guards (see {@link poseGuard}). With the filter on,
+           * that pose filtered over the frames before it, except on a frame
+           * the filter passes through — a reset frame, and the seeding frame
+           * after it — where it is that pose itself. Present whenever `ok`,
+           * but check `pose.good`: a homography RANSAC agreed on can still be
+           * geometrically degenerate.
            */
           readonly pose: Pose;
           /**
+           * What the `poseGuard` option read on this frame, and its decision,
+           * taken before the filter: `guarded` says the unfiltered pose is the
+           * guard's closed form, so with the `poseFilter` option on {@link pose}
+           * is the filter's output on it. On a frame whose selection fell back,
+           * `guarded` is `true` only when the closed form's tilt is below the
+           * threshold; otherwise it is `false`, and the unfiltered pose is the
+           * selection's own closed form. See {@link PoseGuardReading}. Absent
+           * with the option off.
+           */
+          readonly poseGuard?: PoseGuardReading;
+          /**
            * How the frame's pose was chosen: IPPE's two candidates and the
            * selection rule's outcome (#105; M4's step 3). `poseSelection.pose`
-           * is the decomposition of {@link H}, never filtered: it is
-           * {@link pose} itself with the `poseFilter` option off, and on a
-           * frame the filter passes through. The tracker makes no
+           * is the decomposition of {@link H}, never filtered and never
+           * guarded: it is {@link pose} itself with both options off, and on a
+           * frame neither changes. The tracker makes no
            * `poseFromHomography` call: the pose is computed here, above the
            * contract, from `H` and the frame's correspondences.
            */
@@ -715,10 +811,14 @@ export class NftTracker {
     private readonly conditioningOptions: ConditioningOptions;
     /** The pose filter and its state, with the `poseFilter` option on; else `null`. */
     private readonly poseFilter: PoseFilter | null;
+    /** The guard's threshold, degrees, with the `poseGuard` option on; else `null`. */
+    private readonly poseGuardThresholdDeg: number | null;
     /** The target's patches with their geometry, when this tracker tracks. */
     private readonly track: TrackTarget | null;
     private readonly trackOptions: TrackFrameOptions;
     private readonly clock: (() => number) | null;
+    /** The `rngFor` option, or `null`. */
+    private readonly rngFor: NonNullable<NftTrackerOptions["rngFor"]> | null;
     /** The last two homographies while locked: `previous` is `null` right after a detection. */
     private lock: { readonly previous: Mat3 | null; readonly current: Mat3 } | null = null;
     /** The target's 5 × 5 grid, level-0 px: the pose selection's depth rule reads it. */
@@ -734,6 +834,11 @@ export class NftTracker {
      * decompositions, and the count bounds the mixture; a run in which it is
      * large is not a measurement of IPPE. Each result's `poseSelection.outcome`
      * says which reason fired on its frame.
+     *
+     * With the `poseGuard` option on, a frame the guard hands to the closed
+     * form is the same mixture, by the ruling on #133, and counts here too,
+     * once, whether or not its selection had also fallen back; its result's
+     * `poseGuard.guarded` says it was the guard.
      */
     get fallbackFrames(): number {
         return this.fallbacks;
@@ -764,6 +869,7 @@ export class NftTracker {
         this.setup = prepareDetection(cv, target, options);
         this.trackOptions = tracking.track;
         this.clock = tracking.clock;
+        this.rngFor = tracking.rngFor;
         const p = target.patches;
         this.track =
             !tracking.detectionOnly &&
@@ -777,6 +883,7 @@ export class NftTracker {
         this.conditioningOptions = tracking.conditioning;
         this.conditioningMode = tracking.conditioning.mode;
         this.poseFilter = tracking.poseFilter === null ? null : new PoseFilter(tracking.poseFilter);
+        this.poseGuardThresholdDeg = tracking.poseGuardThresholdDeg;
         const [width, height] = target.pyramid.levelSizes[0];
         this.grid = targetGrid(width, height);
     }
@@ -791,6 +898,24 @@ export class NftTracker {
         const s = selectPose(H, this.K, src, dst, sigma, this.grid);
         if (s.chosen === "fallback") this.fallbacks++;
         return s;
+    }
+
+    /**
+     * The result's `pose`, and with the `poseGuard` option on its `poseGuard`
+     * key, for the frame's `H` and {@link selected}'s selection; before the
+     * filter, which reads `pose`. With the option off nothing is computed and
+     * there is no key. A frame guarded counts in {@link fallbackFrames} unless
+     * {@link selected} already counted it.
+     */
+    private guarded(
+        H: Mat3,
+        selection: PoseSelection,
+    ): { readonly pose: Pose; readonly poseGuard?: PoseGuardReading } {
+        const thresholdDeg = this.poseGuardThresholdDeg;
+        if (thresholdDeg === null) return { pose: selection.pose };
+        const { pose, reading } = guardPose(H, this.K, selection.pose, thresholdDeg);
+        if (reading.guarded && selection.chosen !== "fallback") this.fallbacks++;
+        return { pose, poseGuard: reading };
     }
 
     /**
@@ -839,12 +964,12 @@ export class NftTracker {
         if (f === null) return r;
         // Every result reaches the filter, a "LOST" one included: its
         // timestamp is the reset rule's reference for the next frame. Here
-        // `r.pose` is still `r.poseSelection.pose`, the unfiltered pose.
+        // `r.pose` is the unfiltered pose: the guarded one with the guard on.
         const pose = f.apply(r);
         return r.ok && pose !== r.pose ? { ...r, pose: pose! } : r;
     }
 
-    /** {@link process} before the pose filter: every result's `pose` is its `poseSelection.pose`. */
+    /** {@link process} before the pose filter: every result's `pose` is its selection's, or the guard's. */
     private processFrame(
         frame: GrayImage,
         timestampMs: number,
@@ -1067,7 +1192,7 @@ export class NftTracker {
             numMatches: r.stats.observed,
             numInliers: r.stats.inliers,
             H: r.H,
-            pose: selection.pose,
+            ...this.guarded(r.H, selection),
             poseSelection: selection,
             conditioning: reading,
             sceneKeypoints,
@@ -1085,7 +1210,13 @@ export class NftTracker {
      * match per level, filter, estimate, decompose.
      */
     private detect(frame: GrayImage, timestampMs: number): Detected {
-        return this.detected(detectTarget(this.cv, this.setup, frame, timestampMs));
+        const rng = this.rngFor === null ? undefined : this.rngFor({ timestampMs });
+        if (rng !== undefined && typeof rng !== "function") {
+            throw new RangeError(
+                `NftTracker: rngFor returned ${String(rng)}, not a function or undefined`,
+            );
+        }
+        return this.detected(detectTarget(this.cv, this.setup, frame, timestampMs, rng));
     }
 
     /** M1's result for a detection: its `state`, `quality` and `pose` added. */
@@ -1135,7 +1266,7 @@ export class NftTracker {
             numMatches: d.numMatches,
             numInliers: d.numInliers,
             H: d.H,
-            pose: selection.pose,
+            ...this.guarded(d.H, selection),
             poseSelection: selection,
             conditioning: cond === null ? null : cond.reading,
             sceneKeypoints: d.sceneKeypoints,
@@ -1177,9 +1308,11 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
     readonly detectionOnly: boolean;
     readonly externalDetection: boolean;
     readonly clock: (() => number) | null;
+    readonly rngFor: NonNullable<NftTrackerOptions["rngFor"]> | null;
     readonly track: TrackFrameOptions;
     readonly conditioning: ConditioningOptions;
     readonly poseFilter: PoseFilterLayers | null;
+    readonly poseGuardThresholdDeg: number | null;
 } {
     const o = options ?? {};
     // A cutoff is a finite number > 0, Hz; a beta a finite number >= 0. NaN,
@@ -1289,6 +1422,38 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
             `NftTracker: poseFilter.mode must be "off" or "one-euro", got ${String(p.mode)}`,
         );
     };
+    // The guard's threshold, refused as `poseFilter` refuses a parameter (the
+    // ruling of 2026-10-30 on #199, which the registration applies here): a
+    // key it does not read, an unknown mode, and a threshold with the guard
+    // off, which would be dropped silently from a caller who meant to guard.
+    const poseGuardThreshold = (v: unknown): number | null => {
+        const p =
+            typeof v === "object" && v !== null
+                ? (v as { mode?: unknown; thresholdDeg?: unknown })
+                : {};
+        knownKeys("poseGuard", p, ["mode", "thresholdDeg"]);
+        if (p.mode === "off") {
+            if (p.thresholdDeg !== undefined) {
+                throw new RangeError(
+                    'NftTracker: poseGuard.thresholdDeg is only read in mode "closed-form-below", got one with mode "off"',
+                );
+            }
+            return null;
+        }
+        if (p.mode === "closed-form-below") {
+            const t =
+                p.thresholdDeg === undefined ? DEFAULT_POSE_GUARD_THRESHOLD_DEG : p.thresholdDeg;
+            if (!(typeof t === "number" && t >= 0 && t <= 180)) {
+                throw new RangeError(
+                    `NftTracker: poseGuard.thresholdDeg must be a finite number in [0, 180], got ${String(t)}`,
+                );
+            }
+            return t;
+        }
+        throw new RangeError(
+            `NftTracker: poseGuard.mode must be "off" or "closed-form-below", got ${String(p.mode)}`,
+        );
+    };
     // A threshold is a number >= 0; +Infinity leaves that quantity unbounded.
     // NaN, a negative number, -Infinity and a non-number are refused.
     const threshold = (name: string, v: unknown): number => {
@@ -1355,12 +1520,17 @@ function resolveTrackingOptions(options: NftTrackerOptions | undefined): {
     if (o.clock !== undefined && typeof o.clock !== "function") {
         throw new RangeError(`NftTracker: clock must be a function, got ${String(o.clock)}`);
     }
+    if (o.rngFor !== undefined && typeof o.rngFor !== "function") {
+        throw new RangeError(`NftTracker: rngFor must be a function, got ${String(o.rngFor)}`);
+    }
     return {
         detectionOnly: flag("detectionOnly", o.detectionOnly ?? false),
         externalDetection: flag("externalDetection", o.externalDetection ?? false),
         clock: o.clock ?? null,
+        rngFor: o.rngFor ?? null,
         conditioning: conditioningOptions(o.conditioning ?? DEFAULT_CONDITIONING),
         poseFilter: poseFilterLayers(o.poseFilter ?? DEFAULT_POSE_FILTER),
+        poseGuardThresholdDeg: poseGuardThreshold(o.poseGuard ?? DEFAULT_POSE_GUARD),
         track: {
             maxFrameLevels: integer(
                 "maxFrameLevels",

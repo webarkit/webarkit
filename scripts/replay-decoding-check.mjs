@@ -46,23 +46,42 @@
  *   of loop 5, and is refused, exit 1. Its first arm, every frame and
  *   synchronous, has no step for the ratio to scale, and its row, printed only
  *   once the check passed, comes first.
+ * - **RG1,** a seeded run that reads the global `Math.random` (#151), which
+ *   the injected generators do not reach: RS2's cut export, replayed with
+ *   `--seed 1` from a temporary copy of the repository whose bundle's
+ *   backend reads it once per `detect`, is refused under each policy, exit 1,
+ *   the default first, its line naming `frame`;
+ *   from a second copy, whose bundle is the packages unchanged, it replays,
+ *   exit 0.
  *
  * RE1, an `--external` arm whose detection accounting does not balance, has
  * no case: no input unbalances it (the tracker asks for a detection only
  * without a lock, so none is handed in while one holds). TPR1, the step
- * probe, throws by itself, and `npm test` drives it.
+ * probe, throws by itself, and `npm test` drives it, as it drives the seeded
+ * run's other refusal, a backend that does not declare `deterministicRansac`,
+ * which comes before any clip is decoded.
  *
  * Needs ffmpeg and ffprobe on the PATH, and the packages built (`npm run
  * build`). **CI does not run it: it has no ffmpeg.** Without either, it exits 2
  * and says what is missing; it never passes or skips. Exits 0 when every check
  * passes, 1 when one fails, one line per check, and 2, as "could not run", when
- * a replay cannot be started or runs past 180 s. About 30 s.
+ * a replay cannot be started or runs past 180 s. About 45 s.
  *
  *     npm run check:replay
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+    cpSync,
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readFileSync,
+    rmSync,
+    symlinkSync,
+    writeFileSync,
+} from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -76,9 +95,9 @@ const TIMEOUT_MS = 180000;
 
 class SetupError extends Error {}
 
-/** `replay-clips.mjs` with `args`, its exit status and both streams. */
-function replay(args) {
-    const r = spawnSync(process.execPath, [SCRIPT, ...args], {
+/** `replay-clips.mjs` with `args`, its exit status and both streams; `script` another copy of it. */
+function replay(args, script = SCRIPT) {
+    const r = spawnSync(process.execPath, [script, ...args], {
         cwd: REPO,
         encoding: "utf8",
         timeout: TIMEOUT_MS,
@@ -165,6 +184,86 @@ function re2() {
     );
 }
 
+/**
+ * A copy of the repository's layout in `dir` whose examples/dist holds a
+ * bundle of `body` and a manifest that names it, for `--packages bundle`:
+ * scripts/ copied, the rest linked (a junction on Windows), as
+ * replay-clips-cli.test.mjs builds one. Returns the copied script.
+ */
+function treeWithBundle(dir, body) {
+    cpSync(join(REPO, "scripts"), join(dir, "scripts"), { recursive: true });
+    mkdirSync(join(dir, "examples", "dist"), { recursive: true });
+    for (const sub of ["examples/js", "examples/targets", "examples/videos", "packages"]) {
+        symlinkSync(join(REPO, sub), join(dir, sub), "junction");
+    }
+    writeFileSync(join(dir, "examples/dist/webarkit-packages.mjs"), body);
+    writeFileSync(
+        join(dir, "examples/dist/provenance.json"),
+        JSON.stringify({
+            schema: "webarkit-bench-provenance/1",
+            head: "0".repeat(40),
+            clean: true,
+            dirtyPaths: [],
+            bundle: {
+                path: "examples/dist/webarkit-packages.mjs",
+                sha256: createHash("sha256").update(body).digest("hex"),
+            },
+        }),
+    );
+    return join(dir, "scripts/replay-clips.mjs");
+}
+
+const PACKAGES = [
+    'export * from "../../packages/nft-tracker/dist/index.js";',
+    'export * from "../../packages/cv-backend-jsfeatnext/dist/index.js";',
+];
+
+function rg1(dir) {
+    const cut = join(dir, "preflight-cut.json");
+    const reading = treeWithBundle(
+        join(dir, "reading"),
+        [
+            ...PACKAGES,
+            'import { createJsfeatNextBackend as real } from "../../packages/cv-backend-jsfeatnext/dist/index.js";',
+            "export async function createJsfeatNextBackend() {",
+            "    const cv = await real();",
+            "    const detect = (...a) => (Math.random(), cv.detect(...a));",
+            "    return Object.create(cv, { detect: { value: detect } });",
+            "}",
+        ].join("\n"),
+    );
+    // Without --seed-policy first: its line names the default, frame.
+    for (const [given, policy] of [
+        [[], "frame"],
+        [["--seed-policy", "run"], "run"],
+    ]) {
+        const r = replay(
+            ["--packages", "bundle", "--sequence", cut, "--seed", "1", ...given],
+            reading,
+        );
+        const line =
+            /^replay-clips: pinball-bench\.mp4, --sequence: (\d+) read\(s\) of the global Math\.random in a run seeded through the backend's rng \(--seed 1, --seed-policy (run|frame)\): the seed does not reach them$/.exec(
+                r.stderr.trimEnd(),
+            );
+        check(
+            `RG1 refusing: ${given.length ? given.join(" ") : `no --seed-policy (${policy}, the default)`}, a backend that reads the global Math.random, exit 1 and RG1's line`,
+            r.status === 1 && line !== null && Number(line[1]) > 0 && line[2] === policy
+                ? null
+                : `exit ${r.status}, stderr ${JSON.stringify(r.stderr.trimEnd().slice(-300))}`,
+        );
+    }
+    const plain = treeWithBundle(join(dir, "plain"), PACKAGES.join("\n"));
+    const passed = replay(["--packages", "bundle", "--sequence", cut, "--seed", "1"], plain);
+    check(
+        "RG1 passing: a copy whose bundle is the packages unchanged replays seeded",
+        passed.status === 0 &&
+            passed.stderr === "" &&
+            passed.stdout.includes(`${FRAMES} frames of pinball-bench.mp4, replayed 3 times`)
+            ? null
+            : `exit ${passed.status}, stderr ${JSON.stringify(passed.stderr.slice(-300))}`,
+    );
+}
+
 function main() {
     const t0 = Date.now();
     requireTools();
@@ -172,6 +271,7 @@ function main() {
     try {
         rs2(dir);
         re2();
+        rg1(dir);
     } finally {
         rmSync(dir, { recursive: true, force: true });
     }

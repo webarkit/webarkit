@@ -57,7 +57,8 @@ import type { Detection } from "../src/detection.js";
 import type { TargetDb } from "../src/target/types.js";
 import { pinballTrackingTarget } from "../ground-truth/fixtures/tracking_target.js";
 import { readPgm, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
-import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import { seededSource, withSeededRng } from "../ground-truth/fixtures/seeded_rng.js";
+import type { SeededSource } from "../ground-truth/fixtures/seeded_rng.js";
 import { renderWarp, view } from "../ground-truth/fixtures/warped_frames.js";
 
 const CAMERA = { width: 270, height: 360 };
@@ -86,6 +87,7 @@ function frameAt(i: number): GrayImage {
 }
 
 let cv: CvBackend;
+let seeded: SeededSource;
 let K: Mat3;
 let target: TargetDb;
 let frames: GrayImage[];
@@ -94,21 +96,21 @@ let d0: Detection;
 
 beforeAll(async () => {
     cv = await createJsfeatNextBackend();
+    seeded = seededSource(cv);
     K = intrinsics(CAMERA.width, CAMERA.height);
     target = pinballTrackingTarget(cv);
     frames = Array.from({ length: 24 }, (_, i) => frameAt(i));
-    d0 = withSeededRandom(SEED, () =>
-        detectTarget(cv, prepareDetection(cv, target), frames[0], 0),
+    d0 = withSeededRng(cv, SEED, (rng) =>
+        detectTarget(cv, prepareDetection(cv, target), frames[0], 0, rng),
     ).value;
     if (!d0.ok) throw new Error(`fixture: frame 0 did not detect (${d0.reason})`);
 });
 
 /** Every frame through one tracker under one seeded RANSAC. */
 function run(options?: NftTrackerOptions, n = frames.length): TrackResult[] {
-    const tracker = new NftTracker(cv, target, K, options);
-    return withSeededRandom(SEED, () =>
-        frames.slice(0, n).map((f, i) => tracker.process(f, i * 33)),
-    ).value;
+    const tracker = new NftTracker(cv, target, K, { ...options, rngFor: seeded.rngFor });
+    return seeded.run(SEED, () => frames.slice(0, n).map((f, i) => tracker.process(f, i * 33)))
+        .value;
 }
 
 const states = (rs: readonly TrackResult[]) => rs.map((r) => r.state);
@@ -247,9 +249,10 @@ describe("refusing", () => {
     it("at thresholds of 0, refuses the step that confirms a consumed detection: unconfirmed, trackLoss conditioning", () => {
         const tracker = new NftTracker(cv, target, K, {
             externalDetection: true,
+            rngFor: seeded.rngFor,
             conditioning: everything,
         });
-        const r = withSeededRandom(SEED, () => tracker.process(frames[1], 33, d0)).value;
+        const r = seeded.run(SEED, () => tracker.process(frames[1], 33, d0)).value;
         expect(r.ok).toBe(false);
         if (r.ok) return;
         expect(r.reason).toBe("unconfirmed");

@@ -63,7 +63,7 @@ import {
 } from "../src/index.js";
 import type { DetectTargetOptions, TargetDb } from "../src/index.js";
 import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
-import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import { withSeededRng } from "../ground-truth/fixtures/seeded_rng.js";
 
 let cv: CvBackend;
 let target: TargetDb;
@@ -82,9 +82,14 @@ const blank: GrayImage = { data: new Uint8Array(320 * 240).fill(128), width: 320
 describe("detectTarget", () => {
     it("is the tracker's own detection: same matches, inliers, H and keypoints as NftTracker.process under the same seed", () => {
         const setup = prepareDetection(cv, target, { maxSceneKeypoints: 900 });
-        const { value: d } = withSeededRandom(1, () => detectTarget(cv, setup, scene, 12.5));
-        const { value: r } = withSeededRandom(1, () =>
-            new NftTracker(cv, target, K, { maxSceneKeypoints: 900 }).process(scene, 12.5),
+        const { value: d } = withSeededRng(cv, 1, (rng) =>
+            detectTarget(cv, setup, scene, 12.5, rng),
+        );
+        const { value: r } = withSeededRng(cv, 1, (rng) =>
+            new NftTracker(cv, target, K, { maxSceneKeypoints: 900, rngFor: () => rng }).process(
+                scene,
+                12.5,
+            ),
         );
         expect(d.ok).toBe(true);
         expect(r.ok).toBe(true);
@@ -98,8 +103,8 @@ describe("detectTarget", () => {
 
     it("is pure: the same frame under the same seed gives the same Detection", () => {
         const setup = prepareDetection(cv, target, { maxSceneKeypoints: 900 });
-        const a = withSeededRandom(7, () => detectTarget(cv, setup, scene, 0));
-        const b = withSeededRandom(7, () => detectTarget(cv, setup, scene, 0));
+        const a = withSeededRng(cv, 7, (rng) => detectTarget(cv, setup, scene, 0, rng));
+        const b = withSeededRng(cv, 7, (rng) => detectTarget(cv, setup, scene, 0, rng));
         expect(b.value).toEqual(a.value);
         expect(b.draws).toBe(a.draws);
         expect(a.draws).toBeGreaterThan(0); // RANSAC drew: the region was not vacuous
@@ -107,7 +112,9 @@ describe("detectTarget", () => {
 
     it("fails explicitly on a blank frame: too-few-matches, fewer than 4 matches, 0 inliers", () => {
         const setup = prepareDetection(cv, target);
-        const { value: d, draws } = withSeededRandom(1, () => detectTarget(cv, setup, blank, 5));
+        const { value: d, draws } = withSeededRng(cv, 1, (rng) =>
+            detectTarget(cv, setup, blank, 5, rng),
+        );
         expect(d.ok).toBe(false);
         if (d.ok) return;
         expect(d.reason).toBe("too-few-matches");
@@ -248,7 +255,7 @@ describe("detectTarget", () => {
 
     it("survives structuredClone with every field intact", () => {
         const setup = prepareDetection(cv, target, { maxSceneKeypoints: 900 });
-        const { value: d } = withSeededRandom(1, () => detectTarget(cv, setup, scene, 0));
+        const { value: d } = withSeededRng(cv, 1, (rng) => detectTarget(cv, setup, scene, 0, rng));
         const copy = structuredClone(d);
         expect(copy).toEqual(d);
         expect(copy.ok).toBe(true);

@@ -55,8 +55,8 @@
  * webarkit/webarkit#27), the coordinates are already `f32` before they are
  * written, and the descriptor rows are bytes. The one remaining draw is
  * RANSAC's minimal sample, which is why both runs go through
- * `withSeededRandom` with the same seed — see `ground-truth/fixtures/seeded_rng.ts` for
- * why that has to reach a global today (webarkit/webarkit#24).
+ * `withSeededRng` with the same seed, its generator injected through the
+ * tracker's `rngFor` (webarkit/webarkit#24, #188).
  *
  * So an equality failure here is never noise. It means the file lost or
  * changed something, and `expectTargetsEqual` says which field.
@@ -71,7 +71,7 @@ import type { TargetDb } from "../src/target/types.js";
 import { NftTracker } from "../src/tracker.js";
 import type { TrackResult } from "../src/tracker.js";
 import { readPgm, SCENE_FIXTURE, TARGET_FIXTURE } from "../ground-truth/fixtures/pgm.js";
-import { withSeededRandom } from "../ground-truth/fixtures/seeded_rng.js";
+import { withSeededRng } from "../ground-truth/fixtures/seeded_rng.js";
 
 /** Arbitrary, fixed: any seed works, the same one for both runs is the point. */
 const SEED = 0x5eed;
@@ -144,7 +144,9 @@ function expectTargetsEqual(actual: TargetDb, expected: TargetDb): void {
 /** One tracked frame, with the RANSAC draw seeded so two runs can be compared. */
 function trackSeeded(target: TargetDb, frame: GrayImage): { result: TrackResult; draws: number } {
     const K = intrinsics(frame.width, frame.height);
-    const run = withSeededRandom(SEED, () => new NftTracker(cv, target, K).process(frame, 0));
+    const run = withSeededRng(cv, SEED, (rng) =>
+        new NftTracker(cv, target, K, { rngFor: () => rng }).process(frame, 0),
+    );
     return { result: run.value, draws: run.draws };
 }
 

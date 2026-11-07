@@ -14,6 +14,170 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-07
+
+The "M8 — a metric that reads the pose" milestone
+([milestone 10](https://github.com/webarkit/webarkit/milestone/10)), which built a metric that
+reads the pose, the target's corners through `K · [R | t]`, registered as `METRICS_VERSION` 2
+through [`docs/benchmarks/step-protocol.md`](docs/benchmarks/step-protocol.md), with IPPE's guard
+near fronto-parallel as an off-by-default option, and made the instrument ready for a campaign:
+jsfeatNext 1.1.0, and RANSAC seeded through the contract and per frame. It closes on
+[#94](https://github.com/webarkit/webarkit/issues/94),
+[#188](https://github.com/webarkit/webarkit/issues/188),
+[#133](https://github.com/webarkit/webarkit/issues/133) and
+[#228](https://github.com/webarkit/webarkit/issues/228), #228 by the first of the milestone's two
+ways: its Stage 1 showed that the metric responds to IPPE and to the filter on seeded replays and
+stated what the corpus can express, and it was then registered and implemented. Its steps are
+jsfeatNext 1.1.0 ([#223](https://github.com/webarkit/webarkit/pull/223)), the refused pose
+([#225](https://github.com/webarkit/webarkit/pull/225)), the injected generator
+([#226](https://github.com/webarkit/webarkit/pull/226)), per-frame seeding
+([#227](https://github.com/webarkit/webarkit/pull/227)), the test timeout
+([#229](https://github.com/webarkit/webarkit/pull/229)), the preflight's two manifests
+([#230](https://github.com/webarkit/webarkit/pull/230)), the Stage 1 probe
+([#231](https://github.com/webarkit/webarkit/pull/231)), the tilt clips
+([#232](https://github.com/webarkit/webarkit/pull/232)), the Stage 1 repeated on them
+([#233](https://github.com/webarkit/webarkit/pull/233)), the joint registration
+([#234](https://github.com/webarkit/webarkit/pull/234)), the guard
+([#235](https://github.com/webarkit/webarkit/pull/235), its doc comments in
+[#236](https://github.com/webarkit/webarkit/pull/236)), the metric
+([#237](https://github.com/webarkit/webarkit/pull/237)) and two of M7's follow-ups
+([#240](https://github.com/webarkit/webarkit/pull/240)). The packages change, so the version is a
+minor: `@webarkit/nft-tracker` gains `rngFor`, `detectTarget`'s `rng` and the `poseGuard` option
+with its exports, `@webarkit/cv-backend-jsfeatnext` requires `@webarkit/jsfeat-next` `^1.1.0` and
+zeroes `R` and `t` on a refused pose, and the bench exports move to `METRICS_VERSION` 2. Every other
+package and crate moves to 0.8.0 by [ADR-0002](docs/adr/0002-lockstep-versioning.md)'s lockstep.
+`.wnft` format: still **0.3**, in both codecs, so this tag freezes no new corpus.
+
+### Added
+
+- `@webarkit/nft-tracker` can seed RANSAC through the contract's `RansacOptions.rng`:
+  `detectTarget` takes an optional `rng` as its fifth argument, and `NftTracker` an optional
+  `rngFor`, a factory it calls with the frame's `timestampMs` for each detection it runs itself.
+  Without them nothing changes: the options `estimateHomography` receives are exactly as before.
+  An `rngFor` that is not a function throws a `RangeError` at construction, and one that
+  returns something other than a function or `undefined` throws a `RangeError` from `process`
+  ([#188](https://github.com/webarkit/webarkit/issues/188)).
+- `scripts/replay-clips.mjs` takes `--seed-policy run|frame` with `--seed`, and every export
+  records it as `seedPolicy`, beside `seed` (both null without a seed). `frame` builds a fresh
+  generator for each detection from the seed and the detected frame's media time
+  (`examples/js/frame-rng.mjs`), so the same frame draws the same RANSAC samples in any run; `run`
+  is one generator for the whole run, #188's. A seeded replay refuses a backend that does not
+  declare `deterministicRansac` and any read of the global `Math.random`, exit 1
+  ([#151](https://github.com/webarkit/webarkit/issues/151)).
+- `examples/bench-nft.html` takes `?seed=<n>`, which seeds every detection's RANSAC per frame,
+  from the seed and the frame's media time, on the synchronous path, the worker path (whose
+  `detect` message gains `seed` and `mediaTimeSeconds`) and the stateless mode. The export
+  records `seed` and `seedPolicy` (`frame`), both null without a seed, which draws as before.
+  Start refuses a seeded run on a backend that does not declare `deterministicRansac`, and a
+  `?seed=` it cannot read; `check:page` gains a check of seeded runs
+  ([#151](https://github.com/webarkit/webarkit/issues/151)).
+- `@webarkit/nft-tracker` has a `poseGuard` option, off by default: `pose` is the closed form
+  on a frame whose tilt reads below `thresholdDeg`, and the selection at it and above it, with
+  `poseSelection` untouched. The threshold is a parameter, 10° when omitted, derived under a
+  matched `K`: it moves under a focal-length mismatch, no claim is made that 10° suits a real
+  camera, and adoption waits for [#109](https://github.com/webarkit/webarkit/issues/109)
+  ([#133](https://github.com/webarkit/webarkit/issues/133)).
+- `scripts/replay-clips.mjs` takes `--clips tilt`, a form of its own over the three
+  `pinball-tilt-*` clips: every frame, 15 and 25 ms, 6 loops with 1 to 4 counted. Its device
+  schedules' acquisition is borrowed from the static clip, not measured, and each export's
+  `schedule` says so. The default runs and `--external` read the clips they did
+  ([#228](https://github.com/webarkit/webarkit/issues/228)).
+
+### Changed
+
+- The bench page's and the replay's exports are `metricsVersion` 2. Each frame gains `H`, at full
+  precision, and `poseCorners`, the target's corners through the result's pose under an assumed
+  `K`, and the summary gains `posePosedFrames`, `poseJitterWindows`, `poseJitterPx` and
+  `poseSpreadPx`: the same formulas as `jitterPx` and `spreadPx`, a stability metric of the pose.
+  It reads jitter, not accuracy, and cannot see a constant offset, so a lower figure is not a
+  nearer pose. No version 1 key changes meaning. An export grows by about 40%.
+  `compareExports` and `--sequence` read versions 1 and 2, so committed exports stay readable, and
+  `compareExports` adds a pose part with `poseCornerDistancePx` on two version 2 exports
+  ([#228](https://github.com/webarkit/webarkit/issues/228)).
+
+- `scripts/replay-clips.mjs`'s `--seed` seeds RANSAC through the contract's `rng`, never the
+  global `Math.random`, and per frame by default (`--seed-policy frame`): two seeded replays now
+  detect a frame alike whatever else each processed, and a seeded replay's detections differ
+  from the same seed's before. `--seed-policy run` gives back the earlier draws: its
+  step-independent outputs are byte for byte those of the global swap, `seedPolicy` aside
+  ([#151](https://github.com/webarkit/webarkit/issues/151)).
+
+- `@webarkit/cv-backend-jsfeatnext` requires `@webarkit/jsfeat-next` `^1.1.0` (was `^0.17.0`),
+  so the bench page's bundle carries 1.1.0. The backend's per-frame output is unchanged on the
+  seeded replays and on the ground truth's sequences
+  ([#94](https://github.com/webarkit/webarkit/issues/94)).
+
+### Fixed
+
+- `@webarkit/cv-backend-jsfeatnext`'s `poseFromHomography` returns `good: false` for a `K` whose
+  focal length is zero or not finite, as the contract's `Pose` says. Under jsfeat-next 0.17 it
+  returned `good: true`, with a NaN pose (or, for an infinite focal length, a finite but
+  meaningless one), and 1.1.0 would have thrown. A `K` whose principal point is not finite gives
+  `good: false` too, from jsfeat-next 1.1.0's own check; under 0.17 it also returned `good: true`
+  with a NaN pose ([#94](https://github.com/webarkit/webarkit/issues/94)).
+- `@webarkit/cv-backend-jsfeatnext`'s `poseFromHomography` returns zero `R` and `t` whenever
+  `good` is false, as it already did for a `K` it refuses itself. When jsfeat-next refused the
+  pose (a degenerate or non-finite `H`, a principal point that is not finite),
+  `poseFromHomography` returned the last good call's `R` and `t`, so the same refused input gave a
+  different pose depending on what ran before it; a refused pose now depends only on its
+  arguments, as the contract's purity says
+  ([#224](https://github.com/webarkit/webarkit/issues/224)).
+
+### What M8 did not deliver
+
+- **Not in it, by the milestone's description:**
+    - [#92](https://github.com/webarkit/webarkit/issues/92) and
+      [#109](https://github.com/webarkit/webarkit/issues/109): ground truth on moving footage, and
+      accuracy.
+    - [#196](https://github.com/webarkit/webarkit/issues/196) and
+      [#135](https://github.com/webarkit/webarkit/issues/135): they are decided in the next
+      campaign's plan.
+    - [#114](https://github.com/webarkit/webarkit/issues/114)'s per-round reading: it is the
+      campaign's.
+    - [#116](https://github.com/webarkit/webarkit/issues/116), https for Wi-Fi: optional for the
+      campaign.
+    - [#143](https://github.com/webarkit/webarkit/issues/143), the LOST rename: it waits for work
+      that opens the state machine.
+    - No device campaign. The campaign that measures IPPE and the filter with this metric is the
+      next milestone's, M9.
+- **What the metric and the guard do not settle, by
+  [the rulings on #228 of 2026-11-06](https://github.com/webarkit/webarkit/issues/228#issuecomment-6686291128)
+  and the registration's scope:**
+    - The metric reads jitter, not accuracy. It cannot see a constant offset or lag, so it cannot
+      decide between IPPE and the closed form where they differ by an offset, as they do above 10°.
+    - `K` is assumed, `intrinsics(w, h)`, the same for every arm.
+    - The filter's lag is not measured: it is declared not measurable by this metric.
+    - The guard's threshold was derived under a matched `K`, and its crossover moves under a
+      focal-length mismatch ([#233](https://github.com/webarkit/webarkit/pull/233)). No claim is
+      made that 10° suits a real camera, and the guard's adoption waits for #109.
+    - What M9 may conclude with the metric is stability only. A claim about which pose is more
+      accurate, at any tilt, needs ground truth (#92) or a calibrated camera (#109), and is outside
+      M9 unless its plan brings one of them in.
+- **Moved or opened at release gate 4, with no milestone:**
+    - [#238](https://github.com/webarkit/webarkit/issues/238): the stateless grid per frame, C0's
+      `--only`, no page check of the stateless mode, and
+      [the doc comment on `DetectionSetup.grid`](https://github.com/webarkit/webarkit/issues/238#issuecomment-6708761350),
+      which says the tracker's pose selection reads it, though the tracker builds its own grid.
+    - [#239](https://github.com/webarkit/webarkit/issues/239): `detectTarget` accepts a fit with a
+      `+∞` signed determinant, and
+      [a finite `H` whose determinant overflows is read as computed](https://github.com/webarkit/webarkit/issues/239#issuecomment-6708755768),
+      which can be the wrong side. The comment in `targetSide` documents the behaviour as it is
+      ([#240](https://github.com/webarkit/webarkit/pull/240)); whether a real backend produces such
+      an `H` is not established, and the decision comes before M9's first counted run. #239 also
+      records that a sentence of the #202 addendum holds for `NaN` only.
+- **Carried into M9's plan:**
+    - whether to measure on the Tab_9_WiFi that a media time does not always pin the page's pixels
+      ([#227](https://github.com/webarkit/webarkit/pull/227)'s finding);
+    - applying, to every arm comparison, the rule that a figure one frame can move is read with and
+      without that frame ([#237](https://github.com/webarkit/webarkit/pull/237)'s addendum: the
+      table clip's 203.645 px);
+    - offering the tilt clips on the bench page, and what the two sweep scripts read
+      ([#232](https://github.com/webarkit/webarkit/pull/232));
+    - whether `compare-bench.mjs` prints the pose part (#237);
+    - #239, decided before the first counted run.
+- **Opened during the window and not in it:** #238 and #239, above. No other issue opened after
+  2026-11-02T00:00Z is without a milestone.
+
 ## [0.7.0] - 2026-11-01
 
 The "M7 — what detection accepts" milestone
@@ -758,7 +922,8 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 - The original single-page jsartoolkitNFT demo the repository started as. It is kept at the tag
   `archive/original-nft-demo`.
 
-[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.7.0...dev
+[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.8.0...dev
+[0.8.0]: https://github.com/webarkit/webarkit/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/webarkit/webarkit/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/webarkit/webarkit/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/webarkit/webarkit/compare/v0.5.1...v0.6.0

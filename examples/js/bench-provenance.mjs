@@ -78,19 +78,30 @@ const SIDES = ["page", "both", "worker", "bundled"];
 
 /**
  * Whether `key` is a repository-relative path as the build writes one, on
- * which `new URL(key, REPO_ROOT)` does not throw: no scheme (a drive letter is
- * one), no leading `/`, no backslash, no `..` segment, and no C0 control
- * character or space, which the URL parser strips at the ends, and removes
- * inside if a tab, LF or CR, before it reads a scheme (`" http://["` throws as
- * `"http://["` does). A percent-encoded dot segment (`%2e%2e`) passes: the
- * parser reads it as `..`, but it does not throw.
+ * which `new URL(key, REPO_ROOT)` does not throw: not empty, no scheme (a drive
+ * letter is one), no leading `/`, no backslash, no `..` segment, and no C0
+ * control character, which the URL parser strips at the ends, and removes inside
+ * if a tab, LF or CR, before it reads a scheme. A space is allowed: it is a legal
+ * git path, and `sources` lists every tracked file, so refusing one would one day
+ * refuse a real build's manifest (#217). But the parser strips one at either end
+ * too, so the scheme, the slash and the segments are read as it reads them
+ * (`" http://["` throws as `"http://["` does). A percent-encoded dot segment
+ * (`%2e%2e`) passes: the parser reads it as `..`, but it does not throw, and to a
+ * file system it is a name. scripts/provenance-preflight.mjs reads every path key
+ * with this (#217): one rule, so what the page refuses and what the preflight
+ * refuses cannot part.
  */
-const isRelativePath = (key) =>
-    !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(key) &&
-    !key.startsWith("/") &&
-    !key.includes("\\") &&
-    !/[\x00-\x20]/.test(key) &&
-    !key.split("/").includes("..");
+export const isRelativePath = (key) => {
+    const parsed = key.replace(/^ +| +$/g, "");
+    return (
+        parsed !== "" &&
+        !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(parsed) &&
+        !parsed.startsWith("/") &&
+        !key.includes("\\") &&
+        !/[\x00-\x1f]/.test(key) &&
+        !parsed.split("/").includes("..")
+    );
+};
 
 /**
  * Why `manifest.served` cannot be what `scripts/build-provenance.mjs` wrote, as
@@ -104,9 +115,7 @@ const isRelativePath = (key) =>
  * Not asked, because the page reads neither: a git blob id, which
  * scripts/provenance-preflight.mjs requires, and a non-empty map. An empty
  * `served` is caught by the other findings: the modules the page loaded are
- * then unlisted. The preflight also does not check `served`'s keys as
- * paths: it compares them with `SERVED`, so a key like `"http://["` is a
- * finding there (exit 1), not a malformed field (exit 2).
+ * then unlisted.
  */
 export function servedShapeError(manifest) {
     const { served } = manifest;

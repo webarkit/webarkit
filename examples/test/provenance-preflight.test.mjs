@@ -34,19 +34,44 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+    mkdirSync,
+    mkdtempSync,
+    readFileSync,
+    rmSync,
+    statSync,
+    symlinkSync,
+    writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { preflight } from "../../scripts/provenance-preflight.mjs";
+import { BUNDLE_OPTIONS } from "../../scripts/build-provenance.mjs";
+import { bundleInputsNow, outsideRoot, preflight } from "../../scripts/provenance-preflight.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../../scripts/provenance-preflight.mjs", import.meta.url));
+const REPO = fileURLToPath(new URL("../../", import.meta.url));
 
 const HEAD = "0123456789abcdef0123456789abcdef01234567";
 const OTHER = "fedcba9876543210fedcba9876543210fedcba98";
 const hex = (c) => c.repeat(64);
+// A SHA-1 repository's id, deliberately: such a repository is still valid. What the checkout itself
+// prints may be either length: see `CHECKOUT_HEAD` and `PRODUCER_BLOB`.
 const blob = (c) => c.repeat(40);
+
+/** A full object id, as the preflight's `OBJECT_ID` reads one: SHA-1's or SHA-256's. */
+const OBJECT_ID = "(?:[0-9a-f]{40}|[0-9a-f]{64})";
+/** The command's line on the checkout's `HEAD`: the id is whichever length the repository uses. */
+const CHECKOUT_HEAD = new RegExp(
+    `manifest head: ${OTHER}; checkout HEAD: ${OBJECT_ID} -- built at another`,
+);
+/** The command's line on a producer's blob id, as {@link CHECKOUT_HEAD} reads the head. */
+const PRODUCER_BLOB = new RegExp(
+    `package\\.json: the manifest's blob id 0{40} is not the file's ${OBJECT_ID}$`,
+    "m",
+);
 
 /** A manifest that describes `disk` below, built clean at HEAD. */
 const manifest = () => ({
@@ -114,6 +139,8 @@ function tree(over = {}) {
         dirtyPaths: () => [],
         blobs: (paths) => paths.map((p) => blobs[p] ?? null),
         sha256: (path) => disk[path] ?? null,
+        resolvesOutside: () => false,
+        bundleInputs: () => ({ inputs: Object.keys(manifest().bundledInputs) }),
         served: { "examples/js/a.mjs": "both" },
         ...over,
     };
@@ -490,6 +517,300 @@ describe("preflight", () => {
         expect(text(r)).toMatch(why);
         expect(calls).toEqual({ head: 0, dirtyPaths: 0, blobs: 0 });
     });
+
+    // One rule for every path key (#217), the page's (`isRelativePath`, #209). The file's hash is
+    // right in every case: the path is what is wrong, and at #216 such a manifest exited 0.
+    describe.each(["sources", "build", "served", "bundledInputs"])("a key of %s", (group) => {
+        const withKey = (key) => ({
+            ...m(),
+            [group]: {
+                ...m()[group],
+                [key]:
+                    group === "bundledInputs"
+                        ? hex("a")
+                        : { sha256: hex("a"), blob: blob("a"), side: "both" },
+            },
+        });
+        it.each([
+            ["climbing out of the repository", "../outside.txt"],
+            ["climbing out from inside it", "packages/../../outside.txt"],
+            ["with a scheme", "https://example.com/x.mjs"],
+            ["that is not a URL", "http://["],
+            ["with a drive letter", "C:/outside.txt"],
+            ["with a leading slash", "/etc/passwd"],
+            ["with a backslash", "packages\\p\\a.js"],
+            // A space is a legal path, but the URL parser strips one at either end, and what it
+            // then reads is what the rule is about.
+            ["with a scheme behind a space", " http://["],
+            ["with a leading slash behind a space", " /etc/passwd"],
+            ["climbing out behind a space", " ../outside.txt"],
+            ["climbing out before a space", "packages/.. "],
+            ["of spaces only", "   "],
+            ["with a control character", "a\tb.js"],
+            ["that is empty", ""],
+        ])("exits 2 %s, naming the field, without reading it", (_, key) => {
+            let reads = 0;
+            const { t, calls } = tree({
+                sha256: (p) => (reads++, p === key ? hex("a") : disk[p]),
+            });
+            const r = preflight(withKey(key), t);
+            expect(r.code, text(r)).toBe(2);
+            expect(r.lines).toEqual([
+                `${group}[${JSON.stringify(key)}]: ${JSON.stringify(key)} is not a relative path`,
+            ]);
+            expect(calls).toEqual({ head: 0, dirtyPaths: 0, blobs: 0 });
+            expect(reads).toBe(0);
+        });
+    });
+
+    // What a path resolves to, symlinks included (#217): each thing the preflight reads, by name.
+    it.each([
+        ["sources", "packages/p/src/a.ts", `sources["packages/p/src/a.ts"]`],
+        ["build", "package.json", `build["package.json"]`],
+        ["served", "examples/js/a.mjs", `served["examples/js/a.mjs"]`],
+        ["bundledInputs", "packages/p/dist/a.js", `bundledInputs["packages/p/dist/a.js"]`],
+        ["the bundle", "examples/dist/webarkit-packages.mjs", "bundle.path"],
+        [
+            "jsfeat-next's file",
+            "node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs",
+            `dependencies["@webarkit/jsfeat-next"].file`,
+        ],
+    ])(
+        "exits 2 when a path in %s resolves outside the repository, before reading",
+        (_, p, field) => {
+            let reads = 0;
+            const { t, calls } = tree({
+                resolvesOutside: (q) => q === p,
+                sha256: (q) => (reads++, disk[q] ?? null),
+            });
+            const r = preflight(manifest(), t);
+            expect(r.code, text(r)).toBe(2);
+            expect(r.lines).toEqual([
+                `${field}: ${JSON.stringify(p)} resolves outside the repository`,
+            ]);
+            expect(calls).toEqual({ head: 0, dirtyPaths: 0, blobs: 0 });
+            expect(reads).toBe(0);
+        },
+    );
+
+    // Legal git paths, and `sources` lists every tracked file: refusing one would one day refuse
+    // the manifest a real build wrote (#217).
+    it.each([
+        ["sources", "packages/p/src/a b.ts"],
+        ["sources", " packages/p/src/a.ts"],
+        ["served", "examples/js/a b.mjs"],
+        ["bundledInputs", "packages/p/dist/a b.js"],
+    ])("accepts a key of %s with a space: %j", (group, key) => {
+        const m = manifest();
+        const h = hex("a");
+        m[group][key] =
+            group === "bundledInputs" ? h : { sha256: h, blob: blob("a"), side: "both" };
+        const { t } = tree({
+            sha256: (p) => (p === key ? h : disk[p]),
+            served: Object.fromEntries(Object.entries(m.served).map(([p, e]) => [p, e.side])),
+            bundleInputs: () => ({ inputs: Object.keys(m.bundledInputs) }),
+        });
+        const r = preflight(m, t);
+        expect(r.code, text(r)).toBe(0);
+    });
+
+    // The bundle's own inputs, computed now, against what the manifest says it took (#217). The
+    // dist/ files are gitignored, so `clean` cannot see them, and a file with no entry has no hash
+    // to compare. A mismatch means the manifest no longer describes the tree: exit 1, as `served`
+    // against `SERVED` is, because the remedy is to rebuild.
+    describe("the bundle's inputs against bundledInputs", () => {
+        const dist = "packages/p/dist/a.js";
+        const jsfeat = "node_modules/@webarkit/jsfeat-next/dist/jsfeatNext.mjs";
+        const without = (p) => {
+            const m = manifest();
+            delete m.bundledInputs[p];
+            return m;
+        };
+        const expectFinding = (r, line) => {
+            expect(r.code, text(r)).toBe(1);
+            expect(r.lines).toContain(line);
+            expect(r.lines.at(-1)).toMatch(/^remedy: .*npm run build/);
+        };
+
+        it("asks once, and passes when the two agree", () => {
+            let asked = 0;
+            const { t } = tree({
+                bundleInputs: () => (asked++, { inputs: Object.keys(manifest().bundledInputs) }),
+            });
+            const r = preflight(manifest(), t);
+            expect(r.code, text(r)).toBe(0);
+            expect(asked).toBe(1);
+        });
+
+        it("fails on an entry left out while its file differs on disk, the case in #217", () => {
+            const { t } = tree({ sha256: (p) => (p === dist ? hex("9") : disk[p]) });
+            expectFinding(
+                preflight(without(dist), t),
+                `bundledInputs: the bundle takes ${dist}, which the manifest does not list`,
+            );
+        });
+
+        it("fails on an entry left out whose file is unchanged", () => {
+            expectFinding(
+                preflight(without(dist), tree().t),
+                `bundledInputs: the bundle takes ${dist}, which the manifest does not list`,
+            );
+        });
+
+        it("fails on jsfeat-next's file left out", () => {
+            expectFinding(
+                preflight(without(jsfeat), tree().t),
+                `bundledInputs: the bundle takes ${jsfeat}, which the manifest does not list`,
+            );
+        });
+
+        it("fails on an entry the bundle does not take, its file's hash right", () => {
+            const extra = "packages/p/dist/extra.js";
+            const m = manifest();
+            m.bundledInputs[extra] = hex("a");
+            const { t } = tree({ sha256: (p) => (p === extra ? hex("a") : disk[p]) });
+            expectFinding(
+                preflight(m, t),
+                `bundledInputs: the manifest lists ${extra}, which the bundle does not take`,
+            );
+        });
+
+        it("reads an input named like an Object property as a name", () => {
+            const { t } = tree({
+                bundleInputs: () => ({
+                    inputs: [...Object.keys(manifest().bundledInputs), "constructor"],
+                }),
+            });
+            expectFinding(
+                preflight(manifest(), t),
+                "bundledInputs: the bundle takes constructor, which the manifest does not list",
+            );
+        });
+
+        it("names both directions at once", () => {
+            const m = without(dist);
+            m.bundledInputs["packages/p/dist/extra.js"] = hex("a");
+            const { t } = tree({ sha256: (p) => (p.endsWith("extra.js") ? hex("a") : disk[p]) });
+            const r = preflight(m, t);
+            expect(text(r)).toMatch(/the bundle takes packages\/p\/dist\/a\.js/);
+            expect(text(r)).toMatch(/the manifest lists packages\/p\/dist\/extra\.js/);
+        });
+
+        it("fails when esbuild cannot run, with its message", () => {
+            const { t } = tree({ bundleInputs: () => ({ error: "Could not resolve x" }) });
+            expectFinding(
+                preflight(manifest(), t),
+                "bundle: esbuild could not list its inputs: Could not resolve x",
+            );
+        });
+
+        it.each([
+            ["a malformed manifest", { ...manifest(), schema: "x/2" }, {}],
+            ["a path outside the repository", manifest(), { resolvesOutside: () => true }],
+        ])("does not run esbuild on %s", (_, m, over) => {
+            let asked = 0;
+            const r = preflight(m, tree({ ...over, bundleInputs: () => (asked++, {}) }).t);
+            expect(r.code, text(r)).toBe(2);
+            expect(asked).toBe(0);
+        });
+    });
+});
+
+describe("bundleInputsNow", () => {
+    const built = () =>
+        JSON.parse(readFileSync(new URL("../dist/provenance.json", import.meta.url)));
+
+    it("lists what the build's own options take: the built manifest's keys, jsfeat-next's too", () => {
+        const { inputs, error } = bundleInputsNow();
+        expect(error).toBeUndefined();
+        expect([...inputs].sort()).toEqual(Object.keys(built().bundledInputs).sort());
+    });
+
+    it("writes nothing", () => {
+        const bundle = new URL("../dist/webarkit-packages.mjs", import.meta.url);
+        const before = statSync(bundle).mtimeMs;
+        bundleInputsNow();
+        expect(statSync(bundle).mtimeMs).toBe(before);
+    });
+
+    it("gives esbuild's message on one line when it fails, and does not throw", () => {
+        const { inputs, error } = bundleInputsNow({
+            ...BUNDLE_OPTIONS,
+            entryPoints: ["examples/js/does-not-exist.mjs"],
+        });
+        expect(inputs).toBeUndefined();
+        expect(error).toMatch(/does-not-exist\.mjs/);
+        expect(error).not.toMatch(/\n/);
+    });
+});
+
+// A real link. A junction needs no privilege on Windows, and the type is ignored elsewhere, where
+// it is a directory symlink: the same call the other temporary trees here make, so nothing skips.
+describe("outsideRoot", () => {
+    function tempTree(use) {
+        const dir = mkdtempSync(join(tmpdir(), "provenance-outside-"));
+        try {
+            const root = join(dir, "root");
+            const away = join(dir, "away");
+            mkdirSync(join(root, "in"), { recursive: true });
+            mkdirSync(join(root, "..foo"));
+            mkdirSync(away);
+            writeFileSync(join(root, "in/a.txt"), "a");
+            writeFileSync(join(root, "..foo/a.txt"), "a");
+            writeFileSync(join(away, "a.txt"), "a");
+            symlinkSync(away, join(root, "link"), "junction");
+            symlinkSync(join(root, "in"), join(root, "inner"), "junction");
+            use(root);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    }
+
+    it("reads a link that leaves the root as outside it", () => {
+        tempTree((root) => expect(outsideRoot(root, "link/a.txt")).toBe(true));
+    });
+    it("reads a link to the root's own parent as outside it", () => {
+        tempTree((root) => {
+            symlinkSync(dirname(root), join(root, "up"), "junction");
+            expect(outsideRoot(root, "up")).toBe(true);
+        });
+    });
+    it("reads a plain path and a link that stays in the root as inside it", () => {
+        tempTree((root) => {
+            expect(outsideRoot(root, "in/a.txt")).toBe(false);
+            expect(outsideRoot(root, "inner/a.txt")).toBe(false);
+        });
+    });
+    it("does not take a directory whose name starts with two dots for a climb", () => {
+        tempTree((root) => expect(outsideRoot(root, "..foo/a.txt")).toBe(false));
+    });
+    // Not its question: the read then fails, and that is its own finding (exit 1, "none on disk").
+    it("leaves a path that does not exist to the read", () => {
+        tempTree((root) => expect(outsideRoot(root, "in/none.txt")).toBe(false));
+    });
+    it("resolves the root too, reached through a link of its own", () => {
+        tempTree((root) => {
+            symlinkSync(root, `${root}-alias`, "junction");
+            expect(outsideRoot(`${root}-alias`, "in/a.txt")).toBe(false);
+            expect(outsideRoot(`${root}-alias`, "link/a.txt")).toBe(true);
+        });
+    });
+});
+
+describe("the id patterns the command's test reads its output with", () => {
+    const id = (n) => "a".repeat(n);
+    const headLine = (n) => `manifest head: ${OTHER}; checkout HEAD: ${id(n)} -- built at another`;
+    const blobLine = (n) =>
+        `x\npackage.json: the manifest's blob id ${"0".repeat(40)} is not the file's ${id(n)}\ny`;
+
+    it.each([40, 64])("accept a %i-character id", (n) => {
+        expect(headLine(n)).toMatch(CHECKOUT_HEAD);
+        expect(blobLine(n)).toMatch(PRODUCER_BLOB);
+    });
+    it.each([39, 50, 65])("refuse a %i-character id", (n) => {
+        expect(headLine(n)).not.toMatch(CHECKOUT_HEAD);
+        expect(blobLine(n)).not.toMatch(PRODUCER_BLOB);
+    });
 });
 
 describe("node scripts/provenance-preflight.mjs", () => {
@@ -543,15 +864,83 @@ describe("node scripts/provenance-preflight.mjs", () => {
         m.build["package.json"].blob = blob("0");
         const r = run(JSON.stringify(m));
         expect(r.status, r.out).toBe(1);
-        expect(r.out).toMatch(
-            new RegExp(`manifest head: ${OTHER}; checkout HEAD: [0-9a-f]{40} -- built at another`),
-        );
+        expect(r.out).toMatch(CHECKOUT_HEAD);
         expect(r.out).toMatch(/manifest clean: true; tree clean now: (true|false)/);
         expect(r.out).toMatch(
             /examples\/bench-nft\.html: the manifest's hash 0{12}… is not the file's [0-9a-f]{12}…/,
         );
-        expect(r.out).toMatch(
-            /package\.json: the manifest's blob id 0{40} is not the file's [0-9a-f]{40}/,
-        );
+        expect(r.out).toMatch(PRODUCER_BLOB);
+    });
+
+    const built = () =>
+        JSON.parse(readFileSync(new URL("../dist/provenance.json", import.meta.url)));
+
+    // 0 on a clean tree at the manifest's head, 1 otherwise, whatever the head and the tree. But
+    // its inputs are compared with what the bundle takes from dist/ now: it needs a current build.
+    it("does not refuse the manifest the build wrote, nor find its inputs wrong", () => {
+        const r = run(JSON.stringify(built()));
+        expect([0, 1], r.out).toContain(r.status);
+        expect(r.out).not.toMatch(/^bundledInputs: |^bundle: esbuild/m);
+    });
+
+    it("fails on the built manifest with a bundled input left out, naming it", () => {
+        const m = built();
+        const left = "packages/cv-backend-spec/dist/cv_backend.js";
+        expect(m.bundledInputs).toHaveProperty([left]);
+        delete m.bundledInputs[left];
+        const r = run(JSON.stringify(m));
+        expect(r.status, r.out).toBe(1);
+        expect(r.out).toContain(`bundledInputs: the bundle takes ${left}, which the manifest`);
+        expect(r.out).toMatch(/^remedy: .*npm run build/m);
+    });
+
+    // A real file the producer's `allowed` admits and the bundle does not take: a type-only module.
+    it("fails on the built manifest listing a file the bundle does not take, its hash right", () => {
+        const m = built();
+        const extra = "packages/cv-backend-spec/dist/purity.js";
+        expect(m.bundledInputs).not.toHaveProperty([extra]);
+        m.bundledInputs[extra] = createHash("sha256")
+            .update(readFileSync(join(REPO, extra)))
+            .digest("hex");
+        const r = run(JSON.stringify(m));
+        expect(r.status, r.out).toBe(1);
+        expect(r.out).toContain(`bundledInputs: the manifest lists ${extra}, which the bundle`);
+        expect(r.out).not.toContain(`${extra}: the manifest's hash`);
+    });
+
+    it("exits 2 on a source outside the repository, naming the field", () => {
+        const m = built();
+        m.sources["../outside.txt"] = { sha256: hex("a"), blob: blob("a") };
+        const r = run(JSON.stringify(m));
+        expect(r.status, r.out).toBe(2);
+        expect(r.out).toContain(`sources["../outside.txt"]: "../outside.txt" is not a relative`);
+    });
+
+    // The rule's other half on its own reader: a key that reads as a path inside the repository, a
+    // link in it to a file outside, that file's real hash. `examples/dist` is gitignored, so the
+    // link does not touch what `clean` covers, and the verdict comes before git is asked.
+    it("exits 2 on a link in the repository to a file outside it, with that file's hash", () => {
+        const away = mkdtempSync(join(tmpdir(), "provenance-away-"));
+        const name = `.preflight-link-${process.pid}`;
+        const link = join(REPO, "examples/dist", name);
+        try {
+            const bytes = "outside the repository\n";
+            writeFileSync(join(away, "outside.txt"), bytes);
+            symlinkSync(away, link, "junction");
+            const key = `examples/dist/${name}/outside.txt`;
+            const m = built();
+            m.sources[key] = {
+                sha256: createHash("sha256").update(bytes).digest("hex"),
+                blob: blob("a"),
+            };
+            const r = run(JSON.stringify(m));
+            expect(r.status, r.out).toBe(2);
+            expect(r.out).toContain(
+                `sources[${JSON.stringify(key)}]: ${JSON.stringify(key)} resolves outside the repository`,
+            );
+        } finally {
+            rmSync(link, { recursive: true, force: true });
+            rmSync(away, { recursive: true, force: true });
+        }
     });
 });

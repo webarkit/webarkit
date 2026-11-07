@@ -1,6 +1,6 @@
 {
   "name": "@webarkit/cv-backend-spec",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Minimal stateless CV backend interface shared by jsfeatNext and PureCV — detect, describe, match, estimateHomography, poseFromHomography.",
   "license": "LGPL-3.0-or-later",
   "type": "module",
@@ -21,13 +21,14 @@
   "files": [
     "dist"
   ],
+  "//": "#212: --testTimeout=15000 on test and test:watch, against contention on loaded machines: the slowest sighting was 11.3 s (#210), the slowest measured 11.49 s with three suites at once, about 1.3× under 15 s.",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepack": "npm run build",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run --testTimeout=15000",
+    "test:watch": "vitest --testTimeout=15000"
   },
   "keywords": [
     "webarkit",
