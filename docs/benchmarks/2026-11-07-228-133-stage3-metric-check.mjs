@@ -545,14 +545,16 @@ async function child(clip) {
     /** M2 on one arm: each frame's record against the carried function on that frame's own pose. */
     function checkCorners(arm, label, seed) {
         let posed = 0;
+        let behind = 0;
         for (let k = 0; k < arm.records.length; k++) {
             const r = arm.results[k];
+            if (r.ok && r.pose.good && targetPoints.some(([x, y]) => !(r.pose.R[6] * x + r.pose.R[7] * y + r.pose.t[2] > 0))) behind++;
             const want = r.ok ? carriedPoseCorners(r.pose, K, targetPoints, reprojectCorners) : null;
             const d = cornersDiffer(arm.records[k].poseCorners, want);
             if (d !== null) fatal(`${clip}, seed ${seed}, frame ${k}: M2, ${label}: ${d}`);
             if (want !== null) posed++;
         }
-        return posed;
+        return { posed, behind };
     }
 
     /** The frames' reading, in one arm's corners, of the counted loops. */
@@ -664,9 +666,13 @@ async function child(clip) {
         }
         const row = { seed };
         if (reads("M2")) {
-            row.posedIPPE = checkCorners(off, "IPPE", seed);
-            row.posedFILTER = checkCorners(filter, "FILTER", seed);
-            if (on !== null) row.posedGUARD = checkCorners(on, "the guard", seed);
+            const ippe = checkCorners(off, "IPPE", seed);
+            const smoothed = checkCorners(filter, "FILTER", seed);
+            const guarded = on === null ? { posed: null, behind: 0 } : checkCorners(on, "the guard", seed);
+            row.posedIPPE = ippe.posed;
+            row.posedFILTER = smoothed.posed;
+            row.posedGUARD = guarded.posed;
+            row.behind = ippe.behind + smoothed.behind + guarded.behind;
             row.framesCompared = off.records.length;
             let moved = 0;
             for (let k = 0; k < off.results.length; k++) {
@@ -750,11 +756,11 @@ function report(R, m3, scan, m7, refusals) {
     say("every check below held, or nothing would print");
     say();
     say("## M2: poseCorners equal, Object.is, to the repeat's lines 152 to 179, carried here");
-    say("| clip | frames a run, all 6 loops | posed, IPPE | posed, FILTER | posed, the guard | frames FILTER moved |");
-    say("|---|---|---|---|---|---|");
+    say("| clip | frames a run, all 6 loops | posed, IPPE | posed, FILTER | posed, the guard | frames FILTER moved | good poses the depth rule refused, every arm, all seeds |");
+    say("|---|---|---|---|---|---|---|");
     for (const clip of CLIPS) {
         const r = R[clip].rows;
-        say(`| ${clip} | ${s(r, (x) => x.framesCompared)} | ${s(r, (x) => x.posedIPPE)} | ${s(r, (x) => x.posedFILTER)} | ${TILT_CLIPS.includes(clip) ? "not run" : s(r, (x) => x.posedGUARD)} | ${s(r, (x) => x.filterMoved)} |`);
+        say(`| ${clip} | ${s(r, (x) => x.framesCompared)} | ${s(r, (x) => x.posedIPPE)} | ${s(r, (x) => x.posedFILTER)} | ${TILT_CLIPS.includes(clip) ? "not run" : s(r, (x) => x.posedGUARD)} | ${s(r, (x) => x.filterMoved)} | ${r.reduce((n, x) => n + x.behind, 0)} |`);
     }
     say();
     say("## M3: the references, through the registered script");
@@ -785,7 +791,9 @@ function report(R, m3, scan, m7, refusals) {
     for (const clip of TILT_CLIPS) {
         for (const sch of SCHEDULES) {
             const r = R[clip].rows.map((x) => x.tilt[sch.key]);
-            say(`| ${clip} | ${sch.name} | ${span(r.map((x) => x.frames))} | ${span(r.map((x) => x.posed))} | ${span(r.map((x) => x.windows))} | ${span(r.map((x) => x.jitter), 3)} |`);
+            const none = R[clip].rows.filter((x) => x.tilt[sch.key].jitter === null).map((x) => x.seed);
+            const jitters = r.map((x) => x.jitter).filter((v) => v !== null);
+            say(`| ${clip} | ${sch.name} | ${span(r.map((x) => x.frames))} | ${span(r.map((x) => x.posed))} | ${span(r.map((x) => x.windows))} | ${span(jitters, 3)}${none.length > 0 ? `, over the seeds with a window; seed ${none.join(", ")}: none` : ""} |`);
         }
     }
     say();
