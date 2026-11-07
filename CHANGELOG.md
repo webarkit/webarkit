@@ -14,6 +14,8 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-07
+
 The "M8 — a metric that reads the pose" milestone
 ([milestone 10](https://github.com/webarkit/webarkit/milestone/10)), which built a metric that
 reads the pose, the target's corners through `K · [R | t]`, registered as `METRICS_VERSION` 2
@@ -920,7 +922,8 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 - The original single-page jsartoolkitNFT demo the repository started as. It is kept at the tag
   `archive/original-nft-demo`.
 
-[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.7.0...dev
+[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.8.0...dev
+[0.8.0]: https://github.com/webarkit/webarkit/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/webarkit/webarkit/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/webarkit/webarkit/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/webarkit/webarkit/compare/v0.5.1...v0.6.0
