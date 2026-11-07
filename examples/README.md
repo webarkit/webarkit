@@ -413,7 +413,21 @@ summaries and the corners' jitter and spread on the frames both posed
 (`DEFINITIONS.alignment`): the tracking and the stateless run of one clip,
 side by side, on the same footage. It refuses — one line, exit 1 — exports it
 cannot align: a webcam run (its media time is the stream's), an export from
-before `metricsVersion` 1, another clip, another processing size.
+before `metricsVersion` 1, or of a version the module does not read
+(`READABLE_METRICS_VERSIONS`), another clip, another processing size.
+
+**`metricsVersion` 2 adds a stability metric of the pose.** Each frame gains `H`,
+at full precision, and `poseCorners`, the target's corners through
+`K · [r1 r2 t]` of the result's pose, `K` being `intrinsics(width, height)` of the
+processing size: assumed, and no calibration. The summary gains `posePosedFrames`,
+`poseJitterWindows`, `poseJitterPx` and `poseSpreadPx`, the same frozen formulas over
+`poseCorners`. No version 1 key changes meaning. **It reads jitter, not accuracy:** it
+cannot see a constant offset between two arms, so a lower figure is not a nearer pose.
+`compareExports` reads versions 1 and 2. On two version 2 exports it adds a pose part
+beside the comparison under `H`, with `poseCornerDistancePx`, a descriptive reading;
+on a pair with a version 1 export that part is `null`. `compare-bench.mjs` does not
+print it yet. The definitions are in `DEFINITIONS`, and the record is
+[#228's registration](../docs/benchmarks/2026-11-06-228-133-stage3-registration.md).
 
 **Checking an export for a stalled clip: `scripts/stall-check.mjs`.**
 `node scripts/stall-check.mjs export.json` runs the stall check of M3's step
@@ -681,8 +695,10 @@ minimizing size a second time; revisit if its ~2.3 MB becomes a real problem.
 
 The three `pinball-tilt-*` clips were recorded on 2026-11-05 on the Tab_9_WiFi
 for [#228](https://github.com/webarkit/webarkit/issues/228)'s repeated Stage 1.
-The page's dropdown does not offer them yet, and `scripts/replay-clips.mjs` does
-not read them. `ambiguous-rate.mjs` and `jitter-dry-run.mjs`, in
+The page's dropdown does not offer them yet. `scripts/replay-clips.mjs` reads
+them only through `--clips tilt`, a form of its own, whose device schedules
+carry an acquisition borrowed from the static clip, not measured, and say so in
+each export's `schedule`. `ambiguous-rate.mjs` and `jitter-dry-run.mjs`, in
 `packages/nft-tracker/scripts/`, sweep this directory when given no clip, so they
 do include them. The authority for adding them is item 2 of the
 [maintainer's rulings on #228](https://github.com/webarkit/webarkit/issues/228#issuecomment-6671748262),

@@ -208,6 +208,7 @@ function runArm(Tracker, cv, target, K, clip, size, name) {
                     timestampMs: i * 33,
                     mediaTimeSeconds: i / clip.fps,
                     targetPoints,
+                    K,
                 }),
             );
             tilts.push(result.ok ? tiltOf(result.pose) : null);

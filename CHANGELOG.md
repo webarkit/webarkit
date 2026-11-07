@@ -43,8 +43,23 @@ release pull request's body and the GitHub Release's notes.
   matched `K`: it moves under a focal-length mismatch, no claim is made that 10° suits a real
   camera, and adoption waits for [#109](https://github.com/webarkit/webarkit/issues/109)
   ([#133](https://github.com/webarkit/webarkit/issues/133)).
+- `scripts/replay-clips.mjs` takes `--clips tilt`, a form of its own over the three
+  `pinball-tilt-*` clips: every frame, 15 and 25 ms, 6 loops with 1 to 4 counted. Its device
+  schedules' acquisition is borrowed from the static clip, not measured, and each export's
+  `schedule` says so. The default runs and `--external` read the clips they did
+  ([#228](https://github.com/webarkit/webarkit/issues/228)).
 
 ### Changed
+
+- The bench page's and the replay's exports are `metricsVersion` 2. Each frame gains `H`, at full
+  precision, and `poseCorners`, the target's corners through the result's pose under an assumed
+  `K`, and the summary gains `posePosedFrames`, `poseJitterWindows`, `poseJitterPx` and
+  `poseSpreadPx`: the same formulas as `jitterPx` and `spreadPx`, a stability metric of the pose.
+  It reads jitter, not accuracy, and cannot see a constant offset, so a lower figure is not a
+  nearer pose. No version 1 key changes meaning. An export grows by about 40%.
+  `compareExports` and `--sequence` read versions 1 and 2, so committed exports stay readable, and
+  `compareExports` adds a pose part with `poseCornerDistancePx` on two version 2 exports
+  ([#228](https://github.com/webarkit/webarkit/issues/228)).
 
 - `scripts/replay-clips.mjs`'s `--seed` seeds RANSAC through the contract's `rng`, never the
   global `Math.random`, and per frame by default (`--seed-policy frame`): two seeded replays now

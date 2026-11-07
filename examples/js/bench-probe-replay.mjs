@@ -34,19 +34,20 @@
  * re-exports every name here, under the same name.
  */
 
+import { READABLE_METRICS_VERSIONS } from "./bench-definitions.mjs";
 import { mediaKey } from "./bench-loops.mjs";
 import { percentile } from "./bench-stats.mjs";
 
 /**
  * Why `scripts/replay-clips.mjs --sequence` cannot replay export `e`, in one
  * line, or `null` when it can: it must be a tracking run on one of `clips`,
- * with this module's `metricsVersion`, the replay's target (`sha256`) and a
+ * of a metricsVersion this module reads (`READABLE_METRICS_VERSIONS`), the replay's target (`sha256`) and a
  * recorded processing size, and its detection must have run on the frame loop
  * (`detection.path` not `"worker"`): a worker run's frames wait for detections
  * the sequence replay never hands in, so it would answer the frames the
  * worker's detection locked with `no-detection`.
  */
-export function sequenceRefusal(e, { metricsVersion, sha256, clips }) {
+export function sequenceRefusal(e, { sha256, clips }) {
     if (e?.mode !== "tracking") return `it is a ${e?.mode ?? "(no mode)"} run, not a tracking run`;
     if (e.detection?.path === "worker") {
         return "it is a worker-detection run, whose frames wait for detections this replay does not hand in";
@@ -54,8 +55,8 @@ export function sequenceRefusal(e, { metricsVersion, sha256, clips }) {
     if (e.source !== "bundled" || !clips.includes(e.bundledClip)) {
         return `it did not run on a bundled clip (source ${e.source}, clip ${e.bundledClip ?? "(none)"})`;
     }
-    if (e.metricsVersion !== metricsVersion) {
-        return `it has metricsVersion ${e.metricsVersion ?? "(none)"}, not ${metricsVersion}`;
+    if (!READABLE_METRICS_VERSIONS.includes(e.metricsVersion)) {
+        return `it has metricsVersion ${e.metricsVersion ?? "(none)"}, not ${READABLE_METRICS_VERSIONS.join(" or ")}`;
     }
     if (e.target?.sha256 !== sha256) {
         return `its target (sha256 ${e.target?.sha256 ?? "(none)"}) is not targets/pinball.wnft as this replay reads it (${sha256})`;

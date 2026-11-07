@@ -96,6 +96,7 @@ export function replayRun({
                 timestampMs,
                 mediaTimeSeconds: pts[i],
                 targetPoints,
+                K,
             }),
         );
         return result;

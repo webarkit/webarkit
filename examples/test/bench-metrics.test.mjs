@@ -212,7 +212,8 @@ describe("frameRecord", () => {
         fitMs: 0.1,
     };
     const stageTimings = { acquire: 20, total: 25 };
-    const base = { stageTimings, timestampMs: 1000, mediaTimeSeconds: 1.5, targetPoints };
+    const K = [100, 0, 50, 0, 100, 60, 0, 0, 1];
+    const base = { stageTimings, timestampMs: 1000, mediaTimeSeconds: 1.5, targetPoints, K };
 
     it("copies what the tracker reports on a TRACK frame, as it reports it", () => {
         const result = {
@@ -255,6 +256,8 @@ describe("frameRecord", () => {
                 [7, 8],
                 [5, 8],
             ],
+            H,
+            poseCorners: null,
         });
         // Copies: the page reuses one timings object every tick.
         expect(r.tracking).not.toBe(tracking);
@@ -1903,6 +1906,10 @@ describe("summarizeRun", () => {
         "detectionTime",
         "detectionAccounting",
         "detectionUseFallbackFrames",
+        "posePosedFrames",
+        "poseJitterWindows",
+        "poseJitterPx",
+        "poseSpreadPx",
     ];
     const withoutNew = (s) =>
         Object.fromEntries(Object.entries(s).filter(([k]) => !NEW_KEYS.includes(k)));
@@ -1984,7 +1991,7 @@ describe("summarizeRun", () => {
         expect(Object.keys(full)).toEqual(Object.keys(summarizeRun(window)));
         for (const key of NEW_KEYS) expect(DEFINITIONS, key).toHaveProperty(key);
         expect(Object.isFrozen(DEFINITIONS)).toBe(true);
-        expect(METRICS_VERSION).toBe(1);
+        expect(METRICS_VERSION).toBe(2);
     });
 
     it("leaves every existing summary key unchanged when no options are given", () => {
