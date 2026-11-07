@@ -763,6 +763,7 @@ function replayExternal({
                 timestampMs,
                 mediaTimeSeconds: pts[i],
                 targetPoints,
+                K,
                 detection: { inFlight, detectedAt },
             }),
         );
@@ -1211,7 +1212,6 @@ if (sequencePath) {
         refuse(err.message, 2);
     }
     const why = sequenceRefusal(e, {
-        metricsVersion: METRICS_VERSION,
         sha256: targetRec.sha256,
         clips: CLIPS,
     });

@@ -626,6 +626,7 @@ async function syncLoopsRun(browser, base) {
         "sync ?loops=1 run: its stats read trackTimeShare over loop 1",
         "sync ?loops=1 run: the export says done, and its summaryMs has every stage over the counted loops",
         "sync ?loops=1 run: the export's protocol says it is not a session run, and why",
+        "sync ?loops=1 run: the export is version 2, its frames carrying H and poseCorners, its summary the pose keys, its definitions the seven",
     ];
     await scenario(names, async (check) => {
         const p = await openPage(browser, base, SYNC_LOOPS_QUERY);
@@ -691,6 +692,46 @@ async function syncLoopsRun(browser, base) {
             });
             // One counted loop, not four, and no ?run=: what keeps it from a session's (#120, PG20).
             await check(names[4], async () => notASessionRun(await p.read.lastExport()));
+            // #228, M5: the page is the one exporter no replay can stand in for.
+            await check(names[5], async () => {
+                const e = await p.read.lastExport();
+                expect(e.metricsVersion === 2, `metricsVersion ${e.metricsVersion}`);
+                const posed = e.frames.filter((f) => f.ok);
+                expect(posed.length > 0, "no frame of the export is ok");
+                const noKey = e.frames.filter((f) => !("H" in f && "poseCorners" in f));
+                expect(noKey.length === 0, `${noKey.length} frames lack H or poseCorners`);
+                const unposed = e.frames.filter(
+                    (f) => !f.ok && (f.H !== null || f.poseCorners !== null),
+                );
+                expect(
+                    unposed.length === 0,
+                    `${unposed.length} frames not ok carry H or poseCorners`,
+                );
+                const noH = posed.filter((f) => f.H?.length !== 9);
+                expect(noH.length === 0, `${noH.length} ok frames have no nine-element H`);
+                const pose = posed.filter((f) => f.poseCorners?.length === 4);
+                expect(pose.length > 0, "no ok frame has poseCorners");
+                const s = e.runSummary;
+                expect(
+                    s.posePosedFrames > 0 && Number.isInteger(s.poseJitterWindows),
+                    `posePosedFrames ${s.posePosedFrames}, poseJitterWindows ${s.poseJitterWindows}`,
+                );
+                expect(
+                    "poseJitterPx" in s && Number.isFinite(s.poseSpreadPx),
+                    `poseJitterPx ${s.poseJitterPx}, poseSpreadPx ${s.poseSpreadPx}`,
+                );
+                const seven = [
+                    "H",
+                    "poseCorners",
+                    "posePosedFrames",
+                    "poseJitterWindows",
+                    "poseJitterPx",
+                    "poseSpreadPx",
+                    "poseCornerDistancePx",
+                ];
+                const missing = seven.filter((k) => !e.definitions?.[k]);
+                expect(missing.length === 0, `definitions lack ${missing.join(", ")}`);
+            });
         } finally {
             await p.close();
         }

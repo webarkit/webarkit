@@ -73,6 +73,27 @@ export function reprojectCorners(H, points) {
 }
 
 /**
+ * `points` projected through `K · [r1 r2 t]` of `pose`, or `null` (`DEFINITIONS.poseCorners`).
+ * The depth is read first: {@link reprojectCorners} accepts an all-negative `w`, which for a
+ * homography is the same homography and for a pose is a target behind the camera.
+ */
+function poseCornersOf(pose, K, points) {
+    if (!pose?.good) return null;
+    const { R, t } = pose;
+    for (const [x, y] of points) {
+        if (!(R[6] * x + R[7] * y + t[2] > 0)) return null;
+    }
+    const M = [R[0], R[1], t[0], R[3], R[4], t[1], R[6], R[7], t[2]];
+    const H = new Array(9);
+    for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+            H[3 * i + j] = K[3 * i] * M[j] + K[3 * i + 1] * M[3 + j] + K[3 * i + 2] * M[6 + j];
+        }
+    }
+    return reprojectCorners(H, points);
+}
+
+/**
  * One frame of an export. `mode` is `"stateless"`, `"detection-only"` or
  * `"tracking"`; `result` is what that mode returned — `NftTracker`'s
  * `TrackResult`, or the page's stateless-pipeline result, which has no state,
@@ -100,6 +121,12 @@ export function reprojectCorners(H, points) {
  * the used detection was computed on — `detection.detectedAt`, copied, for a
  * consumed one; this frame, with `framesAgo: 0`, when the tracker detected on
  * it — and is `null` when no detection was used.
+ *
+ * `K` is required, and a missing one throws: `poseCorners` are in its pixels, and a default
+ * would change a figure without saying so. `H` is copied whole, at full precision, never
+ * rounded (`DEFINITIONS.H`), and `poseCorners` read the result's `pose`
+ * ({@link poseCornersOf}), not `poseSelection`'s: the filtered or the guarded pose where an
+ * option changed it.
  */
 export function frameRecord({
     mode,
@@ -108,8 +135,14 @@ export function frameRecord({
     timestampMs,
     mediaTimeSeconds,
     targetPoints,
+    K,
     detection = null,
 }) {
+    if (K?.length !== 9) {
+        throw new RangeError(
+            "frameRecord: K, the frame's nine intrinsics in row order, is required: poseCorners are in its pixels",
+        );
+    }
     const tracker = mode !== "stateless";
     const detectionUse = result.detectionUse ?? null;
     let detectedAt = null;
@@ -143,6 +176,8 @@ export function frameRecord({
         detectionInFlight: detection?.inFlight ?? false,
         detectedAt,
         corners: result.ok ? reprojectCorners(result.H, targetPoints) : null,
+        H: result.ok ? Array.from(result.H) : null,
+        poseCorners: result.ok ? poseCornersOf(result.pose, K, targetPoints) : null,
     };
 }
 

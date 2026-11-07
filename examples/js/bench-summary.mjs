@@ -33,7 +33,7 @@
  * re-exports every name here, under the same name.
  */
 
-import { JITTER_WINDOW_S, LOW_QUALITY, METRICS_VERSION } from "./bench-definitions.mjs";
+import { JITTER_WINDOW_S, LOW_QUALITY, READABLE_METRICS_VERSIONS } from "./bench-definitions.mjs";
 import {
     detectionOutcomes,
     detectionTime,
@@ -47,7 +47,7 @@ import { accountingError } from "./bench-export-checks.mjs";
 import { checkPath, fallbackFrames } from "./bench-frames.mjs";
 import { detectionLocks, lockSteps, reacquisitions, trackTimeShare } from "./bench-locks.mjs";
 import { countedLoopFrames, countLoopWraps, mediaKey, wrapsOf } from "./bench-loops.mjs";
-import { stats } from "./bench-stats.mjs";
+import { percentile, stats } from "./bench-stats.mjs";
 
 /**
  * See `DEFINITIONS.jitterPx`, `spreadPx`, `posedFrames` and `jitterWindows`.
@@ -121,6 +121,9 @@ export function cornerJitter(frames, { include = () => true, clipDurationS = nul
     };
 }
 
+/** `frames` with `poseCorners` as their `corners`, for the frozen {@link cornerJitter}. */
+const withPoseCorners = (frames) => frames.map((f) => ({ ...f, corners: f.poseCorners }));
+
 /**
  * A run's summary over its window of frame records. Every key is defined in
  * {@link DEFINITIONS}. Given nothing else, it reads every frame of the window;
@@ -168,6 +171,7 @@ export function summarizeRun(
     const lock = loops ? trackTimeShare(runFrames, { clipDurationS, ...loops }) : null;
     // Every reader of a wrap reads it by the clip's duration when the summary has one.
     const clip = { clipDurationS };
+    const pose = cornerJitter(withPoseCorners(frames), clip);
     return {
         frames: frames.length,
         states,
@@ -207,12 +211,75 @@ export function summarizeRun(
             ? { ...accounting, error: accountingError(accounting) }
             : null,
         detectionUseFallbackFrames: fallback.length,
+        posePosedFrames: pose.posedFrames,
+        poseJitterWindows: pose.jitterWindows,
+        poseJitterPx: pose.jitterPx,
+        poseSpreadPx: pose.spreadPx,
+    };
+}
+
+/** The mean distance between one frame's four corners in each of two readings, px. */
+const meanCornerDistance = (a, b) =>
+    a.reduce((sum, [x, y], c) => sum + Math.hypot(x - b[c][0], y - b[c][1]), 0) / a.length;
+
+/**
+ * The pose part of a comparison: {@link cornerJitter} of each export's `poseCorners`, its loops
+ * read from all its frames, and `DEFINITIONS.poseCornerDistancePx`, on the media times where both
+ * have `poseCorners`. The k-th frame with them at a media time in one pairs with the k-th in the
+ * other. `null` when either export is version 1, which has none, or when no media time has them
+ * in both: the comparison under `H` stands, since a pair can share frames there and none here.
+ */
+function posePart(first, second) {
+    if (first.metricsVersion !== 2 || second.metricsVersion !== 2) return null;
+    const occurrences = (e) => {
+        const at = new Map();
+        for (const f of e.frames) {
+            if (!f.poseCorners) continue;
+            const key = mediaKey(f.mediaTimeSeconds);
+            if (!at.has(key)) at.set(key, []);
+            at.get(key).push(f);
+        }
+        return at;
+    };
+    const inFirst = occurrences(first);
+    const inSecond = occurrences(second);
+    const common = new Set([...inFirst.keys()].filter((k) => inSecond.has(k)));
+    if (common.size === 0) return null;
+    const distances = [];
+    for (const key of common) {
+        const a = inFirst.get(key);
+        const b = inSecond.get(key);
+        for (let k = 0; k < Math.min(a.length, b.length); k++) {
+            distances.push(meanCornerDistance(a[k].poseCorners, b[k].poseCorners));
+        }
+    }
+    const include = (f) => common.has(mediaKey(f.mediaTimeSeconds));
+    const read = (e) => {
+        const j = cornerJitter(withPoseCorners(e.frames), {
+            include,
+            clipDurationS: e.clipDurationS ?? null,
+        });
+        return {
+            poseJitterPx: j.jitterPx,
+            poseSpreadPx: j.spreadPx,
+            poseJitterWindows: j.jitterWindows,
+        };
+    };
+    return {
+        commonMediaTimes: common.size,
+        commonFrames: distances.length,
+        first: read(first),
+        second: read(second),
+        poseCornerDistancePx: percentile(
+            distances.sort((a, b) => a - b),
+            50,
+        ),
     };
 }
 
 /**
  * Two exports of the same footage, aligned as `DEFINITIONS.alignment` says,
- * and {@link cornerJitter} of each. Two runs never process the same frames —
+ * and {@link cornerJitter} of each, with the pose part ({@link posePart}). Two runs never process the same frames —
  * the main thread skips the ones it is too busy for, and two modes skip
  * different ones — so this is the comparison on common footage that their
  * arrays' indices cannot give. Throws on exports that cannot be aligned,
@@ -232,9 +299,9 @@ export function compareExports(first, second) {
                 `${name} is a webcam run, whose mediaTimeSeconds is time since its stream started, not a position in a clip`,
             );
         }
-        if (e.metricsVersion !== METRICS_VERSION) {
+        if (!READABLE_METRICS_VERSIONS.includes(e.metricsVersion)) {
             refuse(
-                `${name} has metricsVersion ${e.metricsVersion ?? "(none)"}, not ${METRICS_VERSION}: its frames do not carry corners as defined here`,
+                `${name} has metricsVersion ${e.metricsVersion ?? "(none)"}, not ${READABLE_METRICS_VERSIONS.join(" or ")}, the versions read here`,
             );
         }
     }
@@ -263,5 +330,6 @@ export function compareExports(first, second) {
         commonMediaTimes: common.size,
         first: jitter(first),
         second: jitter(second),
+        pose: posePart(first, second),
     };
 }
