@@ -427,6 +427,30 @@ them. Combined with `externalDetection`, a detection-only tracker runs no
 detection itself either: every frame needs one, and a handed-in detection is
 returned as `"DETECT"`.
 
+**The facing rule** ([#202](https://github.com/webarkit/webarkit/issues/202),
+v0.7.0). `targetSide(H, grid)` classifies the side of the target a homography
+shows, from `H` alone, on the target's 5 × 5 level-0 grid. Its arithmetic is in
+the comment on the function, in [`src/detection.ts`](./src/detection.ts). It
+returns a `TargetSide`:
+
+| `TargetSide` | Meaning                                                                                        |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| `"facing"`   | The target seen from the front                                                                 |
+| `"reversed"` | The target seen from behind, which a visible printed target cannot be                          |
+| `"mixed-w"`  | The camera's plane crosses the target: a grid point's `w` is 0 or differs in sign from another |
+| `"singular"` | `det H = 0` with every `w` of one sign: the target mapped to a line or a point                 |
+
+`detectTarget` refuses every fit that is not `"facing"`, with the reason
+`"not-facing"` and the fit's own `numInliers`. A fit on fewer than 5 inliers is
+refused first, with `"too-few-inliers"`.
+
+The grid comes from the `DetectionSetup`, whose `grid` field is required: a
+`Float64Array` of the 25 points as `[x0, y0, x1, y1, …]`, `targetGrid` of the
+target's level-0 size. `prepareDetection` fills it, so a caller who builds a
+`DetectionSetup` by hand must supply it:
+`grid: targetGrid(...target.pyramid.levelSizes[0])`. `targetSide`, `TargetSide`,
+`targetGrid` and `DetectionSetup` are all exported from the package's index.
+
 **Options.** Every threshold the tracking state judges a frame by is an
 option, checked at construction (a value out of its domain throws a
 `RangeError` naming it). M3's tuning pass, closed in

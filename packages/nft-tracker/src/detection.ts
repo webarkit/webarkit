@@ -122,6 +122,14 @@ export type TargetSide = "facing" | "reversed" | "mixed-w" | "singular";
  * `w` is `"singular"`: the target mapped to a line or a point, which shows no
  * face. {@link detectTarget} accepts `"facing"` only.
  *
+ * On non-finite input the same comparisons give these results. A `NaN` in any
+ * `w` is `"mixed-w"`, before the determinant is computed. With one-signed `w`,
+ * a `NaN` determinant is `"reversed"`, and an `s · det H` of `±∞` follows its
+ * sign, so `+∞` is `"facing"` and {@link detectTarget} accepts the fit. A
+ * finite `H` whose determinant overflows is read as computed, which can be
+ * `NaN`, or an infinity of the sign opposite to the exact determinant's. The
+ * behaviour on non-finite input is an open question: webarkit/webarkit#239.
+ *
  * The definition and its arithmetic are axis A of #202's probe
  * (`docs/benchmarks/2026-11-01-202-stage1-probe.mjs`, `sideOf`), as its
  * Stage 3 registration (`2026-11-01-202-stage3-registration.md`) registers it.
