@@ -36,6 +36,7 @@
  *     node scripts/replay-clips.mjs --sequence <tracking export.json>
  *     node scripts/replay-clips.mjs --external <latencyMs> [--seed <n>] [--out <dir>]
  *     node scripts/replay-clips.mjs --transfer <dir> [--seed <n>] [--out <dir>]
+ *     node scripts/replay-clips.mjs --clips tilt [--seed <n>] [--out <dir>]
  *
  * Every form takes `--seed <n>` and, with it, `--seed-policy <run|frame>`
  * (default `frame`); see the tuning rounds below.
@@ -212,6 +213,15 @@
  * consumes a detection is busy no longer than any tracking frame. One seed is
  * one draw of the latencies and of the detections' RANSAC; the seeds' range is
  * the spread.
+ *
+ * **The tilt clips** (#228; docs/benchmarks/2026-11-06-228-133-stage3-registration.md, "The
+ * corpus"). `--clips tilt` is a form of its own, on `TILT_CLIPS`, which `CLIPS` does not hold:
+ * entries there would change the default runs and `--external`. Three tracking schedules (every
+ * frame, 15 and 25 ms), `--external`'s loops with its counted ones, and its stamp on the loops'
+ * continuous timeline, so that a run's summary reads the counted loops. Their device schedules
+ * model an acquisition **borrowed from the static clip, not measured**, `TILT_BORROWED_ACQUIRE_MS`,
+ * and every such export's `schedule` says so. Not with `--external`, `--sequence`, `--transfer`,
+ * `--device-ratio` or `--tracking-only`.
  */
 
 import { execFileSync } from "node:child_process";
@@ -258,6 +268,8 @@ const EXAMPLES = fileURLToPath(new URL("../examples/", import.meta.url));
 /** bench-nft.html's default processing box. */
 const BOX = PAGE_PROCESSING_BOX;
 const CLIPS = ["pinball-static.mp4", "pinball-bench.mp4", "pinball-bench-table.mp4"];
+/** `--clips tilt`'s clips, read by that form alone. */
+const TILT_CLIPS = ["pinball-tilt-cross.mp4", "pinball-tilt-mid.mp4", "pinball-tilt-sweep.mp4"];
 /**
  * acquire + gray p50 on Tab_9_WiFi (docs/benchmarks/README.md): the wall clip
  * 18.9 + 1.5 ms (2026-09-19); the static and table clips 35.9–36.0 + 0.9 and
@@ -282,6 +294,12 @@ const M3_ACQUIRE_MS = {
     "pinball-bench.mp4": 27.7,
     "pinball-bench-table.mp4": 50.0,
 };
+/**
+ * `--clips tilt`'s device schedules' acquisition: BORROWED from `DEVICE_ACQUIRE_MS`'s static clip,
+ * whose size and orientation the tilt clips share, not measured. Declared apart from it, which
+ * holds only what was measured on Tab_9_WiFi.
+ */
+const TILT_BORROWED_ACQUIRE_MS = 36.9;
 /** `--external`'s loops per run: loop 0 warms up, loops 1 to 4 are counted, loop 5 closes them (`trackTimeShare`). */
 const M3_LOOPS = 6;
 const M3_COUNTED = { firstLoop: 1, loopCount: 4 };
@@ -441,6 +459,16 @@ if (TRANSFER_DIR !== null) {
             "--transfer replays what the session ran, the tracker at its defaults; --options would change them: the two cannot be combined",
     };
     for (const [flag, why] of Object.entries(other)) if (arg(flag) !== null) usage(why);
+}
+const CLIPS_FORM = arg("--clips");
+if (CLIPS_FORM !== null) {
+    if (CLIPS_FORM !== "tilt") usage(`--clips expects tilt, got "${CLIPS_FORM}"`);
+    // Each of these is a form of its own, or a setting of one that `--clips tilt` does not run.
+    for (const flag of ["--external", "--sequence", "--transfer", "--device-ratio"]) {
+        if (arg(flag) !== null)
+            usage(`--clips tilt is a form of its own: ${flag} cannot be combined with it`);
+    }
+    if (TRACKING_ONLY) usage("--clips tilt runs tracking runs only: drop --tracking-only");
 }
 if (TRACKING_ONLY) {
     // Accepted and ignored, it would say a run was restricted that never had anything to drop.
@@ -1060,6 +1088,62 @@ async function externalArms() {
 }
 
 /**
+ * `--clips tilt`: the three schedules on each of `TILT_CLIPS`, over `M3_LOOPS` loops with the
+ * summary read over the counted ones, as `--external`'s synchronous arms are.
+ */
+async function tiltArms() {
+    const borrowed = `acquisition BORROWED: ${TILT_BORROWED_ACQUIRE_MS} ms, the static clip's, not measured`;
+    console.log(
+        `the tilt clips: ${M3_LOOPS} loops a run, ${countedLoopsText(M3_COUNTED)}; the device schedules' ${borrowed}; the synchronous mode's detection ${DEVICE_DETECT_MS} ms\n`,
+    );
+    console.log(tableHead([...TABLE_COLUMNS, ...EXTERNAL_COLUMNS]));
+    const arms = [
+        { name: "every frame", schedule: "every frame", stepMs: null },
+        { name: "device, 15 ms step", schedule: `device, 15 ms step, ${borrowed}`, stepMs: 15 },
+        { name: "device, 25 ms step", schedule: `device, 25 ms step, ${borrowed}`, stepMs: 25 },
+    ];
+    for (const clip of TILT_CLIPS) {
+        const { frames, pts, width, height } = await loadClip(clip);
+        const K = intrinsics(width, height);
+        const clipDurationS = loopPeriod(pts);
+        for (const { name, schedule, stepMs } of arms) {
+            const records = replay({
+                what: schedule,
+                clip,
+                frames,
+                pts,
+                K,
+                mode: "tracking",
+                stepMs,
+                order: null,
+                loops: M3_LOOPS,
+                acquireMs: TILT_BORROWED_ACQUIRE_MS,
+                unwrapped: true,
+            });
+            const e = armExport({
+                clip,
+                width,
+                height,
+                arm: { schedule, path: "sync", external: false },
+                records,
+                jobs: [],
+                accounting: null,
+                stepMs,
+                clipDurationS,
+                model: {
+                    latencyMs: null,
+                    acquireMs: stepMs === null ? null : TILT_BORROWED_ACQUIRE_MS,
+                    detectMs: DEVICE_DETECT_MS,
+                },
+            });
+            console.log(externalRow(clip, width, height, e));
+            writeExport(clip, { schedule: name }, e);
+        }
+        console.log("");
+    }
+}
+
+/**
  * XORed into the seed for the latency draws' own stream, so that they neither
  * consume nor shift the RANSAC draws' (`runSeeding`'s generators, seeded from
  * the seed itself).
@@ -1285,6 +1369,10 @@ if (TRANSFER_DIR !== null) {
 }
 if (EXTERNAL_MS !== null) {
     await externalArms();
+    process.exit(0);
+}
+if (CLIPS_FORM !== null) {
+    await tiltArms();
     process.exit(0);
 }
 console.log(tableHead(TABLE_COLUMNS));
