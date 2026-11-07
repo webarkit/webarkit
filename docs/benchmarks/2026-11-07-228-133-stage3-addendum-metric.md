@@ -27,12 +27,12 @@ to this document. It registers nothing new.** The registration is not edited. Th
   `packages/nft-tracker/src/` and no code the metric reads. Node v24.21.0, the pin; ffmpeg 9; Windows 11. The session ran on
   Claude Opus 5.5, with no advisor, as the brief says.
 - **The tree the figures are read on:** `172902dc5dc93e086b6d522bd02b3b836dae50fc`, built with `npm run build` from it. `git diff HEAD | sha256sum` is `e3b0c442…`, the
-  empty diff, and `git status --short` is empty, at both ends of every counted run, on stderr. The commit after it is this
-  file's, which the check does not read.
+  empty diff, and `git status --short` is empty, at both ends of every counted run, on stderr. The commits after it are this
+  file's, which the check does not read. Since each counted run refuses a replay directory of another head, repeating it at a later commit starts with a fresh `--prepare`.
 - **The check:** [`2026-11-07-228-133-stage3-metric-check.mjs`](./2026-11-07-228-133-stage3-metric-check.mjs). Its `--self-test` passes.
   `--prepare` wrote the replay directory both runs read, at that commit, and each counted run refuses an export or a `seq.stdout` built at any other. Two counted runs gave byte-identical stdout, **SHA-256 `af949cbfdd7abccca57fc4dac451bd646bcba94efc2a0f5c3aaae13441652e2f`**, each
   exit 0, in 996 s and 1041 s. Every figure below is in that stdout, apart from the negatives' table, which is the same script's `--negatives`
-  stdout, **SHA-256 `c136a3c32efb7d4a804b261d7e894e5bd433e5384586b4134f731b310df46af1`**, and what the suite, `check:page` and the page's mutants print at that tree, named where each stands. The first M3 reading below is from the failed run's stderr, and M6's two counts of common media times from the base's module. None of those three outputs is committed.
+  stdout, **SHA-256 `c136a3c32efb7d4a804b261d7e894e5bd433e5384586b4134f731b310df46af1`**, and what the suite, `check:page` and the page's mutants print at that tree, named where each stands. The first M3 reading below is from the failed run's stderr, and M6's two counts of common media times from the base's module. The per-export refusal's line, under the negatives, is from a run by hand. None of those four outputs is committed.
 - **The brief's check.** Every citation held: the registration and its Step 0, the three comments on #228, the references script,
   the code's lines, milestone 10, and the 68 and 30 committed exports. **What differed, none a stop:**
   1. **The registration's `NEW_KEYS` range,** "lines 1895 to 1908": the list is 1895 to 1906, and 1907 and 1908 are `withoutNew`, which did
@@ -229,6 +229,8 @@ Each is a mutant of the code or a defect in the check's inputs, applied by `--ne
 
 every mutant failed as it must, 35 of them; the tree is as it was.
 
+**The `--break stale-head` row reaches only the `seq.stdout` refusal,** which fires first, so the table does not show the per-export one failing. The second read below found that. It was then run by hand, the check's source unchanged, in the same mode on one clip and seed, on a copy of the replay directory with a `seq.stdout` whose header carries the fake head: `2026-11-07-228-133-stage3-metric-check.mjs: fatal: ext/replay-pinball-bench-table-tracking-device-scaled-step-sync.json: built at 172902dc5dc93e086b6d522bd02b3b836dae50fc, the tree's head 0000000000000000000000000000000000000000`
+
 **The first pass had four survivors, and each was a defect here, not in what is measured.** R transposed did fail, at corner 1, since corner 0 is the origin, and the expected line was too narrow. **The pose part's version gate could not fail:** a version 1 export has no `poseCorners`, so no test told the gate from no gate, and the new case above is what kills it. **The refusals against `--sequence` and `--transfer`:** removed, each still exits 2, on the path it cannot read, so the check now reads the refusal's own line.
 
 ## What the registration left to this addendum
@@ -274,6 +276,8 @@ CF computed from the exported H. It has no truth in it: it says how far apart tw
 | pinball-tilt-mid.mp4 | 0.192 / 0.192 / 0.192 | 0.217 / 0.217 / 0.217 |
 | pinball-tilt-sweep.mp4 | 0.810 / 2.962 / 4.436 | 1.482 / 1.750 / 3.895 |
 
+**The registration's rule that a figure one frame can move is read with and without it is not applied to this table, or to any figure here:** the table clip's `jitterPx` of 203.645 is plainly such a figure, and it has no leave-one-media-time-out beside it. This document compares no arms, as the next section says, so nothing here rests on it. M9's comparison must carry that reading.
+
 ## Stage 2's covariates per clip
 
 **This PR adds none to the guard's addendum's tables,** whose control arm and reads these runs share. The two that this document can add are above: the windows, and the distance, under the registered labels. **The assumed `K`** is `intrinsics(w, h)`, the same for every arm, f as in the distance table. **The loops** and **the wrong-pose label** stand as the guard's addendum reports them. No comparison of arms is made here, so no leave-one-media-time-out stands: those are M9's.
@@ -288,7 +292,7 @@ CF computed from the exported H. It has no truth in it: it says how far apart tw
 
 ## The independent review
 
-A fresh reviewer, a subagent with no part in the work and told not to consult an advisor, read the registration, the diff and a draft of this document, on the branch before `172902d`. It ran `typecheck`, `format:check`, `npm test`, `check:contract`, `check:provenance`, `check:replay`, `check:page` and the references script in a throwaway clone, and tried mutants of its own.
+A fresh reviewer, a subagent with no part in the work and told not to consult an advisor, read the registration, the diff at `1b5638a` and a draft of this document whose figures came from an earlier run, at `7c7dd41`. It ran `typecheck`, `format:check`, `npm test`, `check:contract`, `check:provenance`, `check:replay`, `check:page` and the references script in a throwaway clone, and tried mutants of its own.
 
 **Its verdict:** the code meets M0 to M8, the wording is byte for byte by the raw bytes, nothing forbidden changed, the arithmetic has no defect, `--clips tilt` matches the registration, and all 48 device exports carry the label. Its findings were against this document and the check. **None refuted a criterion.**
 
@@ -296,7 +300,7 @@ A fresh reviewer, a subagent with no part in the work and told not to consult an
 |---|---|---|
 | 1 | The draft said the depth rule fired on no frame. It fires on `pinball-tilt-mid`, seed 6, frame 158, on 5 inliers | The check names each such frame, and M2's sentence was rewritten from them |
 | 2 | The provenance did not describe what ran: exports of an earlier commit, a `seq.stdout` replaced by hand, and a check that read only `manifestClean` | The check refuses an export or a `seq.stdout` of another head, with a negative. A fresh `--prepare` and both counted runs were made at `172902d` |
-| 3 | Mid's jitter at seed 8 printed 0.000, where there is no window | It prints as none, and the figures read 7 of 8 |
+| 3 | Mid's jitter at seed 8 printed 0.000, where there is no window | The check already printed none at `1b5638a`, and the draft's figure was older. The figures now read 7 of 8 |
 | 4 | "The registration says its names are proposals" holds of Stage 3 A only | Reworded as additions to what is registered |
 | 5 | Two more dated scripts stop or change at this tip | Listed: six in all |
 | 6 | An even count's median was unpinned, and its mutant survived | A new test and a negative row |
@@ -306,6 +310,12 @@ A fresh reviewer, a subagent with no part in the work and told not to consult an
 | 10 | Low: `NEW_KEYS`' comment is stale, `METRICS_VERSION`'s doc comment could say more, and key order was tested on one mode | Key order now holds on all three modes. The comments stay: the registration's list does not allow the first, and the second is not wrong |
 
 **Its own mutants:** key order swapped, the pose part dropping the clip's duration, the pose part ignoring common media times, the summary over the run's frames, and the `good` check removed were each killed. The median survived, which is finding 6.
+
+**A second fresh reader, also told not to consult an advisor,** read the finished document at `a73378d` against the stdouts and `172902d`, reading only. It re-ran frame 158, and confirmed the counts, the hashes and that no verdict compares arms. It found three things, none refuting a criterion or changing a figure:
+
+1. **The stale-head negative covered only one of its two refusals,** though this document said both were seen failing. The per-export refusal has now been seen failing, as the negatives' section says.
+2. **The first review's row 3 was credited to the wrong commit,** and the sentence above was loose about what that review read. Both were corrected. The reader inferred that the review read a tree before `1b5638a`; the session's record shows it was given `1b5638a`, with an older draft.
+3. **203.645 has no with-and-without reading,** which the registration asks of a figure one frame can move. It is disclosed where the table stands, for the maintainer to weigh.
 
 ## What this addendum does not establish
 
