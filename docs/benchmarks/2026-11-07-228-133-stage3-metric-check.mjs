@@ -339,7 +339,8 @@ async function prepare(dir) {
     const jobs = [
         { args: ["--external", "70", "--seed", "1", ...SEEDED, "--out", join(dir, "ext")] },
         { args: ["--seed", "1", ...SEEDED, "--out", join(dir, "def")] },
-        { args: ["--sequence", join(ROOT, "docs/benchmarks/2026-10-13-tab9-m4-preflight-sync-wall.json"), "--seed", "1", ...SEEDED], stdoutTo: join(dir, "seq.stdout") },
+        // The path as the registered command writes it: the replay prints it, and R-replay hashes that line.
+        { args: ["--sequence", "docs/benchmarks/2026-10-13-tab9-m4-preflight-sync-wall.json", "--seed", "1", ...SEEDED], stdoutTo: join(dir, "seq.stdout") },
         ...SEEDS.map((s) => ({ args: ["--clips", "tilt", "--seed", String(s), ...SEEDED, "--out", join(dir, "tilt", `s${s}`)] })),
     ];
     let next = 0;
@@ -935,7 +936,7 @@ function negatives(dir) {
                     const r = node([join(ROOT, "scripts/replay-clips.mjs"), "--seed", "1", ...SEEDED, "--out", join(copy, "def")]);
                     if (r.status !== 0) text = r.stderr;
                 } else {
-                    const r = node([join(ROOT, "scripts/replay-clips.mjs"), "--sequence", join(ROOT, "docs/benchmarks/2026-10-13-tab9-m4-preflight-sync-wall.json"), "--seed", "1", ...SEEDED]);
+                    const r = node([join(ROOT, "scripts/replay-clips.mjs"), "--sequence", "docs/benchmarks/2026-10-13-tab9-m4-preflight-sync-wall.json", "--seed", "1", ...SEEDED]);
                     writeFileSync(join(copy, "seq.stdout"), r.stdout);
                 }
                 if (text === "") {
