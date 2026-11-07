@@ -361,12 +361,38 @@ describe("M5: the export", () => {
         H.forEach((v, i) => expect(Object.is(back.H[i], v), `H[${i}]`).toBe(true));
     });
 
-    it("keeps version 1's keys in their place, with the two new ones after them", () => {
-        const keys = Object.keys(frameRecord({ mode: "tracking", result: tracked, ...base }));
-        expect(keys.slice(-2).sort()).toEqual(["H", "poseCorners"]);
-        expect(keys.slice(0, -2).at(-1)).toBe("corners");
-        expect(keys).toHaveLength(21);
-    });
+    it.each([
+        ["tracking", tracked],
+        ["detection-only", tracked],
+        ["stateless", detected],
+    ])(
+        "keeps version 1's keys in their place on a %s frame, the two new ones after them",
+        (mode, result) => {
+            expect(Object.keys(frameRecord({ mode, result, ...base }))).toEqual([
+                "timestampMs",
+                "mediaTimeSeconds",
+                "timings",
+                "ok",
+                "reason",
+                "numSceneKeypoints",
+                "numMatches",
+                "numInliers",
+                "state",
+                "quality",
+                "trackLoss",
+                "tracking",
+                "trackerTimings",
+                "needsDetection",
+                "detectionUse",
+                "detectionLatencyMs",
+                "detectionInFlight",
+                "detectedAt",
+                "corners",
+                "H",
+                "poseCorners",
+            ]);
+        },
+    );
 
     it("reads the result's pose, not the selection's: filtered or guarded", () => {
         const other = { R: Float64Array.of(1, 0, 0, 0, 1, 0, 0, 0, 1), t, good: true };
@@ -542,6 +568,12 @@ describe("M6: the gate, and the pose part of a comparison", () => {
         // The comparison under H does not move: the same corners in both.
         expect(r.first.jitterPx).toBe(0);
         expect(r.second.jitterPx).toBe(0);
+    });
+
+    it("reads the median as p50 does, the upper middle on an even count, as the first record's", () => {
+        const a = run(TIMES.map((t) => frame(t)));
+        const b = run([1, 2, 3, 100].map((d, i) => frame(TIMES[i], moved(d))));
+        expect(compareExports(a, b).pose.poseCornerDistancePx).toBe(3);
     });
 
     it("reads the pose part only on the media times where both have poseCorners", () => {

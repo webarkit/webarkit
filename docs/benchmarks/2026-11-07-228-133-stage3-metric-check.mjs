@@ -85,7 +85,7 @@ function arg(name) {
 }
 /** A defect in the check's inputs, for exercising one the wrong way. Mutants of the code are --negatives'. */
 const BREAK = arg("--break");
-if (BREAK !== null && !["input-hash", "readme-hash"].includes(BREAK)) fatal(`--break ${BREAK}: unknown`);
+if (BREAK !== null && !["input-hash", "readme-hash", "stale-head"].includes(BREAK)) fatal(`--break ${BREAK}: unknown`);
 
 // =============================================================================================
 // The definitions: pure functions, each tested on constructed cases (--self-test).
@@ -392,6 +392,7 @@ async function main() {
     );
     for (const [clip, code] of codes) if (code !== 0) fatal(`${clip}: its child exited ${code}; no figure is printed`);
     if (BREAK === "readme-hash") checkM7Text();
+    if (BREAK === "stale-head") scanExports();
     if (NEGATIVE) {
         process.stderr.write("a negative run: every check passed, which a negative must not\n");
         return;
@@ -435,6 +436,9 @@ function referencesM3() {
 
 /** M5's scan: every replay export's frames and summary, by the key. */
 function scanExports() {
+    const head = BREAK === "stale-head" ? "0".repeat(40) : treeState().head;
+    const seqHeader = /built at ([0-9a-f]+), clean/.exec(readFileSync(join(REPLAY_DIR, "seq.stdout"), "utf8"))?.[1];
+    if (seqHeader === undefined || !head.startsWith(seqHeader)) fatal(`seq.stdout: built at ${seqHeader}, the tree's head ${head}`);
     const counts = {};
     const walk = (rel) => {
         const dir = join(REPLAY_DIR, rel);
@@ -446,6 +450,8 @@ function scanExports() {
                 const breach = exportBreach(j);
                 if (breach !== null) fatal(`M5: ${p}: ${breach}`);
                 if (j.packageSource?.manifestClean !== true) fatal(`${p}: built from a dirty tree`);
+                // The mask hides the head from M3, so a replay directory of another build is refused here.
+                if (j.packageSource?.manifestHead !== head) fatal(`${p}: built at ${j.packageSource?.manifestHead}, the tree's head ${head}`);
                 const k = `${rel.split("/")[0]}, ${j.mode}`;
                 counts[k] = counts[k] ?? { exports: 0, frames: 0, posed: 0 };
                 counts[k].exports++;
@@ -545,10 +551,12 @@ async function child(clip) {
     /** M2 on one arm: each frame's record against the carried function on that frame's own pose. */
     function checkCorners(arm, label, seed) {
         let posed = 0;
-        let behind = 0;
+        const behind = [];
         for (let k = 0; k < arm.records.length; k++) {
             const r = arm.results[k];
-            if (r.ok && r.pose.good && targetPoints.some(([x, y]) => !(r.pose.R[6] * x + r.pose.R[7] * y + r.pose.t[2] > 0))) behind++;
+            if (r.ok && r.pose.good && targetPoints.some(([x, y]) => !(r.pose.R[6] * x + r.pose.R[7] * y + r.pose.t[2] > 0))) {
+                behind.push(`${clip}, seed ${seed}, ${label}, frame ${k} of the run, media ${arm.records[k].mediaTimeSeconds.toFixed(3)} s, ${r.state} on ${r.numInliers} inliers, corners ${arm.records[k].corners ? "present" : "null"}`);
+            }
             const want = r.ok ? carriedPoseCorners(r.pose, K, targetPoints, reprojectCorners) : null;
             const d = cornersDiffer(arm.records[k].poseCorners, want);
             if (d !== null) fatal(`${clip}, seed ${seed}, frame ${k}: M2, ${label}: ${d}`);
@@ -668,11 +676,11 @@ async function child(clip) {
         if (reads("M2")) {
             const ippe = checkCorners(off, "IPPE", seed);
             const smoothed = checkCorners(filter, "FILTER", seed);
-            const guarded = on === null ? { posed: null, behind: 0 } : checkCorners(on, "the guard", seed);
+            const guarded = on === null ? { posed: null, behind: [] } : checkCorners(on, "the guard", seed);
             row.posedIPPE = ippe.posed;
             row.posedFILTER = smoothed.posed;
             row.posedGUARD = guarded.posed;
-            row.behind = ippe.behind + smoothed.behind + guarded.behind;
+            row.behind = [...ippe.behind, ...smoothed.behind, ...guarded.behind];
             row.framesCompared = off.records.length;
             let moved = 0;
             for (let k = 0; k < off.results.length; k++) {
@@ -711,14 +719,17 @@ async function child(clip) {
                     if (!Object.is(again[key], row.cells[key])) fatal(`${every}: M7: ${key} ${again[key]}, the check's ${row.cells[key]}`);
                 }
                 row.tilt = {};
+                const texts = [];
                 for (const s of SCHEDULES) {
                     const file = `tilt/s${seed}/replay-${stem}-tracking-${s.slug}.json`;
                     const device = run(seed, {}, s.stepMs);
+                    texts.push(device.records.map((f) => maskFrame(JSON.parse(JSON.stringify(f)))).join("\n"));
                     const x = proveAgainstReplay(device.records, file, seed, `M7, ${s.name}`);
                     if (x.schedule !== `${s.name}, ${BORROWED_LABEL}`) fatal(`${file}: M7: schedule "${x.schedule}" does not name the borrowed constant`);
                     if (x.detection?.model?.acquireMs !== BORROWED_MS) fatal(`${file}: M7: the model's acquisition ${x.detection?.model?.acquireMs}`);
                     row.tilt[s.key] = { frames: x.frames.length, posed: x.runSummary.posePosedFrames, windows: x.runSummary.poseJitterWindows, jitter: x.runSummary.poseJitterPx };
                 }
+                row.tilt.sameFrames = texts[0] === texts[1];
             }
         }
         rows.push(row);
@@ -760,8 +771,11 @@ function report(R, m3, scan, m7, refusals) {
     say("|---|---|---|---|---|---|---|");
     for (const clip of CLIPS) {
         const r = R[clip].rows;
-        say(`| ${clip} | ${s(r, (x) => x.framesCompared)} | ${s(r, (x) => x.posedIPPE)} | ${s(r, (x) => x.posedFILTER)} | ${TILT_CLIPS.includes(clip) ? "not run" : s(r, (x) => x.posedGUARD)} | ${s(r, (x) => x.filterMoved)} | ${r.reduce((n, x) => n + x.behind, 0)} |`);
+        say(`| ${clip} | ${s(r, (x) => x.framesCompared)} | ${s(r, (x) => x.posedIPPE)} | ${s(r, (x) => x.posedFILTER)} | ${TILT_CLIPS.includes(clip) ? "not run" : s(r, (x) => x.posedGUARD)} | ${s(r, (x) => x.filterMoved)} | ${r.reduce((n, x) => n + x.behind.length, 0)} |`);
     }
+    say();
+    say("The good poses the depth rule refused, every arm, all 6 loops:");
+    for (const clip of CLIPS) for (const x of R[clip].rows) for (const line of x.behind) say(`- ${line}`);
     say();
     say("## M3: the references, through the registered script");
     say(`R-replay, ${m3.outputs} step-independent outputs, with --v1-projection: ${m3.hash}`);
@@ -796,6 +810,7 @@ function report(R, m3, scan, m7, refusals) {
             say(`| ${clip} | ${sch.name} | ${span(r.map((x) => x.frames))} | ${span(r.map((x) => x.posed))} | ${span(r.map((x) => x.windows))} | ${span(jitters, 3)}${none.length > 0 ? `, over the seeds with a window; seed ${none.join(", ")}: none` : ""} |`);
         }
     }
+    for (const clip of TILT_CLIPS) say(`${clip}: the 15 and 25 ms schedules' frames, trackerTimings apart, are the same in ${R[clip].rows.filter((x) => x.tilt.sameFrames).length} of 8 seeds`);
     say();
     say("--clips tilt against each form, and an unknown value:");
     for (const row of refusals) say(`- ${row.flag}: exit ${row.status}: ${row.line}`);
@@ -884,6 +899,7 @@ function negatives(dir) {
         ["M6", "the list left at [2]", [[DEFS, READABLE, "export const READABLE_METRICS_VERSIONS = Object.freeze([2]);"]], TEST, /reads versions 1 and 2/],
         ["M6", "the list widened to [1, 2, 3]", [[DEFS, READABLE, "export const READABLE_METRICS_VERSIONS = Object.freeze([1, 2, 3]);"]], TEST, /reads versions 1 and 2/],
         ["M6", "the distance over all four corners' sum", [[SUMMARY, SUM_LINE, "a.reduce((sum, [x, y], c) => sum + Math.hypot(x - b[c][0], y - b[c][1]), 0);"]], TEST, /known value/],
+        ["M6", "the median as the mean of the middle two", [[SUMMARY, "poseCornerDistancePx: percentile(\n            distances.sort((a, b) => a - b),\n            50,\n        ),", "poseCornerDistancePx: ((s) => (s[Math.floor((s.length - 1) / 2)] + s[Math.ceil((s.length - 1) / 2)]) / 2)(distances.sort((a, b) => a - b)),"]], TEST, /upper middle on an even count/],
         ["M6", "a pair with a version 1 export given a pose part", [[SUMMARY, "if (first.metricsVersion !== 2 || second.metricsVersion !== 2) return null;", ""]], TEST, /no pose part on a pair with a version 1 export/],
         ["M6", "the k-th pairing broken: the last frame at a media time, not the k-th", [[SUMMARY, "distances.push(meanCornerDistance(a[k].poseCorners, b[k].poseCorners));", "distances.push(meanCornerDistance(a[a.length - 1 - k].poseCorners, b[k].poseCorners));"]], TEST, /k-th frame with the k-th/],
         ["M7", "the label removed", [[CLIPS_SCRIPT, "schedule: `device, 15 ms step, ${borrowed}`,", 'schedule: "device, 15 ms step",']], ["tilt", "pinball-tilt-cross.mp4"], /does not name the borrowed constant/],
@@ -892,6 +908,7 @@ function negatives(dir) {
         ["M7", "the refusal against --transfer removed", [[CLIPS_SCRIPT, 'for (const flag of ["--external", "--sequence", "--transfer", "--device-ratio"]) {', 'for (const flag of ["--external", "--sequence", "--device-ratio"]) {']], ["refusals"], /--clips tilt with --transfer: exit/],
         ["M7", "a clip's hash that is not the one recorded", [], ["break", "input-hash"], /pinball-tilt-cross\.mp4: SHA-256/],
         ["M7", "a README hash that is not the clip's", [], ["break", "readme-hash"], /examples\/README\.md gives 0+/],
+        ["M5", "a replay directory of another build", [], ["break", "stale-head"], /built at [0-9a-f]+, the tree's head 0+/],
         ["M8", "the option's pose read from poseSelection, which gives IPPE's column", [[FRAMES, POSE_LINE, "poseCorners: result.ok ? poseCornersOf(result.poseSelection?.pose ?? result.pose, K, targetPoints) : null,"]], childOf("pinball-static.mp4", "M8"), /M8, the guard's jitter reads 0\.270, registered 0\.129/],
         ["M8", "the same, against M2's carried function on the FILTER arm", [[FRAMES, POSE_LINE, "poseCorners: result.ok ? poseCornersOf(result.poseSelection?.pose ?? result.pose, K, targetPoints) : null,"]], childOf("pinball-static.mp4", "M2"), /M2, FILTER/],
     ];
