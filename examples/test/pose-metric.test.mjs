@@ -507,6 +507,14 @@ describe("M6: the gate, and the pose part of a comparison", () => {
         expect(compareExports(v2, v1).pose).toBeNull();
     });
 
+    it("gives no pose part on a pair with a version 1 export, whatever its frames carry", () => {
+        const frames = TIMES.map((t) => frame(t));
+        expect(compareExports(run(frames), run(frames)).pose.commonFrames).toBe(4);
+        expect(compareExports(run(frames, 1), run(frames)).pose).toBeNull();
+        expect(compareExports(run(frames), run(frames, 1)).pose).toBeNull();
+        expect(compareExports(run(frames, 1), run(frames, 1)).pose).toBeNull();
+    });
+
     it("gives two version 2 exports the pose part, with a corner distance of known value", () => {
         const a = run([0.1, 0.2, 0.3, 0.4, 0.5].map((t) => frame(t)));
         // Per frame the four corners move by 1, 2, 3 and 6 px times a frame's factor: a mean of 3

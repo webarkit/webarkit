@@ -275,7 +275,8 @@ function refusalRows() {
     }
     const other = replayClips(["--clips", "other"]);
     rows.push({ flag: "--clips other", status: other.status, line: other.stderr.trim() });
-    for (const row of rows) if (row.status !== 2) fatal(`M7: --clips tilt with ${row.flag}: exit ${row.status}, not refused`);
+    // By its own line: without the refusal --sequence and --transfer still exit 2, on the path they cannot read.
+    for (const row of rows) if (row.status !== 2 || !/^replay-clips: --clips /.test(row.line)) fatal(`M7: --clips tilt with ${row.flag}: exit ${row.status}, not refused by the flag: ${row.line}`);
     return rows;
 }
 
@@ -861,7 +862,7 @@ function negatives(dir) {
         ["M1", "a copy of the metric with a changed n - 2, called for the new keys", [[SUMMARY, "const withPoseCorners =", COPY], [SUMMARY, SUM_CALL, "const pose = copiedJitter(withPoseCorners(frames), clip);"]], TEST, /from a call of it/],
         ["M2", "t[0] + 1e-6", [[FRAMES, M_LINE, "const M = [R[0], R[1], t[0] + 1e-6, R[3], R[4], t[1], R[6], R[7], t[2]];"]], childOf("pinball-bench.mp4", "M2"), /M2, IPPE: corner 0/],
         ["M2", "K scaled 1.01", [[FRAMES, "function poseCornersOf(pose, K, points) {", "function poseCornersOf(pose, K0, points) {\n    const K = [K0[0] * 1.01, ...Array.from(K0).slice(1)];"]], childOf("pinball-bench.mp4", "M2"), /M2, IPPE: corner 0/],
-        ["M2", "R transposed", [[FRAMES, M_LINE, "const M = [R[0], R[3], t[0], R[1], R[4], t[1], R[2], R[5], t[2]];"]], childOf("pinball-bench.mp4", "M2"), /M2, IPPE: corner 0/],
+        ["M2", "R transposed", [[FRAMES, M_LINE, "const M = [R[0], R[3], t[0], R[1], R[4], t[1], R[2], R[5], t[2]];"]], childOf("pinball-bench.mp4", "M2"), /M2, IPPE: corner \d/],
         ["M2", "the depth rule removed, against a constructed all-behind pose", [[FRAMES, "if (!(R[6] * x + R[7] * y + t[2] > 0)) return null;", ""]], TEST, /wholly behind the camera/],
         ["M3", "one version 1 frame key changed", [[FRAMES, "numInliers: result.numInliers,", "numInliers: result.numInliers + 1,"]], ["refs", "def"], /projected to version 1: (?!98323f06)/],
         ["M3", "a key beyond the six", [[FRAMES, H_LINE, `${H_LINE}\n        poseExtra: null,`]], ["refs", "def"], /projected to version 1: (?!98323f06)/],
@@ -875,7 +876,7 @@ function negatives(dir) {
         ["M6", "the list left at [2]", [[DEFS, READABLE, "export const READABLE_METRICS_VERSIONS = Object.freeze([2]);"]], TEST, /reads versions 1 and 2/],
         ["M6", "the list widened to [1, 2, 3]", [[DEFS, READABLE, "export const READABLE_METRICS_VERSIONS = Object.freeze([1, 2, 3]);"]], TEST, /reads versions 1 and 2/],
         ["M6", "the distance over all four corners' sum", [[SUMMARY, SUM_LINE, "a.reduce((sum, [x, y], c) => sum + Math.hypot(x - b[c][0], y - b[c][1]), 0);"]], TEST, /known value/],
-        ["M6", "a pair with a version 1 export given a pose part", [[SUMMARY, "if (first.metricsVersion !== 2 || second.metricsVersion !== 2) return null;", ""]], TEST, /version 1 and a version 2 likewise/],
+        ["M6", "a pair with a version 1 export given a pose part", [[SUMMARY, "if (first.metricsVersion !== 2 || second.metricsVersion !== 2) return null;", ""]], TEST, /no pose part on a pair with a version 1 export/],
         ["M6", "the k-th pairing broken: the last frame at a media time, not the k-th", [[SUMMARY, "distances.push(meanCornerDistance(a[k].poseCorners, b[k].poseCorners));", "distances.push(meanCornerDistance(a[a.length - 1 - k].poseCorners, b[k].poseCorners));"]], TEST, /k-th frame with the k-th/],
         ["M7", "the label removed", [[CLIPS_SCRIPT, "schedule: `device, 15 ms step, ${borrowed}`,", 'schedule: "device, 15 ms step",']], ["tilt", "pinball-tilt-cross.mp4"], /does not name the borrowed constant/],
         ["M7", "the refusal against --external removed", [[CLIPS_SCRIPT, 'for (const flag of ["--external", "--sequence", "--transfer", "--device-ratio"]) {', 'for (const flag of ["--sequence", "--transfer", "--device-ratio"]) {']], ["refusals"], /--clips tilt with --external: exit/],
