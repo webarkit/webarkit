@@ -14,6 +14,16 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+### Changed
+
+- `@webarkit/cv-backend-jsfeatnext` requires `@webarkit/jsfeat-next` `^1.2.0` (was `^1.1.0`),
+  so the bench page's bundle carries 1.2.0. The backend's per-frame output is unchanged on the
+  seeded replays, the tilt clips and the ground truth's sequences. It stays ORB-only: 1.2.0's
+  TEBLID and FREAK descriptors are not exposed, and `capabilities` is unchanged. The bundle grows
+  by about 56 kB (294,648 to 350,665 bytes in the build compared), since the backend imports
+  jsfeatNext's namespace, which holds every module
+  ([#244](https://github.com/webarkit/webarkit/issues/244)).
+
 ## [0.8.0] - 2026-11-07
 
 The "M8 — a metric that reads the pose" milestone
