@@ -169,10 +169,13 @@ regardless of which backend is plugged in:
 
 ## Requirements
 
-`@webarkit/jsfeat-next` **`^1.1.0`** (webarkit/webarkit#94). The backend
-needs nothing that 1.x added; 1.1.0 is required because it is the version
-whose per-frame output was compared with 0.17.0's, on the seeded replays and
-the ground truth, and found the same. 0.17.0 is the floor below which the
+`@webarkit/jsfeat-next` **`^1.2.0`** (webarkit/webarkit#244). The backend
+needs nothing that 1.x added, and stays ORB-only: 1.2.0's TEBLID and FREAK
+descriptors are not reached, nor is the GMS match filter that jsfeatNext has
+shipped since 1.1.0, and `capabilities` lists none of them. 1.2.0 is required
+because it is the version whose per-frame output was compared with 1.1.0's, on
+the seeded replays, the tilt clips and the ground truth, and found the same, as
+1.1.0's was with 0.17.0's (webarkit/webarkit#94). 0.17.0 is the floor below which the
 backend cannot work: earlier releases lack `bfmatcher`,
 `pose_estimator` and `orb.ic_angle` (needed since 0.15.0), lack
 `motion_estimator.find_homography` (needed since 0.16.0 — see above), and
