@@ -297,6 +297,9 @@
                 <option value="pinball-bench.mp4" selected>wall, frontal (pinball-bench.mp4)</option>
                 <option value="pinball-bench-table.mp4">table, oblique (pinball-bench-table.mp4)</option>
                 <option value="pinball-static.mp4">wall, fixed camera (pinball-static.mp4)</option>
+                <option value="pinball-tilt-cross.mp4">board, fixed camera, raised once from nearly frontal (pinball-tilt-cross.mp4)</option>
+                <option value="pinball-tilt-mid.mp4">board, fixed camera, raised and lowered from a moderate tilt (pinball-tilt-mid.mp4)</option>
+                <option value="pinball-tilt-sweep.mp4">board, fixed camera, raised and lowered from a larger tilt (pinball-tilt-sweep.mp4)</option>
               </select>
             </div>
             <div class="row">
@@ -1707,7 +1710,7 @@
           // them, so ticks − windowSize frames ran before it (warm-up).
           ticks,
           source: lastSource,
-          // Which of the two bundled clips a "bundled" run used, or `null`
+          // Which of the bundled clips a "bundled" run used, or `null`
           // for any other source -- same reproducibility reasoning as
           // `startAtSeconds` below, now that there is more than one.
           bundledClip: lastBundledClip,

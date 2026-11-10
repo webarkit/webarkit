@@ -14,6 +14,26 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+### Added
+
+- The bench page offers the three tilt clips, `pinball-tilt-cross.mp4`, `pinball-tilt-mid.mp4`
+  and `pinball-tilt-sweep.mp4`, after the other three in its clip dropdown, and `?clip=` takes
+  them; the default stays `pinball-bench.mp4`. `check:page` runs one of them through `?clip=` to
+  an export ([#243](https://github.com/webarkit/webarkit/issues/243)).
+- `scripts/compare-bench.mjs` prints the pose part beside the corners' rows: each run's
+  whole-window `posePosedFrames`, `poseJitterPx` and `poseSpreadPx`, then `compareExports`' pose
+  part on the common media times, with `poseCornerDistancePx` labelled descriptive, or one row
+  saying why there is none (a version 1 export, or no common posed media time). Nothing it prints
+  is computed anew: no definition changes, and `METRICS_VERSION` stays 2
+  ([#243](https://github.com/webarkit/webarkit/issues/243)).
+- `npm run build` warns on stderr, before it builds or writes anything, when the existing
+  `examples/dist/provenance.json` is clean at a commit other than the one being built: an attested
+  build is being replaced. The warning names the old commit and the one being built (unknown where
+  git is not usable) and whether the tree being built is dirty, and points to
+  `npm run check:provenance`. It is a warning, not a refusal: the exit code
+  and the files written do not change, and every other case stays silent
+  ([#135](https://github.com/webarkit/webarkit/issues/135)).
+
 ### Changed
 
 - `@webarkit/cv-backend-jsfeatnext` requires `@webarkit/jsfeat-next` `^1.2.0` (was `^1.1.0`),

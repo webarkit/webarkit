@@ -47,6 +47,8 @@
  *   cause is named, and Start stays disabled;
  * - a synchronous Start on a `.wnft` that does not load: the refusal names its
  *   404, and is the outcome of the click;
+ * - a synchronous run on a tilt clip that `?clip=` picks, stopped and
+ *   exported (#243): the export names the clip, with its duration;
  * - and the page guards #120 found untested (part A): a sync run without
  *   `?loops=`, with the same fabricated step back, refused at Download; the
  *   `protocol` of the `?loops=1` and worker exports; Start under a `?tracker=`
@@ -1056,6 +1058,63 @@ async function syncAbsentTarget(browser, base) {
     });
 }
 
+/** The tilt clip `?clip=` names in {@link syncTiltClip}, and its duration as examples/README.md gives it (ffprobe), s. */
+const TILT_CLIP = "pinball-tilt-cross.mp4";
+const TILT_CLIP_S = 13.995633;
+/**
+ * How far the page's `clipDurationS` may be from {@link TILT_CLIP_S}: the
+ * browser's `video.duration` against ffprobe's, the 1 ms the loop functions
+ * already allow between a clip's duration and its frames' times
+ * (`CLIP_END_TOLERANCE_S`).
+ */
+const TILT_CLIP_TOLERANCE_S = 0.001;
+
+/**
+ * A tilt clip offered on the page (#243): `?clip=` picks it, and the export
+ * records it with its duration. The cheapest run that ends in an export: a
+ * synchronous one with no `?loops=`, stopped once it has a few frames, then
+ * downloaded.
+ */
+async function syncTiltClip(browser, base) {
+    const names = [
+        `sync run on ?clip=${TILT_CLIP}: the export's bundledClip is that clip, and its clipDurationS the README's ${TILT_CLIP_S} s`,
+    ];
+    await scenario(names, async (check) => {
+        const p = await openPage(
+            browser,
+            base,
+            `mode=tracking&target=wnft&clip=${TILT_CLIP}&window=2000`,
+        );
+        try {
+            await p.waitReady();
+            await p.click("start");
+            await waitFrames(p, 5);
+            await p.click("stop");
+            await check(names[0], async () => {
+                const status = await p.read.status();
+                expect(status === "stopped", `status "${status}" after Stop`);
+                await p.click("download");
+                expect(
+                    (await p.read.exports()) === 1,
+                    `Download exported nothing: "${await p.read.error()}"`,
+                );
+                const e = await p.read.lastExport();
+                expect(
+                    e.source === "bundled" && e.bundledClip === TILT_CLIP,
+                    `source ${e.source}, bundledClip ${e.bundledClip}`,
+                );
+                expect(
+                    Math.abs(e.clipDurationS - TILT_CLIP_S) <= TILT_CLIP_TOLERANCE_S,
+                    `clipDurationS ${e.clipDurationS}, not ${TILT_CLIP_S} ± ${TILT_CLIP_TOLERANCE_S}`,
+                );
+                expect(e.frames.length >= 5, `${e.frames.length} frames`);
+            });
+        } finally {
+            await p.close();
+        }
+    });
+}
+
 /**
  * Start with a URL parameter the page cannot read (#120, PG1): refused with
  * the parameter's own error, which the page showed at load, and no run
@@ -1887,6 +1946,7 @@ async function main() {
         await workerRunThenFailures(browser, base);
         await workerAbsentTarget(browser, base);
         await syncAbsentTarget(browser, base);
+        await syncTiltClip(browser, base);
         await syncParamRefusal(browser, base);
         await syncProvenanceFaults(browser, base);
         await syncProvenanceThrows(browser, base);
