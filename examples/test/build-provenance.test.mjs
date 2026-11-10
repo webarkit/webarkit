@@ -28,8 +28,10 @@
 /**
  * `scripts/build-provenance.mjs` run end to end (#120, part D): what `clean`
  * and `dirtyPaths` say of a changed tree, what a build without git records,
- * that the packages are rebuilt before they are bundled, and that the bundle
- * refuses an input outside the packages. provenance.test.mjs reads the
+ * that the packages are rebuilt before they are bundled, that the bundle
+ * refuses an input outside the packages, and that a build replacing a manifest
+ * clean at another commit warns first (#135), whose decision is also tested
+ * case by case without a build. provenance.test.mjs reads the
  * manifest `npm run build` wrote for this checkout, which is clean in CI, so
  * none of these could show there.
  *
@@ -56,9 +58,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { replacedBuildWarning } from "../../scripts/build-provenance.mjs";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 const PACKAGES = ["cv-backend-spec", "cv-backend-jsfeatnext", "nft-tracker"];
+/** A commit no clone is at: the head of the attested build a test's build replaces (#135). */
+const ATTESTED_HEAD = "0123456789abcdef0123456789abcdef01234567";
 
 /**
  * A clone of this checkout's HEAD in a temporary directory, set up to build
@@ -140,9 +145,18 @@ describe("scripts/build-provenance.mjs, run in a clone", () => {
             '\nimport "./pinball-shared.mjs";\n',
         );
 
+        // #135: a manifest clean at another commit, as an attested build leaves it.
+        const attested = cloneForBuild();
+        roots.push(attested);
+        mkdirSync(join(attested, "examples/dist"), { recursive: true });
+        writeFileSync(
+            join(attested, "examples/dist/provenance.json"),
+            JSON.stringify({ head: ATTESTED_HEAD, clean: true, dirtyPaths: [] }),
+        );
+
         // One at a time: three at once loaded the machine enough to push a CLI test elsewhere in
         // the suite past its timeout, then 5 s, now the suite's 15 s (#212).
-        for (const [name, root] of Object.entries({ changed, noGit, foreign })) {
+        for (const [name, root] of Object.entries({ changed, noGit, foreign, attested })) {
             runs[name] = { root, ...(await build(root)) };
         }
     }, 300_000);
@@ -220,5 +234,74 @@ describe("scripts/build-provenance.mjs, run in a clone", () => {
             /the bundle took inputs it may not: examples\/js\/pinball-shared\.mjs/,
         );
         expect(existsSync(join(root, "examples/dist/provenance.json"))).toBe(false);
+    });
+
+    // #135: the build said nothing when it replaced an attested build.
+    it("warns first, on stderr, before it replaces a manifest clean at another commit, then builds as before", () => {
+        const { status, stderr, root } = runs.attested;
+        expect(status, stderr).toBe(0);
+        const m = manifestOf(root);
+        expect(m.head).not.toBe(ATTESTED_HEAD);
+        const tree = m.clean ? "a clean tree" : `a DIRTY tree (${m.dirtyPaths.length} paths)`;
+        // The first thing the build writes to stderr, before any package's build.
+        expect(stderr.startsWith(`build-provenance: warning: `), stderr).toBe(true);
+        expect(stderr.split("\n")[0]).toBe(
+            `build-provenance: warning: examples/dist/provenance.json attests a clean build of ${ATTESTED_HEAD}. This build of ${m.head}, from ${tree}, replaces that attested build. \`npm run check:provenance\` shows the new state afterwards.`,
+        );
+    });
+
+    it("stays silent where there is no manifest to replace", () => {
+        for (const name of ["changed", "noGit", "foreign"]) {
+            expect(runs[name].stderr, name).not.toMatch(/build-provenance: warning:/);
+        }
+    });
+});
+
+describe("replacedBuildWarning (#135)", () => {
+    const HEAD = "1".repeat(40);
+    const clean = { head: HEAD, dirtyPaths: [] };
+    const manifest = (o) => JSON.stringify({ head: ATTESTED_HEAD, clean: true, ...o });
+
+    it("warns on a manifest clean at a commit other than the one being built, naming both", () => {
+        const w = replacedBuildWarning(manifest(), clean);
+        expect(w).toBe(
+            `build-provenance: warning: examples/dist/provenance.json attests a clean build of ${ATTESTED_HEAD}. This build of ${HEAD}, from a clean tree, replaces that attested build. \`npm run check:provenance\` shows the new state afterwards.`,
+        );
+    });
+
+    it("says when the tree being built is dirty, and how many paths", () => {
+        const w = replacedBuildWarning(manifest(), {
+            head: HEAD,
+            dirtyPaths: [" M scripts/compare-bench.mjs", "?? examples/js/x.mjs"],
+        });
+        expect(w).toContain(`This build of ${HEAD}, from a DIRTY tree (2 paths), replaces`);
+    });
+
+    it("warns where git is not usable: the attested build is replaced by one of no known commit", () => {
+        const w = replacedBuildWarning(manifest(), { head: null, dirtyPaths: [] });
+        expect(w).toContain(
+            `attests a clean build of ${ATTESTED_HEAD}. This build of an unknown commit (git is not usable here) replaces`,
+        );
+    });
+
+    it.each([
+        ["no manifest", null],
+        ["one that cannot be read", ""],
+        ["one that is not JSON", '{"head": "abc", "clean": tr'],
+        ["JSON that is not an object", "42"],
+        ["JSON null", "null"],
+        ["a list", "[]"],
+        ["a clean one that names no head", JSON.stringify({ clean: true })],
+        ["a clean one whose head is not a string", JSON.stringify({ clean: true, head: 7 })],
+        ["a dirty one", manifest({ clean: false })],
+        ["one whose clean is not true", manifest({ clean: "true" })],
+        ["one at the same head", manifest({ head: HEAD })],
+    ])("stays silent on %s", (_, text) => {
+        expect(replacedBuildWarning(text, clean)).toBeNull();
+    });
+
+    it("stays silent on one at the same head even when the tree is now dirty", () => {
+        const dirty = { head: HEAD, dirtyPaths: [" M package.json"] };
+        expect(replacedBuildWarning(manifest({ head: HEAD }), dirty)).toBeNull();
     });
 });

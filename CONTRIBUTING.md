@@ -118,6 +118,7 @@ This is an npm-workspaces monorepo — run these from the repo root; they cover 
     ```powershell
     npm run build
     ```
+    Before it builds anything, it warns on stderr when the `examples/dist/provenance.json` it is about to replace is clean at another commit, an attested build, and then builds as usual ([#135](https://github.com/webarkit/webarkit/issues/135)); `npm run check:provenance` shows the new state afterwards.
 - **Type check** (`src/` and `test/` in every workspace):
     ```powershell
     npm run typecheck
