@@ -80,6 +80,13 @@ export function isLoopWrap(prev, cur, clipDurationS = null, frame = null) {
     if (!(m < before)) return false;
     const skipped =
         clipDurationS === null ? null : clipDurationS - Math.min(before, clipDurationS) + m;
+    // The edge of "at most 0.5 s", kept as it is (#196, decided 2026-11-08). Media times and
+    // clipDurationS are rounded to the µs, and TIME_EPS_S absorbs float error, not that rounding,
+    // so a skip of exactly 0.5 s can read 0.500001 s and be refused. On the static clip
+    // (clipDurationS 12.166667), a 15-frame skip across the wrap reads 0.5 s on 10 of its 15
+    // landings and 0.500001 s on 5, which are refused: 11.733333 → 0.066667 is one. A 14-frame
+    // skip, 0.466667 s, is always admitted, and no recorded run comes near the edge: the largest
+    // counted skip across a wrap is one frame. bench-metrics.test.mjs pins this behaviour.
     const why =
         m < 0
             ? "it is before the clip's start"
