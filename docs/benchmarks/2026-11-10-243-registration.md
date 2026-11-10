@@ -8,9 +8,12 @@ called "Stage 1" below, and from the decisions in
 here. It registers no code. What it needs is named in "What must exist before the pre-flight", and
 is made in one later PR. After this record's merge, the plan changes only by a dated addendum to it,
 and only before the pre-flight. The pre-flight freezes the plan and the instrument together. By the
-step protocol's Stage 3, these criteria are registered in their own commit, which carries this file
-alone and is cited by its hash, so the PR that carries it merges with a merge commit and is never
-squashed.**
+step protocol's Stage 3, these criteria are registered in their own commits, which carry this file
+alone. The registration is this file as it stands at its PR's last commit, and the criteria are cited by
+that commit's hash, given in the PR's description, since a commit cannot name its own hash. So the PR
+merges with a merge commit and is never squashed. The protocol says "in their own commit", singular. This
+registration took two, both carrying this file alone, the second on the maintainer's rulings of
+2026-11-10 on the PR's review.**
 
 **The draft put ten choices to the maintainer.** Each is recorded where it applies, as "the
 maintainer's ruling of 2026-11-10", with the draft's argument kept beside it. He also accepted the
@@ -157,19 +160,41 @@ argument it accepted:
   only:** the filter's parameters as the page records them (`tracker.options.poseFilter`). They must
   equal the package defaults the analysis imports (1, 10, 1, 0.1, 1, as Stage 1 asserted them), or the
   campaign stops. Its pose figures are not read.
-- **Two fatal checks of (b),** in the analysis, before any figure:
-  - **An `ok` TRACK frame whose `poseCorners` are null for a reason the filter does not reset on,** on
-    any frame of the run, warm-up loop included, since the filter carries from it into the counted
-    loops. The tracker resets on a null pose, a state other than TRACK, a pose that is not good or a stamp
-    that does not advance (`pose_filter.ts:263`). `poseCorners` is null for a pose that is not good, where
-    the tracker resets too and (b) reproduces it. But it is also null when a corner's depth is not
-    positive or a projection is not finite (`DEFINITIONS.poseCorners`), and the filter does not reset
-    there. An export cannot tell these cases apart, since it carries no `good`. So the check fires on
-    every `ok` TRACK frame with null `poseCorners`, the reproducible case included. Its cost is a stop,
-    never a wrong figure: it fails rather than guess. Stage 1 met none. #228's metric addendum records the depth
-    rule firing once in the corpus, in a warm-up loop (M2), which is why the warm-up is read.
-  - **The recovered pose reprojects the export's `poseCorners`** within 1e-9 px. Stage 1's largest was
-    1.45e-12 px.
+- **Two checks of (b),** in the analysis, before any figure:
+  - **An `ok` TRACK frame whose `poseCorners` are null: counted and named, never fatal** (the maintainer's
+    ruling of 2026-11-10, on Qodo's finding 3 on #250).
+    - **Why such a frame matters.** The tracker resets its filter on a null pose, a state other than
+      TRACK, a pose that is not good or a stamp that does not advance (`pose_filter.ts:263`).
+      `poseCorners` is null for a pose that is not good, where the tracker resets too. It is also null
+      when a corner's depth is not positive or a projection is not finite (`DEFINITIONS.poseCorners`),
+      and the filter does not reset there. An export carries no `good`, so it cannot tell these cases
+      apart.
+    - **Why it is not fatal.** A first draft made the frame fatal. A valid tracker run could then stop a
+      block's analysis, possibly found only after the eighth run, with no remedy written down. Route (b)
+      serves P7 alone, on the static clip, so the frame is handled there.
+    - **What the analysis does.** Every such frame of the run is counted and named: its run, media
+      time and loop, warm-up or counted. The warm-up is read too, and the reason is the M2 event in
+      #228's metric addendum: the depth rule fired once in the corpus, in a warm-up loop, and the
+      filter carries from the warm-up into the counted loops. Stage 1 met none.
+    - **The two ways.** On a run with one or more such frames, P7's reading is computed two ways:
+      - **(i)** the filter reset at each such frame;
+      - **(ii)** each such frame skipped, with the filter's state carried over.
+
+      Frames before the first of them read the same both ways. The tracker did neither exactly: its
+      filter took a pose the export does not carry. The two ways bracket what an export can say,
+      without guessing between them, and both readings are reported beside the frame.
+    - **P7 on that run.** Its d stands only if both ways give it the same sign. Otherwise the run is
+      **not shown** for P7: it counts toward neither the 7 of 8 that held nor the 7 of 8 that refuted.
+    - **P7 on the block.** The whole of P7's reading is done once per way, block by block:
+      - both of its readings, the whole clip and the clip without the wraps' first second;
+      - each with and without its most influential media time, chosen within that way;
+      - each way's interval over all 8 runs' d's of that way, so on 7 degrees of freedom.
+
+      The sign counts use the rule above. P7 is held or refuted only if both ways give that outcome,
+      and otherwise not shown, as the record's outcome rules apply to any reading that is not shown.
+      A block with no such frame has one way, and the rule is moot.
+  - **The recovered pose reprojects the export's `poseCorners`** within 1e-9 px, on every frame whose
+    `poseCorners` are not null. **Fatal.** Stage 1's largest was 1.45e-12 px.
 
 ### #248's two questions, settled for this campaign
 
@@ -322,7 +347,7 @@ device's d̄ as a reading.
 | **P4** | GUARD − IPPE, cross, the whole clip | positive: the guard jitters more than IPPE across the crossing | +0.1283 / +0.1315 / +0.1328, borrowed; without 8.330744 s: +0.0931 / +0.0963 / +0.0975 | the interval below 0 and 7 of 8 negative, with and without |
 | **P5** | GUARD − CF, cross, the whole clip | positive | +0.1892 / +0.1903 / +0.1906, borrowed; without 8.330744 s: +0.1544 / +0.1554 / +0.1557 | the same, negative |
 | **P6** | the guard's switches in the footage, cross, per counted loop | exactly one per loop, near the crossing | one per pass at 8.331 s, tilt 9.99° to 10.17°, a 4.41 px jump, in all 8 seeds, borrowed; 3 a run at the wrap, on DETECT, apart | below |
-| **P7** | FILTER − IPPE (filter on − off), static, the whole clip; and the same without the first window after each wrap | negative: the filter steadies the pose | −0.0708, one observation; −0.0923 without 0.000 s | the interval above 0 and 7 of 8 positive, with and without the frame, on both readings (below) |
+| **P7** | FILTER − IPPE (filter on − off), static, the whole clip; and the same without the first window after each wrap | negative: the filter steadies the pose | −0.0708, one observation; −0.0923 without 0.000 s | the interval above 0 and 7 of 8 positive, with and without the frame, on both readings, and both ways on a run with a null-corners frame (route (b) and below) |
 
 **P2, P3:** read on the selection and on its TRACK frames. A criterion holds only if it holds on both, and
 is refuted only if it is refuted on both (the State row), since the whole selection holds detections on the
@@ -461,7 +486,8 @@ maintainer rules on what follows, as for a second failure in the stopping rules.
 - **V11. The analysis's own fatal checks,** before any figure:
   - `K` from `processingResolution` equals `intrinsics` of it, element by element;
   - CF's `good` on every posed frame, or the frame is named;
-  - the two checks of route (b) above;
+  - route (b)'s reprojection check above (its null-corners frames are counted, named and read two ways,
+    not fatal);
   - `runSummary.poseJitterPx` recomputed from the export's frames over its counted loops equals the
     recorded value, bit for bit;
   - every `H` finite on an `ok` frame (#239 found none that is not; the check costs nothing).
@@ -554,7 +580,8 @@ difference of any arm.
 3. **The filter's parameters.** One static run with `&poseFilter=one-euro` (`run=1`). Its
    `tracker.options.poseFilter` must equal the analysis's imported defaults, or the campaign stops.
    Beside it, one unfiltered static run at the counted runs' pinned string (seed 1, `run=2`), so that the
-   analysis meets an unfiltered static export, with route (b)'s two checks, before the freeze.
+   analysis meets an unfiltered static export, with route (b)'s two checks, before the freeze. The
+   `--checks-only` mode reports any `ok` TRACK frame with null `poseCorners` and does not stop on it.
 4. **Frame fidelity's share (D3), as #151 measured it. The maintainer's ruling of 2026-11-10: two
    detection-only static runs, `numMatches` compared at repeated media times, read as a lower bound.
    Every arm comes from the same frames of the same run, so fidelity reaches no criterion, only the
@@ -604,7 +631,10 @@ prompt, after this registration merges and before the pre-flight.** Neither is w
 
 1. **The analysis script,** `docs/benchmarks/<date>-243-analysis.mjs`. From an export it derives the four
    arms, the covariates, the criteria's readings, the most influential media time and the checks above,
-   each fatal, with a `--checks-only` mode for the pre-flight. It imports the frozen modules
+   each fatal except route (b)'s null-corners frame and the frames V11 names, with a `--checks-only` mode for the pre-flight. For
+   that frame it implements both ways, (i) the reset and (ii) the skip with the state carried, and P7's
+   not-shown outcome when they disagree, each exercised both ways on constructed exports: one where the
+   two agree and one where they do not. It imports the frozen modules
    (`cornerJitter`, `summarizeRun`, `compareExports`, `frameRecord`'s projection, `closedFormPose`,
    `intrinsics`, `tiltDegOf`, `PoseFilter`) and copies none. Stage 1's script and its `--page-export` mode
    are its base. Every check is exercised both ways, and its readings reproduce Stage 1's Q4 rows, which are
@@ -634,6 +664,25 @@ prompt, after this registration merges and before the pre-flight.** Neither is w
    this record does not edit it.
 4. **No change to `TILT_BORROWED_ACQUIRE_MS`, to the page, to `DEFINITIONS` or to `sessionRunGaps`** is
    needed (above).
+
+### Prerequisites, and their status at this head
+
+Added on the maintainer's ruling of 2026-11-10, on Qodo's finding 2 on #250. These are the prerequisites
+milestone 11's description ("Before the first counted run") and #243's body list. Two rows are added from
+elsewhere and marked so: `?poseFilter=` (#243's comment of 2026-11-10, #248) and the two scripts (this
+record). Each status was read on GitHub on 2026-11-10.
+
+| Prerequisite | Status | Evidence |
+|---|---|---|
+| jsfeatNext 1.2.0 | **done** | #245 merged 2026-11-08 as `6bccf51`; #244 closed the same day |
+| #239 decided | **done**: no check in `detectTarget`; #239 stays open outside M9 | #246's probe merged 2026-11-08 as `1e38a4f`; the maintainer's comments on #239 (2026-11-08) and on #243 (2026-11-08, "Prerequisite #239: decided, no change to the code") |
+| The tilt clips on the bench page, and the pose part in `compare-bench.mjs` | **done** | #247 merged 2026-11-10 as `722bd9a` |
+| #196 and #135 decided | **done**: both closed on 2026-11-10 | #247; their closing comments, cited in Step 0 |
+| `?poseFilter=` on the bench page (added: #243's comment of 2026-11-10) | **done** | #248 merged 2026-11-10 as `f49f166` |
+| The desktop Stage 1, then this registration | Stage 1 **done**; this registration is this PR | #249 merged 2026-11-10 as `d859a22` |
+| The tilt clips' acquisition measured on the device | **open by design**: measured in the pre-flight, as this record registers (item 2) | milestone 11, item 5; D4; "The pre-flight", item 2 |
+| #227's frame fidelity measured on the device | **open by design**: measured in the pre-flight, as this record registers (item 4) | D3; "The pre-flight", item 4 |
+| **The analysis script and the run-check script** (items 1 and 2 above; added: this record) | **open, and, once this registration merges, the only prerequisites that block the pre-flight** | one later PR, by the ruling above |
 
 ## The runbook
 
@@ -752,7 +801,7 @@ stored size by the README's command. Committed exports are evidence, never edite
 - **The filtered pre-flight runs cannot check route (b),** since a filtered export lacks the filter's input,
   so the first plan's "check" could not fail. **Followed:** the filtered run attests the parameters only,
   and (b) rests on the code path and Stage 1's control. The fatal check on an `ok` TRACK frame with null
-  `poseCorners` was its proposal.
+  `poseCorners` was its proposal. It was ruled non-fatal on 2026-11-10 (route (b), above).
 - **`sessionRunGaps` reads neither `poseFilter` nor `seed`; verify it.** **Followed and measured** (Step 0,
   item 4), and V6 added.
 - **Missing: the closing criterion and the stopping rules; the filter across the wrap; a count prediction
@@ -801,7 +850,7 @@ rulings were applied, against the sources, the code, the issues and the rulings.
 every Stage 1 figure quoted, recomputed against the record; the inputs' SHA-256; the bundle; every
 computed figure; the cited README passages and code lines; the pinned strings against `startRefusal`;
 the ten rulings and the four corrected citations. It reported 2 errors, 9 misleading passages and 13
-nits, and **all were applied** before the commit:
+nits, and **all were applied** before the first commit:
 
 - **Errors:**
   - V8 put the wrap rule's 0.5 s bound on the step back, where it is on the video skipped across the
@@ -823,6 +872,31 @@ nits, and **all were applied** before the commit:
 
 The storage fix changes one figure the ruling quotes. The per-export range is 0.22 to 0.45 MB, not 0.25,
 so the total is about 16 to 25 MB unrounded, and the record states both.
+
+**The second commit, on Qodo's three findings on #250 and the maintainer's rulings of 2026-11-10.**
+
+- **Finding 1** needed no change to the record.
+- **Finding 2** added the prerequisites table.
+- **Finding 3** made route (b)'s null-corners frame counted and read two ways, not fatal.
+
+A fresh read-only reviewer, with no advisor, checked the changed sections against the rulings and GitHub.
+It confirmed every hash, date and status in the table, and that the rest of the record stays consistent.
+It reported 2 errors, 4 misleading passages and 4 nits, and all were applied before the second commit:
+
+- **Errors:**
+  - the tilt clips' acquisition was missing from the table;
+  - the PR description still named the first commit as the one cited. It is updated with the second.
+- **Misleading:**
+  - the table's two rows from outside the listed sources were not marked;
+  - "the only prerequisites that block" ignored this PR's own merge;
+  - the two ways were not defined against P7's two readings, the most influential media time, the
+    interval's degrees of freedom, or several null frames in one run;
+  - consultation 1's fatal check had no pointer to the ruling.
+- **Nits:**
+  - P7's "Refuted by" cell;
+  - the M2 event as the warm-up's reason;
+  - the protocol's singular "commit";
+  - V11's named frames in the script's "each fatal".
 
 ## Constraints kept
 
