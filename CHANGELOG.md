@@ -14,6 +14,13 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+### Added
+
+- The bench page offers the three tilt clips, `pinball-tilt-cross.mp4`, `pinball-tilt-mid.mp4`
+  and `pinball-tilt-sweep.mp4`, after the other three in its clip dropdown, and `?clip=` takes
+  them; the default stays `pinball-bench.mp4`. `check:page` runs one of them through `?clip=` to
+  an export ([#243](https://github.com/webarkit/webarkit/issues/243)).
+
 ### Changed
 
 - `@webarkit/cv-backend-jsfeatnext` requires `@webarkit/jsfeat-next` `^1.2.0` (was `^1.1.0`),
