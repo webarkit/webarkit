@@ -483,23 +483,29 @@ pixels detect alike (`check:page`'s seeded check compares only frames whose
 grabbed pixels are identical).
 
 **The pose filter: `?poseFilter=`.** `one-euro` runs `NftTracker` with its
-`poseFilter` option `{ mode: "one-euro" }`, at the package's defaults
-(`DEFAULT_POSE_FILTER_*` in `packages/nft-tracker/src/tracker.ts`), in the
-tracking and the detection-only modes (#243); `off`, or no `?poseFilter=`,
-runs it off, as the page always has. The filter's parameters are not read from
-the URL: a campaign measures the shipped defaults. Anything else, a parameter
-included, refuses Start, and so does `one-euro` in the stateless mode, which
-has no tracker. The export records the option in
-`tracker.options.poseFilter`, `{ mode: "one-euro" }` or `{ mode: "off" }`,
-from the same object the tracker was built with; an export older than the
-option has none there, and ran off. A stateless export has no `tracker`, so
-it records no filter, `off` included. `poseCorners` read the result's pose,
-which is the filtered one with the option on. The filter reads `process`'s
-`timestampMs` as milliseconds, and the page passes `performance.now()` taken
-at the start of each frame's callback: wall time, not the clip's media time,
-on both detection paths. `replay-clips.mjs --sequence` replays an export with
-the options it recorded, so a filtered export replays filtered, but on the
-clip's media time in milliseconds, not the device's wall time.
+`poseFilter` option on, at the package's defaults (`DEFAULT_POSE_FILTER_*` in
+`packages/nft-tracker/src/tracker.ts`), in the tracking and the
+detection-only modes (#243); `off`, or no `?poseFilter=`, runs it off, as the
+page always has. The filter's parameters are not read from the URL: a
+campaign measures the shipped defaults. Anything else, a parameter included,
+refuses Start, and so does `one-euro` in the stateless mode, which has no
+tracker. The page builds the option with every parameter written out from the
+bundle's defaults, `{ mode: "one-euro", rotation: { minCutOff, beta },
+translation: { minCutOff, beta }, dCutOff }`, or `{ mode: "off" }`
+(`poseFilterOption` in [`js/bench-params.mjs`](./js/bench-params.mjs)), and
+the export records that same object in `tracker.options.poseFilter`, so a
+filtered export stays readable after a default changes. An export older than
+the option has none there, and ran off. A stateless export has no `tracker`,
+so it records no filter, `off` included. `poseCorners` read the result's
+pose, which is the filtered one with the option on. The filter reads
+`process`'s `timestampMs` as milliseconds, and the page passes
+`performance.now()` taken at the start of each frame's callback: wall time,
+not the clip's media time, on both detection paths.
+`replay-clips.mjs --sequence` replays an export with the options it recorded,
+so a filtered export replays filtered, with the parameters it recorded, but
+on the clip's media time in milliseconds, not the device's wall time.
+`replay-clips.mjs --transfer`, which replays with its own options, refuses an
+export recorded with the filter on rather than replay it unfiltered.
 
 ### Detection off the frame loop: `?detection=worker`
 

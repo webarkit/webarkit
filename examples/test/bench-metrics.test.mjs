@@ -56,7 +56,6 @@ import {
     parsePositiveInt,
     parseRunParams,
     POSE_FILTERS,
-    poseFilterOption,
     parseTrackerOverrides,
     percentile,
     postToArrivalSamples,
@@ -2585,12 +2584,7 @@ describe("parsePositiveInt and parseRunParams", () => {
         }
     });
 
-    it("gives the tracker's poseFilter option from ?poseFilter=, off by default, and a fresh object each time", () => {
-        expect(poseFilterOption("one-euro")).toEqual({ mode: "one-euro" });
-        expect(poseFilterOption("off")).toEqual({ mode: "off" });
-        expect(poseFilterOption(null)).toEqual({ mode: "off" });
-        expect(poseFilterOption("one-euro")).not.toBe(poseFilterOption("one-euro"));
-    });
+    // poseFilterOption, which turns the value into the tracker's option: pose-filter-option.test.mjs.
 
     it("reads a candidate target under targets/tuning/ and tracker overrides", () => {
         const p = parseRunParams(
@@ -3848,6 +3842,58 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
         expect(sync.stepMs).toBe(7);
         expect(worker.path).toBe("worker");
         expect(sync.path).toBe("sync");
+    });
+
+    // #243 (Qodo's second finding on #248): --transfer replays with its own options, never an
+    // export's pose filter, so a filtered export would be replayed unfiltered, and say nothing.
+    describe("an export that ran the pose filter", () => {
+        const withFilter = (e, poseFilter) => ({
+            ...e,
+            tracker: { options: { ...e.tracker.options, poseFilter } },
+        });
+        const ONE_EURO = {
+            mode: "one-euro",
+            rotation: { minCutOff: 1, beta: 10 },
+            translation: { minCutOff: 1, beta: 0.1 },
+            dCutOff: 1,
+        };
+
+        it("is refused, named, beside an unfiltered one that would be planned", () => {
+            const unfiltered = pageExport("sync", syncFrames());
+            expect(plan([workerExport(), unfiltered]).refusal).toBeNull();
+            const p = plan([
+                workerExport(),
+                unfiltered,
+                withFilter(pageExport("sync", syncFrames()), ONE_EURO),
+            ]);
+            expect(p.clips).toEqual([]);
+            expect(p.refusal).toBe(
+                `pinball-bench.mp4: export-2.json ran with the pose filter (tracker.options.poseFilter ${JSON.stringify(ONE_EURO)}), and --transfer replays without it`,
+            );
+        });
+
+        it("is refused on either path, and on a poseFilter whose mode is not off, whatever it is", () => {
+            for (const poseFilter of [{ mode: "one-euro" }, {}, null, "one-euro"]) {
+                const p = plan([
+                    withFilter(workerExport(), poseFilter),
+                    pageExport("sync", syncFrames()),
+                ]);
+                expect(p.refusal, JSON.stringify(poseFilter)).toMatch(
+                    /^pinball-bench.mp4: export-0.json ran with the pose filter .*, and --transfer replays without it$/,
+                );
+            }
+        });
+
+        it("plans an export recorded off, and one older than the option, as before", () => {
+            const off = withFilter(pageExport("sync", syncFrames()), { mode: "off" });
+            const older = pageExport("sync", syncFrames());
+            expect(Object.hasOwn(older.tracker.options, "poseFilter")).toBe(false);
+            for (const sync of [off, older]) {
+                const p = plan([withFilter(workerExport(), { mode: "off" }), sync]);
+                expect(p.refusal).toBeNull();
+                expect(p.clips.map((c) => c.clip)).toEqual(["pinball-bench.mp4"]);
+            }
+        });
     });
 
     it("pools a mode's exports of a clip, and names the files it read", () => {

@@ -51,8 +51,9 @@
  *   exported (#243): the export names the clip, with its duration, and its
  *   `tracker.options.poseFilter` is `{ mode: "off" }`, no `?poseFilter=`;
  * - a synchronous run on the static clip with `?poseFilter=one-euro`, stopped
- *   and exported (#243): its `tracker.options.poseFilter` is
- *   `{ mode: "one-euro" }`, and it tracked and posed with the filter on;
+ *   and exported (#243): its `tracker.options.poseFilter` is the filter with
+ *   every parameter written out, the built package's `DEFAULT_POSE_FILTER_*`,
+ *   and it tracked and posed with the filter on;
  * - and the page guards #120 found untested (part A): a sync run without
  *   `?loops=`, with the same fabricated step back, refused at Download; the
  *   `protocol` of the `?loops=1` and worker exports; Start under a `?tracker=`
@@ -1125,14 +1126,36 @@ async function syncTiltClip(browser, base) {
     });
 }
 
-/** That export `e`'s `tracker.options.poseFilter` is exactly `{ mode }` (#243). */
+/** That export `e`'s `tracker.options.poseFilter` is `{ mode: "off" }`, or the written-out filter for `"one-euro"` (#243). */
 function expectPoseFilter(e, mode) {
     const got = e.tracker?.options?.poseFilter;
+    const want = mode === "off" ? { mode } : ONE_EURO_RECORD;
     expect(
-        JSON.stringify(got) === JSON.stringify({ mode }),
-        `tracker.options.poseFilter ${JSON.stringify(got)}, not { mode: "${mode}" }`,
+        JSON.stringify(got) === JSON.stringify(want),
+        `tracker.options.poseFilter ${JSON.stringify(got)}, not ${JSON.stringify(want)}`,
     );
 }
+
+/**
+ * What a `?poseFilter=one-euro` export records (#248, Qodo's first finding):
+ * the filter with every parameter written out, each the built package's
+ * `DEFAULT_POSE_FILTER_*`, in the order the page writes them. Set by
+ * {@link main} once it has checked the build is there, from the built
+ * `packages/nft-tracker/dist`, the package the page's bundle was made from.
+ */
+let ONE_EURO_RECORD = null;
+const oneEuroRecord = (nftTracker) => ({
+    mode: "one-euro",
+    rotation: {
+        minCutOff: nftTracker.DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF,
+        beta: nftTracker.DEFAULT_POSE_FILTER_ROTATION_BETA,
+    },
+    translation: {
+        minCutOff: nftTracker.DEFAULT_POSE_FILTER_TRANSLATION_MIN_CUTOFF,
+        beta: nftTracker.DEFAULT_POSE_FILTER_TRANSLATION_BETA,
+    },
+    dCutOff: nftTracker.DEFAULT_POSE_FILTER_D_CUTOFF,
+});
 
 /** The clip {@link syncPoseFilter} runs: on it the lock holds steadily, so the run reaches TRACK, where the filter steps, within a few frames. */
 const STATIC_CLIP = "pinball-static.mp4";
@@ -1149,7 +1172,7 @@ const STATIC_CLIP = "pinball-static.mp4";
  */
 async function syncPoseFilter(browser, base) {
     const names = [
-        `sync run on ?clip=${STATIC_CLIP} with ?poseFilter=one-euro: stopped, it posed under TRACK, and the export's tracker.options.poseFilter is { mode: "one-euro" }`,
+        `sync run on ?clip=${STATIC_CLIP} with ?poseFilter=one-euro: stopped, it posed under TRACK, and the export's tracker.options.poseFilter is the filter at the package's defaults, written out`,
     ];
     await scenario(names, async (check) => {
         const p = await openPage(
@@ -2022,6 +2045,13 @@ async function main() {
     for (const file of ["dist/webarkit-packages.mjs", "dist/provenance.json"]) {
         if (!existsSync(join(SERVED, file)))
             throw new SetupError(`examples/${file} is missing: run \`npm run build\` first.`);
+    }
+    try {
+        ONE_EURO_RECORD = oneEuroRecord(await import("../packages/nft-tracker/dist/index.js"));
+    } catch (e) {
+        throw new SetupError(
+            `packages/nft-tracker/dist could not be loaded (${e.message}): run \`npm run build\` first.`,
+        );
     }
     if (existsSync(join(SERVED, "targets", ABSENT_TARGET))) {
         throw new SetupError(

@@ -49,15 +49,56 @@ export const DETECTION_PATHS = Object.freeze(["sync", "worker"]);
 export const POSE_FILTERS = Object.freeze(["one-euro", "off"]);
 
 /**
+ * The tracker package's exports {@link poseFilterOption} reads the One Euro
+ * filter's parameters from: `DEFAULT_POSE_FILTER_*`, which `NftTracker` takes
+ * for every parameter omitted.
+ */
+export const POSE_FILTER_DEFAULT_NAMES = Object.freeze([
+    "DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF",
+    "DEFAULT_POSE_FILTER_ROTATION_BETA",
+    "DEFAULT_POSE_FILTER_TRANSLATION_MIN_CUTOFF",
+    "DEFAULT_POSE_FILTER_TRANSLATION_BETA",
+    "DEFAULT_POSE_FILTER_D_CUTOFF",
+]);
+
+/**
  * The `poseFilter` option the page passes to `NftTracker`, and records in the
  * export's `tracker.options`, for `?poseFilter=`'s value as
- * {@link parseRunParams} reads it: `{ mode: "one-euro" }` for `"one-euro"`, and
- * `{ mode: "off" }`, the tracker's default, for `"off"` and for `null` (no
- * `?poseFilter=`). One source for both, so the record cannot say other than
- * what the tracker ran. A fresh object each call.
+ * {@link parseRunParams} reads it. For `"one-euro"`, the filter on with every
+ * parameter written out, read from the tracker package `pkg`'s
+ * `DEFAULT_POSE_FILTER_*` ({@link POSE_FILTER_DEFAULT_NAMES}) in the shape
+ * `PoseFilterOptions` takes: `{ mode: "one-euro", rotation: { minCutOff, beta },
+ * translation: { minCutOff, beta }, dCutOff }`. The tracker runs it as it runs
+ * `{ mode: "one-euro" }`, those being its defaults, and an export that records
+ * it stays readable after a default changes. For `"off"` and `null` (no
+ * `?poseFilter=`), `{ mode: "off" }`, the tracker's default, and `pkg` is not
+ * read. One source for the tracker and the record, so the record cannot say
+ * other than what the tracker ran. A fresh object each call, frozen to its
+ * layers. This module imports no package, so its caller passes the one it
+ * loaded; for `"one-euro"`, a package without one of the five as a finite
+ * number throws a `TypeError` naming it.
  */
-export function poseFilterOption(poseFilter) {
-    return { mode: poseFilter === "one-euro" ? "one-euro" : "off" };
+export function poseFilterOption(poseFilter, pkg) {
+    if (poseFilter !== "one-euro") return Object.freeze({ mode: "off" });
+    const absent = POSE_FILTER_DEFAULT_NAMES.filter((n) => !Number.isFinite(pkg?.[n]));
+    if (absent.length > 0) {
+        throw new TypeError(
+            `poseFilterOption: the tracker package exports no ${absent.join(", ")}`,
+        );
+    }
+    const layer = (minCutOff, beta) => Object.freeze({ minCutOff, beta });
+    return Object.freeze({
+        mode: "one-euro",
+        rotation: layer(
+            pkg.DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF,
+            pkg.DEFAULT_POSE_FILTER_ROTATION_BETA,
+        ),
+        translation: layer(
+            pkg.DEFAULT_POSE_FILTER_TRANSLATION_MIN_CUTOFF,
+            pkg.DEFAULT_POSE_FILTER_TRANSLATION_BETA,
+        ),
+        dCutOff: pkg.DEFAULT_POSE_FILTER_D_CUTOFF,
+    });
 }
 
 /**

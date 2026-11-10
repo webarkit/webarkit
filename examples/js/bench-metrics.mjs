@@ -79,6 +79,7 @@ export {
     MODES,
     DETECTION_PATHS,
     POSE_FILTERS,
+    POSE_FILTER_DEFAULT_NAMES,
     poseFilterOption,
     parsePositiveInt,
     parseRunParams,

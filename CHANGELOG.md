@@ -21,9 +21,11 @@ release pull request's body and the GitHub Release's notes.
   them; the default stays `pinball-bench.mp4`. `check:page` runs one of them through `?clip=` to
   an export ([#243](https://github.com/webarkit/webarkit/issues/243)).
 - The bench page takes `?poseFilter=one-euro`, which runs `NftTracker` with its pose filter on
-  at the package's defaults in the tracking and detection-only modes, and records
-  `{ mode: "one-euro" }` or `{ mode: "off" }` in the export's `tracker.options.poseFilter`;
-  Start refuses any other value, and the filter in the stateless mode
+  at the package's defaults in the tracking and detection-only modes, and records the option
+  it built the tracker with in the export's `tracker.options.poseFilter`: the filter with every
+  parameter written out from the bundle's `DEFAULT_POSE_FILTER_*`, or `{ mode: "off" }`. Start
+  refuses any other value, and the filter in the stateless mode; `replay-clips.mjs --transfer`
+  refuses an export recorded with the filter on, which it would replay unfiltered
   ([#243](https://github.com/webarkit/webarkit/issues/243)).
 - `scripts/compare-bench.mjs` prints the pose part beside the corners' rows: each run's
   whole-window `posePosedFrames`, `poseJitterPx` and `poseSpreadPx`, then `compareExports`' pose
