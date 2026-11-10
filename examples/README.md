@@ -425,8 +425,14 @@ processing size: assumed, and no calibration. The summary gains `posePosedFrames
 cannot see a constant offset between two arms, so a lower figure is not a nearer pose.
 `compareExports` reads versions 1 and 2. On two version 2 exports it adds a pose part
 beside the comparison under `H`, with `poseCornerDistancePx`, a descriptive reading;
-on a pair with a version 1 export that part is `null`. `compare-bench.mjs` does not
-print it yet. The definitions are in `DEFINITIONS`, and the record is
+on a pair with a version 1 export that part is `null`. `compare-bench.mjs` prints it
+in the same table, below the corners' rows: each run's whole-window `posePosedFrames`,
+`poseJitterPx` and `poseSpreadPx` (`—` for a version 1 export), then the pose part's
+`poseJitterWindows`, `poseJitterPx` and `poseSpreadPx` of each run on the media times both
+have `poseCorners`, and the pair's `poseCornerDistancePx`, its row labelled descriptive,
+never a criterion. Where the part is `null` it prints one row saying why: a version 1
+export, or no media time with `poseCorners` in both. Each pose figure's definition is
+printed after the table, as `jitterPx`'s and `spreadPx`'s are. The definitions are in `DEFINITIONS`, and the record is
 [#228's registration](../docs/benchmarks/2026-11-06-228-133-stage3-registration.md).
 
 **Checking an export for a stalled clip: `scripts/stall-check.mjs`.**

@@ -20,6 +20,12 @@ release pull request's body and the GitHub Release's notes.
   and `pinball-tilt-sweep.mp4`, after the other three in its clip dropdown, and `?clip=` takes
   them; the default stays `pinball-bench.mp4`. `check:page` runs one of them through `?clip=` to
   an export ([#243](https://github.com/webarkit/webarkit/issues/243)).
+- `scripts/compare-bench.mjs` prints the pose part beside the corners' rows: each run's
+  whole-window `posePosedFrames`, `poseJitterPx` and `poseSpreadPx`, then `compareExports`' pose
+  part on the common media times, with `poseCornerDistancePx` labelled descriptive, or one row
+  saying why there is none (a version 1 export, or no common posed media time). Nothing it prints
+  is computed anew: no definition changes, and `METRICS_VERSION` stays 2
+  ([#243](https://github.com/webarkit/webarkit/issues/243)).
 
 ### Changed
 

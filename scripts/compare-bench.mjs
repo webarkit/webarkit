@@ -28,8 +28,13 @@
 /**
  * Two `bench-nft.html` exports of the same footage, side by side: each run's
  * summary, recomputed from its frames, and the corners' jitter and spread on
- * the frames both runs posed (`compareExports` and `DEFINITIONS` in
- * examples/js/bench-metrics.mjs define every number printed here).
+ * the frames both runs posed; then, in the same table, the pose part
+ * (metricsVersion 2): each run's whole-window `poseJitterPx` and
+ * `poseSpreadPx` with its posed frames, and `compareExports`' pose part on the
+ * media times both have `poseCorners`, `poseCornerDistancePx` included, or one
+ * row saying why there is none (`compareExports` and `DEFINITIONS` in
+ * examples/js/bench-metrics.mjs define every number printed here). Only what
+ * those already compute is printed.
  *
  *     node scripts/compare-bench.mjs <first.json> <second.json>
  *
@@ -120,9 +125,76 @@ const rows = [
         num(aligned.second.spreadPx, 3),
     ],
 ];
+
+// The pose part (metricsVersion 2): each run's whole window, then the common media times
+// compareExports found. A version 1 export records no poseCorners, so its cells read "—".
+const v2 = (e) => e.metricsVersion === 2;
+const wholePose = (e, s, key, digits) => (!v2(e) ? "—" : num(s[key], digits));
+rows.push(
+    [
+        "posePosedFrames, whole window",
+        wholePose(first, a, "posePosedFrames", 0),
+        wholePose(second, b, "posePosedFrames", 0),
+    ],
+    [
+        "poseJitterPx, whole window",
+        wholePose(first, a, "poseJitterPx", 3),
+        wholePose(second, b, "poseJitterPx", 3),
+    ],
+    [
+        "poseSpreadPx, whole window",
+        wholePose(first, a, "poseSpreadPx", 3),
+        wholePose(second, b, "poseSpreadPx", 3),
+    ],
+);
+const { pose } = aligned;
+if (pose === null) {
+    // compareExports' pose part is null for one of these two reasons, which it does not return.
+    const v1 = [
+        ["first", first],
+        ["second", second],
+    ].filter(([, e]) => !v2(e));
+    // Each export compareExports reads is version 1 or 2, so "not 2" is version 1.
+    const which =
+        v1.length === 2 ? "both exports are" : v1.length === 1 ? `the ${v1[0][0]} export is` : null;
+    const why =
+        which !== null
+            ? `${which} metricsVersion 1, which records no poseCorners`
+            : "no media time has poseCorners in both runs";
+    rows.push(["pose part, common media times", `none: ${why}`, ""]);
+} else {
+    const at = `${pose.commonMediaTimes} common media times`;
+    rows.push(
+        [
+            `poseJitterWindows, ${at}`,
+            num(pose.first.poseJitterWindows, 0),
+            num(pose.second.poseJitterWindows, 0),
+        ],
+        [`poseJitterPx, ${at}`, num(pose.first.poseJitterPx, 3), num(pose.second.poseJitterPx, 3)],
+        [`poseSpreadPx, ${at}`, num(pose.first.poseSpreadPx, 3), num(pose.second.poseSpreadPx, 3)],
+        [
+            `poseCornerDistancePx, the pair's median over ${pose.commonFrames} common frames: descriptive, never a criterion`,
+            num(pose.poseCornerDistancePx, 3),
+            "",
+        ],
+    );
+}
+
 console.log("| | first | second |");
 console.log("|---|---|---|");
 for (const [label, x, y] of rows) console.log(`| ${label} | ${x} | ${y} |`);
-console.log(
-    `\njitterPx: ${DEFINITIONS.jitterPx}\n\nspreadPx: ${DEFINITIONS.spreadPx}\n\nCommon media times: ${DEFINITIONS.alignment}`,
-);
+const defined = [
+    ["jitterPx", DEFINITIONS.jitterPx],
+    ["spreadPx", DEFINITIONS.spreadPx],
+    ["Common media times", DEFINITIONS.alignment],
+    ["posePosedFrames", DEFINITIONS.posePosedFrames],
+    ["poseJitterPx", DEFINITIONS.poseJitterPx],
+    ["poseSpreadPx", DEFINITIONS.poseSpreadPx],
+    ...(pose === null
+        ? []
+        : [
+              ["poseJitterWindows", DEFINITIONS.poseJitterWindows],
+              ["poseCornerDistancePx", DEFINITIONS.poseCornerDistancePx],
+          ]),
+];
+console.log(`\n${defined.map(([key, text]) => `${key}: ${text}`).join("\n\n")}`);
