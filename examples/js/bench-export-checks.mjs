@@ -395,11 +395,18 @@ function transferProfile(path, named) {
  *    to transfer between;
  * 2. an export of another target (`target.sha256`, none in an older export):
  *    the session's latencies are those of the pipeline on its target;
- * 3. a worker export whose `detection.accounting` fails {@link accountingError},
+ * 3. an export that ran the pose filter: `tracker.options.poseFilter` present
+ *    with a `mode` other than `off` (#243). `--transfer` replays with its own
+ *    options, never an export's filter, so it would replay that run unfiltered,
+ *    and say nothing. An export with no `poseFilter` (older than #248) or
+ *    with `off` is planned as before. Whether a filtered run is a session run,
+ *    and whether the transfer should ever plan filtered cohorts, is M9's
+ *    registration's to decide (#243, step 4), which may lift this refusal;
+ * 4. a worker export whose `detection.accounting` fails {@link accountingError},
  *    or that records none: checked again on reading, as the page checked it
  *    before exporting, since a session holding an invalid run is an invalid
  *    session, not a directory with a file to skip;
- * 4. an export, of either path, that the page did not record as a session run
+ * 5. an export, of either path, that the page did not record as a session run
  *    (`protocol.sessionRun` not `true`, {@link sessionRunGaps}), named with the
  *    gaps it recorded, or that has no `protocol` record at all: the transfer
  *    replays what the session ran, and a run outside its protocol is not that.
@@ -408,7 +415,7 @@ function transferProfile(path, named) {
  *    `defaults`, and an export with gaps by that rule is refused, named with
  *    them. A record left stale by a later change to the rule, or edited by
  *    hand, would otherwise pass;
- * 5. a mode with no latency sample, no acquisition or no step to replay with.
+ * 6. a mode with no latency sample, no acquisition or no step to replay with.
  */
 export function transferPlan(files, { clips, sha256, defaults }) {
     checkSessionDefaults(defaults, "transferPlan");
@@ -438,6 +445,20 @@ export function transferPlan(files, { clips, sha256, defaults }) {
             if (e.target?.sha256 !== sha256) {
                 return refuse(
                     `${clip}: ${name} names target sha256 ${e.target?.sha256 ?? "(none)"}, not ${sha256} (the replay's target)`,
+                );
+            }
+        }
+    }
+    for (const [clip, { sync, worker }] of present) {
+        for (const { name, e } of [...worker, ...sync]) {
+            const options = e.tracker?.options;
+            if (
+                options &&
+                Object.hasOwn(options, "poseFilter") &&
+                options.poseFilter?.mode !== "off"
+            ) {
+                return refuse(
+                    `${clip}: ${name} ran with the pose filter (tracker.options.poseFilter ${JSON.stringify(options.poseFilter)}), and --transfer replays without it`,
                 );
             }
         }

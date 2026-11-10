@@ -40,6 +40,68 @@ export const MODES = Object.freeze(["stateless", "detection-only", "tracking"]);
 export const DETECTION_PATHS = Object.freeze(["sync", "worker"]);
 
 /**
+ * The values `?poseFilter=` takes (#243): `one-euro`, `NftTracker`'s
+ * `poseFilter` option on at the package's defaults (`DEFAULT_POSE_FILTER_*`),
+ * and `off`. No parameter of the filter is read from the URL: the campaign
+ * measures the shipped defaults, and a tunable filter would be a second
+ * instrument.
+ */
+export const POSE_FILTERS = Object.freeze(["one-euro", "off"]);
+
+/**
+ * The tracker package's exports {@link poseFilterOption} reads the One Euro
+ * filter's parameters from: `DEFAULT_POSE_FILTER_*`, which `NftTracker` takes
+ * for every parameter omitted.
+ */
+export const POSE_FILTER_DEFAULT_NAMES = Object.freeze([
+    "DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF",
+    "DEFAULT_POSE_FILTER_ROTATION_BETA",
+    "DEFAULT_POSE_FILTER_TRANSLATION_MIN_CUTOFF",
+    "DEFAULT_POSE_FILTER_TRANSLATION_BETA",
+    "DEFAULT_POSE_FILTER_D_CUTOFF",
+]);
+
+/**
+ * The `poseFilter` option the page passes to `NftTracker`, and records in the
+ * export's `tracker.options`, for `?poseFilter=`'s value as
+ * {@link parseRunParams} reads it. For `"one-euro"`, the filter on with every
+ * parameter written out, read from the tracker package `pkg`'s
+ * `DEFAULT_POSE_FILTER_*` ({@link POSE_FILTER_DEFAULT_NAMES}) in the shape
+ * `PoseFilterOptions` takes: `{ mode: "one-euro", rotation: { minCutOff, beta },
+ * translation: { minCutOff, beta }, dCutOff }`. The tracker runs it as it runs
+ * `{ mode: "one-euro" }`, those being its defaults, and an export that records
+ * it stays readable after a default changes. For `"off"` and `null` (no
+ * `?poseFilter=`), `{ mode: "off" }`, the tracker's default, and `pkg` is not
+ * read. One source for the tracker and the record, so the record cannot say
+ * other than what the tracker ran. A fresh object each call, frozen to its
+ * layers. This module imports no package, so its caller passes the one it
+ * loaded; for `"one-euro"`, a package without one of the five as a finite
+ * number throws a `TypeError` naming it.
+ */
+export function poseFilterOption(poseFilter, pkg) {
+    if (poseFilter !== "one-euro") return Object.freeze({ mode: "off" });
+    const absent = POSE_FILTER_DEFAULT_NAMES.filter((n) => !Number.isFinite(pkg?.[n]));
+    if (absent.length > 0) {
+        throw new TypeError(
+            `poseFilterOption: the tracker package exports no ${absent.join(", ")}`,
+        );
+    }
+    const layer = (minCutOff, beta) => Object.freeze({ minCutOff, beta });
+    return Object.freeze({
+        mode: "one-euro",
+        rotation: layer(
+            pkg.DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF,
+            pkg.DEFAULT_POSE_FILTER_ROTATION_BETA,
+        ),
+        translation: layer(
+            pkg.DEFAULT_POSE_FILTER_TRANSLATION_MIN_CUTOFF,
+            pkg.DEFAULT_POSE_FILTER_TRANSLATION_BETA,
+        ),
+        dCutOff: pkg.DEFAULT_POSE_FILTER_D_CUTOFF,
+    });
+}
+
+/**
  * A positive integer from `raw`, or `null` for anything else (empty, `abc`,
  * `0`, `-5`, `1e999`), so a malformed URL parameter or an emptied field falls
  * back to its default rather than reaching `detect` or the canvas as `NaN`.
@@ -81,6 +143,11 @@ export function parsePositiveInt(raw) {
  * unreadable goes in `paramErrors`. With a seed every detection draws from
  * `frameRng(seed, its frame's media time)` (`./frame-rng.mjs`); without one
  * the page draws as it always has.
+ *
+ * `?poseFilter=` the same way (#243): one of {@link POSE_FILTERS}, or `null`
+ * when absent or empty, the filter off as it always was; anything else,
+ * a filter parameter included, goes in `paramErrors`. `off` is read as `off`,
+ * and runs as `null` does ({@link poseFilterOption}).
  */
 export function parseRunParams(search, { bundledClips }) {
     const p = new URLSearchParams(search);
@@ -128,6 +195,15 @@ export function parseRunParams(search, { bundledClips }) {
         if (Number.isSafeInteger(n) && Math.abs(n) <= 0xffffffff) seed = n;
         else paramErrors.push(`?seed=${rawSeed}: expected an integer in [-4294967295, 4294967295]`);
     }
+    const rawPoseFilter = p.get("poseFilter");
+    let poseFilter = null;
+    if (rawPoseFilter !== null && rawPoseFilter !== "") {
+        if (POSE_FILTERS.includes(rawPoseFilter)) poseFilter = rawPoseFilter;
+        else
+            paramErrors.push(
+                `?poseFilter=${rawPoseFilter}: expected ${POSE_FILTERS.join(" or ")}, with no parameters (the filter runs at the package's defaults)`,
+            );
+    }
     return {
         maxKeypoints: parsePositiveInt(p.get("maxKeypoints")),
         procWidth: parsePositiveInt(p.get("procWidth")),
@@ -143,6 +219,7 @@ export function parseRunParams(search, { bundledClips }) {
         loops,
         run,
         seed,
+        poseFilter,
         paramErrors,
     };
 }
@@ -288,6 +365,10 @@ export function trackabilityError(db, minTrackedPatches) {
  * `record.source`, from {@link targetRecord}: the worker decodes the file's
  * bytes, and the page's built image target has none); and `loops` on a
  * `source` (the media source, `"webcam"` among them) that does not loop.
+ *
+ * And `poseFilter` `"one-euro"` in the stateless mode, which has no tracker
+ * to filter its pose (#243): run, it would export an unfiltered run under a
+ * URL that asks for the filter.
  */
 export function startRefusal({
     mode,
@@ -300,8 +381,12 @@ export function startRefusal({
     loops = null,
     seed = null,
     backend = null,
+    poseFilter = null,
 }) {
     if (!MODES.includes(mode)) return `Unknown mode "${mode}": choose one of ${MODES.join(", ")}.`;
+    if (poseFilter === "one-euro" && mode === "stateless") {
+        return "?poseFilter=one-euro filters NftTracker's pose, and the stateless mode has no tracker: choose tracking or detection-only.";
+    }
     // #151: a backend free to ignore the injected generator would run the seeded
     // run unseeded, and say nothing. `backend` is its capabilities.
     if (seed !== null && backend?.deterministicRansac !== true) {

@@ -48,11 +48,17 @@
  * - a synchronous Start on a `.wnft` that does not load: the refusal names its
  *   404, and is the outcome of the click;
  * - a synchronous run on a tilt clip that `?clip=` picks, stopped and
- *   exported (#243): the export names the clip, with its duration;
+ *   exported (#243): the export names the clip, with its duration, and its
+ *   `tracker.options.poseFilter` is `{ mode: "off" }`, no `?poseFilter=`;
+ * - a synchronous run on the static clip with `?poseFilter=one-euro`, stopped
+ *   and exported (#243): its `tracker.options.poseFilter` is the filter with
+ *   every parameter written out, the built package's `DEFAULT_POSE_FILTER_*`,
+ *   and it tracked and posed with the filter on;
  * - and the page guards #120 found untested (part A): a sync run without
  *   `?loops=`, with the same fabricated step back, refused at Download; the
  *   `protocol` of the `?loops=1` and worker exports; Start under a `?tracker=`
- *   it cannot read; Start's provenance check on a `?run=1` session run, under
+ *   it cannot read, a `?poseFilter=` it cannot read, and `?poseFilter=one-euro` in
+ *   the stateless mode; Start's provenance check on a `?run=1` session run, under
  *   nine faults, one per Start; a worker run whose detection post throws; and
  *   the worker failing while the source starts, at the page's first Start;
  * - Start's provenance check throwing, on a resource-timing entry whose name
@@ -1078,6 +1084,7 @@ const TILT_CLIP_TOLERANCE_S = 0.001;
 async function syncTiltClip(browser, base) {
     const names = [
         `sync run on ?clip=${TILT_CLIP}: the export's bundledClip is that clip, and its clipDurationS the README's ${TILT_CLIP_S} s`,
+        `sync run on ?clip=${TILT_CLIP}, no ?poseFilter=: the export's tracker.options.poseFilter is { mode: "off" }`,
     ];
     await scenario(names, async (check) => {
         const p = await openPage(
@@ -1109,6 +1116,103 @@ async function syncTiltClip(browser, base) {
                 );
                 expect(e.frames.length >= 5, `${e.frames.length} frames`);
             });
+            await check(names[1], async () => {
+                const e = await p.read.lastExport();
+                expectPoseFilter(e, "off");
+            });
+        } finally {
+            await p.close();
+        }
+    });
+}
+
+/** That export `e`'s `tracker.options.poseFilter` is `{ mode: "off" }`, or the written-out filter for `"one-euro"` (#243). */
+function expectPoseFilter(e, mode) {
+    const got = e.tracker?.options?.poseFilter;
+    const want = mode === "off" ? { mode } : ONE_EURO_RECORD;
+    expect(
+        JSON.stringify(got) === JSON.stringify(want),
+        `tracker.options.poseFilter ${JSON.stringify(got)}, not ${JSON.stringify(want)}`,
+    );
+}
+
+/**
+ * What a `?poseFilter=one-euro` export records (#248, Qodo's first finding):
+ * the filter with every parameter written out, each the built package's
+ * `DEFAULT_POSE_FILTER_*`, in the order the page writes them. Set by
+ * {@link main} once it has checked the build is there, from the built
+ * `packages/nft-tracker/dist`, the package the page's bundle was made from.
+ */
+let ONE_EURO_RECORD = null;
+const oneEuroRecord = (nftTracker) => ({
+    mode: "one-euro",
+    rotation: {
+        minCutOff: nftTracker.DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF,
+        beta: nftTracker.DEFAULT_POSE_FILTER_ROTATION_BETA,
+    },
+    translation: {
+        minCutOff: nftTracker.DEFAULT_POSE_FILTER_TRANSLATION_MIN_CUTOFF,
+        beta: nftTracker.DEFAULT_POSE_FILTER_TRANSLATION_BETA,
+    },
+    dCutOff: nftTracker.DEFAULT_POSE_FILTER_D_CUTOFF,
+});
+
+/** The clip {@link syncPoseFilter} runs: on it the lock holds steadily, so the run reaches TRACK, where the filter steps, within a few frames. */
+const STATIC_CLIP = "pinball-static.mp4";
+
+/**
+ * `?poseFilter=one-euro` (#243): the tracker runs with its pose filter on, and
+ * the export says so in `tracker.options`. As cheap as {@link syncTiltClip}: a
+ * synchronous run with no `?loops=`, stopped once it has posed under
+ * `"TRACK"` (a frame the filter steps on), then downloaded. A throw from the
+ * filter, such as its `RangeError` on a timestamp that is not finite, fails
+ * the run, and the status reads it. The record and the constructor read one
+ * constant (`POSE_FILTER`), so this proves the record, not that the tracker
+ * filtered: no export field carries the unfiltered pose to compare with.
+ */
+async function syncPoseFilter(browser, base) {
+    const names = [
+        `sync run on ?clip=${STATIC_CLIP} with ?poseFilter=one-euro: stopped, it posed under TRACK, and the export's tracker.options.poseFilter is the filter at the package's defaults, written out`,
+    ];
+    await scenario(names, async (check) => {
+        const p = await openPage(
+            browser,
+            base,
+            `mode=tracking&target=wnft&clip=${STATIC_CLIP}&window=2000&poseFilter=one-euro`,
+        );
+        try {
+            await p.waitReady();
+            await p.click("start");
+            // A failed run ends the wait at once: the check below reads its status.
+            await p.waitFor(
+                () =>
+                    document.querySelector("#stats dd")?.textContent === "tracking" ||
+                    document.getElementById("status")?.textContent === "failed",
+                RUN_MS,
+                'status row "tracking", or a failed run',
+            );
+            if ((await p.read.status()) !== "failed") {
+                await waitFrames(p, 10);
+                await p.click("stop");
+            }
+            await check(names[0], async () => {
+                const status = await p.read.status();
+                expect(status === "stopped", `status "${status}" after Stop`);
+                expect(p.pageErrors.length === 0, `page errors: ${p.pageErrors.join(" | ")}`);
+                await p.click("download");
+                expect(
+                    (await p.read.exports()) === 1,
+                    `Download exported nothing: "${await p.read.error()}"`,
+                );
+                const e = await p.read.lastExport();
+                expect(
+                    e.mode === "tracking" && e.bundledClip === STATIC_CLIP,
+                    `mode ${e.mode}, bundledClip ${e.bundledClip}`,
+                );
+                expectPoseFilter(e, "one-euro");
+                const posed = e.frames.filter((f) => f.state === "TRACK" && f.poseCorners);
+                expect(posed.length > 0, "no TRACK frame with poseCorners");
+            });
         } finally {
             await p.close();
         }
@@ -1124,6 +1228,8 @@ async function syncTiltClip(browser, base) {
 async function syncParamRefusal(browser, base) {
     const names = [
         "Start under a ?tracker= the page cannot read: refused with the parameter's error, and no run starts",
+        "Start under a ?poseFilter= the page cannot read: refused with the parameter's error, and no run starts",
+        "Start in the stateless mode under ?poseFilter=one-euro: refused, no tracker to filter, and no run starts",
     ];
     await scenario(names, async (check) => {
         const p = await openPage(
@@ -1151,6 +1257,35 @@ async function syncParamRefusal(browser, base) {
         } finally {
             await p.close();
         }
+        // #243: Start refused before any source starts, the error line reading `expected`.
+        const refused = async (name, query, expected) => {
+            const q = await openPage(browser, base, query);
+            try {
+                await q.waitReady();
+                await q.clickStart();
+                await check(name, async () => {
+                    const status = await q.read.status();
+                    const error = await q.read.error();
+                    expect(
+                        status === "failed" && error === expected,
+                        `status "${status}", error line "${error}"`,
+                    );
+                    expect(await q.read.stopDisabled(), "Stop is enabled: a run started");
+                });
+            } finally {
+                await q.close();
+            }
+        };
+        await refused(
+            names[1],
+            "mode=tracking&target=wnft&clip=pinball-static.mp4&poseFilter=bogus",
+            "?poseFilter=bogus: expected one-euro or off, with no parameters (the filter runs at the package's defaults)",
+        );
+        await refused(
+            names[2],
+            "mode=stateless&clip=pinball-static.mp4&poseFilter=one-euro",
+            "?poseFilter=one-euro filters NftTracker's pose, and the stateless mode has no tracker: choose tracking or detection-only.",
+        );
     });
 }
 
@@ -1911,6 +2046,13 @@ async function main() {
         if (!existsSync(join(SERVED, file)))
             throw new SetupError(`examples/${file} is missing: run \`npm run build\` first.`);
     }
+    try {
+        ONE_EURO_RECORD = oneEuroRecord(await import("../packages/nft-tracker/dist/index.js"));
+    } catch (e) {
+        throw new SetupError(
+            `packages/nft-tracker/dist could not be loaded (${e.message}): run \`npm run build\` first.`,
+        );
+    }
     if (existsSync(join(SERVED, "targets", ABSENT_TARGET))) {
         throw new SetupError(
             `examples/targets/${ABSENT_TARGET} exists, and the checks need it absent: remove it.`,
@@ -1947,6 +2089,7 @@ async function main() {
         await workerAbsentTarget(browser, base);
         await syncAbsentTarget(browser, base);
         await syncTiltClip(browser, base);
+        await syncPoseFilter(browser, base);
         await syncParamRefusal(browser, base);
         await syncProvenanceFaults(browser, base);
         await syncProvenanceThrows(browser, base);

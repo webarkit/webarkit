@@ -423,6 +423,11 @@
         DEFAULT_MIN_PATCH_ZNCC,
         DEFAULT_MIN_TRACKED_PATCHES,
         DEFAULT_PHOTOMETRIC,
+        DEFAULT_POSE_FILTER_D_CUTOFF,
+        DEFAULT_POSE_FILTER_ROTATION_BETA,
+        DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF,
+        DEFAULT_POSE_FILTER_TRANSLATION_BETA,
+        DEFAULT_POSE_FILTER_TRANSLATION_MIN_CUTOFF,
         DEFAULT_RANSAC_THRESHOLD,
         DEFAULT_RATIO,
         DEFAULT_SCENE_LEVELS,
@@ -447,6 +452,7 @@
         parsePositiveInt,
         parseRunParams,
         percentile,
+        poseFilterOption,
         provenanceFindings,
         provenanceRefusal,
         servedShapeError,
@@ -493,6 +499,24 @@
        */
       const SEED = TUNING.seed;
       const SEED_POLICY = SEED === null ? null : "frame";
+      /**
+       * `?poseFilter=` (#243): the `poseFilter` option every tracker this page
+       * builds runs with (poseFilterOption): `{ mode: "one-euro" }` with every
+       * parameter written out from the bundle's `DEFAULT_POSE_FILTER_*`, so the
+       * export stays readable after a default changes, or `{ mode: "off" }`.
+       * The one frozen object both the tracker's constructor and the export's
+       * `tracker.options` read, so the record is what ran. The stateless mode has no tracker: Start refuses it the filter.
+       * The filter reads `process`'s `timestampMs` as milliseconds, and this
+       * page passes `performance.now()` at the frame callback's start (`t0`),
+       * wall time, not the clip's media time, on both detection paths.
+       */
+      const POSE_FILTER = poseFilterOption(TUNING.poseFilter, {
+        DEFAULT_POSE_FILTER_ROTATION_MIN_CUTOFF,
+        DEFAULT_POSE_FILTER_ROTATION_BETA,
+        DEFAULT_POSE_FILTER_TRANSLATION_MIN_CUTOFF,
+        DEFAULT_POSE_FILTER_TRANSLATION_BETA,
+        DEFAULT_POSE_FILTER_D_CUTOFF,
+      });
       /** The worker's module, which imports the packages from this page's bundle by URL. */
       const WORKER_MODULE = "js/detection-worker.mjs";
       const DETECTION_POLICY = "on-demand, one in flight, dropped not queued";
@@ -1236,7 +1260,9 @@
       /**
        * The tracker's options as this page runs it: its own defaults, which the
        * page does not override, except the scene keypoint budget. Recorded in
-       * the export so a run stays readable after a default changes.
+       * the export so a run stays readable after a default changes. Its
+       * `poseFilter` is POSE_FILTER, the object the tracker was built with, the
+       * filter's parameters written out when it is on.
        */
       function trackerOptions(maxKeypoints, mode, detectionPath) {
         return {
@@ -1248,6 +1274,7 @@
           ransacThreshold: DEFAULT_RANSAC_THRESHOLD,
           ...TRACKER_DEFAULTS,
           ...TUNING.trackerOverrides,
+          poseFilter: POSE_FILTER,
         };
       }
 
@@ -1302,6 +1329,7 @@
                 maxSceneKeypoints: maxKeypoints,
                 detectionOnly: mode === "detection-only",
                 externalDetection: run.path === "worker",
+                poseFilter: POSE_FILTER,
                 clock,
                 // Called by the tracker only when it detects itself (never in a
                 // worker run, whose worker builds the same generator).
@@ -1668,7 +1696,10 @@
           // from images/pinball.jpg in the page.
           target: lastTarget,
           // The tracker's options as it ran (null for the stateless pipeline):
-          // its defaults, except maxSceneKeypoints.
+          // its defaults, except maxSceneKeypoints, and poseFilter, the option it
+          // was built with (?poseFilter=, #243): { mode: "one-euro" } with the
+          // filter's parameters written out, or { mode: "off" }.
+          // Absent from options in exports older than #243, which all ran off.
           tracker: lastTracker,
           // How the run detected (detectionRecord); absent in exports older
           // than the worker path, which all detected on the frame loop.
@@ -1920,6 +1951,7 @@
                   loops: TUNING.loops,
                   seed: SEED,
                   backend: cv.capabilities,
+                  poseFilter: TUNING.poseFilter,
                 });
           if (refusal) {
             showError(refusal);
