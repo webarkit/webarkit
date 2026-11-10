@@ -78,6 +78,8 @@ export { cornerJitter, summarizeRun, compareExports } from "./bench-summary.mjs"
 export {
     MODES,
     DETECTION_PATHS,
+    POSE_FILTERS,
+    poseFilterOption,
     parsePositiveInt,
     parseRunParams,
     TUNABLE_TRACKER_OPTIONS,

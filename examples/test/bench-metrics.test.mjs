@@ -55,6 +55,8 @@ import {
     nextFrameIndex,
     parsePositiveInt,
     parseRunParams,
+    POSE_FILTERS,
+    poseFilterOption,
     parseTrackerOverrides,
     percentile,
     postToArrivalSamples,
@@ -2468,6 +2470,7 @@ describe("parsePositiveInt and parseRunParams", () => {
             loops: null,
             run: null,
             seed: null,
+            poseFilter: null,
             paramErrors: [],
         });
     });
@@ -2547,6 +2550,46 @@ describe("parsePositiveInt and parseRunParams", () => {
                 `?seed=${raw}: expected an integer in [-4294967295, 4294967295]`,
             ]);
         }
+    });
+
+    // #243: ?poseFilter= turns NftTracker's pose filter on at the package's defaults.
+    it("reads ?poseFilter=one-euro and off, and is null when absent or empty", () => {
+        expect(POSE_FILTERS).toEqual(["one-euro", "off"]);
+        for (const [query, value] of [
+            ["", null],
+            ["?poseFilter=", null],
+            ["?poseFilter=one-euro", "one-euro"],
+            ["?poseFilter=off", "off"],
+        ]) {
+            const p = parseRunParams(query, { bundledClips: clips });
+            expect(p.poseFilter, query).toBe(value);
+            expect(p.paramErrors, query).toEqual([]);
+        }
+    });
+
+    it("refuses, rather than drops, a ?poseFilter= it cannot read, parameters included", () => {
+        // "%3A" is a literal ":", "%2C" a literal ",".
+        for (const [query, raw] of [
+            ["bogus", "bogus"],
+            ["One-Euro", "One-Euro"],
+            ["one-euro%2Cbeta%3A1", "one-euro,beta:1"],
+            ["oneEuro", "oneEuro"],
+            ["on", "on"],
+            ["%20off", " off"],
+        ]) {
+            const p = parseRunParams(`?poseFilter=${query}`, { bundledClips: clips });
+            expect(p.poseFilter, raw).toBeNull();
+            expect(p.paramErrors, raw).toEqual([
+                `?poseFilter=${raw}: expected one-euro or off, with no parameters (the filter runs at the package's defaults)`,
+            ]);
+        }
+    });
+
+    it("gives the tracker's poseFilter option from ?poseFilter=, off by default, and a fresh object each time", () => {
+        expect(poseFilterOption("one-euro")).toEqual({ mode: "one-euro" });
+        expect(poseFilterOption("off")).toEqual({ mode: "off" });
+        expect(poseFilterOption(null)).toEqual({ mode: "off" });
+        expect(poseFilterOption("one-euro")).not.toBe(poseFilterOption("one-euro"));
     });
 
     it("reads a candidate target under targets/tuning/ and tracker overrides", () => {
@@ -2874,6 +2917,56 @@ describe("startRefusal and ?seed=", () => {
             }
         },
     );
+});
+
+describe("startRefusal and ?poseFilter= (#243)", () => {
+    const wnft = { db: { patches: { count: 64, patchSize: 16 } }, record: { source: "wnft" } };
+    const image = { db: { patches: null }, record: { source: "image" } };
+
+    it("starts a filtered run in the two modes that build a tracker, and any unfiltered one", () => {
+        expect(
+            startRefusal({
+                mode: "tracking",
+                target: wnft,
+                minTrackedPatches: 8,
+                poseFilter: "one-euro",
+            }),
+        ).toBeNull();
+        expect(
+            startRefusal({
+                mode: "detection-only",
+                target: image,
+                minTrackedPatches: 8,
+                poseFilter: "one-euro",
+            }),
+        ).toBeNull();
+        for (const poseFilter of [null, "off"]) {
+            expect(
+                startRefusal({
+                    mode: "stateless",
+                    target: image,
+                    minTrackedPatches: 8,
+                    poseFilter,
+                }),
+                poseFilter,
+            ).toBeNull();
+        }
+    });
+
+    it("refuses one-euro in the stateless mode, which has no tracker, before reading the target", () => {
+        for (const target of [image, null]) {
+            expect(
+                startRefusal({
+                    mode: "stateless",
+                    target,
+                    minTrackedPatches: 8,
+                    poseFilter: "one-euro",
+                }),
+            ).toBe(
+                "?poseFilter=one-euro filters NftTracker's pose, and the stateless mode has no tracker: choose tracking or detection-only.",
+            );
+        }
+    });
 });
 
 describe("startRefusal and the detection worker", () => {

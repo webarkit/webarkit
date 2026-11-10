@@ -155,6 +155,42 @@ describe("compareExports", () => {
     });
 });
 
+// #243: the filter is a tracker option; it changes the pose, never the footage. Neither
+// compareExports nor compare-bench.mjs reads tracker.options today: this guards against a
+// future refusal of a pair that differs there.
+describe("two exports of the same footage that differ only in the pose filter", () => {
+    const times = [0.1, 0.35, 0.6, 0.85];
+    const withFilter = (mode, pdx) =>
+        run(
+            times.map((t, i) => ({ ...at(t), poseCorners: at(t, i % 2 ? pdx : 0).corners })),
+            { tracker: { detectionOnly: false, options: { poseFilter: { mode } } } },
+        );
+    const off = withFilter("off", 1);
+    const oneEuro = withFilter("one-euro", 0.25);
+
+    it("compare as a pair, in compareExports", () => {
+        const r = compareExports(off, oneEuro);
+        expect(r.commonMediaTimes).toBe(4);
+        expect(r.pose.commonFrames).toBe(4);
+        expect(r.pose.first.poseJitterPx).toBeGreaterThan(r.pose.second.poseJitterPx);
+    });
+
+    it("compare as a pair, in scripts/compare-bench.mjs", () => {
+        const dir = mkdtempSync(join(tmpdir(), "compare-bench-filter-"));
+        const paths = [
+            ["off.json", off],
+            ["one-euro.json", oneEuro],
+        ].map(([name, e]) => {
+            const p = join(dir, name);
+            writeFileSync(p, JSON.stringify(e));
+            return p;
+        });
+        const r = spawnSync(process.execPath, [CLI, ...paths], { encoding: "utf8" });
+        expect(r.status, r.stderr).toBe(0);
+        expect(r.stdout).toMatch(/4 common media times/);
+    });
+});
+
 describe("scripts/compare-bench.mjs", () => {
     const dir = mkdtempSync(join(tmpdir(), "compare-bench-"));
     const write = (name, e) => {

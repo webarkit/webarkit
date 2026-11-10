@@ -40,6 +40,27 @@ export const MODES = Object.freeze(["stateless", "detection-only", "tracking"]);
 export const DETECTION_PATHS = Object.freeze(["sync", "worker"]);
 
 /**
+ * The values `?poseFilter=` takes (#243): `one-euro`, `NftTracker`'s
+ * `poseFilter` option on at the package's defaults (`DEFAULT_POSE_FILTER_*`),
+ * and `off`. No parameter of the filter is read from the URL: the campaign
+ * measures the shipped defaults, and a tunable filter would be a second
+ * instrument.
+ */
+export const POSE_FILTERS = Object.freeze(["one-euro", "off"]);
+
+/**
+ * The `poseFilter` option the page passes to `NftTracker`, and records in the
+ * export's `tracker.options`, for `?poseFilter=`'s value as
+ * {@link parseRunParams} reads it: `{ mode: "one-euro" }` for `"one-euro"`, and
+ * `{ mode: "off" }`, the tracker's default, for `"off"` and for `null` (no
+ * `?poseFilter=`). One source for both, so the record cannot say other than
+ * what the tracker ran. A fresh object each call.
+ */
+export function poseFilterOption(poseFilter) {
+    return { mode: poseFilter === "one-euro" ? "one-euro" : "off" };
+}
+
+/**
  * A positive integer from `raw`, or `null` for anything else (empty, `abc`,
  * `0`, `-5`, `1e999`), so a malformed URL parameter or an emptied field falls
  * back to its default rather than reaching `detect` or the canvas as `NaN`.
@@ -81,6 +102,11 @@ export function parsePositiveInt(raw) {
  * unreadable goes in `paramErrors`. With a seed every detection draws from
  * `frameRng(seed, its frame's media time)` (`./frame-rng.mjs`); without one
  * the page draws as it always has.
+ *
+ * `?poseFilter=` the same way (#243): one of {@link POSE_FILTERS}, or `null`
+ * when absent or empty, the filter off as it always was; anything else,
+ * a filter parameter included, goes in `paramErrors`. `off` is read as `off`,
+ * and runs as `null` does ({@link poseFilterOption}).
  */
 export function parseRunParams(search, { bundledClips }) {
     const p = new URLSearchParams(search);
@@ -128,6 +154,15 @@ export function parseRunParams(search, { bundledClips }) {
         if (Number.isSafeInteger(n) && Math.abs(n) <= 0xffffffff) seed = n;
         else paramErrors.push(`?seed=${rawSeed}: expected an integer in [-4294967295, 4294967295]`);
     }
+    const rawPoseFilter = p.get("poseFilter");
+    let poseFilter = null;
+    if (rawPoseFilter !== null && rawPoseFilter !== "") {
+        if (POSE_FILTERS.includes(rawPoseFilter)) poseFilter = rawPoseFilter;
+        else
+            paramErrors.push(
+                `?poseFilter=${rawPoseFilter}: expected ${POSE_FILTERS.join(" or ")}, with no parameters (the filter runs at the package's defaults)`,
+            );
+    }
     return {
         maxKeypoints: parsePositiveInt(p.get("maxKeypoints")),
         procWidth: parsePositiveInt(p.get("procWidth")),
@@ -143,6 +178,7 @@ export function parseRunParams(search, { bundledClips }) {
         loops,
         run,
         seed,
+        poseFilter,
         paramErrors,
     };
 }
@@ -288,6 +324,10 @@ export function trackabilityError(db, minTrackedPatches) {
  * `record.source`, from {@link targetRecord}: the worker decodes the file's
  * bytes, and the page's built image target has none); and `loops` on a
  * `source` (the media source, `"webcam"` among them) that does not loop.
+ *
+ * And `poseFilter` `"one-euro"` in the stateless mode, which has no tracker
+ * to filter its pose (#243): run, it would export an unfiltered run under a
+ * URL that asks for the filter.
  */
 export function startRefusal({
     mode,
@@ -300,8 +340,12 @@ export function startRefusal({
     loops = null,
     seed = null,
     backend = null,
+    poseFilter = null,
 }) {
     if (!MODES.includes(mode)) return `Unknown mode "${mode}": choose one of ${MODES.join(", ")}.`;
+    if (poseFilter === "one-euro" && mode === "stateless") {
+        return "?poseFilter=one-euro filters NftTracker's pose, and the stateless mode has no tracker: choose tracking or detection-only.";
+    }
     // #151: a backend free to ignore the injected generator would run the seeded
     // run unseeded, and say nothing. `backend` is its capabilities.
     if (seed !== null && backend?.deterministicRansac !== true) {

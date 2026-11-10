@@ -465,8 +465,8 @@ and `?camera=`: `?mode=`, `?target=`, `?window=` (10–2000 frames) and
 `?clip=` (a bundled clip's file name, which also selects that source) — e.g.
 `bench-nft.html?mode=tracking&window=300&clip=pinball-static.mp4`
 (tracking defaults to `target=wnft`); and `?detection=`, `?loops=`,
-`?run=` and `?seed=`, below. A value of one of those four that cannot be
-read refuses Start rather than fall back to a default.
+`?run=`, `?seed=` and `?poseFilter=`, below. A value of one of those five that
+cannot be read refuses Start rather than fall back to a default.
 
 **Seeded RANSAC: `?seed=`.** An integer in [-4294967295, 4294967295] seeds
 every detection's RANSAC from the seed and the media time of the frame it
@@ -481,6 +481,25 @@ time does not fix a frame's pixels: under load the page's grab can return
 another frame's for the same `mediaTime`, and a seed cannot make different
 pixels detect alike (`check:page`'s seeded check compares only frames whose
 grabbed pixels are identical).
+
+**The pose filter: `?poseFilter=`.** `one-euro` runs `NftTracker` with its
+`poseFilter` option `{ mode: "one-euro" }`, at the package's defaults
+(`DEFAULT_POSE_FILTER_*` in `packages/nft-tracker/src/tracker.ts`), in the
+tracking and the detection-only modes (#243); `off`, or no `?poseFilter=`,
+runs it off, as the page always has. The filter's parameters are not read from
+the URL: a campaign measures the shipped defaults. Anything else, a parameter
+included, refuses Start, and so does `one-euro` in the stateless mode, which
+has no tracker. The export records the option in
+`tracker.options.poseFilter`, `{ mode: "one-euro" }` or `{ mode: "off" }`,
+from the same object the tracker was built with; an export older than the
+option has none there, and ran off. A stateless export has no `tracker`, so
+it records no filter, `off` included. `poseCorners` read the result's pose,
+which is the filtered one with the option on. The filter reads `process`'s
+`timestampMs` as milliseconds, and the page passes `performance.now()` taken
+at the start of each frame's callback: wall time, not the clip's media time,
+on both detection paths. `replay-clips.mjs --sequence` replays an export with
+the options it recorded, so a filtered export replays filtered, but on the
+clip's media time in milliseconds, not the device's wall time.
 
 ### Detection off the frame loop: `?detection=worker`
 
