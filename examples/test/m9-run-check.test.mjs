@@ -454,6 +454,16 @@ describe("the remaining faults and forms", () => {
         e.seed = 2;
         expect(failing(run(e))).toEqual(["V3", "V6"]);
     });
+    it("V7: a repeated section cannot hide a drop; the single clean section passes", () => {
+        const clean = linkTxt();
+        expect(run(exportOf(), { link: clean }).V7).toEqual([]);
+        const dropped = linkTxt({ terminated: true });
+        const at = dropped.indexOf("## verdict");
+        const cleanLog = "## adb.log lines written between begin and end (0 bytes)\n\n";
+        const hidden = dropped.slice(0, at) + cleanLog + dropped.slice(at);
+        const why = run(exportOf(), { link: hidden }).V7.join();
+        expect(why).toMatch(/"## adb\.log" section more than once/);
+    });
     it("V7: a log without its verdict section fails", () => {
         const link = linkTxt().replace(/## verdict[\s\S]*$/, "");
         expect(run(exportOf(), { link }).V7.join()).toMatch(/no "## verdict" section/);

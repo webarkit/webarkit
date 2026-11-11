@@ -641,25 +641,33 @@ export function p7(runs) {
 
 /**
  * The guard's switches of one run: a change of estimator (tilt < 10 against ≥ 10) between two
- * consecutive counted frames that both have a tilt and both arms' corners; one at a step back in
- * media time is the wrap's, counted apart. Each switch belongs to the loop of its second frame.
+ * consecutive counted frames, as the export holds them, that both have a tilt and both arms'
+ * corners. A pair with a frame lacking either is no pair: it is never bridged to the next usable
+ * frame, and it is counted as skipped (the maintainer's ruling of 2026-11-11 on Qodo's finding on
+ * #251). One at a step back in media time is the wrap's, counted apart. Each switch belongs to the
+ * loop of its second frame. Returns `{ switches, skippedPairs }`.
  */
 export function switchesOf(run) {
-    const both = run.counted.filter((f) => f.tilt !== null && f.arms.CF !== null && f.arms.IPPE !== null);
-    const sw = [];
-    for (let i = 1; i < both.length; i++) {
-        const p = both[i - 1];
-        const q = both[i];
+    const usable = (f) => f.tilt !== null && f.arms.CF !== null && f.arms.IPPE !== null;
+    const switches = [];
+    let skippedPairs = 0;
+    for (let i = 1; i < run.counted.length; i++) {
+        const p = run.counted[i - 1];
+        const q = run.counted[i];
+        if (!usable(p) || !usable(q)) {
+            skippedPairs++;
+            continue;
+        }
         if (p.tilt < THRESHOLD_DEG !== q.tilt < THRESHOLD_DEG)
-            sw.push({ media: q.media, loop: q.loop, atWrap: q.media < p.media, tiltFrom: p.tilt, tiltTo: q.tilt, state: q.state, inliers: q.inliers });
+            switches.push({ media: q.media, loop: q.loop, atWrap: q.media < p.media, tiltFrom: p.tilt, tiltTo: q.tilt, state: q.state, inliers: q.inliers });
     }
-    return sw;
+    return { switches, skippedPairs };
 }
 
 /** P6 on a cross block: held, refuted (chatter) or not shown, with each loop's switches in the footage. */
 export function p6(runs) {
     const perRun = runs.map((r) => {
-        const sw = switchesOf(r);
+        const { switches: sw, skippedPairs } = switchesOf(r);
         const loops = [];
         for (let L = r.loops.firstLoop; L < r.loops.firstLoop + r.loops.loopCount; L++) {
             const inFootage = sw.filter((s) => !s.atWrap && s.loop === L);
@@ -670,7 +678,7 @@ export function p6(runs) {
             const fr = r.counted.filter((f) => f.loop === l.loop && f.tilt !== null && f.arms.CF !== null && f.arms.IPPE !== null);
             l.frames = { below: fr.filter((f) => f.tilt < THRESHOLD_DEG).length, atOrAbove: fr.filter((f) => f.tilt >= THRESHOLD_DEG).length, from: fr.length ? fr[0].media : null, to: fr.length ? fr[fr.length - 1].media : null };
         }
-        return { name: r.name, loops, atWrap: sw.filter((s) => s.atWrap) };
+        return { name: r.name, loops, atWrap: sw.filter((s) => s.atWrap), skippedPairs };
     });
     const allLoops = perRun.flatMap((r) => r.loops);
     const held =
@@ -853,11 +861,70 @@ function readingLines(title, R, say, predicted, descriptive = false) {
     say();
 }
 
+/**
+ * V9's comparison of a block's last run with its first: computed, and flagged against M3's
+ * bounds, only when both runs have a finite acquire p50 and trackStepMs p50; otherwise the reading
+ * is unavailable, never "not flagged" (the maintainer's ruling of 2026-11-11 on Qodo's finding on
+ * #251). V9 does not gate, so an unavailable reading stops nothing.
+ */
+export function thermalReading(first, last) {
+    const values = [first.acquireMs.p50, last.acquireMs.p50, first.trackStepMsP50, last.trackStepMsP50];
+    if (!values.every((v) => typeof v === "number" && Number.isFinite(v))) {
+        return { available: false, flagged: null, line: "unavailable: the first or the last run has no finite acquire p50 or trackStepMs p50" };
+    }
+    const dAcq = last.acquireMs.p50 - first.acquireMs.p50;
+    const dStep = last.trackStepMsP50 - first.trackStepMsP50;
+    const relStep = dStep / first.trackStepMsP50;
+    const flagged = dAcq > 1.9 || relStep > 0.066;
+    return {
+        available: true,
+        flagged,
+        dAcq,
+        dStep,
+        relStep,
+        line: `acquire p50 ${f4(dAcq)} ms, trackStepMs p50 ${f4(dStep)} ms (${(100 * relStep).toFixed(1)}%). M3's bounds, quoted as M3's: 1.9 ms and 6.6%. Flagged: ${flagged ? "yes" : "no"}`,
+    };
+}
+
+/** The runbook's blocks: the run orders it pins for each clip ("The runbook", the runs table). */
+export const BLOCK_ORDERS = Object.freeze({
+    [CLIPS.static]: [1, 2, 3, 4, 5, 6, 7, 8],
+    [CLIPS.cross]: [9, 10, 11, 12, 13, 14, 15, 16],
+    [CLIPS.table]: [17, 18, 19, 20, 21, 22, 23, 24],
+    [CLIPS.wall]: [25, 26, 27, 28, 29, 30, 31, 32],
+});
+
+/**
+ * A block is its clip's eight registered runs, each once (the maintainer's ruling of 2026-11-11 on
+ * Qodo's finding on #251): one clip, and the run orders the runbook pins for it, none missing,
+ * none repeated, none of another block. Fatal, naming what is wrong, before any figure.
+ */
+export function blockOrderCheck(named) {
+    const clips = [...new Set(named.map(({ e }) => e?.bundledClip))];
+    if (clips.length !== 1) fatal(`a block is one clip, given ${clips.join(", ")}`);
+    const want = BLOCK_ORDERS[clips[0]];
+    if (want === undefined) fatal(`${clips[0]}: not one of the campaign's clips`);
+    const orders = named.map(({ name, e }) => ({ name, order: e?.run?.order }));
+    const why = [];
+    const noOrder = orders.filter((o) => !Number.isInteger(o.order));
+    if (noOrder.length) why.push(`no run.order in ${noOrder.map((o) => o.name).join(", ")}`);
+    const foreign = orders.filter((o) => Number.isInteger(o.order) && !want.includes(o.order));
+    if (foreign.length) why.push(`run orders not of ${clips[0]}'s block (${want[0]}–${want[want.length - 1]}): ${foreign.map((o) => `${o.order} (${o.name})`).join(", ")}`);
+    const seen = new Map();
+    for (const o of orders) if (Number.isInteger(o.order)) seen.set(o.order, [...(seen.get(o.order) ?? []), o.name]);
+    const repeated = [...seen].filter(([, names]) => names.length > 1);
+    if (repeated.length) why.push(`run orders repeated: ${repeated.map(([n, names]) => `${n} (${names.join(", ")})`).join("; ")}`);
+    const missing = want.filter((n) => !seen.has(n));
+    if (missing.length) why.push(`run orders missing: ${missing.join(", ")}`);
+    if (why.length) fatal(`a block is the eight registered runs of its clip: ${why.join("; ")}`);
+}
+
 /** --block on eight exports of one clip: returns the report's lines; throws FatalCheck on a fatal check. */
 export function analyseBlock(named) {
     if (named.length !== BLOCK_RUNS) fatal(`a block is ${BLOCK_RUNS} exports of one clip, given ${named.length}`);
-    // In the block's order (V9 reads the runs "in order through each block"): by run.order where every export has one.
-    if (named.every(({ e }) => Number.isInteger(e?.run?.order))) named = [...named].sort((a, b) => a.e.run.order - b.e.run.order);
+    blockOrderCheck(named);
+    // In the block's order (V9 reads the runs "in order through each block").
+    named = [...named].sort((a, b) => a.e.run.order - b.e.run.order);
     // V11 first, on every export, before any figure.
     const runs = named.map(({ name, e }) => deriveRun(e, name));
     const clips = new Set(runs.map((r) => r.clip));
@@ -931,7 +998,7 @@ export function analyseBlock(named) {
         say("### P6: the guard's switches in the footage, per counted loop");
         say();
         for (const r of P.perRun) {
-            say(`- ${r.name}: ${r.loops.map((l) => `loop ${l.loop}: ${l.switches.length} (${l.switches.map((s) => `${fd(s.media)} s, ${s.state}, ${s.inliers} inliers, ${s.tiltFrom.toFixed(2)}° to ${s.tiltTo.toFixed(2)}°`).join("; ") || "none"})`).join("; ")}; at a wrap, apart: ${r.atWrap.length}`);
+            say(`- ${r.name}: ${r.loops.map((l) => `loop ${l.loop}: ${l.switches.length} (${l.switches.map((s) => `${fd(s.media)} s, ${s.state}, ${s.inliers} inliers, ${s.tiltFrom.toFixed(2)}° to ${s.tiltTo.toFixed(2)}°`).join("; ") || "none"})`).join("; ")}; at a wrap, apart: ${r.atWrap.length}; pairs of consecutive counted frames skipped, one of them without a tilt or an arm's corners: ${r.skippedPairs}`);
         }
         say(`- loops other than exactly one switch inside [${P6_WINDOW[0]}, ${P6_WINDOW[1]}] s: ${P.named.length}; runs with a loop of three or more: ${P.chattering}`);
         for (const l of P.named) say(`  - ${l.run}, loop ${l.loop}: ${l.switches.length} switches; its frames with a tilt and both arms: ${l.frames.below} below 10°, ${l.frames.atOrAbove} at or above, media ${fd(l.frames.from)} to ${fd(l.frames.to)} s`);
@@ -976,11 +1043,9 @@ export function analyseBlock(named) {
     cs.forEach((c, i) => say(`| ${runs[i].name} | ${f4(c.acquireMs.p50)} | ${f4(c.trackStepMsP50)} | ${fx(c.lostVisibility)} |`));
     const first = cs[0];
     const last = cs[cs.length - 1];
-    const dAcq = last.acquireMs.p50 - first.acquireMs.p50;
-    const dStep = last.trackStepMsP50 - first.trackStepMsP50;
-    const relStep = dStep / first.trackStepMsP50;
+    result.thermal = thermalReading(first, last);
     say();
-    say(`- the last run against the first: acquire p50 ${f4(dAcq)} ms, trackStepMs p50 ${f4(dStep)} ms (${(100 * relStep).toFixed(1)}%). M3's bounds, quoted as M3's: 1.9 ms and 6.6%. Flagged: ${dAcq > 1.9 || relStep > 0.066 ? "yes" : "no"}`);
+    say(`- the last run against the first: ${result.thermal.line}`);
     say();
     result.lines = out;
     return result;

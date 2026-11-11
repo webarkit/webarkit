@@ -113,7 +113,8 @@ function homographyOf(p) {
  * - `tilt(media)`: the base tilt, degrees;
  * - `shift(k)`: a translation added to the base pose from frame `k` on, `[x, y, z]`;
  * - `edit(record, k)`: changes a frame after it is built;
- * - `seconds`: the clip's duration, a whole number of seconds (2 by default).
+ * - `seconds`: the clip's duration, a whole number of seconds (2 by default);
+ * - `order`: `run.order`, the run's place in the runbook (1 by default).
  */
 export function buildExport({
     seed = 1,
@@ -124,6 +125,7 @@ export function buildExport({
     clip = "pinball-static.mp4",
     edit = null,
     seconds = 2,
+    order = 1,
 } = {}) {
     const rand = generator(seed);
     const gauss = () => {
@@ -186,7 +188,7 @@ export function buildExport({
         detection: { path: "sync" },
         seed: 1,
         seedPolicy: "frame",
-        run: { order: 1, endedBy: "done", failure: null, lostVisibility: false },
+        run: { order, endedBy: "done", failure: null, lostVisibility: false },
         loops: { firstLoop: 1, loopCount: 4 },
         clipDurationS: D,
         ticks: total,

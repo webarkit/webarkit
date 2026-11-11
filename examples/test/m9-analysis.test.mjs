@@ -45,6 +45,7 @@ import {
     THRESHOLD_DEG,
     analyseBlock,
     both,
+    blockOrderCheck,
     blockReading,
     checksOnly,
     deriveRun,
@@ -54,6 +55,8 @@ import {
     p6,
     p7,
     runReading,
+    switchesOf,
+    thermalReading,
     tiltBands,
 } from "../../docs/benchmarks/2026-11-11-243-analysis.mjs";
 import { K, buildExport, finish } from "./m9-fixtures.mjs";
@@ -424,6 +427,29 @@ describe("P6, the switches", () => {
     });
 });
 
+describe("P6's pairs: an unusable frame is never bridged", () => {
+    // Tilt 8° up to frame 44 of the run, 12° from 46 on, and frame 45, at 12° too, in between.
+    const tilt = (media, k) => (k < 45 ? 8 : 12);
+    it("an unusable frame between tilts on opposite sides of 10° counts no switch; without it, one", () => {
+        const plain = deriveRun(buildExport({ tilt, clip: "pinball-tilt-cross.mp4" }));
+        const a = switchesOf(plain);
+        const onLoop1 = (sw) => sw.switches.filter((s) => s.loop === 1 && !s.atWrap);
+        expect(onLoop1(a).length).toBe(1);
+        expect(a.skippedPairs).toBe(0);
+        // The same export, frame 45 with a degenerate H: no tilt, no CF corners.
+        const gap = deriveRun(
+            buildExport({
+                tilt,
+                clip: "pinball-tilt-cross.mp4",
+                edit: (r, k) => (k === 45 ? { ...r, H: [0, 0, 1, 0, 0, 1, 0, 0, 1] } : r),
+            }),
+        );
+        const b = switchesOf(gap);
+        expect(onLoop1(b).length).toBe(0);
+        expect(b.skippedPairs).toBe(2);
+    });
+});
+
 describe("the tilt bands (the addendum's entry 1)", () => {
     it("reads the jitter difference below 10° only, and the corner distance at 10° and above", () => {
         const run = deriveRun(
@@ -444,7 +470,7 @@ describe("--block, end to end", () => {
     it("reads P1 and P7 on a static block, and refuses a block of seven", () => {
         const named = [1, 2, 3, 4, 5, 6, 7, 8].map((s) => ({
             name: `static-${s}.json`,
-            e: buildExport({ seed: s }),
+            e: buildExport({ seed: s, order: s }),
         }));
         const r = analyseBlock(named);
         expect(r.criteria.P1.outcome).toBe("held");
@@ -454,10 +480,43 @@ describe("--block, end to end", () => {
     it("stops before any figure when one export fails V11", () => {
         const named = [1, 2, 3, 4, 5, 6, 7, 8].map((s) => ({
             name: `static-${s}.json`,
-            e: buildExport({ seed: s }),
+            e: buildExport({ seed: s, order: s }),
         }));
         named[7].e.runSummary.poseJitterPx += 1e-9;
         expect(fatalOf(() => analyseBlock(named))).toMatch(/static-8\.json: V11/);
+    });
+    const block = () =>
+        [1, 2, 3, 4, 5, 6, 7, 8].map((s) => ({
+            name: `static-${s}.json`,
+            e: buildExport({ seed: s, order: s }),
+        }));
+    it("the clip's eight registered runs pass the block check", () => {
+        expect(fatalOf(() => blockOrderCheck(block()))).toBeNull();
+    });
+    it("refuses one export supplied eight times", () => {
+        const one = buildExport({ seed: 1, order: 1 });
+        const named = [1, 2, 3, 4, 5, 6, 7, 8].map((s) => ({ name: `copy-${s}.json`, e: one }));
+        const why = fatalOf(() => analyseBlock(named));
+        expect(why).toMatch(/run orders repeated: 1 \(copy-1\.json, copy-2\.json/);
+        expect(why).toMatch(/run orders missing: 2, 3, 4, 5, 6, 7, 8/);
+    });
+    it("refuses a missing order, and an order from another clip's block", () => {
+        const missing = block();
+        missing[3].e.run.order = 5;
+        expect(fatalOf(() => analyseBlock(missing))).toMatch(/repeated: 5 .*missing: 4/);
+        const foreign = block();
+        foreign[7].e.run.order = 9;
+        expect(fatalOf(() => analyseBlock(foreign))).toMatch(
+            /not of pinball-static\.mp4's block \(1–8\): 9 \(static-8\.json\).*missing: 8/,
+        );
+        const none = block();
+        none[0].e.run = null;
+        expect(fatalOf(() => analyseBlock(none))).toMatch(/no run\.order in static-1\.json/);
+    });
+    it("refuses a block of two clips", () => {
+        const mixed = block();
+        mixed[0].e.bundledClip = "pinball-bench.mp4";
+        expect(fatalOf(() => analyseBlock(mixed))).toMatch(/a block is one clip/);
     });
 });
 
@@ -479,7 +538,7 @@ describe("the readings' reporting", () => {
     it("the wall's reading is descriptive: no outcome is read", () => {
         const named = [1, 2, 3, 4, 5, 6, 7, 8].map((s) => ({
             name: `wall-${s}.json`,
-            e: buildExport({ seed: s, clip: "pinball-bench.mp4" }),
+            e: buildExport({ seed: s, order: 24 + s, clip: "pinball-bench.mp4" }),
         }));
         const r = analyseBlock(named);
         expect(r.criteria).toEqual({});
@@ -489,12 +548,13 @@ describe("the readings' reporting", () => {
     it("each run's own filter arms in the spread table, on a block where one run has two ways", () => {
         const named = [1, 2, 3, 4, 5, 6, 7].map((s) => ({
             name: `static-${s}.json`,
-            e: buildExport({ seed: s }),
+            e: buildExport({ seed: s, order: s }),
         }));
         named.push({
             name: "static-8.json",
             e: buildExport({
                 seed: 8,
+                order: 8,
                 edit: (r, k) => (k === 75 ? { ...r, poseCorners: null } : r),
             }),
         });
@@ -504,6 +564,25 @@ describe("the readings' reporting", () => {
         expect(text).toMatch(/\| static-8\.json \| FILTER_ii \| \d/);
         expect(text).not.toMatch(/\| static-8\.json \| FILTER_one/);
         expect(text).not.toMatch(/\| n\/a \|$/m);
+    });
+});
+
+describe("V9, the thermal reading", () => {
+    const c = (acq, step) => ({ acquireMs: { p50: acq }, trackStepMsP50: step });
+    it("finite medians give a flag, either way", () => {
+        expect(thermalReading(c(30, 10), c(31, 10.2))).toMatchObject({
+            available: true,
+            flagged: false,
+        });
+        expect(thermalReading(c(30, 10), c(32, 10.2)).flagged).toBe(true);
+        expect(thermalReading(c(30, 10), c(30, 10.7)).flagged).toBe(true);
+    });
+    it("a missing median reads unavailable, never not flagged", () => {
+        const r = thermalReading(c(30, null), c(31, 10.2));
+        expect(r).toMatchObject({ available: false, flagged: null });
+        expect(r.line).toMatch(/^unavailable/);
+        expect(r.line).not.toMatch(/Flagged/);
+        expect(thermalReading(c(30, 10), c(NaN, 10)).available).toBe(false);
     });
 });
 

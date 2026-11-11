@@ -308,26 +308,35 @@ export function v6(e, form) {
     return why;
 }
 
-/** The link monitor's log, read: each section's lines by its heading. */
+/**
+ * The link monitor's log, read: each section's lines by its heading, and the headings that appear
+ * more than once, which V7 refuses rather than let a later section replace an earlier one (the
+ * maintainer's ruling of 2026-11-11 on Qodo's finding on #251).
+ */
 function sections(text) {
     const out = {};
+    const repeated = new Set();
     let cur = null;
     for (const line of text.split(/\r?\n/)) {
         const h = /^## (\S+)/.exec(line);
         if (h) {
             cur = h[1];
-            out[cur] = [];
+            if (cur in out) repeated.add(cur);
+            else out[cur] = [];
         } else if (cur !== null) out[cur].push(line);
     }
-    return out;
+    return { out, repeated };
 }
 
 /** V7: no drop, attested by the link monitor (M4's setup item 4): the three conditions, read from the log, and its own verdict. */
 export function v7(linkText) {
     if (linkText === null) return ["the .link.txt file is missing"];
-    const s = sections(linkText);
+    const { out: s, repeated } = sections(linkText);
     const why = [];
-    for (const name of ["begin", "end", "adb.log", "verdict"]) if (!s[name]) why.push(`the link log has no "## ${name}" section`);
+    for (const name of ["begin", "end", "adb.log", "verdict"]) {
+        if (!s[name]) why.push(`the link log has no "## ${name}" section`);
+        else if (repeated.has(name)) why.push(`the link log has the "## ${name}" section more than once`);
+    }
     if (why.length) return why;
     const transport = (lines) => {
         const ids = lines.map((l) => new RegExp(`^${DEVICE}\\s+device\\b.*\\btransport_id:(\\d+)`).exec(l)).filter(Boolean);
