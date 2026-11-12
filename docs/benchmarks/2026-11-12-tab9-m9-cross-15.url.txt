@@ -1,0 +1,1 @@
+http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-tilt-cross.mp4&loops=4&window=2000&seed=1&run=15
