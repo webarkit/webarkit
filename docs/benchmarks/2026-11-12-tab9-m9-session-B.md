@@ -37,7 +37,7 @@ ruling of 2026-11-12 (the second addendum, entry 2).
 | Run check | `2026-11-11-243-run-check.mjs`, `b8535d217d47d69080f769dffb9f8bacd1a18677d6d5ef491cb15387900fcc11`, the serving checkout's | the same |
 | Analysis | `2026-11-11-243-analysis.mjs`, `a802acde66a65e8e98d2aa41b3c7d5e47cd7b3891d9c0df5602c20481d618b90`, identical on `origin/dev`, in the serving checkout and in the committing worktree | while the session was prepared, and before the analysis |
 | Chrome on the tablet | **156.0.8078.81**, read by `pronto` at 16:56:48Z, 19:01:37Z and 19:04:19Z through the DevTools endpoint (`/json/version`, its `Browser` field), the source the second addendum names; the pre-flight's and session A's build. Every export's `userAgent` reads `Chrome/156.0.0.0` | before each sitting |
-| Node | v24.21.0, the pin: the serving checkout's `check:provenance`, the run check after the session, and the analysis; for the driver's at-once checks, difference 4 | `node --version` there |
+| Node | v24.21.0, the pin, for the serving checkout's `check:provenance`, the run check after the session and the analysis. Which `node` ran the driver's at-once checks (the link monitor and the run check at `finisci`) is not recorded at either sitting: difference 4 | `node --version` in those directories |
 
 **The serving machine.** The maintainer's notebook `nitro-walt`, Windows 11 Home 10.0.26300, Git Bash
 (GNU bash 5.3.15), as in the pre-flight and session A; no build was made in the serving checkout since
@@ -87,8 +87,8 @@ prepared.
 | 2 | 19:04:10Z–19:04:20Z | `PRONTO OK`, every check as in sitting 1 |
 
 **Chrome's cached files:** `pronto` prints their clearing as a step by hand ("A MANO"), since it
-cannot see it; the checklist's line 5 asked the maintainer to clear them at each sitting (difference
-5). **The link:** adb's log held 2,002 bytes, its last `connection terminated` line naming the device
+cannot see it; the checklist's line 5 asked the maintainer to clear them at each sitting. Whether
+they were cleared is not recorded (difference 5). **The link:** adb's log held 2,002 bytes, its last `connection terminated` line naming the device
 at 13:41:39Z, from before the preparation to after the last run.
 
 ## The runs, in order
@@ -156,8 +156,8 @@ bench page open in the tablet's Chrome. Run 17 began 43 s after the first `PRONT
 after the second.
 
 **The re-run of run 27.** The first attempt (incident 3) is not counted, and its export and logs are
-not committed. It began at 19:12:39Z (`inizia 27`; monitor 19:12:45.549Z to 19:14:51.442Z, `no drop:
-true`; clip readings 19:12:45 and 19:14:32, the wall clip's hash); its page ran from
+not committed. Its link monitor ran from 19:12:45.549Z to 19:14:51.442Z (`inizia 27` at 19:12:39Z;
+`no drop: true`; clip readings 19:12:45 and 19:14:32, the wall clip's hash); its page ran from
 19:14:16.503Z to 19:14:18.049Z, 16 frames, `endedBy` `"stopped"`. The run check at 19:14:52Z, exit
 1:
 
@@ -171,7 +171,8 @@ true`; clip readings 19:12:45 and 19:14:32, the wall clip's hash); its page ran 
 The cause, by the maintainer at the tablet: Start pressed a second time, by mistake, during the
 run, which stopped it. **The rule:** the registration's stopping rules, "A run that fails a validity
 rule is re-run once, at once, at its own position. Its export and logs are not committed, and the
-record names the run, its time and the rule." The re-run began at 19:17:28Z and passed. It was
+record names the run, its time and the rule." The re-run's link monitor began at 19:17:34Z
+(`inizia 27` at 19:17:28Z), and the re-run passed. It was
 position 27's one allowed re-run; no position failed twice.
 
 ## The checks
@@ -218,7 +219,7 @@ By the analysis (below). V10: `run.lostVisibility` false on all sixteen.
 ## The analysis
 
 Run after both blocks' eighth runs had passed their checks (run 24 at 17:29:29Z, run 32 at
-19:40:26Z, and all sixteen again at 19:41:35Z), from 19:42:01Z to 19:42:06Z: the frozen script,
+19:40:27Z, and all sixteen again at 19:41:35Z), from 19:42:01Z to 19:42:06Z: the frozen script,
 `--block`, from the serving checkout, so that it imports the freeze's built modules, on the copies
 in the committing worktree, which were committed afterwards, unchanged, in `bec3e5e`:
 
@@ -322,8 +323,8 @@ Labelled descriptive by the registration; no direction is claimed from them, and
 
   The selection holds 83 to 102 frames a run in 8 to 10 windows, nearly all in the 7–10° band.
 - **The tilt bands** (Stage 2's Tilt row, the first addendum's entry 1), per run, in the two output
-  files' first tables. Table: posed counted frames in every band from 1–3° up, most of them in 7–10°
-  (205 to 252 a run), and 0 or 1 in 0–1°; the CF − IPPE jitter difference is printed for the bands
+  files' first tables. Table: posed counted frames in every band from 1–3° to 20–30° and over 40°,
+  most of them in 7–10° (205 to 252 a run), 0 to 2 in 30–40°, and 0 or 1 in 0–1°; the CF − IPPE jitter difference is printed for the bands
   below 10° only. Wall: frames from 3–5° up, almost none below 7° (0 or 1 in each of 3–5° and 5–7°),
   82 to 102 in 7–10°.
 - **Above 10°: the corner distance, CF to IPPE.** Table: 2.0596 to 2.7348 px a run on 10–15°, over
@@ -342,8 +343,8 @@ Labelled descriptive by the registration; no direction is claimed from them, and
    21 had completed at 17:17:16Z. The driver refused before beginning anything: no link monitor, no
    `.clip.txt` or `.url.txt`, no `.state/22.before`. This is the driver's own gate (the second
    addendum, entry 1: "a run the driver refuses to begin was never begun"), not a validity rule. The
-   maintainer closed the tab, and `inizia 22` found no bench page open at 17:20:29Z and began run 22
-   at 17:20:31Z. Not a run, not a refused Start; no repair, no file moved.
+   maintainer closed the tab, and `inizia 22` found no bench page open at 17:20:29Z; run 22's link
+   monitor began at 17:20:31Z. Not a run, not a refused Start; no repair, no file moved.
 2. **`pronto`, 19:01:38Z, at the second sitting: the tablet's download folder still held the table
    block's eight exports** (`bench-nft-tracking-Tab-9-WiFi-1794502731231.json` to
    `…-1794504563345.json`): `finisci` pulls an export with `adb pull`, which copies it and leaves it
@@ -367,10 +368,9 @@ Labelled descriptive by the registration; no direction is claimed from them, and
    committed. The attempt's export also stays on the tablet, in `/sdcard/Download/`
    (`bench-nft-tracking-Tab-9-WiFi-1794510858745.json`), where the re-run's `inizia` listed it among
    the files present before it. Before the re-run, `chiudi-tab` closed the attempt's tab (19:17:09Z
-   to 19:17:18Z), before the re-run's link monitor began; then `inizia 27` began the re-run at
-   19:17:28Z.
+   to 19:17:18Z), before the re-run began; the re-run's link monitor began at 19:17:34Z.
 4. **`inizia 30`, 19:30:17Z: "il run 29 è finito 116 s fa; attendi ancora 4 s (passo 7)".** The
-   driver refused before beginning anything; `inizia 30` began run 30 at 19:30:36Z. Not a run, not a
+   driver refused before beginning anything; run 30's link monitor began at 19:30:42Z. Not a run, not a
    refused Start; no repair.
 
 There was no other incident: no other `STOP`, no refused Start, no USB drop, and no file moved,
@@ -401,18 +401,27 @@ renamed or deleted but those of incidents 2 and 3.
    checklist's first line put the pin first, `cd /d/kalwalt-github/webarkit-m9-session-b`, the
    committing worktree's root, where the `source` line, given as a path relative to that root,
    resolves; and its line right after the `source` was `node --version`, which had to print v24.21.0
-   at each sitting, or the maintainer was to stop. The driver does not log it. **The result:** no stop
-   was reported at either sitting, and the agent's dry check from the same directory printed
-   v24.21.0. The run checks after the session and the analysis ran on the pin.
+   at each sitting, or the maintainer was to stop. The ruling also said that `pronto`'s output would
+   show `node --version`. Before the session the maintainer instructed instead that the driver not be
+   changed, and that the checklist carry `node --version` as its own line; `pronto` prints no `node`
+   version. **The result:** no record shows which `node` ran the driver's at-once checks at either
+   sitting. The operator's `node --version` was typed in the operator's own Git Bash and is not logged; no stop
+   was reported at either sitting. The agent's dry check printed v24.21.0, but it ran in a scratch
+   shell that the agent started in the same directory, not in the operator's Git Bash. What the
+   record rests on ran on the pin: the run check of all sixteen exports after the session, which gave
+   the same verdicts as the at-once checks, and the analysis.
 5. **Chrome's cached files** ("Before each session", item 4): their clearing is the operator's, at
    the tablet, which `pronto` cannot see; the checklist asked for it at each sitting, after `pronto`.
+   Whether it was done at either sitting is not recorded.
 6. **The analysis ran from the serving checkout,** on the copies in the committing worktree, so that
    it imported the freeze's built `dist/` (as session A's difference 3). It is the same script, by its
    hash, and its stdout is the same on the output folder's exports.
 
 The runbook's commands before the session and for each run were carried out by the driver, as the
-second addendum admits; the file operations of incidents 2 and 3 were the agent's, as its entry 6
-says; neither is counted as a difference.
+second addendum admits. The file operations of incidents 2 and 3 were the agent's: incident 3's by
+the second addendum's entry 6, which makes setting a run aside the agent's, and incident 2's, on the
+tablet, which entry 6 does not cover, on the maintainer's instruction. Neither is counted as a
+difference.
 
 ## Storage
 
@@ -427,8 +436,11 @@ A's record gives it), which gave the same figures:
   `.txt` files add **2.93 MB** (2,932,306 bytes).
 
 The same clones read 8,264,877 bytes at `351bdca`, where session A's read 8,264,199: a clone holding
-more history packs older blobs into different deltas. The pull request reports the figure at its own
-head.
+more history packs older blobs into different deltas. **At the census commit `22acd9d`,** in two
+fresh clones repacked the same way, which again agree: 14,898,309 bytes at `f956fb0`, 17,830,615 at
+`bec3e5e`, the same 2,932,306 bytes added by the exports, and **17.86 MB** (17,860,013 bytes) at
+`22acd9d`, with this record and the analysis's two stdouts. The pull request reports the figure at
+its own head.
 
 ## The stall census
 
