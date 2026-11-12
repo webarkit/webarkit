@@ -379,7 +379,7 @@ describe("stallCheck over the committed exports", () => {
     });
 
     it("passes every arm on every other export", () => {
-        expect(read.filter(({ r }) => !r.fails.length)).toHaveLength(107);
+        expect(read.filter(({ r }) => !r.fails.length)).toHaveLength(123);
     });
 
     it("leaves unread only the exports with no clip duration", () => {
@@ -660,7 +660,7 @@ describe("the monotonicity arm against isLoopWrap, with the clip's duration", ()
                 }
             }
         }
-        expect(steps).toBe(362);
+        expect(steps).toBe(442);
         expect(fallback).toBe(127);
         expect(unread).toBe(6);
     });
