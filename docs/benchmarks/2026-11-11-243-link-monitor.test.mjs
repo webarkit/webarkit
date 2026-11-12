@@ -30,12 +30,13 @@
  * after `npm run build` (the run check it reads with imports the packages' `dist`). Not run by
  * `npm test`, which covers the workspaces and `examples/test/`, and the pre-flight changes nothing
  * under `examples/`. Every case runs the monitor's `begin` and `end` on a constructed adb client and
- * a constructed adb.log, then reads the log with the run check's V7.
+ * a constructed adb.log, then reads the log with the run check's V7. Since #252, run with every
+ * other `docs/benchmarks/*.test.mjs` by `npm run test:benchmarks`, its own step in CI.
  */
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appendFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -140,6 +141,49 @@ test("a termination written before the begin is not the run's", () => {
     const r = session({ before: TERMINATED });
     assert.equal(r.noDrop, true);
     assert.deepEqual(r.why, []);
+});
+
+test("a termination written while begin takes its readings: a drop, and V7 fails (#252)", () => {
+    // Before #252's fix, begin read the log's length after its adb calls, so this line fell before
+    // the baseline and the end read "no drop: true". Each begin call is a moment it can land in.
+    for (const at of ["--version", "devices", "reverse"]) {
+        const n = ++serial;
+        const adbLog = join(dir, `adb-${n}.log`);
+        const path = join(dir, `run-${n}.link.txt`);
+        writeFileSync(adbLog, "--- adb starting ---\r\nline\r\n");
+        const fake = fakeAdb();
+        let once = false;
+        const adb = (args) => {
+            if (!once && args.includes(at)) {
+                once = true;
+                appendFileSync(adbLog, TERMINATED);
+            }
+            return fake.adb(args);
+        };
+        monitorBegin(path, { adb, adbLog, now: () => "2026-11-11T17:00:00.000Z" });
+        assert.ok(once);
+        fake.end();
+        assert.equal(monitorEnd(path, { adb: fake.adb, adbLog, now: () => "2026-11-11T17:04:00.000Z" }), false, at);
+        const text = readFileSync(path, "utf8");
+        assert.match(text, new RegExp(`^connection terminated lines naming ${DEVICE}: 1$`, "m"));
+        assert.match(text, /^no drop: false$/m);
+        assert.ok(v7(text).some((w) => /connection terminated/.test(w)), at);
+    }
+});
+
+test("the run check's V7 passes the pre-flight's five committed logs unchanged, each reading no drop", () => {
+    const logs = readdirSync(HERE).filter((f) => /^2026-11-11-tab9-m9-preflight-.*\.link\.txt$/.test(f));
+    assert.equal(logs.length, 5);
+    for (const f of logs) {
+        const text = readFileSync(join(HERE, f), "utf8");
+        assert.deepEqual(v7(text), [], f);
+        assert.match(text, /^no drop: true$/m, f);
+        // Each one's adb.log gained 0 bytes between begin and end, so no earlier baseline could
+        // have taken in a line that this one did not.
+        const lengths = [...text.matchAll(/^adb\.log length: (\d+) bytes$/gm)].map((m) => m[1]);
+        assert.equal(lengths.length, 2, f);
+        assert.equal(lengths[0], lengths[1], f);
+    }
 });
 
 test("a termination naming another device is not a drop of this one", () => {
