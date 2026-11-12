@@ -56,8 +56,8 @@ All by `pronto`, 14:37:48Z to 14:38:04Z, `PRONTO OK` (the session log, below):
 3. `no-store`;
 4. no `bench-nft-*.json` in the tablet's download folder; no bench page open in the tablet's Chrome;
    the Chrome build, 156.0.8078.81. **Chrome's cached files:** `pronto` prints the clearing as a step
-   by hand ("A MANO"), since it cannot see it; the maintainer's checklist asked for it before run 1,
-   and no record of it was kept (difference 2);
+   by hand ("A MANO"), since it cannot see it; the maintainer cleared them before run 1, as the
+   checklist asked, and confirmed it after the session (difference 2);
 5. the link quiet: adb's log (`C:\Users\perda\AppData\Local\Temp\adb.log`, 2,002 bytes) last named the
    device in a `connection terminated` line at 13:41:39Z, 56 minutes before `pronto`.
 
@@ -312,7 +312,8 @@ renamed or deleted, in the output folder or on the tablet.
    not read it), so the run is counted as it stands by the stopping rules, which re-run only a run
    that fails a validity rule. The export is committed unchanged.
 2. **Chrome's cached files** ("Before each session", item 4): their clearing is the operator's, at
-   the tablet, which `pronto` cannot see; no record of it was kept.
+   the tablet, which `pronto` cannot see. The maintainer cleared them before run 1 and confirmed it on
+   2026-11-12, after the session; no record was made at the time.
 3. **The analysis ran from the serving checkout,** on the copies in the committing worktree, so that
    it imported the freeze's built `dist/` (the committing worktree had no build then). It is the same
    script, by its hash, and its stdout is the same on the output folder's exports.
@@ -326,6 +327,15 @@ renamed or deleted, in the output folder or on the tablet.
    serving checkout), the run check of all sixteen exports after the session, which gave the same
    verdicts, and the analysis. No run was re-run, so no gate's verdict decided anything that the
    second pass did not confirm.
+
+   **The maintainer's ruling of 2026-11-12: accepted as recorded.** The verdicts that count are the
+   re-check after the session and the analysis, both run on the pin, v24.21.0, and they equal the
+   at-once verdicts. The link monitor and the run check are host-side tools, held by the freeze in
+   their source, not in the node that runs them, and the instrument (the bundle, built on the pin) is
+   unchanged. **For session B:** in its preparation, the agent finds out which node the driver's calls
+   resolve to in the maintainer's Git Bash after the `source`. If it is not v24.21.0, the checklist's
+   first line is the one command that puts the pin first, and `pronto`'s output shows
+   `node --version`. Session B's record records the result.
 
 The runbook's commands before the session and for each run were carried out by the driver, as the
 second addendum admits; that is not counted as a difference.
