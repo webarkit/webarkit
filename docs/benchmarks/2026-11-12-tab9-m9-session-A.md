@@ -35,7 +35,7 @@ ruling of 2026-11-12 (the second addendum, entry 2).
 | Run check | `2026-11-11-243-run-check.mjs`, `b8535d217d47d69080f769dffb9f8bacd1a18677d6d5ef491cb15387900fcc11`, the serving checkout's | the same |
 | Analysis | `2026-11-11-243-analysis.mjs`, `a802acde66a65e8e98d2aa41b3c7d5e47cd7b3891d9c0df5602c20481d618b90`, identical in the serving checkout and the committing worktree | before the analysis |
 | Chrome on the tablet | **156.0.8078.81**, read by `pronto` at 14:38:03Z through the DevTools endpoint (`/json/version`, its `Browser` field: `Chrome/156.0.8078.81`), the source the second addendum names; the pre-flight's build. Every export's `userAgent` reads `Chrome/156.0.0.0` | before run 1 |
-| Node | v24.21.0, the pin | in both checkouts |
+| Node | v24.21.0, the pin, at both checkouts' roots: the build, `check:provenance`, the run check after the session and the analysis | `node --version` there; the driver's at-once checks are difference 4 |
 
 **The serving machine.** The maintainer's notebook `nitro-walt`, Windows 11 Home 10.0.26300, Git Bash
 5.3.15, as in the pre-flight; no build was made there since the freeze's. The server:
@@ -166,15 +166,17 @@ By the analysis (below). V10: `run.lostVisibility` false on all sixteen.
 
 Run after both blocks' eighth runs had passed their checks (run 8 at 15:12:26Z, run 16 at
 15:48:40Z), from 15:53:05Z to 15:54:10Z: the frozen script, `--block`, from the serving checkout, so
-that it imports the freeze's built modules, on the committed copies in the committing worktree:
+that it imports the freeze's built modules, on the copies in the committing worktree, which were
+committed afterwards, unchanged, in `03ac3dc` (15:57:46Z):
 
 ```
 node docs/benchmarks/2026-11-11-243-analysis.mjs --block <the committing worktree>/docs/benchmarks/2026-11-12-tab9-m9-static-{1..8}.json
 node docs/benchmarks/2026-11-11-243-analysis.mjs --block <the committing worktree>/docs/benchmarks/2026-11-12-tab9-m9-cross-{9..16}.json
 ```
 
-Both exited 0 with an empty stderr. Their stdout, in full, is committed beside this record, and is
-the same, byte for byte, run on the exports in the output folder:
+Both exited 0 with an empty stderr. Their stdout was written to a scratch file and copied beside this
+record at 16:00:39Z, unchanged; it is committed there, and is the same, byte for byte, run again on
+the exports in the output folder (about 15:55Z) and by the read-only review:
 
 - static: [`2026-11-12-243-session-A-analysis-static.txt`](./2026-11-12-243-session-A-analysis-static.txt),
   454 lines, SHA-256 `a98a0c11fb0fe107049387e58bcd89e8cc1570580a0e4a89e22cba5f44dc3d7d`;
@@ -198,8 +200,10 @@ run without one.
 
 Counted frames: static 957 to 1,003 a run, all TRACK (no DETECT, no LOST); cross 1,040 to 1,073 a
 run, 4 DETECT each, no LOST. Every run within `?window=2000`, frames equal to ticks, 5 wraps, no step
-back in `timestampMs`. No TRACK frame on 8 or 9 inliers carries a reading (the smallest inlier count
-beside a reading is 21).
+back in `timestampMs`. No TRACK frame on 8 or 9 inliers carries a reading: the smallest `numInliers` on any `ok`
+TRACK frame is 21 (static-5), 22 to 26 in the other runs. That reading is not the analysis's; it was
+read from the exports' `state`, `ok` and `numInliers` fields only, after the analysis, and again by
+the read-only review.
 
 ### The frame-fidelity share, beside every spread
 
@@ -220,36 +224,46 @@ beside each as the registration's basis, a reading, not a threshold.
 
 | | Reading | With every media time: d̄ [interval], s_d, sign count | The most influential media time | Without it: d̄ [interval], s_d, sign count | Basis (the registration) | D3 beside the spread | Reading's outcome |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| **P1** | CF − IPPE, static, below 10°, the selection | −0.1791 [−0.1830, −0.1752], 0.0046, 8 of 8 | 0.000000 s, 32 occurrences, TRACK, 21 to 27 inliers, tilt 2.82° to 2.90° | −0.1735 [−0.1768, −0.1701], 0.0040, 8 of 8 | −0.1498; −0.1421 without 7.666667 s | 2.18% (25 of 1,145) | held |
-| | the selection's TRACK frames (every counted static frame is TRACK) | the same | the same | the same | | 2.18% | held |
-| **P7** | FILTER − IPPE, static, route (b), one way, the whole clip | −0.0683 [−0.0700, −0.0665], 0.0021, 8 of 8 | 0.000000 s, 32 occurrences, as P1's | −0.0857 [−0.0871, −0.0843], 0.0017, 8 of 8 | −0.0708; −0.0923 without 0.000 s | 2.18% | held |
-| | the same, without the first second after each wrap | −0.0943 [−0.0955, −0.0931], 0.0014, 8 of 8 | 2.000000 s, 25 occurrences, TRACK, 39 inliers, tilt 2.85° to 2.87° | −0.0987 [−0.1002, −0.0972], 0.0018, 8 of 8 | | 2.18% | held |
-| **P3** | CF − IPPE, cross, below 10°, the selection | −0.1232 [−0.1254, −0.1210], 0.0027, 8 of 8 | 0.000000 s, 29 occurrences, DETECT, 40 inliers, tilt 5.53° | −0.1099 [−0.1123, −0.1075], 0.0029, 8 of 8 | −0.0944 / −0.0896 / −0.0888, borrowed acquisition; −0.0861 / −0.0833 / −0.0786 without 0.166611 s | 2.18% | held |
-| | the selection's TRACK frames | −0.1105 [−0.1131, −0.1079], 0.0031, 8 of 8 | 4.331967 s, 22 occurrences, TRACK, 34 to 35 inliers, tilt 3.62° to 3.67° | −0.1144 [−0.1172, −0.1117], 0.0033, 8 of 8 | | 2.18% | held |
-| **P4** | GUARD − IPPE, cross, the whole clip, the selection | +0.0923 [+0.0885, +0.0961], 0.0046, 8 of 8 | 8.130811 s, 24 occurrences, TRACK, 38 inliers, tilt 9.90° to 9.96° | +0.0688 [+0.0623, +0.0754], 0.0078, 8 of 8 | +0.1283 / +0.1315 / +0.1328, borrowed; +0.0931 / +0.0963 / +0.0975 without 8.330744 s | 2.18% | held |
-| | its TRACK frames, beside it | +0.1098 [+0.1053, +0.1142], 0.0054, 8 of 8 | 8.130811 s, as above | +0.0857 [+0.0780, +0.0934], 0.0092, 8 of 8 | | 2.18% | held |
-| **P5** | GUARD − CF, cross, the whole clip, the selection | +0.1793 [+0.1750, +0.1835], 0.0051, 8 of 8 | 8.130811 s, as P4's | +0.1559 [+0.1483, +0.1635], 0.0091, 8 of 8 | +0.1892 / +0.1903 / +0.1906, borrowed; +0.1544 / +0.1554 / +0.1557 without 8.330744 s | 2.18% | held |
-| | its TRACK frames, beside it | +0.1867 [+0.1822, +0.1912], 0.0053, 8 of 8 | 8.130811 s, as above | +0.1627 [+0.1546, +0.1707], 0.0096, 8 of 8 | | 2.18% | held |
+| **P1** | CF − IPPE, static, below 10°, the selection | −0.1791 [−0.1830, −0.1752], 0.0046, 8 of 8 | 0.000000 s, 32 occurrences, TRACK, 21 to 27 inliers, tilt 2.82° to 2.90° | −0.1735 [−0.1768, −0.1701], 0.0040, 8 of 8 | −0.1498; −0.1421 without 7.666667 s | 25 of 1,145 pairs (2.18%); 13 of 535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2, 10.2, 10.666667 and 12.133333 s, the final frame | held |
+| | the selection's TRACK frames (every counted static frame is TRACK) | the same | the same | the same | | 25 of 1,145 pairs (2.18%); 13 of 535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2, 10.2, 10.666667 and 12.133333 s, the final frame | held |
+| **P7** | FILTER − IPPE, static, route (b), one way, the whole clip | −0.0683 [−0.0700, −0.0665], 0.0021, 8 of 8 | 0.000000 s, 32 occurrences, as P1's | −0.0857 [−0.0871, −0.0843], 0.0017, 8 of 8 | −0.0708; −0.0923 without 0.000 s | 25 of 1,145 pairs (2.18%); 13 of 535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2, 10.2, 10.666667 and 12.133333 s, the final frame | held |
+| | the same, without the first second after each wrap | −0.0943 [−0.0955, −0.0931], 0.0014, 8 of 8 | 2.000000 s, 25 occurrences, TRACK, 39 inliers, tilt 2.85° to 2.87° | −0.0987 [−0.1002, −0.0972], 0.0018, 8 of 8 | | 25 of 1,145 pairs (2.18%); 13 of 535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2, 10.2, 10.666667 and 12.133333 s, the final frame | held |
+| **P3** | CF − IPPE, cross, below 10°, the selection | −0.1232 [−0.1254, −0.1210], 0.0027, 8 of 8 | 0.000000 s, 29 occurrences, DETECT, 40 inliers, tilt 5.53° | −0.1099 [−0.1123, −0.1075], 0.0029, 8 of 8 | −0.0944 / −0.0896 / −0.0888, borrowed acquisition; −0.0861 / −0.0833 / −0.0786 without 0.166611 s | 25 of 1,145 pairs (2.18%); 13 of 535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2, 10.2, 10.666667 and 12.133333 s, the final frame | held |
+| | the selection's TRACK frames | −0.1105 [−0.1131, −0.1079], 0.0031, 8 of 8 | 4.331967 s, 22 occurrences, TRACK, 34 to 35 inliers, tilt 3.62° to 3.67° | −0.1144 [−0.1172, −0.1117], 0.0033, 8 of 8 | | 25 of 1,145 pairs (2.18%); 13 of 535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2, 10.2, 10.666667 and 12.133333 s, the final frame | held |
+| **P4** | GUARD − IPPE, cross, the whole clip, the selection | +0.0923 [+0.0885, +0.0961], 0.0046, 8 of 8 | 8.130811 s, 24 occurrences, TRACK, 38 inliers, tilt 9.90° to 9.96° | +0.0688 [+0.0623, +0.0754], 0.0078, 8 of 8 | +0.1283 / +0.1315 / +0.1328, borrowed; +0.0931 / +0.0963 / +0.0975 without 8.330744 s | 25 of 1,145 pairs (2.18%); 13 of 535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2, 10.2, 10.666667 and 12.133333 s, the final frame | held |
+| | its TRACK frames, beside it | +0.1098 [+0.1053, +0.1142], 0.0054, 8 of 8 | 8.130811 s, as above | +0.0857 [+0.0780, +0.0934], 0.0092, 8 of 8 | | 25 of 1,145 pairs (2.18%); 13 of 535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2, 10.2, 10.666667 and 12.133333 s, the final frame | held |
+| **P5** | GUARD − CF, cross, the whole clip, the selection | +0.1793 [+0.1750, +0.1835], 0.0051, 8 of 8 | 8.130811 s, as P4's | +0.1559 [+0.1483, +0.1635], 0.0091, 8 of 8 | +0.1892 / +0.1903 / +0.1906, borrowed; +0.1544 / +0.1554 / +0.1557 without 8.330744 s | 25 of 1,145 pairs (2.18%); 13 of 535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2, 10.2, 10.666667 and 12.133333 s, the final frame | held |
+| | its TRACK frames, beside it | +0.1867 [+0.1822, +0.1912], 0.0053, 8 of 8 | 8.130811 s, as above | +0.1627 [+0.1546, +0.1707], 0.0096, 8 of 8 | | 25 of 1,145 pairs (2.18%); 13 of 535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2, 10.2, 10.666667 and 12.133333 s, the final frame | held |
 
-**Each arm's spread over the runs,** s [its 95% interval, s × [0.661, 2.035]], with D3's 2.18% beside
-each (the analysis prints them per reading, X then Y):
+**Each arm's spread over the runs,** s [its 95% interval, s × [0.661, 2.035]] (the analysis prints them
+per reading, X then Y), with D3 beside each:
 
 - P1, the selection and its TRACK frames: IPPE 0.0042 [0.0028, 0.0085]; CF 0.0008 [0.0005, 0.0016];
+  D3: 25 of 1,145 pairs (2.18%); 13 of 535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8,
+  7.333333, 9.2, 10.2, 10.666667 and 12.133333 s, the final frame;
 - P7, the whole clip: IPPE 0.0042 [0.0028, 0.0085]; FILTER 0.0034 [0.0022, 0.0069]; without the
-  wraps' first second: IPPE 0.0032 [0.0021, 0.0064]; FILTER 0.0034 [0.0022, 0.0069];
+  wraps' first second: IPPE 0.0032 [0.0021, 0.0064]; FILTER 0.0034 [0.0022, 0.0069]; D3: 25 of 1,145
+  pairs (2.18%); 13 of 535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2,
+  10.2, 10.666667 and 12.133333 s, the final frame;
 - P3, the selection: IPPE 0.0046 [0.0030, 0.0093]; CF 0.0031 [0.0020, 0.0063]; its TRACK frames:
-  IPPE 0.0028 [0.0019, 0.0058]; CF 0.0016 [0.0011, 0.0033];
+  IPPE 0.0028 [0.0019, 0.0058]; CF 0.0016 [0.0011, 0.0033]; D3: 25 of 1,145 pairs (2.18%); 13 of 535
+  within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2, 10.2, 10.666667 and
+  12.133333 s, the final frame;
 - P4, the selection: IPPE 0.0036 [0.0024, 0.0074]; GUARD 0.0037 [0.0024, 0.0075]; its TRACK frames:
-  IPPE 0.0035 [0.0023, 0.0070]; GUARD 0.0035 [0.0023, 0.0072];
+  IPPE 0.0035 [0.0023, 0.0070]; GUARD 0.0035 [0.0023, 0.0072]; D3: 25 of 1,145 pairs (2.18%); 13 of
+  535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2, 10.2, 10.666667 and
+  12.133333 s, the final frame;
 - P5, the selection: CF 0.0035 [0.0023, 0.0072]; GUARD 0.0037 [0.0024, 0.0075]; its TRACK frames:
-  CF 0.0035 [0.0023, 0.0072]; GUARD 0.0035 [0.0023, 0.0072].
+  CF 0.0035 [0.0023, 0.0072]; GUARD 0.0035 [0.0023, 0.0072]; D3: 25 of 1,145 pairs (2.18%); 13 of
+  535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2, 10.2, 10.666667 and
+  12.133333 s, the final frame.
 
 **P6, the guard's switches in the footage, cross.** In every one of the 32 counted loops (8 runs × 4)
 exactly one switch, inside [7.797, 8.831] s: at 8.197456 s in 23 loops, 8.230778 s in 8 and
 8.164133 s in 1, each on a TRACK frame on 38 or 39 inliers, the tilt crossing from 9.90°–9.96° to
 10.06°–10.12°. No run has a loop with three or more switches. Switches at a wrap, counted apart: 3 in
 every run. Pairs skipped for want of a tilt or an arm's corners: 0. The registration's basis: one per
-pass at 8.331 s in all 8 seeds, borrowed; 3 a run at the wrap, apart. D3 beside it: 2.18%.
+pass at 8.331 s in all 8 seeds, borrowed; 3 a run at the wrap, apart. D3 beside it: 25 of 1,145 pairs (2.18%); 13 of 535 within runs, 12 of 610 across; at 1.533333, 3.5, 5.0, 6.8, 7.333333, 9.2, 10.2, 10.666667 and 12.133333 s, the final frame.
 
 **The registered outcomes:**
 
@@ -302,6 +316,16 @@ renamed or deleted, in the output folder or on the tablet.
 3. **The analysis ran from the serving checkout,** on the copies in the committing worktree, so that
    it imported the freeze's built `dist/` (the committing worktree had no build then). It is the same
    script, by its hash, and its stdout is the same on the output folder's exports.
+4. **The node that ran the at-once checks is not recorded.** The driver runs the link monitor and
+   the run check with the `node` the operator's shell resolves in its own working directory, and logs
+   neither. On this notebook the version manager (nvm for Windows) resolves the pin, v24.21.0, at
+   either checkout's root, and v24.18.0 in the home directory and in `docs/benchmarks/` (read after
+   the session). The operator's working directory was not recorded, so the run checks of step 6 and
+   the link monitors may have run on v24.18.0. What the record rests on ran on the pin: the bundle
+   and manifest (built at the freeze, held by V2), `check:provenance` (run by the driver inside the
+   serving checkout), the run check of all sixteen exports after the session, which gave the same
+   verdicts, and the analysis. No run was re-run, so no gate's verdict decided anything that the
+   second pass did not confirm.
 
 The runbook's commands before the session and for each run were carried out by the driver, as the
 second addendum admits; that is not counted as a difference.
