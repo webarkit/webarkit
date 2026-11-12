@@ -86,6 +86,9 @@ case "$1" in
     case "$2" in
       --list) cat "$F/forwards" ;;
       --remove) printf off > "$F/dt.forward"; grep -v " $3 " "$F/forwards" > "$F/forwards.next"; cat "$F/forwards.next" > "$F/forwards" ;;
+      --no-rebind)
+        if grep -q " $3 " "$F/forwards"; then echo "adb: error: cannot rebind existing socket"; exit 1; fi
+        printf on > "$F/dt.forward"; printf '%s %s %s\\n' "$serial" "$3" "$4" >> "$F/forwards" ;;
       *) printf on > "$F/dt.forward"; printf '%s %s %s\\n' "$serial" "$2" "$3" >> "$F/forwards" ;;
     esac ;;
   shell)
@@ -94,7 +97,7 @@ case "$1" in
       "ls /sdcard/Download/") [ -e "$F/ls.fail" ] && { echo "ls: /sdcard/Download/: I/O error"; exit 1; }; ls "$F/downloads" ;;
       "sha256sum /sdcard/Download/"*) [ -e "$F/sha.wrong" ] && { echo "0000 x"; exit 0; }; (cd "$F/downloads" && sha256sum "\${c#sha256sum /sdcard/Download/}") ;;
       "am start "*) printf '%s\\n' "$c" >> "$F/am.log"; echo "Starting: Intent { act=android.intent.action.VIEW }" ;;
-      "cat /proc/net/unix") if [ -e "$F/unix" ]; then cat "$F/unix"; else echo "cat: /proc/net/unix: Permission denied"; exit 1; fi ;;
+      "cat /proc/net/unix") if [ -e "$F/unix.fail" ] || [ ! -e "$F/unix" ]; then echo "cat: /proc/net/unix: Permission denied"; exit 1; fi; cat "$F/unix" ;;
       "dumpsys package com.android.chrome") cat "$F/dumpsys" 2>/dev/null ;;
       *) echo "fake adb: unknown shell command: $c"; exit 1 ;;
     esac ;;
@@ -189,7 +192,11 @@ const devtools = http.createServer((req, res) => {
         if (current.noVersion) return req.socket.destroy();
         return json({ Browser: "Chrome/156.0.8078.81", "Protocol-Version": "1.3" });
     }
-    if (req.url === "/json/list" || req.url === "/json") return json(current.tabs);
+    if (req.url === "/json/list" || req.url === "/json") {
+        current.listCalls = (current.listCalls ?? 0) + 1;
+        if (current.failListFrom && current.listCalls >= current.failListFrom) return req.socket.destroy();
+        return json(current.tabs);
+    }
     const close = /^\/json\/close\/(.+)$/.exec(req.url);
     if (close) {
         const before = current.tabs.length;
@@ -245,7 +252,10 @@ const BENCH_TAB = (id = "AAA1", n = 1) => ({
     title: "bench-nft",
     url: `http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-static.mp4&loops=4&window=2000&seed=1&run=${n}`,
 });
-const OTHER_TAB = { id: "OTH1", type: "page", title: "Example", url: "https://example.com/" };
+/** The tablet's /proc/net/unix with Chrome's DevTools socket listening and no client on it. */
+const UNIX_HEADER = "Num       RefCount Protocol Flags    Type St Inode Path\n";
+const UNIX_LISTENER = UNIX_HEADER + "0000000000000000: 00000002 00000000 00010000 0001 01 21817659 @chrome_devtools_remote\n";
+const OTHER_TAB ={ id: "OTH1", type: "page", title: "Example", url: "https://example.com/" };
 
 /** A test table: the committed one, its ports, freeze and idle time the case's. */
 function makeTable(path, serve, { idleSeconds = 0 } = {}) {
@@ -271,6 +281,7 @@ function mk({ serve = SERVE, idleSeconds = 0, terminatedAgo = null, logAge = 360
     f("forwards", "");
     f("dt.forward", "off");
     f("dumpsys", "    versionName=156.0.8078.81\n    versionName=131.0.6778.260\n");
+    f("unix", UNIX_LISTENER);
     c.adbLog = `${c.fake}/adb.log`;
     let log = "--- adb starting (pid 4242) ---\n" + adbLine(logAge, "main.cpp:66 Android Debug Bridge version 1.0.41");
     if (terminatedAgo !== null) log += adbLine(terminatedAgo, TERMINATED);
@@ -434,7 +445,9 @@ const PRONTO_FAULTS = [
     ["an export already on the tablet", (c) => c.download("bench-nft-tracking-Tab-9-WiFi-1.json"), /NO  sul tablet ci sono già esportazioni: bench-nft-tracking/],
     ["a termination 60 s ago", (c) => c.set("adb.log", "--- adb starting (pid 1) ---\n" + adbLine(3600, "x") + adbLine(60, TERMINATED)), /NO  collegamento non quieto: attendi ancora 4 min/],
     ["an adb server started 2 min ago", (c) => c.set("adb.log", "--- adb starting (pid 1) ---\n" + adbLine(120, "main.cpp:66 Android Debug Bridge")), /NO  collegamento non quieto: attendi ancora 3 min/],
-    ["another forward on the DevTools socket", (c) => c.set("forwards", `${SERIAL} tcp:9229 localabstract:chrome_devtools_remote\n`), /NO  DevTools: un altro inoltro tiene il socket DevTools del tablet: Tab9WEEA0001504 tcp:9229/],
+    ["another forward on the DevTools socket", (c) => c.set("forwards", `${SERIAL} tcp:9229 localabstract:chrome_devtools_remote\n`), /NO  DevTools: un inoltro esiste già e non è del driver: Tab9WEEA0001504 tcp:9229 localabstract:chrome_devtools_remote \(lasciato com'è\)/],
+    ["a /proc/net/unix that cannot be read", (c) => c.set("unix.fail", ""), /NO  DevTools: la tabella dei socket del tablet \(\/proc\/net\/unix\) non si legge/],
+    ["Chrome's DevTools socket absent on the tablet", (c) => c.set("unix", UNIX_HEADER), /NO  DevTools: il socket DevTools di Chrome non è sul tablet/],
     ["the local DevTools port held", (c) => c.set("dt.forward", "held"), /NO  DevTools: la porta locale tcp:\d+ è già usata/],
     ["a client on the tablet's DevTools socket", (c) => c.set("unix", "Num       RefCount Protocol Flags    Type St Inode Path\n0000: 00000002 00000000 00010000 0001 01 1001 @chrome_devtools_remote\n0000: 00000003 00000000 00000000 0001 03 1002 @chrome_devtools_remote\n"), /NO  DevTools: sul tablet 1 client sono già collegati/],
     ["a bench tab open", (c) => (c.tabs = [BENCH_TAB()]), /NO  pagine del banco aperte: AAA1/],
@@ -638,11 +651,79 @@ test("a bench tab already open: inizia refuses and names it; chiudi-tab closes o
     assert.match(r.steps[0].out, /nessuna scheda chiusa/);
     assert.equal(c.tabs.length, 2);
     r = await drive(c, ["chiudi-tab", "inizia 1"], { stdin: "si\n" });
-    passed(r.steps[0], /chiusa la scheda AAA1/);
+    passed(r.steps[0], /chiesta la chiusura della scheda AAA1/);
+    assert.match(r.steps[0].out, /nessuna pagina del banco resta aperta/);
     assert.deepEqual(c.closed, ["AAA1"]);
     assert.deepEqual(c.tabs, [OTHER_TAB]);
     passed(r.steps[1], /run=1/);
     assert.equal(readFileSync(`${c.fake}/forwards`, "utf8"), "");
+});
+
+/** The fake adb's calls in this case, one per line, as the driver issued them. */
+const adbCalls = (c) => (existsSync(`${c.fake}/adb.calls`) ? readFileSync(`${c.fake}/adb.calls`, "utf8").trim().split("\n") : []);
+
+test("a forward already there, even one exactly like the driver's own, is refused, named and left untouched", async () => {
+    const c = mk();
+    const exact = `${SERIAL} tcp:${DT_PORT} localabstract:chrome_devtools_remote\n`;
+    c.set("forwards", exact);
+    const r = await drive(c, ["pronto", "__ready", "inizia 1", "chiudi-tab"]);
+    refused(r.steps[0], new RegExp(`NO  DevTools: un inoltro esiste già e non è del driver: ${SERIAL} tcp:${DT_PORT} localabstract:chrome_devtools_remote`));
+    refused(r.steps[2], /un inoltro esiste già e non è del driver/);
+    refused(r.steps[3], /un inoltro esiste già e non è del driver/);
+    assert.equal(readFileSync(`${c.fake}/forwards`, "utf8"), exact);
+    const calls = adbCalls(c);
+    assert.ok(!calls.some((l) => /forward --remove/.test(l)), calls.join("\n"));
+    assert.ok(!calls.some((l) => /forward --no-rebind/.test(l)), calls.join("\n"));
+    assert.equal(amCount(c), 0);
+});
+
+test("the driver's own forward is created with --no-rebind and removed after each use", async () => {
+    const c = mk();
+    const r = await drive(c, ["pronto", "inizia 1"]);
+    passed(r.steps[0], /PRONTO OK/);
+    passed(r.steps[1], /run=1/);
+    const fw = adbCalls(c).filter((l) => /forward (--no-rebind|--remove)/.test(l));
+    assert.deepEqual(fw, [
+        `-s ${SERIAL} forward --no-rebind tcp:${DT_PORT} localabstract:chrome_devtools_remote`,
+        `-s ${SERIAL} forward --remove tcp:${DT_PORT}`,
+        `-s ${SERIAL} forward --no-rebind tcp:${DT_PORT} localabstract:chrome_devtools_remote`,
+        `-s ${SERIAL} forward --remove tcp:${DT_PORT}`,
+    ]);
+    assert.equal(readFileSync(`${c.fake}/forwards`, "utf8"), "");
+});
+
+test("a tablet socket table that cannot be read, or reads empty, refuses before any forward", async () => {
+    for (const fault of [(c) => c.set("unix.fail", ""), (c) => c.set("unix", ""), (c) => c.set("unix", "garbage\n")]) {
+        const c = mk();
+        fault(c);
+        const r = await drive(c, ["__ready", "inizia 1", "chiudi-tab"]);
+        refused(r.steps[1], /la tabella dei socket del tablet \(\/proc\/net\/unix\) non si legge/);
+        refused(r.steps[2], /la tabella dei socket del tablet/);
+        assert.ok(!adbCalls(c).some((l) => / forward (--no-rebind )?tcp:/.test(l)), adbCalls(c).join("\n"));
+        assert.equal(amCount(c), 0);
+    }
+});
+
+test("chiudi-tab: a final tab list that fails gives a STOP, never success; a readable one with no bench tab gives success", async () => {
+    const c = mk();
+    c.tabs = [BENCH_TAB("AAA1", 1)];
+    c.failListFrom = 2;
+    let r = await drive(c, ["chiudi-tab"], { stdin: "si\n" });
+    refused(r.steps[0], /risultato non verificato: la lista finale delle schede non si legge/);
+    assert.doesNotMatch(r.steps[0].out, /nessuna pagina del banco resta aperta/);
+    assert.equal(readFileSync(`${c.fake}/forwards`, "utf8"), "");
+    const d = mk();
+    d.tabs = [BENCH_TAB("BBB1", 1)];
+    r = await drive(d, ["chiudi-tab"], { stdin: "si\n" });
+    passed(r.steps[0], /nessuna pagina del banco resta aperta/);
+    assert.deepEqual(d.closed, ["BBB1"]);
+    assert.equal(readFileSync(`${d.fake}/forwards`, "utf8"), "");
+    // An answer other than «si» leaves no forward behind either.
+    const e = mk();
+    e.tabs = [BENCH_TAB("CCC1", 1)];
+    r = await drive(e, ["chiudi-tab"], { stdin: "no\n" });
+    assert.match(r.steps[0].out, /nessuna scheda chiusa/);
+    assert.equal(readFileSync(`${e.fake}/forwards`, "utf8"), "");
 });
 
 test("inizia refuses when the DevTools socket is held or the tabs cannot be read", async () => {
@@ -650,7 +731,7 @@ test("inizia refuses when the DevTools socket is held or the tabs cannot be read
     await drive(c, ["__ready"]);
     c.set("forwards", `OTHER0001 tcp:9333 localabstract:chrome_devtools_remote\n`);
     let r = await drive(c, ["inizia 1"]);
-    refused(r.steps[0], /un altro inoltro tiene il socket DevTools/);
+    refused(r.steps[0], /un inoltro esiste già e non è del driver: OTHER0001 tcp:9333/);
     c.set("forwards", "");
     c.tabs = { not: "a list" };
     r = await drive(c, ["inizia 1"]);

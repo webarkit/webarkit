@@ -247,39 +247,54 @@ m9__serve_ok() { # HEAD, bundle and pathspec status, each refused by name
 m9__dt_url() { printf 'http://127.0.0.1:%s%s' "$M9_DTPORT" "$1"; }
 m9__dt_get() { curl -sf --max-time 5 "$(m9__dt_url "$1")"; }
 M9_DT_OURS=""
-m9__dt_open() { # checks that nothing else holds the socket, then forwards; sets M9_DT_WHY on refusal
-    local fw other line unix conn
+# Checks that nothing else holds the DevTools socket or the local port, then creates the forward
+# with --no-rebind. Sets M9_DT_WHY on refusal, and M9_DT_OURS only when this call created the
+# forward, so that m9__dt_close never removes a forward another program made (#254's review).
+m9__dt_open() {
+    local fw held unix rc conn
     M9_DT_WHY=""
-    fw="$(m9__adb_any forward --list)"
-    other="$(printf '%s\n' "$fw" | grep -F 'localabstract:chrome_devtools_remote' | grep -vxF "${M9_SERIAL} tcp:${M9_DTPORT} localabstract:chrome_devtools_remote")"
-    if [ -n "$other" ]; then
-        M9_DT_WHY="un altro inoltro tiene il socket DevTools del tablet: $(printf '%s' "$other" | head -n 1)"
+    M9_DT_OURS=""
+    if ! fw="$(m9__adb_any forward --list)"; then
+        M9_DT_WHY="adb forward --list non è riuscito"
         return 1
     fi
-    if ! printf '%s\n' "$fw" | grep -qxF "${M9_SERIAL} tcp:${M9_DTPORT} localabstract:chrome_devtools_remote"; then
-        if curl -s --max-time 2 -o /dev/null "$(m9__dt_url /json/version)"; then
-            M9_DT_WHY="la porta locale tcp:${M9_DTPORT} è già usata da un altro programma"
-            return 1
-        fi
+    # Any forward on the local port, or on the tablet's DevTools socket, is someone else's: even one
+    # that reads exactly like the driver's own, which a crashed session or another tool may hold.
+    held="$(printf '%s\n' "$fw" | awk -v p="tcp:${M9_DTPORT}" '$2 == p || $3 == "localabstract:chrome_devtools_remote"')"
+    if [ -n "$held" ]; then
+        M9_DT_WHY="un inoltro esiste già e non è del driver: $(printf '%s' "$held" | head -n 1) (lasciato com'è)"
+        return 1
     fi
-    unix="$(m9__adb shell "cat /proc/net/unix" 2>/dev/null)"
-    if printf '%s\n' "$unix" | grep -q '@chrome_devtools_remote'; then
-        # The listener reads state 01; every connected socket on it reads 03.
-        conn="$(printf '%s\n' "$unix" | grep '@chrome_devtools_remote$' | awk '$6 == "03"' | wc -l | tr -d ' ')"
-        if [ "${conn:-0}" -gt 0 ]; then
-            M9_DT_WHY="sul tablet ${conn} client sono già collegati al socket DevTools (chrome://inspect sul PC?)"
-            return 1
-        fi
+    if curl -s --max-time 2 -o /dev/null "$(m9__dt_url /json/version)"; then
+        M9_DT_WHY="la porta locale tcp:${M9_DTPORT} è già usata da un altro programma"
+        return 1
     fi
-    m9__adb forward "tcp:${M9_DTPORT}" localabstract:chrome_devtools_remote >/dev/null || {
-        M9_DT_WHY="adb forward tcp:${M9_DTPORT} non è riuscito"
+    # The tablet's socket table must be read: a table that cannot be read cannot show a client.
+    unix="$(m9__adb shell "cat /proc/net/unix")"
+    rc=$?
+    if [ "$rc" -ne 0 ] || [ -z "$unix" ] || ! printf '%s\n' "$unix" | head -n 1 | grep -qE '^Num +RefCount +Protocol +Flags +Type +St +Inode +Path'; then
+        M9_DT_WHY="la tabella dei socket del tablet (/proc/net/unix) non si legge: $(printf '%s' "$unix" | head -n 1)"
+        return 1
+    fi
+    if ! printf '%s\n' "$unix" | awk '$8 == "@chrome_devtools_remote" && $6 == "01"' | grep -q .; then
+        M9_DT_WHY="il socket DevTools di Chrome non è sul tablet (Chrome è aperto sul tablet?)"
+        return 1
+    fi
+    # The listener reads state 01; every connected socket on it reads 03.
+    conn="$(printf '%s\n' "$unix" | awk '$8 == "@chrome_devtools_remote" && $6 == "03"' | wc -l | tr -d ' ')"
+    if [ "${conn:-0}" -gt 0 ]; then
+        M9_DT_WHY="sul tablet ${conn} client sono già collegati al socket DevTools (chrome://inspect sul PC?)"
+        return 1
+    fi
+    m9__adb forward --no-rebind "tcp:${M9_DTPORT}" localabstract:chrome_devtools_remote >/dev/null || {
+        M9_DT_WHY="adb forward --no-rebind tcp:${M9_DTPORT} non è riuscito"
         return 1
     }
     M9_DT_OURS=1
     return 0
 }
-m9__dt_close() {
-    [ -n "$M9_DT_OURS" ] && m9__adb forward --remove "tcp:${M9_DTPORT}" >/dev/null 2>&1
+m9__dt_close() { # removes the forward only when m9__dt_open created it
+    [ "$M9_DT_OURS" = 1 ] && m9__adb forward --remove "tcp:${M9_DTPORT}" >/dev/null 2>&1
     M9_DT_OURS=""
     return 0
 }
@@ -691,8 +706,9 @@ chiudi-tab() {
     local tabs id url ans left
     m9__dt_open || { m9__stop "$M9_DT_WHY"; return 1; }
     tabs="$(m9__dt_bench_tabs)" || { m9__dt_close; m9__stop "le schede di Chrome sul tablet non si leggono"; return 1; }
+    # The forward is closed while the operator answers, so that no answer, and no Ctrl-C, leaves it.
+    m9__dt_close
     if [ -z "$tabs" ]; then
-        m9__dt_close
         m9__say "nessuna pagina del banco aperta nel Chrome del tablet"
         return 0
     fi
@@ -700,14 +716,19 @@ chiudi-tab() {
     printf 'Chiudere queste %s schede del banco? Scrivi si per confermare: ' "$(printf '%s\n' "$tabs" | wc -l | tr -d ' ')"
     read -r ans
     if [ "$ans" != si ]; then
-        m9__dt_close
         m9__say "nessuna scheda chiusa (risposta: '${ans}')"
         return 1
     fi
+    m9__dt_open || { m9__stop "$M9_DT_WHY"; return 1; }
     while IFS=$'\t' read -r id url; do
-        m9__dt_get "/json/close/$id" >/dev/null && m9__say "chiusa la scheda $id" || m9__say "la scheda $id non si chiude"
+        m9__dt_get "/json/close/$id" >/dev/null && m9__say "chiesta la chiusura della scheda $id" || m9__say "la scheda $id non si chiude"
     done <<<"$tabs"
-    left="$(m9__dt_bench_tabs)"
+    # The result is only what a last, readable list of the tabs shows.
+    if ! left="$(m9__dt_bench_tabs)"; then
+        m9__dt_close
+        m9__stop "risultato non verificato: la lista finale delle schede non si legge" "Scrivi di nuovo: chiudi-tab"
+        return 1
+    fi
     m9__dt_close
     if [ -n "$left" ]; then m9__stop "restano schede del banco aperte: $(printf '%s' "$left" | cut -f1 | tr '\n' ' ')"; return 1; fi
     m9__say "nessuna pagina del banco resta aperta"

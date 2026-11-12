@@ -110,6 +110,24 @@ instrument, the subject, the analysis and run-check scripts and the inputs; the 
 the maintainer's ruling of 2026-11-11, recorded with the pre-flight, and this addendum is that ruling's
 one exception.
 
+**The maintainer's ruling, on GitHub.** His comment on #243 of 2026-11-12
+([issuecomment-6823059266](https://github.com/webarkit/webarkit/issues/243#issuecomment-6823059266)),
+word for word:
+
+> **The maintainer's ruling of 2026-11-12: the link monitor's begin fix is admitted into M9, before round 1.**
+>
+> `docs/benchmarks/2026-11-11-243-link-monitor.mjs` has been held by M9's freeze since the pre-flight (#253). Qodo's review of #253 found a race in it: `begin` read `adb.log`'s length after taking its timestamp and adb readings. A termination written in between would fall before the baseline and be missed. The fix reads the length first and changes nothing else. The log's format and the verdict rule are unchanged.
+>
+> I admit this change to a frozen file, as the one exception to the freeze, for these reasons:
+> - it changes only when V7's evidence starts, and widens it to cover the begin readings. It can only turn a missed drop into a seen one, never the reverse;
+> - it touches no instrument file, no subject file, no analysis or run-check script and no input, and the bundle stays `6d07b0c2…`;
+> - every pre-flight verdict stands. Each of the five committed pre-flight logs' `adb.log` gained 0 bytes between begin and end, and the run check's V7 passes all five unchanged under the fixed monitor;
+> - it is made before round 1, so every counted run is monitored by one version of the file.
+> The second registration addendum (#254) records the change and quotes this ruling. The monitor's new SHA-256 is recorded there, and the rounds' records check it.
+
+Under this ruling the pre-flight's five logs keep their verdicts: each reads `no drop: true` as
+committed, and none is rewritten.
+
 **The pre-flight's logs keep their verdicts.** They were written before the fix and stay as committed.
 As #252's comment shows from `adb.log`, that day's terminations naming the device were at 16:56:48Z,
 16:59:38Z, 17:40:36Z, 17:41:29Z and 19:35:35Z, and none falls within a second of any run's begin. Read
@@ -129,8 +147,10 @@ Each log's `adb.log` gained 0 bytes between its begin and its end. A baseline re
 begin would have read the same length, so the fixed monitor would have written the same five logs. The
 monitor's test reads the five committed logs with the run check's V7, unchanged, and each passes.
 
-**Its hash.** The fixed files' SHA-256s are given in this addendum's pull request, since a file cannot
-name the hash of a commit after its own. The driver writes the SHA-256 of itself, the session table,
+**Its hash.** The fixed monitor's SHA-256 is
+`90eca3e47d02fa2d2f1a08fdf2186078bd4b826925e038bc4ee0487281db42a6`, and its test's
+`ddc9cbac2ae0ac81cd40cfe9066e08f9376d818557652153583549f7803a09f7`, as the ruling above says this addendum
+records; the pull request gives them too. The driver writes the SHA-256 of itself, the session table,
 the link monitor and the run check into its session log when it is sourced and at each `pronto`, and
 each round's session record cites them from there.
 
