@@ -37,7 +37,7 @@ ruling of 2026-11-12 (the second addendum, entry 2).
 | Run check | `2026-11-11-243-run-check.mjs`, `b8535d217d47d69080f769dffb9f8bacd1a18677d6d5ef491cb15387900fcc11`, the serving checkout's | the same |
 | Analysis | `2026-11-11-243-analysis.mjs`, `a802acde66a65e8e98d2aa41b3c7d5e47cd7b3891d9c0df5602c20481d618b90`, identical on `origin/dev`, in the serving checkout and in the committing worktree | while the session was prepared, and before the analysis |
 | Chrome on the tablet | **156.0.8078.81**, read by `pronto` at 16:56:48Z, 19:01:37Z and 19:04:19Z through the DevTools endpoint (`/json/version`, its `Browser` field), the source the second addendum names; the pre-flight's and session A's build. Every export's `userAgent` reads `Chrome/156.0.0.0` | before each sitting |
-| Node | v24.21.0, the pin, for the serving checkout's `check:provenance`, the run check after the session and the analysis. Which `node` ran the driver's at-once checks (the link monitor and the run check at `finisci`) is not recorded at either sitting: difference 4 | `node --version` in those directories |
+| Node | v24.21.0, the pin, for the serving checkout's `check:provenance`, the run check after the session and the analysis. For the driver's at-once checks (the link monitor and the run check at `finisci`): the checklist's `node --version` printed v24.21.0 at both sittings, by the maintainer's confirmation after the session; no record was made at the time (difference 4) | `node --version` in those directories |
 
 **The serving machine.** The maintainer's notebook `nitro-walt`, Windows 11 Home 10.0.26300, Git Bash
 (GNU bash 5.3.15), as in the pre-flight and session A; no build was made in the serving checkout since
@@ -87,8 +87,9 @@ prepared.
 | 2 | 19:04:10Z–19:04:20Z | `PRONTO OK`, every check as in sitting 1 |
 
 **Chrome's cached files:** `pronto` prints their clearing as a step by hand ("A MANO"), since it
-cannot see it; the checklist's line 5 asked the maintainer to clear them at each sitting. Whether
-they were cleared is not recorded (difference 5). **The link:** adb's log held 2,002 bytes, its last `connection terminated` line naming the device
+cannot see it; the checklist's line 5 asked the maintainer to clear them at each sitting. The
+maintainer cleared them before run 17 and before run 25, and confirmed it after the session; no
+record was made at the time (difference 5). **The link:** adb's log held 2,002 bytes, its last `connection terminated` line naming the device
 at 13:41:39Z, from before the preparation to after the last run.
 
 ## The runs, in order
@@ -404,15 +405,17 @@ renamed or deleted but those of incidents 2 and 3.
    at each sitting, or the maintainer was to stop. The ruling also said that `pronto`'s output would
    show `node --version`. Before the session the maintainer instructed instead that the driver not be
    changed, and that the checklist carry `node --version` as its own line; `pronto` prints no `node`
-   version. **The result:** no record shows which `node` ran the driver's at-once checks at either
-   sitting. The operator's `node --version` was typed in the operator's own Git Bash and is not logged; no stop
-   was reported at either sitting. The agent's dry check printed v24.21.0, but it ran in a scratch
-   shell that the agent started in the same directory, not in the operator's Git Bash. What the
-   record rests on ran on the pin: the run check of all sixteen exports after the session, which gave
-   the same verdicts as the at-once checks, and the analysis.
+   version. **The result:** the operator's `node --version` was typed in the operator's own Git Bash
+   and is not logged, so no record made at the time shows which `node` ran the driver's at-once
+   checks; no stop was reported at either sitting. **The maintainer confirmed on 2026-11-12, after
+   the session, that it printed v24.21.0 at both sittings.** The agent's dry check printed v24.21.0
+   too, but it ran in a scratch shell that the agent started in the same directory, not in the
+   operator's Git Bash. What the record rests on ran on the pin: the run check of all sixteen exports
+   after the session, which gave the same verdicts as the at-once checks, and the analysis.
 5. **Chrome's cached files** ("Before each session", item 4): their clearing is the operator's, at
    the tablet, which `pronto` cannot see; the checklist asked for it at each sitting, after `pronto`.
-   Whether it was done at either sitting is not recorded.
+   The maintainer cleared them before run 17 and before run 25 and confirmed it on 2026-11-12, after
+   the session; no record was made at the time.
 6. **The analysis ran from the serving checkout,** on the copies in the committing worktree, so that
    it imported the freeze's built `dist/` (as session A's difference 3). It is the same script, by its
    hash, and its stdout is the same on the output folder's exports.
