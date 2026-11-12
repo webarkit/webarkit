@@ -1,0 +1,317 @@
+# 2026-11-11-243-analysis.mjs --block pinball-bench-table.mp4
+
+K assumed: intrinsics(203, 360), 60° of horizontal field, for every arm and figure.
+
+## V11's checks and the covariates, per run
+
+### 2026-11-12-tab9-m9-table-17.json
+
+- fields each arm needs: present; filter off; metricsVersion 2
+- V11, K = intrinsics(203, 360), element by element: pass
+- V11, every H finite on an ok frame: pass (566 ok frames)
+- V11, runSummary.poseJitterPx recomputed over the counted loops: equal, bit for bit
+- V11, route (b)'s reprojection within 1e-9 px on every frame with poseCorners: pass
+- V11, CF's good on every ok frame: yes
+- route (b), ok TRACK frames with null poseCorners: 0
+- the tilt computed on 566 of 566 ok frames
+- run.order 17, seed 1; frames 647, ticks 647 (window 2000: within); counted frames 528: LOST 68, DETECT 23, TRACK 437
+- frames processed per loop: loop 0 118, loop 1 135, loop 2 129, loop 3 132, loop 4 132, loop 5 1; wraps 5; timestampMs steps back 0 times
+- gaps between processed frames: timestampMs p50 55.4000 ms, max 283.5000 ms; media time p50 0.0667 s, max 0.2667 s (steps back left out)
+- counted loops: acquire p50 31.7000 ms, total p50 46.7000 ms, trackStepMs p50 12.5000 ms; run.lostVisibility false
+
+### 2026-11-12-tab9-m9-table-18.json
+
+- fields each arm needs: present; filter off; metricsVersion 2
+- V11, K = intrinsics(203, 360), element by element: pass
+- V11, every H finite on an ok frame: pass (536 ok frames)
+- V11, runSummary.poseJitterPx recomputed over the counted loops: equal, bit for bit
+- V11, route (b)'s reprojection within 1e-9 px on every frame with poseCorners: pass
+- V11, CF's good on every ok frame: yes
+- route (b), ok TRACK frames with null poseCorners: 0
+- the tilt computed on 536 of 536 ok frames
+- run.order 18, seed 1; frames 620, ticks 620 (window 2000: within); counted frames 503: LOST 68, DETECT 32, TRACK 403
+- frames processed per loop: loop 0 116, loop 1 124, loop 2 134, loop 3 123, loop 4 122, loop 5 1; wraps 5; timestampMs steps back 0 times
+- gaps between processed frames: timestampMs p50 57.1000 ms, max 269.0000 ms; media time p50 0.0667 s, max 0.2667 s (steps back left out)
+- counted loops: acquire p50 32.7000 ms, total p50 47.8000 ms, trackStepMs p50 12.7000 ms; run.lostVisibility false
+
+### 2026-11-12-tab9-m9-table-19.json
+
+- fields each arm needs: present; filter off; metricsVersion 2
+- V11, K = intrinsics(203, 360), element by element: pass
+- V11, every H finite on an ok frame: pass (482 ok frames)
+- V11, runSummary.poseJitterPx recomputed over the counted loops: equal, bit for bit
+- V11, route (b)'s reprojection within 1e-9 px on every frame with poseCorners: pass
+- V11, CF's good on every ok frame: yes
+- route (b), ok TRACK frames with null poseCorners: 0
+- the tilt computed on 482 of 482 ok frames
+- run.order 19, seed 1; frames 560, ticks 560 (window 2000: within); counted frames 458: LOST 63, DETECT 31, TRACK 364
+- frames processed per loop: loop 0 101, loop 1 91, loop 2 109, loop 3 123, loop 4 135, loop 5 1; wraps 5; timestampMs steps back 0 times
+- gaps between processed frames: timestampMs p50 66.9000 ms, max 227.0000 ms; media time p50 0.0667 s, max 0.2333 s (steps back left out)
+- counted loops: acquire p50 32.8000 ms, total p50 48.0000 ms, trackStepMs p50 12.8000 ms; run.lostVisibility false
+
+### 2026-11-12-tab9-m9-table-20.json
+
+- fields each arm needs: present; filter off; metricsVersion 2
+- V11, K = intrinsics(203, 360), element by element: pass
+- V11, every H finite on an ok frame: pass (554 ok frames)
+- V11, runSummary.poseJitterPx recomputed over the counted loops: equal, bit for bit
+- V11, route (b)'s reprojection within 1e-9 px on every frame with poseCorners: pass
+- V11, CF's good on every ok frame: yes
+- route (b), ok TRACK frames with null poseCorners: 0
+- the tilt computed on 554 of 554 ok frames
+- run.order 20, seed 1; frames 639, ticks 639 (window 2000: within); counted frames 509: LOST 72, DETECT 30, TRACK 407
+- frames processed per loop: loop 0 129, loop 1 130, loop 2 123, loop 3 128, loop 4 128, loop 5 1; wraps 5; timestampMs steps back 0 times
+- gaps between processed frames: timestampMs p50 54.9000 ms, max 268.2000 ms; media time p50 0.0667 s, max 0.2667 s (steps back left out)
+- counted loops: acquire p50 31.5000 ms, total p50 46.4000 ms, trackStepMs p50 12.5000 ms; run.lostVisibility false
+
+### 2026-11-12-tab9-m9-table-21.json
+
+- fields each arm needs: present; filter off; metricsVersion 2
+- V11, K = intrinsics(203, 360), element by element: pass
+- V11, every H finite on an ok frame: pass (570 ok frames)
+- V11, runSummary.poseJitterPx recomputed over the counted loops: equal, bit for bit
+- V11, route (b)'s reprojection within 1e-9 px on every frame with poseCorners: pass
+- V11, CF's good on every ok frame: yes
+- route (b), ok TRACK frames with null poseCorners: 0
+- the tilt computed on 570 of 570 ok frames
+- run.order 21, seed 1; frames 647, ticks 647 (window 2000: within); counted frames 524: LOST 61, DETECT 27, TRACK 436
+- frames processed per loop: loop 0 122, loop 1 135, loop 2 131, loop 3 129, loop 4 129, loop 5 1; wraps 5; timestampMs steps back 0 times
+- gaps between processed frames: timestampMs p50 55.7000 ms, max 249.9000 ms; media time p50 0.0667 s, max 0.2667 s (steps back left out)
+- counted loops: acquire p50 31.5000 ms, total p50 46.3000 ms, trackStepMs p50 12.7000 ms; run.lostVisibility false
+
+### 2026-11-12-tab9-m9-table-22.json
+
+- fields each arm needs: present; filter off; metricsVersion 2
+- V11, K = intrinsics(203, 360), element by element: pass
+- V11, every H finite on an ok frame: pass (528 ok frames)
+- V11, runSummary.poseJitterPx recomputed over the counted loops: equal, bit for bit
+- V11, route (b)'s reprojection within 1e-9 px on every frame with poseCorners: pass
+- V11, CF's good on every ok frame: yes
+- route (b), ok TRACK frames with null poseCorners: 0
+- the tilt computed on 528 of 528 ok frames
+- run.order 22, seed 1; frames 613, ticks 613 (window 2000: within); counted frames 517: LOST 67, DETECT 24, TRACK 426
+- frames processed per loop: loop 0 95, loop 1 128, loop 2 127, loop 3 134, loop 4 128, loop 5 1; wraps 5; timestampMs steps back 0 times
+- gaps between processed frames: timestampMs p50 58.1000 ms, max 300.3000 ms; media time p50 0.0667 s, max 0.3000 s (steps back left out)
+- counted loops: acquire p50 31.9000 ms, total p50 46.7000 ms, trackStepMs p50 12.6000 ms; run.lostVisibility false
+
+### 2026-11-12-tab9-m9-table-23.json
+
+- fields each arm needs: present; filter off; metricsVersion 2
+- V11, K = intrinsics(203, 360), element by element: pass
+- V11, every H finite on an ok frame: pass (576 ok frames)
+- V11, runSummary.poseJitterPx recomputed over the counted loops: equal, bit for bit
+- V11, route (b)'s reprojection within 1e-9 px on every frame with poseCorners: pass
+- V11, CF's good on every ok frame: yes
+- route (b), ok TRACK frames with null poseCorners: 0
+- the tilt computed on 576 of 576 ok frames
+- run.order 23, seed 1; frames 657, ticks 657 (window 2000: within); counted frames 542: LOST 66, DETECT 15, TRACK 461
+- frames processed per loop: loop 0 114, loop 1 138, loop 2 136, loop 3 134, loop 4 134, loop 5 1; wraps 5; timestampMs steps back 0 times
+- gaps between processed frames: timestampMs p50 54.6000 ms, max 273.6000 ms; media time p50 0.0667 s, max 0.2667 s (steps back left out)
+- counted loops: acquire p50 31.4000 ms, total p50 46.2000 ms, trackStepMs p50 12.6000 ms; run.lostVisibility false
+
+### 2026-11-12-tab9-m9-table-24.json
+
+- fields each arm needs: present; filter off; metricsVersion 2
+- V11, K = intrinsics(203, 360), element by element: pass
+- V11, every H finite on an ok frame: pass (581 ok frames)
+- V11, runSummary.poseJitterPx recomputed over the counted loops: equal, bit for bit
+- V11, route (b)'s reprojection within 1e-9 px on every frame with poseCorners: pass
+- V11, CF's good on every ok frame: yes
+- route (b), ok TRACK frames with null poseCorners: 0
+- the tilt computed on 581 of 581 ok frames
+- run.order 24, seed 1; frames 665, ticks 665 (window 2000: within); counted frames 540: LOST 70, DETECT 13, TRACK 457
+- frames processed per loop: loop 0 124, loop 1 137, loop 2 133, loop 3 132, loop 4 138, loop 5 1; wraps 5; timestampMs steps back 0 times
+- gaps between processed frames: timestampMs p50 55.2000 ms, max 299.2000 ms; media time p50 0.0667 s, max 0.3000 s (steps back left out)
+- counted loops: acquire p50 31.7000 ms, total p50 46.6000 ms, trackStepMs p50 12.6000 ms; run.lostVisibility false
+
+## The tilt bands, per run (Stage 2; the addendum's entry 1)
+
+| run | band | frames | windows | CF − IPPE jitter difference (below 10°) | corner distance CF to IPPE, px, and its frames (10° and above) |
+|---|---|---|---|---|---|
+| 2026-11-12-tab9-m9-table-17.json | 0–1 | 0 | 0 | n/a | — |
+| 2026-11-12-tab9-m9-table-17.json | 1–3 | 69 | 4 | -1.2837207575031822 | — |
+| 2026-11-12-tab9-m9-table-17.json | 3–5 | 89 | 4 | -0.8353119031600293 | — |
+| 2026-11-12-tab9-m9-table-17.json | 5–7 | 35 | 4 | -1.9552439701061957 | — |
+| 2026-11-12-tab9-m9-table-17.json | 7–10 | 238 | 20 | -0.409873828948649 | — |
+| 2026-11-12-tab9-m9-table-17.json | 10–15 | 16 | 1 | — | 2.7347848679466598 (16) |
+| 2026-11-12-tab9-m9-table-17.json | 15–20 | 3 | 0 | — | 0 (3) |
+| 2026-11-12-tab9-m9-table-17.json | 20–30 | 1 | 0 | — | 0 (1) |
+| 2026-11-12-tab9-m9-table-17.json | 30–40 | 0 | 0 | — | n/a (0) |
+| 2026-11-12-tab9-m9-table-17.json | over 40 | 9 | 0 | — | 0 (9) |
+| 2026-11-12-tab9-m9-table-18.json | 0–1 | 1 | 0 | n/a | — |
+| 2026-11-12-tab9-m9-table-18.json | 1–3 | 64 | 4 | -1.4632583240559527 | — |
+| 2026-11-12-tab9-m9-table-18.json | 3–5 | 70 | 5 | -0.7618727846040603 | — |
+| 2026-11-12-tab9-m9-table-18.json | 5–7 | 34 | 4 | -2.5185304416511562 | — |
+| 2026-11-12-tab9-m9-table-18.json | 7–10 | 231 | 19 | -0.5913478580063161 | — |
+| 2026-11-12-tab9-m9-table-18.json | 10–15 | 19 | 0 | — | 2.3257188971909017 (19) |
+| 2026-11-12-tab9-m9-table-18.json | 15–20 | 3 | 0 | — | 1.3248084446218227 (3) |
+| 2026-11-12-tab9-m9-table-18.json | 20–30 | 5 | 0 | — | 0 (5) |
+| 2026-11-12-tab9-m9-table-18.json | 30–40 | 2 | 0 | — | 0 (2) |
+| 2026-11-12-tab9-m9-table-18.json | over 40 | 6 | 0 | — | 17.28749541500454 (6) |
+| 2026-11-12-tab9-m9-table-19.json | 0–1 | 0 | 0 | n/a | — |
+| 2026-11-12-tab9-m9-table-19.json | 1–3 | 62 | 5 | -1.8116743004034872 | — |
+| 2026-11-12-tab9-m9-table-19.json | 3–5 | 59 | 4 | -1.487655848937477 | — |
+| 2026-11-12-tab9-m9-table-19.json | 5–7 | 35 | 4 | -1.161114881444741 | — |
+| 2026-11-12-tab9-m9-table-19.json | 7–10 | 205 | 19 | -0.4026708797811689 | — |
+| 2026-11-12-tab9-m9-table-19.json | 10–15 | 23 | 0 | — | 2.1206882560775133 (23) |
+| 2026-11-12-tab9-m9-table-19.json | 15–20 | 3 | 0 | — | 0 (3) |
+| 2026-11-12-tab9-m9-table-19.json | 20–30 | 3 | 0 | — | 0 (3) |
+| 2026-11-12-tab9-m9-table-19.json | 30–40 | 1 | 0 | — | 0 (1) |
+| 2026-11-12-tab9-m9-table-19.json | over 40 | 4 | 0 | — | 17.28749541500454 (4) |
+| 2026-11-12-tab9-m9-table-20.json | 0–1 | 0 | 0 | n/a | — |
+| 2026-11-12-tab9-m9-table-20.json | 1–3 | 73 | 6 | -1.9191659053288206 | — |
+| 2026-11-12-tab9-m9-table-20.json | 3–5 | 72 | 4 | -1.0437961173981316 | — |
+| 2026-11-12-tab9-m9-table-20.json | 5–7 | 36 | 4 | -0.9333832336324148 | — |
+| 2026-11-12-tab9-m9-table-20.json | 7–10 | 218 | 18 | -0.4719453400537894 | — |
+| 2026-11-12-tab9-m9-table-20.json | 10–15 | 27 | 2 | — | 2.3077654425527223 (27) |
+| 2026-11-12-tab9-m9-table-20.json | 15–20 | 2 | 0 | — | 4.67019245438006 (2) |
+| 2026-11-12-tab9-m9-table-20.json | 20–30 | 3 | 0 | — | 0 (3) |
+| 2026-11-12-tab9-m9-table-20.json | 30–40 | 1 | 0 | — | 0 (1) |
+| 2026-11-12-tab9-m9-table-20.json | over 40 | 5 | 0 | — | 0 (5) |
+| 2026-11-12-tab9-m9-table-21.json | 0–1 | 0 | 0 | n/a | — |
+| 2026-11-12-tab9-m9-table-21.json | 1–3 | 70 | 5 | -1.1475045102162833 | — |
+| 2026-11-12-tab9-m9-table-21.json | 3–5 | 70 | 5 | -1.8156721649265886 | — |
+| 2026-11-12-tab9-m9-table-21.json | 5–7 | 41 | 4 | -2.3388280640141774 | — |
+| 2026-11-12-tab9-m9-table-21.json | 7–10 | 246 | 20 | -0.20831285270570143 | — |
+| 2026-11-12-tab9-m9-table-21.json | 10–15 | 23 | 1 | — | 2.121807989943121 (23) |
+| 2026-11-12-tab9-m9-table-21.json | 15–20 | 4 | 0 | — | 0 (4) |
+| 2026-11-12-tab9-m9-table-21.json | 20–30 | 2 | 0 | — | 9.469225874118708 (2) |
+| 2026-11-12-tab9-m9-table-21.json | 30–40 | 2 | 0 | — | 0 (2) |
+| 2026-11-12-tab9-m9-table-21.json | over 40 | 5 | 0 | — | 17.28749541500454 (5) |
+| 2026-11-12-tab9-m9-table-22.json | 0–1 | 0 | 0 | n/a | — |
+| 2026-11-12-tab9-m9-table-22.json | 1–3 | 65 | 5 | -1.7171085053584239 | — |
+| 2026-11-12-tab9-m9-table-22.json | 3–5 | 83 | 5 | -1.2777846761636287 | — |
+| 2026-11-12-tab9-m9-table-22.json | 5–7 | 38 | 4 | -2.890640507780892 | — |
+| 2026-11-12-tab9-m9-table-22.json | 7–10 | 236 | 20 | -0.4140483959805028 | — |
+| 2026-11-12-tab9-m9-table-22.json | 10–15 | 18 | 0 | — | 2.4056207993186463 (18) |
+| 2026-11-12-tab9-m9-table-22.json | 15–20 | 3 | 0 | — | 0 (3) |
+| 2026-11-12-tab9-m9-table-22.json | 20–30 | 4 | 0 | — | 9.469225874118708 (4) |
+| 2026-11-12-tab9-m9-table-22.json | 30–40 | 0 | 0 | — | n/a (0) |
+| 2026-11-12-tab9-m9-table-22.json | over 40 | 3 | 0 | — | 0 (3) |
+| 2026-11-12-tab9-m9-table-23.json | 0–1 | 0 | 0 | n/a | — |
+| 2026-11-12-tab9-m9-table-23.json | 1–3 | 69 | 4 | -1.0691752492963158 | — |
+| 2026-11-12-tab9-m9-table-23.json | 3–5 | 83 | 6 | -0.9384104849442636 | — |
+| 2026-11-12-tab9-m9-table-23.json | 5–7 | 39 | 4 | -2.6547201015216038 | — |
+| 2026-11-12-tab9-m9-table-23.json | 7–10 | 252 | 20 | -0.2113344437465865 | — |
+| 2026-11-12-tab9-m9-table-23.json | 10–15 | 24 | 1 | — | 2.059620083226433 (24) |
+| 2026-11-12-tab9-m9-table-23.json | 15–20 | 4 | 0 | — | 0 (4) |
+| 2026-11-12-tab9-m9-table-23.json | 20–30 | 2 | 0 | — | 9.469225874118708 (2) |
+| 2026-11-12-tab9-m9-table-23.json | 30–40 | 0 | 0 | — | n/a (0) |
+| 2026-11-12-tab9-m9-table-23.json | over 40 | 3 | 0 | — | 10.386845948879973 (3) |
+| 2026-11-12-tab9-m9-table-24.json | 0–1 | 0 | 0 | n/a | — |
+| 2026-11-12-tab9-m9-table-24.json | 1–3 | 70 | 5 | -2.214198969664355 | — |
+| 2026-11-12-tab9-m9-table-24.json | 3–5 | 87 | 6 | -1.7677571718464646 | — |
+| 2026-11-12-tab9-m9-table-24.json | 5–7 | 35 | 4 | -1.9557934811117523 | — |
+| 2026-11-12-tab9-m9-table-24.json | 7–10 | 252 | 20 | -0.4800105459980535 | — |
+| 2026-11-12-tab9-m9-table-24.json | 10–15 | 19 | 0 | — | 2.267986747347611 (19) |
+| 2026-11-12-tab9-m9-table-24.json | 15–20 | 1 | 0 | — | 0 (1) |
+| 2026-11-12-tab9-m9-table-24.json | 20–30 | 3 | 0 | — | 9.469225874118708 (3) |
+| 2026-11-12-tab9-m9-table-24.json | 30–40 | 0 | 0 | — | n/a (0) |
+| 2026-11-12-tab9-m9-table-24.json | over 40 | 3 | 0 | — | 0 (3) |
+
+## The criteria
+
+### P2: CF − IPPE, table, below 10°
+
+#### P2, the selection
+
+predicted: negative; outcome: **held**
+
+| run | X | Y | d = Y − X | frames | windows | windows emptied | d without the media time |
+|---|---|---|---|---|---|---|---|
+| 1 | 3.4477619259911836 | 2.6516574780358386 | -0.796104447955345 | 431 | 28 | 1:1 2:1 3:1 | -0.7712345804060412 |
+| 2 | 3.525865203156359 | 2.6356139816253625 | -0.8902512215309963 | 400 | 27 | 1:2 3:1 4:1 | -0.8839419358037803 |
+| 3 | 3.5207151081259713 | 2.576675410661605 | -0.9440396974643663 | 361 | 27 | 1:2 2:1 3:1 | -0.9356475801688626 |
+| 4 | 3.385573489038076 | 2.582318967187248 | -0.8032545218508282 | 399 | 26 | 1:2 | -0.7311964811162608 |
+| 5 | 3.3454130309571948 | 2.515504454829257 | -0.8299085761279379 | 427 | 28 | 1:1 3:1 4:1 | -0.7512548816203717 |
+| 6 | 3.5430836680124322 | 2.5656695226418336 | -0.9774141453705987 | 422 | 28 | 3:1 | -0.8596102908447651 |
+| 7 | 3.2540247190656393 | 2.534241977839011 | -0.7197827412266284 | 443 | 28 | 1:1 | -0.6758159538062145 |
+| 8 | 3.585443122500395 | 2.5471089134785942 | -1.0383342090218006 | 444 | 28 | 4:1 | -1.0000813730899183 |
+
+- with every media time: d̄ -0.8748861950685628, s_d 0.10667926072085741, interval [-0.9640713742423679, -0.7857010158947577], 8 of 8 of the predicted sign, 0 of the opposite
+- the most influential media time: 7.100000 s, 17 occurrences; state TRACK, DETECT; inliers 30, 17, 65, 65, 16, 17, 65, 37, 65, 65, 37, 29, 65, 34, 29, 17, 37; tilt 4.40, 4.49, 3.97, 3.97, 4.51, 4.49, 3.97, 4.43, 3.97, 3.97, 4.43, 4.42, 3.97, 4.35, 4.42, 4.49, 4.43 deg
+- without it: d̄ -0.8260978846070268, s_d 0.11144684706602827, interval [-0.9192688248326755, -0.7329269443813782], 8 of 8 of the predicted sign, 0 of the opposite
+- each arm's spread over the runs, s [95% interval]: X 0.1141792644708244 [0.07547249381521492, 0.23235480319812765]; Y 0.04730304309892223 [0.03126731148838759, 0.09626169270630675]
+- run 1, frames per window: 1:2 5, 1:3 19, 1:4 14, 1:5 18, 1:6 19, 1:7 19, 1:8 17, 2:2 5, 2:3 17, 2:4 13, 2:5 16, 2:6 16, 2:7 19, 2:8 18, 3:2 5, 3:3 19, 3:4 11, 3:5 18, 3:6 18, 3:7 19, 3:8 18, 4:2 5, 4:3 17, 4:4 14, 4:5 18, 4:6 18, 4:7 18, 4:8 18
+- run 2, frames per window: 1:3 12, 1:4 12, 1:5 18, 1:6 17, 1:7 19, 1:8 17, 2:2 6, 2:3 18, 2:4 13, 2:5 18, 2:6 19, 2:7 17, 2:8 17, 3:2 4, 3:3 17, 3:4 12, 3:5 19, 3:6 17, 3:7 11, 3:8 18, 4:2 6, 4:3 18, 4:4 14, 4:5 18, 4:6 18, 4:7 9, 4:8 16
+- run 3, frames per window: 1:3 9, 1:4 10, 1:5 10, 1:6 15, 1:7 7, 1:8 14, 2:2 4, 2:3 14, 2:4 10, 2:5 15, 2:6 14, 2:7 15, 2:8 13, 3:2 12, 3:3 15, 3:4 15, 3:5 15, 3:6 19, 3:7 9, 3:8 17, 4:2 4, 4:3 19, 4:4 14, 4:5 18, 4:6 18, 4:7 19, 4:8 17
+- run 4, frames per window: 1:3 18, 1:4 12, 1:5 18, 1:6 16, 1:7 20, 1:8 18, 2:2 5, 2:3 17, 2:4 8, 2:5 18, 2:6 19, 2:7 12, 2:8 18, 3:2 4, 3:3 17, 3:4 13, 3:5 18, 3:6 19, 3:7 14, 3:8 16, 4:2 2, 4:3 12, 4:4 13, 4:5 19, 4:6 18, 4:7 18, 4:8 17
+- run 5, frames per window: 1:2 5, 1:3 17, 1:4 13, 1:5 19, 1:6 19, 1:7 19, 1:8 18, 2:2 5, 2:3 17, 2:4 16, 2:5 19, 2:6 18, 2:7 13, 2:8 18, 3:2 11, 3:3 19, 3:4 13, 3:5 19, 3:6 18, 3:7 8, 3:8 17, 4:2 6, 4:3 16, 4:4 13, 4:5 18, 4:6 18, 4:7 18, 4:8 17
+- run 6, frames per window: 1:2 5, 1:3 18, 1:4 13, 1:5 16, 1:6 17, 1:7 20, 1:8 17, 2:2 5, 2:3 19, 2:4 13, 2:5 18, 2:6 19, 2:7 13, 2:8 16, 3:2 5, 3:3 19, 3:4 12, 3:5 19, 3:6 19, 3:7 18, 3:8 18, 4:2 5, 4:3 17, 4:4 13, 4:5 16, 4:6 17, 4:7 18, 4:8 17
+- run 7, frames per window: 1:2 5, 1:3 18, 1:4 16, 1:5 19, 1:6 17, 1:7 19, 1:8 19, 2:2 12, 2:3 18, 2:4 15, 2:5 16, 2:6 16, 2:7 19, 2:8 18, 3:2 4, 3:3 16, 3:4 15, 3:5 18, 3:6 19, 3:7 18, 3:8 17, 4:2 11, 4:3 16, 4:4 15, 4:5 18, 4:6 18, 4:7 14, 4:8 17
+- run 8, frames per window: 1:2 5, 1:3 19, 1:4 15, 1:5 18, 1:6 19, 1:7 19, 1:8 17, 2:2 5, 2:3 16, 2:4 14, 2:5 18, 2:6 19, 2:7 18, 2:8 18, 3:2 4, 3:3 18, 3:4 14, 3:5 17, 3:6 18, 3:7 18, 3:8 18, 4:2 14, 4:3 18, 4:4 17, 4:5 15, 4:6 18, 4:7 19, 4:8 16
+
+#### P2, the selection's TRACK frames
+
+predicted: negative; outcome: **held**
+
+| run | X | Y | d = Y − X | frames | windows | windows emptied | d without the media time |
+|---|---|---|---|---|---|---|---|
+| 1 | 3.4640915624071815 | 2.6641525854104966 | -0.7999389769966849 | 425 | 28 | 1:1 2:1 3:1 | -0.7479140071639758 |
+| 2 | 3.34095847138709 | 2.506313468978601 | -0.834645002408489 | 387 | 27 | 1:2 3:1 4:1 | -0.807110016732671 |
+| 3 | 3.2984329250208066 | 2.4828256962541313 | -0.8156072287666754 | 347 | 25 | 1:2 2:1 3:1 | -0.7222362409701972 |
+| 4 | 3.2489541619517928 | 2.4974909323608285 | -0.7514632295909642 | 387 | 25 | 1:2 | -0.7514632295909642 |
+| 5 | 3.2137232631883035 | 2.431483040894557 | -0.7822402222937463 | 418 | 28 | 1:1 3:1 4:1 | -0.7349752052624563 |
+| 6 | 3.469804210392672 | 2.5188109244261323 | -0.9509932859665398 | 417 | 28 | 3:1 | -0.9244607984941773 |
+| 7 | 3.209397692380983 | 2.4954243915919947 | -0.7139733007889881 | 440 | 27 | 1:1 | -0.6818579175734079 |
+| 8 | 3.5882160431840555 | 2.547629474396686 | -1.0405865687873694 | 441 | 28 | 4:1 | -1.002631584699761 |
+
+- with every media time: d̄ -0.8361809769499321, s_d 0.10805028658120527, interval [-0.9265123506715884, -0.7458496032282758], 8 of 8 of the predicted sign, 0 of the opposite
+- the most influential media time: 7.133333 s, 12 occurrences; state TRACK; inliers 37, 29, 29, 29, 37, 37, 35, 20, 29, 20, 29, 37; tilt 4.44, 4.40, 4.40, 4.40, 4.43, 4.43, 4.49, 4.49, 4.40, 4.48, 4.40, 4.43 deg
+- without it: d̄ -0.7965811250609514, s_d 0.11071768389631036, interval [-0.8891424758734487, -0.704019774248454], 8 of 8 of the predicted sign, 0 of the opposite
+- each arm's spread over the runs, s [95% interval]: X 0.139010487987106 [0.09188593255947707, 0.2828863430537607]; Y 0.06764234753357054 [0.04471159171969013, 0.13765217723081605]
+- run 1, frames per window: 1:2 4, 1:3 19, 1:4 13, 1:5 18, 1:6 19, 1:7 19, 1:8 17, 2:2 4, 2:3 17, 2:4 12, 2:5 16, 2:6 16, 2:7 19, 2:8 18, 3:2 4, 3:3 19, 3:4 10, 3:5 18, 3:6 18, 3:7 19, 3:8 18, 4:2 5, 4:3 17, 4:4 14, 4:5 18, 4:6 18, 4:7 18, 4:8 18
+- run 2, frames per window: 1:3 12, 1:4 11, 1:5 18, 1:6 16, 1:7 19, 1:8 17, 2:2 6, 2:3 18, 2:4 13, 2:5 18, 2:6 19, 2:7 17, 2:8 17, 3:2 4, 3:3 17, 3:4 11, 3:5 19, 3:6 17, 3:7 7, 3:8 18, 4:2 5, 4:3 18, 4:4 14, 4:5 18, 4:6 17, 4:7 5, 4:8 16
+- run 3, frames per window: 1:3 8, 1:4 9, 1:5 9, 1:6 14, 1:7 3, 1:8 14, 2:2 4, 2:3 14, 2:4 10, 2:5 15, 2:6 14, 2:7 15, 2:8 13, 3:2 12, 3:3 15, 3:4 15, 3:5 15, 3:6 18, 3:7 5, 3:8 17, 4:2 3, 4:3 19, 4:4 14, 4:5 18, 4:6 18, 4:7 19, 4:8 17
+- run 4, frames per window: 1:3 18, 1:4 12, 1:5 18, 1:6 15, 1:7 20, 1:8 18, 2:2 4, 2:3 17, 2:4 7, 2:5 18, 2:6 18, 2:7 10, 2:8 18, 3:2 3, 3:3 17, 3:4 12, 3:5 18, 3:6 18, 3:7 12, 3:8 16, 4:2 2, 4:3 12, 4:4 12, 4:5 19, 4:6 18, 4:7 18, 4:8 17
+- run 5, frames per window: 1:2 5, 1:3 17, 1:4 13, 1:5 19, 1:6 19, 1:7 19, 1:8 18, 2:2 4, 2:3 17, 2:4 16, 2:5 19, 2:6 17, 2:7 11, 2:8 18, 3:2 11, 3:3 19, 3:4 13, 3:5 19, 3:6 17, 3:7 5, 3:8 17, 4:2 6, 4:3 16, 4:4 12, 4:5 18, 4:6 18, 4:7 18, 4:8 17
+- run 6, frames per window: 1:2 5, 1:3 18, 1:4 13, 1:5 16, 1:6 17, 1:7 20, 1:8 17, 2:2 5, 2:3 19, 2:4 13, 2:5 18, 2:6 18, 2:7 11, 2:8 16, 3:2 4, 3:3 19, 3:4 12, 3:5 19, 3:6 19, 3:7 18, 3:8 18, 4:2 5, 4:3 17, 4:4 13, 4:5 15, 4:6 17, 4:7 18, 4:8 17
+- run 7, frames per window: 1:2 5, 1:3 18, 1:4 16, 1:5 19, 1:6 17, 1:7 19, 1:8 19, 2:2 12, 2:3 18, 2:4 15, 2:5 16, 2:6 16, 2:7 19, 2:8 18, 3:2 3, 3:3 16, 3:4 15, 3:5 18, 3:6 19, 3:7 18, 3:8 17, 4:2 11, 4:3 16, 4:4 15, 4:5 18, 4:6 18, 4:7 12, 4:8 17
+- run 8, frames per window: 1:2 5, 1:3 19, 1:4 15, 1:5 18, 1:6 19, 1:7 19, 1:8 17, 2:2 4, 2:3 16, 2:4 14, 2:5 18, 2:6 19, 2:7 18, 2:8 18, 3:2 4, 3:3 18, 3:4 13, 3:5 17, 3:6 18, 3:7 18, 3:8 18, 4:2 14, 4:3 18, 4:4 17, 4:5 14, 4:6 18, 4:7 19, 4:8 16
+
+**P2: held** (held only if held on both, refuted only if refuted on both)
+
+## Descriptive readings, never criteria
+
+| run | arm | poseSpreadPx over the counted loops |
+|---|---|---|
+| 2026-11-12-tab9-m9-table-17.json | IPPE | 27.02840720804943 |
+| 2026-11-12-tab9-m9-table-17.json | CF | 27.021422053023546 |
+| 2026-11-12-tab9-m9-table-17.json | GUARD | 26.719007739291715 |
+| 2026-11-12-tab9-m9-table-18.json | IPPE | 26.547206352088818 |
+| 2026-11-12-tab9-m9-table-18.json | CF | 26.345722981293616 |
+| 2026-11-12-tab9-m9-table-18.json | GUARD | 26.244728780875835 |
+| 2026-11-12-tab9-m9-table-19.json | IPPE | 26.398425413238456 |
+| 2026-11-12-tab9-m9-table-19.json | CF | 26.49172439874363 |
+| 2026-11-12-tab9-m9-table-19.json | GUARD | 26.087754095960946 |
+| 2026-11-12-tab9-m9-table-20.json | IPPE | 26.344711541488554 |
+| 2026-11-12-tab9-m9-table-20.json | CF | 26.062249991849 |
+| 2026-11-12-tab9-m9-table-20.json | GUARD | 26.070694212109807 |
+| 2026-11-12-tab9-m9-table-21.json | IPPE | 26.721989877645925 |
+| 2026-11-12-tab9-m9-table-21.json | CF | 27.01854827655858 |
+| 2026-11-12-tab9-m9-table-21.json | GUARD | 26.420248529239938 |
+| 2026-11-12-tab9-m9-table-22.json | IPPE | 26.59510037547313 |
+| 2026-11-12-tab9-m9-table-22.json | CF | 26.257616900791106 |
+| 2026-11-12-tab9-m9-table-22.json | GUARD | 26.264162710019626 |
+| 2026-11-12-tab9-m9-table-23.json | IPPE | 26.677097675627916 |
+| 2026-11-12-tab9-m9-table-23.json | CF | 26.62256604219845 |
+| 2026-11-12-tab9-m9-table-23.json | GUARD | 26.34638635200235 |
+| 2026-11-12-tab9-m9-table-24.json | IPPE | 26.614292043180434 |
+| 2026-11-12-tab9-m9-table-24.json | CF | 26.242725311194206 |
+| 2026-11-12-tab9-m9-table-24.json | GUARD | 26.2488460127312 |
+
+## V9, the thermal reading, and V10, visibility (readings, not gates)
+
+| run | acquire p50, ms | trackStepMs p50, ms | lostVisibility |
+|---|---|---|---|
+| 2026-11-12-tab9-m9-table-17.json | 31.7000 | 12.5000 | false |
+| 2026-11-12-tab9-m9-table-18.json | 32.7000 | 12.7000 | false |
+| 2026-11-12-tab9-m9-table-19.json | 32.8000 | 12.8000 | false |
+| 2026-11-12-tab9-m9-table-20.json | 31.5000 | 12.5000 | false |
+| 2026-11-12-tab9-m9-table-21.json | 31.5000 | 12.7000 | false |
+| 2026-11-12-tab9-m9-table-22.json | 31.9000 | 12.6000 | false |
+| 2026-11-12-tab9-m9-table-23.json | 31.4000 | 12.6000 | false |
+| 2026-11-12-tab9-m9-table-24.json | 31.7000 | 12.6000 | false |
+
+- the last run against the first: acquire p50 -0.0000 ms, trackStepMs p50 0.1000 ms (0.8%). M3's bounds, quoted as M3's: 1.9 ms and 6.6%. Flagged: no
+
