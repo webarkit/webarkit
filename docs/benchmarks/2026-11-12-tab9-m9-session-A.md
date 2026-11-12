@@ -310,11 +310,21 @@ second addendum admits; that is not counted as a difference.
 
 Plain JSON, by the maintainer's ruling of 2026-11-10. The sixteen exports are 45,666,929 bytes on
 disk, their 48 `.txt` files the rest of the 64. **Stored, by the README's command,** in a throwaway
-bare clone repacked at git's default compression
-(`git -c core.compression=-1 -c pack.compression=-1 repack -a -d -F`), since the machine's global
-`core.compression` is 0: **15.05 MB** (15,053,628 bytes) at the exports' commit `03ac3dc`, against
-8.41 MB (8,413,885 bytes) at `351bdca`, so the exports add **6.64 MB** (6,639,743 bytes), 0.39 to
-0.44 MB an export. The pull request reports the figure at its own head.
+bare clone repacked at git's default compression, since the machine's global `core.compression` is 0
+(in the committing worktree itself the command reads 64.9 MB at the census commit). The repack ran
+on one thread,
+`git -c core.compression=-1 -c pack.compression=-1 -c pack.threads=1 repack -a -d -F`, because the
+pre-flight's multi-threaded form chooses its deltas differently from one run to the next: two such
+repacks here gave 8.41 and 8.35 MB at `351bdca`. On one thread, two clones repacked apart gave the
+same bytes:
+
+- **8.26 MB** (8,264,199 bytes) at `351bdca`, the branch's base;
+- **14.88 MB** (14,883,014 bytes) at the exports' commit `03ac3dc`, so the sixteen exports and their
+  `.txt` files add **6.62 MB** (6,618,815 bytes);
+- **14.91 MB** (14,912,074 bytes) at `4e98801`, the census commit, with this record and the
+  analysis's two stdouts.
+
+The pull request reports the figure at its own head.
 
 ## The stall census
 
