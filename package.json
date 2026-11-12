@@ -12,6 +12,7 @@
     "prepare": "npm run build",
     "test": "npm run test --workspaces --if-present && npm run test:examples",
     "test:examples": "vitest run --root examples --testTimeout=15000",
+    "test:benchmarks": "node --test \"docs/benchmarks/*.test.mjs\"",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "check:contract": "node scripts/check-contract-sync.mjs",
     "check:page": "node scripts/page-check.mjs",

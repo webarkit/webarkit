@@ -378,7 +378,7 @@ describe("stallCheck over the committed exports", () => {
         expect(failing[0].r.maxGap.toFixed(1)).toBe("866.7");
     });
 
-    it("passes every arm on the other 86", () => {
+    it("passes every arm on every other export", () => {
         expect(read.filter(({ r }) => !r.fails.length)).toHaveLength(91);
     });
 

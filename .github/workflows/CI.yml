@@ -72,6 +72,13 @@ jobs:
             - name: Test
               run: npm run test
 
+            # The measurement campaigns' own scripts, docs/benchmarks/*.test.mjs
+            # under node --test (#252): the link monitor, the session table and
+            # driver, the fidelity script. After the build, which the run check
+            # they import needs (it reads the packages' dist/).
+            - name: Benchmark scripts' tests
+              run: npm run test:benchmarks
+
     contract-sync:
         runs-on: ubuntu-24.04
 
