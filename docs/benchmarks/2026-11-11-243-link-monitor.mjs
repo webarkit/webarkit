@@ -74,6 +74,12 @@
  * Exercised both ways in docs/benchmarks/2026-11-11-243-link-monitor.test.mjs (`node --test`),
  * which also reproduces one of M4's committed logs byte for byte and reads the output with the run
  * check's V7.
+ *
+ * Changed once since the pre-flight, by docs/benchmarks/2026-11-12-243-registration-addendum-2.md
+ * (#252, from Qodo's review of #253): `begin` reads the adb.log's length before the UTC time and
+ * the adb readings, not after them, so that a termination written while they are taken falls
+ * after the baseline. The log's format is unchanged, and so is every verdict on the pre-flight's
+ * five committed logs, each of whose adb.log gained 0 bytes between begin and end.
  */
 
 import { spawnSync } from "node:child_process";
@@ -191,11 +197,13 @@ const defaultLog = () => join(process.env.TEMP ?? process.env.TMP ?? ".", "adb.l
 export function monitorBegin(path, { adb = runAdb, adbLog = defaultLog(), now = () => new Date().toISOString() } = {}) {
     if (existsSync(path)) throw new Error(`${path} exists: a run's link log is begun once`);
     if (!existsSync(adbLog)) throw new Error(`the adb server's log ${adbLog} does not exist`);
+    // The log's length first, then the time and the readings (#252): a termination written while
+    // they are taken then falls after the baseline, and `end` copies it.
+    const logLength = statSync(adbLog).size;
     const t = now();
     const version = adb(["--version"]);
     const devices = adb(["-s", DEVICE, "devices", "-l"]);
     const reverse = adb(["-s", DEVICE, "reverse", "--list"]);
-    const logLength = statSync(adbLog).size;
     writeFileSync(path, beginText({ now: t, adbLog, version, devices, reverse, logLength }), { flag: "wx" });
 }
 
