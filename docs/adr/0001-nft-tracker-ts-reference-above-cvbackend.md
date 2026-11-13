@@ -171,6 +171,53 @@ The expected cost of Option A on a WASM backend is small but unmeasured: trackin
   patch alignment ([#84](https://github.com/webarkit/webarkit/issues/84)),
   whose own p95, read from the exports the same way, was 13.2–18.4 ms of
   those.
+- What M9 — the pose campaign on the device — measured, recorded on
+  2026-11-13 from **the reference device**, `Tab_9_WiFi`
+  ([the closing addendum](../benchmarks/2026-11-12-243-closing.md),
+  [#243](https://github.com/webarkit/webarkit/issues/243)). Action item 7's
+  "measured against the previous one on the same recorded sequences" is met
+  for the ADR's "M3", IPPE and the One Euro filter, **for stability only**:
+  32 counted runs at `?seed=1`, 8 per clip, each comparison on the same
+  frames of the same run, read as d = J(Y) − J(X) in `poseJitterPx` per run.
+  All seven registered criteria were held by the registered rules (d̄
+  [interval], count of the predicted sign, then the same without the most
+  influential media time; P2 and P3 also on their TRACK frames):
+  - **P1**, static, CF − IPPE below 10°: −0.1791 [−0.1830, −0.1752], 8 of 8;
+    −0.1735 [−0.1768, −0.1701], 8 of 8.
+  - **P2**, table, CF − IPPE below 10°: −0.8749 [−0.9641, −0.7857], 8 of 8;
+    −0.8261 [−0.9193, −0.7329], 8 of 8. Its TRACK frames: −0.8362
+    [−0.9265, −0.7458], 8 of 8; −0.7966 [−0.8891, −0.7040], 8 of 8.
+  - **P3**, cross, CF − IPPE below 10°: −0.1232 [−0.1254, −0.1210], 8 of 8;
+    −0.1099 [−0.1123, −0.1075], 8 of 8. Its TRACK frames: −0.1105
+    [−0.1131, −0.1079], 8 of 8; −0.1144 [−0.1172, −0.1117], 8 of 8.
+  - **P4**, cross, GUARD − IPPE, the whole clip: +0.0923 [+0.0885, +0.0961],
+    8 of 8; +0.0688 [+0.0623, +0.0754], 8 of 8.
+  - **P5**, cross, GUARD − CF, the whole clip: +0.1793 [+0.1750, +0.1835],
+    8 of 8; +0.1559 [+0.1483, +0.1635], 8 of 8.
+  - **P6**, cross: exactly one switch of the guard in each of the 32 counted
+    loops, inside [7.797, 8.831] s; no loop with three or more.
+  - **P7**, static, FILTER − IPPE, the whole clip: −0.0683 [−0.0700,
+    −0.0665], 8 of 8; −0.0857 [−0.0871, −0.0843], 8 of 8. Without the first
+    second after each wrap: −0.0943 [−0.0955, −0.0931], 8 of 8; −0.0987
+    [−0.1002, −0.0972], 8 of 8.
+
+  The wall clip carries no criterion; its CF − IPPE below 10° is
+  descriptive, +0.0128 [−0.0700, +0.0956], 3 below 0 and 5 above, and no
+  outcome is read from it. What a held criterion says, in the registration's
+  words: "A held P1 says IPPE's pose moves more about its own line below 10°
+  on this device, with this `K`. It does not say IPPE's pose is further from
+  the truth."; of P4 and P5, "They do not claim that the guard is less
+  stable at rest."; "A held P7 says the filtered pose moves less. It says
+  nothing of the delay the filter adds." Its limits, as the closing addendum
+  states them: stability only, with no accuracy and no lag; an assumed `K`,
+  `intrinsics(w, h)`; one seed, `?seed=1`; and one block per clip, in one
+  session: "a held result covers one block in one session. It cannot say
+  whether the direction holds in another state of the device". v0.9.0 changes
+  no default: the closed form, the guard (`poseGuard`) and the filter
+  (`poseFilter`) are not adopted, by the maintainer's ruling of 2026-11-13.
+  Their adoption is decided with
+  [#109](https://github.com/webarkit/webarkit/issues/109), in a later ADR.
+  This entry changes no decision of this ADR.
 
 ## Action items
 
