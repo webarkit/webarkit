@@ -12,7 +12,7 @@ jsfeatNext's implementation of the `CvBackend` contract, and the org's
 one is the reference until proven otherwise (ADR-0001, context).
 
 It depends on **both** `@webarkit/cv-backend-spec` (pinned exactly, `0.7.0`)
-and `@webarkit/jsfeat-next` (`^1.1.0`). Neither depends on it — keep that
+and `@webarkit/jsfeat-next` (`^1.2.0`). Neither depends on it — keep that
 arrow one-directional.
 
 It builds **second**, after the spec. Its `typecheck` resolves against the

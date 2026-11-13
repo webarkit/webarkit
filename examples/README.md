@@ -225,7 +225,7 @@ page exports nothing.
 ## `bench-nft.html`
 
 Measures the pipeline frame-by-frame on whatever device opens it, against a
-live webcam, a user-chosen video file, or one of three bundled reference clips
+live webcam, a user-chosen video file, or one of six bundled reference clips
 (`videos/pinball-*.mp4`) — the two video sources loop, so a short clip
 still fills the measurement window and a run can be repeated; a webcam is
 already live and has no clip to loop. It changes nothing
@@ -425,8 +425,14 @@ processing size: assumed, and no calibration. The summary gains `posePosedFrames
 cannot see a constant offset between two arms, so a lower figure is not a nearer pose.
 `compareExports` reads versions 1 and 2. On two version 2 exports it adds a pose part
 beside the comparison under `H`, with `poseCornerDistancePx`, a descriptive reading;
-on a pair with a version 1 export that part is `null`. `compare-bench.mjs` does not
-print it yet. The definitions are in `DEFINITIONS`, and the record is
+on a pair with a version 1 export that part is `null`. `compare-bench.mjs` prints it
+in the same table, below the corners' rows: each run's whole-window `posePosedFrames`,
+`poseJitterPx` and `poseSpreadPx` (`—` for a version 1 export), then the pose part's
+`poseJitterWindows`, `poseJitterPx` and `poseSpreadPx` of each run on the media times both
+have `poseCorners`, and the pair's `poseCornerDistancePx`, its row labelled descriptive,
+never a criterion. Where the part is `null` it prints one row saying why: a version 1
+export, or no media time with `poseCorners` in both. Each pose figure's definition is
+printed after the table, as `jitterPx`'s and `spreadPx`'s are. The definitions are in `DEFINITIONS`, and the record is
 [#228's registration](../docs/benchmarks/2026-11-06-228-133-stage3-registration.md).
 
 **Checking an export for a stalled clip: `scripts/stall-check.mjs`.**
@@ -459,8 +465,8 @@ and `?camera=`: `?mode=`, `?target=`, `?window=` (10–2000 frames) and
 `?clip=` (a bundled clip's file name, which also selects that source) — e.g.
 `bench-nft.html?mode=tracking&window=300&clip=pinball-static.mp4`
 (tracking defaults to `target=wnft`); and `?detection=`, `?loops=`,
-`?run=` and `?seed=`, below. A value of one of those four that cannot be
-read refuses Start rather than fall back to a default.
+`?run=`, `?seed=` and `?poseFilter=`, below. A value of one of those five that
+cannot be read refuses Start rather than fall back to a default.
 
 **Seeded RANSAC: `?seed=`.** An integer in [-4294967295, 4294967295] seeds
 every detection's RANSAC from the seed and the media time of the frame it
@@ -475,6 +481,31 @@ time does not fix a frame's pixels: under load the page's grab can return
 another frame's for the same `mediaTime`, and a seed cannot make different
 pixels detect alike (`check:page`'s seeded check compares only frames whose
 grabbed pixels are identical).
+
+**The pose filter: `?poseFilter=`.** `one-euro` runs `NftTracker` with its
+`poseFilter` option on, at the package's defaults (`DEFAULT_POSE_FILTER_*` in
+`packages/nft-tracker/src/tracker.ts`), in the tracking and the
+detection-only modes (#243); `off`, or no `?poseFilter=`, runs it off, as the
+page always has. The filter's parameters are not read from the URL: a
+campaign measures the shipped defaults. Anything else, a parameter included,
+refuses Start, and so does `one-euro` in the stateless mode, which has no
+tracker. The page builds the option with every parameter written out from the
+bundle's defaults, `{ mode: "one-euro", rotation: { minCutOff, beta },
+translation: { minCutOff, beta }, dCutOff }`, or `{ mode: "off" }`
+(`poseFilterOption` in [`js/bench-params.mjs`](./js/bench-params.mjs)), and
+the export records that same object in `tracker.options.poseFilter`, so a
+filtered export stays readable after a default changes. An export older than
+the option has none there, and ran off. A stateless export has no `tracker`,
+so it records no filter, `off` included. `poseCorners` read the result's
+pose, which is the filtered one with the option on. The filter reads
+`process`'s `timestampMs` as milliseconds, and the page passes
+`performance.now()` taken at the start of each frame's callback: wall time,
+not the clip's media time, on both detection paths.
+`replay-clips.mjs --sequence` replays an export with the options it recorded,
+so a filtered export replays filtered, with the parameters it recorded, but
+on the clip's media time in milliseconds, not the device's wall time.
+`replay-clips.mjs --transfer`, which replays with its own options, refuses an
+export recorded with the filter on rather than replay it unfiltered.
 
 ### Detection off the frame loop: `?detection=worker`
 
@@ -695,10 +726,13 @@ minimizing size a second time; revisit if its ~2.3 MB becomes a real problem.
 
 The three `pinball-tilt-*` clips were recorded on 2026-11-05 on the Tab_9_WiFi
 for [#228](https://github.com/webarkit/webarkit/issues/228)'s repeated Stage 1.
-The page's dropdown does not offer them yet. `scripts/replay-clips.mjs` reads
-them only through `--clips tilt`, a form of its own, whose device schedules
-carry an acquisition borrowed from the static clip, not measured, and say so in
-each export's `schedule`. `ambiguous-rate.mjs` and `jitter-dry-run.mjs`, in
+The page's dropdown offers them, after the other three, for M9's campaign
+([#243](https://github.com/webarkit/webarkit/issues/243)); `?clip=` takes them
+too. `scripts/replay-clips.mjs` reads them only through `--clips tilt`, a form of
+its own, whose device schedules still carry an acquisition borrowed from the
+static clip (`TILT_BORROWED_ACQUIRE_MS`), not measured, and say so in each
+export's `schedule`. The device's own acquisition on them is measured in M9's
+pre-flight (milestone 11, item 5), and the script's constants change only then. `ambiguous-rate.mjs` and `jitter-dry-run.mjs`, in
 `packages/nft-tracker/scripts/`, sweep this directory when given no clip, so they
 do include them. The authority for adding them is item 2 of the
 [maintainer's rulings on #228](https://github.com/webarkit/webarkit/issues/228#issuecomment-6671748262),

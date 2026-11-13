@@ -14,6 +14,126 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-13
+
+The "M9 — the pose campaign on the device" milestone
+([milestone 11](https://github.com/webarkit/webarkit/milestone/11)), which ran the first device
+campaign on the pose metric, `METRICS_VERSION` 2's `poseJitterPx`, on the Tab_9_WiFi: IPPE against
+the closed form and the guard, below 10° and across the cross clip's crossing, and the One Euro
+filter on against off, at rest, on the static clip. It was registered through
+[`docs/benchmarks/step-protocol.md`](docs/benchmarks/step-protocol.md), and it ran a desktop Stage
+1, a registration and two addenda, a pre-flight with a freeze, a committed session driver and 32
+counted runs. It closes on [#243](https://github.com/webarkit/webarkit/issues/243), by its
+registered plan run to its closing criterion: P1 to P7 were all held by the registered rules, and
+the wall clip's reading is descriptive only
+([the closing addendum](docs/benchmarks/2026-11-12-243-closing.md)). **No default changed:** the
+closed form, the guard (`poseGuard`) and the filter (`poseFilter`) are not adopted, and
+`poseGuard` and `poseFilter` stay off. M9's outcomes are recorded as measurements, here and under
+"To revisit" in [ADR-0001](docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md). Its steps
+are jsfeatNext 1.2.0 ([#245](https://github.com/webarkit/webarkit/pull/245)), #239's probe
+([#246](https://github.com/webarkit/webarkit/pull/246)), the campaign's instrument
+([#247](https://github.com/webarkit/webarkit/pull/247)), the bench page's pose filter
+([#248](https://github.com/webarkit/webarkit/pull/248)), the desktop Stage 1
+([#249](https://github.com/webarkit/webarkit/pull/249)), the registration
+([#250](https://github.com/webarkit/webarkit/pull/250)), the analysis script and the run check,
+with the first registration addendum ([#251](https://github.com/webarkit/webarkit/pull/251)), the
+pre-flight and the freeze ([#253](https://github.com/webarkit/webarkit/pull/253)), the session
+driver, with the second registration addendum
+([#254](https://github.com/webarkit/webarkit/pull/254)), session A
+([#255](https://github.com/webarkit/webarkit/pull/255)), session B
+([#256](https://github.com/webarkit/webarkit/pull/256)) and the closing addendum
+([#257](https://github.com/webarkit/webarkit/pull/257)). A package changes, so the version is a
+minor: `@webarkit/cv-backend-jsfeatnext`'s manifest raises its dependency floor to
+`@webarkit/jsfeat-next` `^1.2.0`, which changes what the package installs, as 0.8.0's entry counted
+its own jsfeat-next raise among the package changes; 0.6.1, in which no package changed, was a
+patch. Every other package and crate moves to 0.9.0 by
+[ADR-0002](docs/adr/0002-lockstep-versioning.md)'s lockstep. `.wnft` format: still **0.3**, in
+both codecs, so this tag freezes no new corpus.
+
+### Added
+
+- The bench page offers the three tilt clips, `pinball-tilt-cross.mp4`, `pinball-tilt-mid.mp4`
+  and `pinball-tilt-sweep.mp4`, after the other three in its clip dropdown, and `?clip=` takes
+  them; the default stays `pinball-bench.mp4`. `check:page` runs one of them through `?clip=` to
+  an export ([#243](https://github.com/webarkit/webarkit/issues/243)).
+- The bench page takes `?poseFilter=one-euro`, which runs `NftTracker` with its pose filter on
+  at the package's defaults in the tracking and detection-only modes, and records the option
+  it built the tracker with in the export's `tracker.options.poseFilter`: the filter with every
+  parameter written out from the bundle's `DEFAULT_POSE_FILTER_*`, or `{ mode: "off" }`. Start
+  refuses any other value, and the filter in the stateless mode; `replay-clips.mjs --transfer`
+  refuses an export recorded with the filter on, which it would replay unfiltered
+  ([#243](https://github.com/webarkit/webarkit/issues/243)).
+- `scripts/compare-bench.mjs` prints the pose part beside the corners' rows: each run's
+  whole-window `posePosedFrames`, `poseJitterPx` and `poseSpreadPx`, then `compareExports`' pose
+  part on the common media times, with `poseCornerDistancePx` labelled descriptive, or one row
+  saying why there is none (a version 1 export, or no common posed media time). Nothing it prints
+  is computed anew: no definition changes, and `METRICS_VERSION` stays 2
+  ([#243](https://github.com/webarkit/webarkit/issues/243)).
+- `npm run build` warns on stderr, before it builds or writes anything, when the existing
+  `examples/dist/provenance.json` is clean at a commit other than the one being built: an attested
+  build is being replaced. The warning names the old commit and the one being built (unknown where
+  git is not usable) and whether the tree being built is dirty, and points to
+  `npm run check:provenance`. It is a warning, not a refusal: the exit code
+  and the files written do not change, and every other case stays silent
+  ([#135](https://github.com/webarkit/webarkit/issues/135)).
+
+### Changed
+
+- `@webarkit/cv-backend-jsfeatnext` requires `@webarkit/jsfeat-next` `^1.2.0` (was `^1.1.0`),
+  so the bench page's bundle carries 1.2.0. The backend's per-frame output is unchanged on the
+  seeded replays, the tilt clips and the ground truth's sequences. It stays ORB-only: 1.2.0's
+  TEBLID and FREAK descriptors are not exposed, and `capabilities` is unchanged. The bundle grows
+  by about 56 kB (294,648 to 350,665 bytes in the build compared), since the backend imports
+  jsfeatNext's namespace, which holds every module
+  ([#244](https://github.com/webarkit/webarkit/issues/244)).
+
+### What M9 did not deliver
+
+- **Not measured, by the registration and
+  [the closing addendum](docs/benchmarks/2026-11-12-243-closing.md):**
+    - Accuracy, at any tilt, for any arm. Every criterion is in jitter, and `poseJitterPx` reads
+      jitter, not accuracy, and cannot see a constant offset. Which pose is nearer the truth, at
+      any tilt, needs [#92](https://github.com/webarkit/webarkit/issues/92) or
+      [#109](https://github.com/webarkit/webarkit/issues/109).
+    - The filter's lag. A held P7 says the filtered pose moves less, and nothing of the delay the
+      filter adds.
+    - A calibrated `K`. Every figure uses an assumed `K`, `intrinsics(w, h)`, so the selection
+      below 10° and the guard's switch on the cross clip hold for that `K` only, and no result says
+      where IPPE or the closed form is better for a real camera.
+    - Generality over seeds on the device: every counted run is `?seed=1`. Generality over seeds
+      rests on the desktop Stage 1's replays, seeds 1 to 8.
+    - More than one block per clip, in one session: "a held result covers one block in one session.
+      It cannot say whether the direction holds in another state of the device".
+    - The mid and sweep tilt clips: optional and descriptive only by D4 in
+      [the maintainer's comment of 2026-11-10 on #243](https://github.com/webarkit/webarkit/issues/243#issuecomment-6769206883),
+      not registered, and not run.
+- **Not adopted, by the maintainer's ruling of 2026-11-13:** the closed form, the guard and the
+  filter. No default changes in this release, and adoption is decided with #109, in a later ADR.
+- **Left outside M9:**
+    - #109, real-footage ground truth and calibration, and #92, the residual limit: by D5 and D7,
+      and the milestone's description, between this milestone and the next.
+    - [#239](https://github.com/webarkit/webarkit/issues/239)'s open half: constructed inputs to
+      `estimateHomography`, and other backends. Its probe
+      ([#246](https://github.com/webarkit/webarkit/pull/246)) found no non-finite or overflowing `H`
+      on the corpus, so M9 added no check, and
+      [#239 stays open outside M9](https://github.com/webarkit/webarkit/issues/239#issuecomment-6727729651).
+      It becomes pressing when a second backend implements `estimateHomography`.
+    - [#116](https://github.com/webarkit/webarkit/issues/116), https for Wi-Fi;
+      [#143](https://github.com/webarkit/webarkit/issues/143), the LOST rename;
+      [#238](https://github.com/webarkit/webarkit/issues/238), the stateless grid per frame, C0's
+      `--only` and no page check of the stateless mode; and
+      [#80](https://github.com/webarkit/webarkit/issues/80), each package's version at runtime and
+      in the bench exports: out of scope by D7.
+- **From the campaign's tooling, in
+  [#258](https://github.com/webarkit/webarkit/issues/258), with no milestone:** the session
+  driver's follow-ups from M9's rounds (`pronto` after a pause, `stato` and `inizia` in a session's
+  own folder, the `node` that runs the at-once checks, and the Tab 9 hard-coded in the link
+  monitor and the run check), and the 20 MB rule in `docs/benchmarks/README.md`, whose premise no
+  longer holds. [#252](https://github.com/webarkit/webarkit/issues/252), the driver, was done by
+  [#254](https://github.com/webarkit/webarkit/pull/254).
+- **Opened during the window and not in it:** #258, above. #238 and #239, opened on 2026-11-07,
+  are above too. No other issue opened after 2026-11-07T00:00Z is without a milestone.
+
 ## [0.8.0] - 2026-11-07
 
 The "M8 — a metric that reads the pose" milestone
@@ -922,7 +1042,8 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 - The original single-page jsartoolkitNFT demo the repository started as. It is kept at the tag
   `archive/original-nft-demo`.
 
-[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.8.0...dev
+[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.9.0...dev
+[0.9.0]: https://github.com/webarkit/webarkit/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/webarkit/webarkit/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/webarkit/webarkit/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/webarkit/webarkit/compare/v0.6.0...v0.6.1

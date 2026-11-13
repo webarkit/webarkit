@@ -378,8 +378,8 @@ describe("stallCheck over the committed exports", () => {
         expect(failing[0].r.maxGap.toFixed(1)).toBe("866.7");
     });
 
-    it("passes every arm on the other 86", () => {
-        expect(read.filter(({ r }) => !r.fails.length)).toHaveLength(86);
+    it("passes every arm on every other export", () => {
+        expect(read.filter(({ r }) => !r.fails.length)).toHaveLength(123);
     });
 
     it("leaves unread only the exports with no clip duration", () => {
@@ -660,7 +660,7 @@ describe("the monotonicity arm against isLoopWrap, with the clip's duration", ()
                 }
             }
         }
-        expect(steps).toBe(257);
+        expect(steps).toBe(442);
         expect(fallback).toBe(127);
         expect(unread).toBe(6);
     });

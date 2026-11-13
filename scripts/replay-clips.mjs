@@ -190,7 +190,11 @@
  * before it. Files are read in name order, since the draws index the
  * samples. The replay's target must be the one the exports name (`target.sha256`):
  * a clip whose exports name another, or that has exports of one path only, is
- * refused (exit 1), before any clip is decoded; so is a worker export whose
+ * refused (exit 1), before any clip is decoded; so is an export that ran the
+ * pose filter: `tracker.options.poseFilter` present with a `mode` other than
+ * `off` (#243). `--transfer` replays with its own options, never an export's
+ * filter, so it would replay that run unfiltered, and say nothing. So is a
+ * worker export whose
  * detection accounting does not hold (`accountingError`, which the page
  * checked before exporting it) or that records none — a session holding an
  * invalid run is an invalid session, not a file to skip — and an export of

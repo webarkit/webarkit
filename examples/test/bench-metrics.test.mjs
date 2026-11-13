@@ -55,6 +55,7 @@ import {
     nextFrameIndex,
     parsePositiveInt,
     parseRunParams,
+    POSE_FILTERS,
     parseTrackerOverrides,
     percentile,
     postToArrivalSamples,
@@ -700,7 +701,8 @@ describe("isLoopWrap: a step back is a wrap only when the clip restarts", () => 
         // Why 10 µs and not 1 µs: media times are rounded to the µs, so on the 30 fps static
         // clip a 15-frame skip across the wrap reads 0.500001 s on 5 of its 15 landings (11.733333
         // to 0.066667 on 12.166667 s). A real restart can produce 0.500001 s; no landing produces
-        // 0.50001 s. Whether "at most" should tolerate that rounding is open, not decided here.
+        // 0.50001 s. Whether "at most" should tolerate that rounding was decided in #196: it does
+        // not, and the test after this one pins the edge.
         expect(isLoopWrap(at(11.9), at(0.5))).toBe(true);
         expect(() => isLoopWrap(at(11.9), at(0.50001))).toThrow(/more than 0\.5 s into the clip/);
         // 11.5 and 12 are exact in binary: the skips are exactly 0.5 s, and 0.5 + 0.00001, which
@@ -712,6 +714,45 @@ describe("isLoopWrap: a step back is a wrap only when the clip restarts", () => 
         // This catches an epsilon of 10 µs or more. It cannot tell 1e-9 from 1e-7: on media times
         // to the µs no input can. bench-stall.test.mjs, "disagree" case (3), already pins it from below,
         // at 5e-10 or more, with inputs finer than the data's.
+    });
+
+    // #196, point 1, decided on 2026-11-08: the rule stays as it is, and its edge is recorded,
+    // beside the comparison in bench-loops.mjs and here. A change to the rule shows up here.
+    it("pins the rounding edge: on the static clip, a 15-frame skip across the wrap is refused on 5 of its 15 landings", () => {
+        // pinball-static.mp4's clipDurationS: 365 frame periods at 30 fps (ffprobe decodes 363
+        // frames), so the grid below runs past the last decoded frame, as #196's example does.
+        const D = 12.166667;
+        const us = (k) => Math.round((k / 30) * 1e6) / 1e6; // grid point k's media time, to the µs
+        const admitted = [];
+        const refused = [];
+        for (let k = 350; k < 365; k++) {
+            const prev = at(us(k));
+            const cur = at(us(k + 15 - 365));
+            let wrap;
+            try {
+                wrap = isLoopWrap(prev, cur, D);
+            } catch (e) {
+                expect(e.message).toMatch(/skips 0\.500001 s across the wrap/);
+                refused.push(`${prev.mediaTimeSeconds} → ${cur.mediaTimeSeconds}`);
+                continue;
+            }
+            expect(wrap).toBe(true);
+            admitted.push(`${prev.mediaTimeSeconds} → ${cur.mediaTimeSeconds}`);
+        }
+        // Exactly 0.5 s of video skipped on all 15, read as 0.500001 s on these 5.
+        expect(refused).toEqual([
+            "11.733333 → 0.066667",
+            "11.833333 → 0.166667",
+            "11.933333 → 0.266667",
+            "12.033333 → 0.366667",
+            "12.133333 → 0.466667",
+        ]);
+        expect(admitted).toHaveLength(10);
+        expect(admitted).toContain("11.666667 → 0");
+        // A 14-frame skip, 0.466667 s, is admitted on every landing.
+        for (let k = 351; k < 365; k++) {
+            expect(isLoopWrap(at(us(k)), at(us(k + 14 - 365)), D), `frame ${k}`).toBe(true);
+        }
     });
 
     it("refuses, given the clip's duration, a restart that skips more than 0.5 s across the wrap", () => {
@@ -1171,6 +1212,65 @@ describe("unwrapMediaTimes, countedLoopFrames and trackTimeShare", () => {
             message = e.message;
         }
         expect(message).not.toMatch(/\n/);
+    });
+});
+
+// #196, point 2: bench-locks.mjs reads TIME_EPS_S twice, both in trackTimeShare: whether the
+// run's first frame is at or before the first counted loop's start (`complete`), and whether a
+// frame is at or before a bin's start. No test reached either (#195). These do, on media times
+// to the µs, as the exports carry them, on the static clip's duration. Each test reaches one use:
+// - the first test, the first use: an epsilon of 1 µs or more there fails it, 1e-3 included;
+// - the second test, the second use: an epsilon above 1 µs there fails it, 1e-3 included (at
+//   exactly 1e-6 the frame's 1 µs past the bin's start still reads past it, by float error);
+// - the third test, the second use: an epsilon of 0 there fails it.
+// An epsilon of 0 at the first use changes nothing on any input at the exports' µs resolution,
+// so no test here can fail on it: the run's first frame is in loop 0, so its unwrapped time is
+// its own media time, clamped to D, and firstLoop · D is exactly 0 or D for the first two loops
+// and well above D after them. That time is past firstLoop · D by a µs at least, or not at all.
+// (A first media time of 5e-10 s, finer than the data, would tell 0 from 1e-9 there.)
+describe("trackTimeShare's epsilon, on media times to the µs (#196)", () => {
+    const D = 12.166667; // pinball-static.mp4's clipDurationS
+    const BINS = 1217; // 10 ms bins to a loop of D: ⌈1216.67⌉
+    const frame = (state, mediaTimeSeconds) => ({ state, mediaTimeSeconds });
+
+    it("reads a first frame 1 µs into loop 0 as after its start, so loop 0 is not complete", () => {
+        const run = (m0) => [frame("TRACK", m0), frame("TRACK", 12.0), frame("TRACK", 0.1)];
+        const options = { clipDurationS: D, firstLoop: 0, loopCount: 1 };
+        expect(trackTimeShare(run(0), options)).toMatchObject({ complete: true, share: 1 });
+        expect(trackTimeShare(run(0.000001), options)).toMatchObject({
+            complete: false,
+            share: null,
+        });
+    });
+
+    it("reads a frame 1 µs after a bin's start as after it, so the bin takes the frame before", () => {
+        // Loop 1 turns TRACK 1 µs after its second bin's start, 10 ms into it.
+        const run = [
+            frame("LOST", 0),
+            frame("LOST", 12.0),
+            frame("TRACK", 0.010001), // loop 1
+            frame("TRACK", 12.0),
+            frame("LOST", 0.1), // loop 2, which closes loop 1
+        ];
+        const options = { clipDurationS: D, loopCount: 1 };
+        // Bins 0 and 1 take the LOST frame before; bins 2 to 1216 are TRACK.
+        expect(trackTimeShare(run, options).perLoop).toEqual([(BINS - 2) / BINS]);
+        // At the bin's start to the µs, the frame is at or before it: one bin more.
+        run[2] = frame("TRACK", 0.01);
+        expect(trackTimeShare(run, options).perLoop).toEqual([(BINS - 1) / BINS]);
+    });
+
+    it("reads a frame standing at the clip's end as at the next loop's start, past it by float error alone", () => {
+        // A frame at D stands at D on the timeline: at the end of loop 5 it is at 5·D + D, which
+        // in doubles is past 6·D, where loop 6's first bin starts, by about 7e-15 s.
+        expect(5 * D + D).toBeGreaterThan(6 * D);
+        const run = [frame("LOST", 0), frame("LOST", 12.0)];
+        for (let k = 1; k <= 5; k++) run.push(frame("LOST", 0.1), frame("LOST", 12.0));
+        run.push(frame("TRACK", 12.166667)); // loop 5's last frame, at D
+        run.push(frame("LOST", 0.1), frame("LOST", 12.0), frame("LOST", 0.1)); // loops 6 and 7
+        const r = trackTimeShare(run, { clipDurationS: D, firstLoop: 6, loopCount: 1 });
+        // Loop 6's bins 0 to 9 take the TRACK frame; bin 10, at 0.1 s, the LOST frame there.
+        expect(r).toMatchObject({ complete: true, perLoop: [10 / BINS] });
     });
 });
 
@@ -2369,6 +2469,7 @@ describe("parsePositiveInt and parseRunParams", () => {
             loops: null,
             run: null,
             seed: null,
+            poseFilter: null,
             paramErrors: [],
         });
     });
@@ -2449,6 +2550,41 @@ describe("parsePositiveInt and parseRunParams", () => {
             ]);
         }
     });
+
+    // #243: ?poseFilter= turns NftTracker's pose filter on at the package's defaults.
+    it("reads ?poseFilter=one-euro and off, and is null when absent or empty", () => {
+        expect(POSE_FILTERS).toEqual(["one-euro", "off"]);
+        for (const [query, value] of [
+            ["", null],
+            ["?poseFilter=", null],
+            ["?poseFilter=one-euro", "one-euro"],
+            ["?poseFilter=off", "off"],
+        ]) {
+            const p = parseRunParams(query, { bundledClips: clips });
+            expect(p.poseFilter, query).toBe(value);
+            expect(p.paramErrors, query).toEqual([]);
+        }
+    });
+
+    it("refuses, rather than drops, a ?poseFilter= it cannot read, parameters included", () => {
+        // "%3A" is a literal ":", "%2C" a literal ",".
+        for (const [query, raw] of [
+            ["bogus", "bogus"],
+            ["One-Euro", "One-Euro"],
+            ["one-euro%2Cbeta%3A1", "one-euro,beta:1"],
+            ["oneEuro", "oneEuro"],
+            ["on", "on"],
+            ["%20off", " off"],
+        ]) {
+            const p = parseRunParams(`?poseFilter=${query}`, { bundledClips: clips });
+            expect(p.poseFilter, raw).toBeNull();
+            expect(p.paramErrors, raw).toEqual([
+                `?poseFilter=${raw}: expected one-euro or off, with no parameters (the filter runs at the package's defaults)`,
+            ]);
+        }
+    });
+
+    // poseFilterOption, which turns the value into the tracker's option: pose-filter-option.test.mjs.
 
     it("reads a candidate target under targets/tuning/ and tracker overrides", () => {
         const p = parseRunParams(
@@ -2775,6 +2911,56 @@ describe("startRefusal and ?seed=", () => {
             }
         },
     );
+});
+
+describe("startRefusal and ?poseFilter= (#243)", () => {
+    const wnft = { db: { patches: { count: 64, patchSize: 16 } }, record: { source: "wnft" } };
+    const image = { db: { patches: null }, record: { source: "image" } };
+
+    it("starts a filtered run in the two modes that build a tracker, and any unfiltered one", () => {
+        expect(
+            startRefusal({
+                mode: "tracking",
+                target: wnft,
+                minTrackedPatches: 8,
+                poseFilter: "one-euro",
+            }),
+        ).toBeNull();
+        expect(
+            startRefusal({
+                mode: "detection-only",
+                target: image,
+                minTrackedPatches: 8,
+                poseFilter: "one-euro",
+            }),
+        ).toBeNull();
+        for (const poseFilter of [null, "off"]) {
+            expect(
+                startRefusal({
+                    mode: "stateless",
+                    target: image,
+                    minTrackedPatches: 8,
+                    poseFilter,
+                }),
+                poseFilter,
+            ).toBeNull();
+        }
+    });
+
+    it("refuses one-euro in the stateless mode, which has no tracker, before reading the target", () => {
+        for (const target of [image, null]) {
+            expect(
+                startRefusal({
+                    mode: "stateless",
+                    target,
+                    minTrackedPatches: 8,
+                    poseFilter: "one-euro",
+                }),
+            ).toBe(
+                "?poseFilter=one-euro filters NftTracker's pose, and the stateless mode has no tracker: choose tracking or detection-only.",
+            );
+        }
+    });
 });
 
 describe("startRefusal and the detection worker", () => {
@@ -3656,6 +3842,58 @@ describe("transferPlan: what --transfer reads from a session's page exports", ()
         expect(sync.stepMs).toBe(7);
         expect(worker.path).toBe("worker");
         expect(sync.path).toBe("sync");
+    });
+
+    // #243 (Qodo's second finding on #248): --transfer replays with its own options, never an
+    // export's pose filter, so a filtered export would be replayed unfiltered, and say nothing.
+    describe("an export that ran the pose filter", () => {
+        const withFilter = (e, poseFilter) => ({
+            ...e,
+            tracker: { options: { ...e.tracker.options, poseFilter } },
+        });
+        const ONE_EURO = {
+            mode: "one-euro",
+            rotation: { minCutOff: 1, beta: 10 },
+            translation: { minCutOff: 1, beta: 0.1 },
+            dCutOff: 1,
+        };
+
+        it("is refused, named, beside an unfiltered one that would be planned", () => {
+            const unfiltered = pageExport("sync", syncFrames());
+            expect(plan([workerExport(), unfiltered]).refusal).toBeNull();
+            const p = plan([
+                workerExport(),
+                unfiltered,
+                withFilter(pageExport("sync", syncFrames()), ONE_EURO),
+            ]);
+            expect(p.clips).toEqual([]);
+            expect(p.refusal).toBe(
+                `pinball-bench.mp4: export-2.json ran with the pose filter (tracker.options.poseFilter ${JSON.stringify(ONE_EURO)}), and --transfer replays without it`,
+            );
+        });
+
+        it("is refused on either path, and on a poseFilter whose mode is not off, whatever it is", () => {
+            for (const poseFilter of [{ mode: "one-euro" }, {}, null, "one-euro"]) {
+                const p = plan([
+                    withFilter(workerExport(), poseFilter),
+                    pageExport("sync", syncFrames()),
+                ]);
+                expect(p.refusal, JSON.stringify(poseFilter)).toMatch(
+                    /^pinball-bench.mp4: export-0.json ran with the pose filter .*, and --transfer replays without it$/,
+                );
+            }
+        });
+
+        it("plans an export recorded off, and one older than the option, as before", () => {
+            const off = withFilter(pageExport("sync", syncFrames()), { mode: "off" });
+            const older = pageExport("sync", syncFrames());
+            expect(Object.hasOwn(older.tracker.options, "poseFilter")).toBe(false);
+            for (const sync of [off, older]) {
+                const p = plan([withFilter(workerExport(), { mode: "off" }), sync]);
+                expect(p.refusal).toBeNull();
+                expect(p.clips.map((c) => c.clip)).toEqual(["pinball-bench.mp4"]);
+            }
+        });
     });
 
     it("pools a mode's exports of a clip, and names the files it read", () => {

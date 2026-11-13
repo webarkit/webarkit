@@ -31,6 +31,10 @@
  *
  *     node scripts/build-provenance.mjs
  *
+ * First, before anything is built or written, a warning to stderr when the existing manifest is
+ * clean at a commit other than the one being built: an attested build is being replaced
+ * ({@link replacedBuildWarning}, #135). The build then carries on as it would without it.
+ *
  * In this order, each step on the previous one's output:
  * 1. **The packages' build**, run here (spec, then backend, then tracker), so
  *    the chain from `src/` to `dist/` to the bundle is true by construction: no
@@ -164,6 +168,65 @@ function gitUsable() {
     }
 }
 
+/**
+ * The warning this build prints before it replaces an attested build, or `null` when it stays
+ * silent (#135, decided on 2026-11-08). An attested build is one whose manifest is clean at a
+ * commit: a manifest clean at a commit other than the one being built is the signature of one
+ * being replaced, and the operator would otherwise learn of it only from
+ * `npm run check:provenance` or from Start's refusal. A warning, not a refusal: every round's own
+ * build would need an override, and those two already keep an unattested build from being
+ * counted.
+ *
+ * `previousText` is the existing `examples/dist/provenance.json`'s text, `null` when there is
+ * none; `now` is what git says of the tree being built, `{ head, dirtyPaths }`, `head` `null`
+ * where git is not usable. The build stays silent, as an ordinary rebuild, on:
+ * - no manifest;
+ * - one that does not parse as a manifest: not JSON, JSON that is not an object, or a clean one
+ *   that names no head, which no build writes and which attests no commit;
+ * - a dirty one (`clean` anything but `true`): it attests nothing;
+ * - one at the same head as the commit being built, whatever the tree's state now.
+ * A build where git is not usable replaces a clean manifest with one of an unknown commit, so it
+ * warns, as one at another head.
+ */
+export function replacedBuildWarning(previousText, { head, dirtyPaths }) {
+    if (previousText === null) return null; // no manifest
+    let previous;
+    try {
+        previous = JSON.parse(previousText);
+    } catch {
+        return null; // not JSON
+    }
+    if (typeof previous !== "object" || previous === null || Array.isArray(previous)) return null;
+    if (previous.clean !== true) return null; // a dirty one
+    if (typeof previous.head !== "string" || previous.head === "") return null; // names no head
+    if (previous.head === head) return null; // the same head: an ordinary rebuild
+    const built =
+        head === null
+            ? "an unknown commit (git is not usable here)"
+            : `${head}, from ${dirtyPaths.length === 0 ? "a clean tree" : `a DIRTY tree (${dirtyPaths.length} paths)`},`;
+    return `build-provenance: warning: ${MANIFEST} attests a clean build of ${previous.head}. This build of ${built} replaces that attested build. \`npm run check:provenance\` shows the new state afterwards.`;
+}
+
+/** The existing manifest's text, `null` when there is none; one that cannot be read reads as one that does not parse. */
+function previousManifestText() {
+    try {
+        return readFileSync(ROOT + MANIFEST, "utf8");
+    } catch (e) {
+        return e.code === "ENOENT" ? null : "";
+    }
+}
+
+/** The tree being built, as {@link replacedBuildWarning} reads it: the manifest's `head` and `dirtyPaths`, before the build. */
+function treeNow() {
+    if (!gitUsable()) return { head: null, dirtyPaths: [] };
+    return {
+        head: git("rev-parse", "HEAD").trim(),
+        dirtyPaths: git("status", "--porcelain", "--untracked-files=all", "--", ...CLEAN_PATHS)
+            .split("\n")
+            .filter(Boolean),
+    };
+}
+
 /** `{ path: { sha256, blob } }`, the blob id as `git add` would store the file, `null` without git. */
 function hashed(paths, withGit) {
     const ids = withGit
@@ -187,6 +250,11 @@ if (
     process.argv[1] &&
     realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
 ) {
+    // 0. Before anything is built or written: whether this build replaces an attested one
+    // (#135). A warning only: the exit code and what the build writes do not change.
+    const warning = replacedBuildWarning(previousManifestText(), treeNow());
+    if (warning !== null) console.warn(warning);
+
     // 1. The packages, in the order AGENTS.md explains.
     for (const name of PACKAGES)
         execSync(`npm run build -w ${name}`, { cwd: ROOT, stdio: "inherit" });

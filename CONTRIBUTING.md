@@ -118,6 +118,7 @@ This is an npm-workspaces monorepo — run these from the repo root; they cover 
     ```powershell
     npm run build
     ```
+    Before it builds anything, it warns on stderr when the `examples/dist/provenance.json` it is about to replace is clean at another commit, an attested build, and then builds as usual ([#135](https://github.com/webarkit/webarkit/issues/135)); `npm run check:provenance` shows the new state afterwards.
 - **Type check** (`src/` and `test/` in every workspace):
     ```powershell
     npm run typecheck
@@ -140,10 +141,18 @@ This is an npm-workspaces monorepo — run these from the repo root; they cover 
     - **Google Chrome**, found at its usual install path, or named by `CHROME_PATH`. Not Chromium: the bundled clips are H.264. `CHROME_ARGS` adds flags to Chrome's command line, such as `--no-sandbox` where the sandbox cannot start.
     - **Node 22.12 or newer**, which `puppeteer-core` requires. The version `.nvmrc` pins qualifies, and the root `engines` floor is 22.12 for the same reason.
 - **The replay's refusals against real decoding** (`scripts/replay-clips.mjs`'s refusals that act only once ffmpeg has decoded a clip, `scripts/replay-decoding-check.mjs`):
+
     ```powershell
     npm run check:replay
     ```
+
     `npm test` checks their verdicts; this runs the script's own branches, each refusing and passing. It needs **ffmpeg and ffprobe** on the `PATH` and a build (`npm run build`), and exits 2 naming what is missing, never passing or skipping without them. **CI does not run it**, having no ffmpeg: run it after changing `scripts/replay-clips.mjs` or what it imports. About 30 s.
+
+- **The benchmark scripts' tests** (`node --test` over `docs/benchmarks/*.test.mjs`, the scripts a measurement campaign keeps beside its record):
+    ```powershell
+    npm run test:benchmarks
+    ```
+    After a build. The session driver's tests need bash 5, `curl` and `git`, and take minutes on Windows.
 
 These, except `check:replay`, are exactly the checks CI runs on every push and pull request (see `.github/workflows/CI.yml`; `check:page` runs in a job of its own, `page-check`). If you add a new feature, make sure to include appropriate tests in the relevant package's `test/` directory (Vitest, e.g. `packages/cv-backend-jsfeatnext/test/*.test.ts`).
 

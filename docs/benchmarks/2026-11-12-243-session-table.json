@@ -1,0 +1,321 @@
+{
+  "//": "M9 (#243): the counted runs session table, read by 2026-11-12-243-session.sh. Copied from the registration (docs/benchmarks/2026-11-10-243-registration.md), \"The runbook\": the route, \"The pinned strings\" and its table of runs, character for character; and from the pre-flight record (2026-11-11-243-preflight.md), \"The freeze\". Checked by 2026-11-12-243-session-table.test.mjs. Admitted by 2026-11-12-243-registration-addendum-2.md.",
+  "campaign": "M9 (#243)",
+  "registration": "docs/benchmarks/2026-11-10-243-registration.md",
+  "device": {
+    "serial": "Tab9WEEA0001504",
+    "model": "Tab_9_WiFi"
+  },
+  "port": 8093,
+  "devtoolsPort": 9222,
+  "page": "http://localhost:8093/examples/bench-nft.html",
+  "pinnedString": "?mode=tracking&target=wnft&detection=sync&clip=<clip>&loops=4&window=2000&seed=1&run=<n>",
+  "freeze": {
+    "head": "8192265bd462f0667e275ec9297fe2890a907935",
+    "bundleSha256": "6d07b0c25475830458b68c6ef53c221fd4a3848c00bad1a62adbafcc95b074f2"
+  },
+  "idleSeconds": 120,
+  "quietMinutes": 5,
+  "sessions": [
+    {
+      "name": "A",
+      "from": 1,
+      "to": 16
+    },
+    {
+      "name": "B",
+      "from": 17,
+      "to": 32
+    }
+  ],
+  "runs": [
+    {
+      "run": 1,
+      "clip": "pinball-static.mp4",
+      "clipLabel": "static",
+      "exportName": "<date>-tab9-m9-static-1",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-static.mp4&loops=4&window=2000&seed=1&run=1"
+    },
+    {
+      "run": 2,
+      "clip": "pinball-static.mp4",
+      "clipLabel": "static",
+      "exportName": "<date>-tab9-m9-static-2",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-static.mp4&loops=4&window=2000&seed=1&run=2"
+    },
+    {
+      "run": 3,
+      "clip": "pinball-static.mp4",
+      "clipLabel": "static",
+      "exportName": "<date>-tab9-m9-static-3",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-static.mp4&loops=4&window=2000&seed=1&run=3"
+    },
+    {
+      "run": 4,
+      "clip": "pinball-static.mp4",
+      "clipLabel": "static",
+      "exportName": "<date>-tab9-m9-static-4",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-static.mp4&loops=4&window=2000&seed=1&run=4"
+    },
+    {
+      "run": 5,
+      "clip": "pinball-static.mp4",
+      "clipLabel": "static",
+      "exportName": "<date>-tab9-m9-static-5",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-static.mp4&loops=4&window=2000&seed=1&run=5"
+    },
+    {
+      "run": 6,
+      "clip": "pinball-static.mp4",
+      "clipLabel": "static",
+      "exportName": "<date>-tab9-m9-static-6",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-static.mp4&loops=4&window=2000&seed=1&run=6"
+    },
+    {
+      "run": 7,
+      "clip": "pinball-static.mp4",
+      "clipLabel": "static",
+      "exportName": "<date>-tab9-m9-static-7",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-static.mp4&loops=4&window=2000&seed=1&run=7"
+    },
+    {
+      "run": 8,
+      "clip": "pinball-static.mp4",
+      "clipLabel": "static",
+      "exportName": "<date>-tab9-m9-static-8",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-static.mp4&loops=4&window=2000&seed=1&run=8"
+    },
+    {
+      "run": 9,
+      "clip": "pinball-tilt-cross.mp4",
+      "clipLabel": "cross",
+      "exportName": "<date>-tab9-m9-cross-9",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-tilt-cross.mp4&loops=4&window=2000&seed=1&run=9"
+    },
+    {
+      "run": 10,
+      "clip": "pinball-tilt-cross.mp4",
+      "clipLabel": "cross",
+      "exportName": "<date>-tab9-m9-cross-10",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-tilt-cross.mp4&loops=4&window=2000&seed=1&run=10"
+    },
+    {
+      "run": 11,
+      "clip": "pinball-tilt-cross.mp4",
+      "clipLabel": "cross",
+      "exportName": "<date>-tab9-m9-cross-11",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-tilt-cross.mp4&loops=4&window=2000&seed=1&run=11"
+    },
+    {
+      "run": 12,
+      "clip": "pinball-tilt-cross.mp4",
+      "clipLabel": "cross",
+      "exportName": "<date>-tab9-m9-cross-12",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-tilt-cross.mp4&loops=4&window=2000&seed=1&run=12"
+    },
+    {
+      "run": 13,
+      "clip": "pinball-tilt-cross.mp4",
+      "clipLabel": "cross",
+      "exportName": "<date>-tab9-m9-cross-13",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-tilt-cross.mp4&loops=4&window=2000&seed=1&run=13"
+    },
+    {
+      "run": 14,
+      "clip": "pinball-tilt-cross.mp4",
+      "clipLabel": "cross",
+      "exportName": "<date>-tab9-m9-cross-14",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-tilt-cross.mp4&loops=4&window=2000&seed=1&run=14"
+    },
+    {
+      "run": 15,
+      "clip": "pinball-tilt-cross.mp4",
+      "clipLabel": "cross",
+      "exportName": "<date>-tab9-m9-cross-15",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-tilt-cross.mp4&loops=4&window=2000&seed=1&run=15"
+    },
+    {
+      "run": 16,
+      "clip": "pinball-tilt-cross.mp4",
+      "clipLabel": "cross",
+      "exportName": "<date>-tab9-m9-cross-16",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-tilt-cross.mp4&loops=4&window=2000&seed=1&run=16"
+    },
+    {
+      "run": 17,
+      "clip": "pinball-bench-table.mp4",
+      "clipLabel": "table",
+      "exportName": "<date>-tab9-m9-table-17",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench-table.mp4&loops=4&window=2000&seed=1&run=17"
+    },
+    {
+      "run": 18,
+      "clip": "pinball-bench-table.mp4",
+      "clipLabel": "table",
+      "exportName": "<date>-tab9-m9-table-18",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench-table.mp4&loops=4&window=2000&seed=1&run=18"
+    },
+    {
+      "run": 19,
+      "clip": "pinball-bench-table.mp4",
+      "clipLabel": "table",
+      "exportName": "<date>-tab9-m9-table-19",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench-table.mp4&loops=4&window=2000&seed=1&run=19"
+    },
+    {
+      "run": 20,
+      "clip": "pinball-bench-table.mp4",
+      "clipLabel": "table",
+      "exportName": "<date>-tab9-m9-table-20",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench-table.mp4&loops=4&window=2000&seed=1&run=20"
+    },
+    {
+      "run": 21,
+      "clip": "pinball-bench-table.mp4",
+      "clipLabel": "table",
+      "exportName": "<date>-tab9-m9-table-21",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench-table.mp4&loops=4&window=2000&seed=1&run=21"
+    },
+    {
+      "run": 22,
+      "clip": "pinball-bench-table.mp4",
+      "clipLabel": "table",
+      "exportName": "<date>-tab9-m9-table-22",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench-table.mp4&loops=4&window=2000&seed=1&run=22"
+    },
+    {
+      "run": 23,
+      "clip": "pinball-bench-table.mp4",
+      "clipLabel": "table",
+      "exportName": "<date>-tab9-m9-table-23",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench-table.mp4&loops=4&window=2000&seed=1&run=23"
+    },
+    {
+      "run": 24,
+      "clip": "pinball-bench-table.mp4",
+      "clipLabel": "table",
+      "exportName": "<date>-tab9-m9-table-24",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench-table.mp4&loops=4&window=2000&seed=1&run=24"
+    },
+    {
+      "run": 25,
+      "clip": "pinball-bench.mp4",
+      "clipLabel": "wall",
+      "exportName": "<date>-tab9-m9-wall-25",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench.mp4&loops=4&window=2000&seed=1&run=25"
+    },
+    {
+      "run": 26,
+      "clip": "pinball-bench.mp4",
+      "clipLabel": "wall",
+      "exportName": "<date>-tab9-m9-wall-26",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench.mp4&loops=4&window=2000&seed=1&run=26"
+    },
+    {
+      "run": 27,
+      "clip": "pinball-bench.mp4",
+      "clipLabel": "wall",
+      "exportName": "<date>-tab9-m9-wall-27",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench.mp4&loops=4&window=2000&seed=1&run=27"
+    },
+    {
+      "run": 28,
+      "clip": "pinball-bench.mp4",
+      "clipLabel": "wall",
+      "exportName": "<date>-tab9-m9-wall-28",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench.mp4&loops=4&window=2000&seed=1&run=28"
+    },
+    {
+      "run": 29,
+      "clip": "pinball-bench.mp4",
+      "clipLabel": "wall",
+      "exportName": "<date>-tab9-m9-wall-29",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench.mp4&loops=4&window=2000&seed=1&run=29"
+    },
+    {
+      "run": 30,
+      "clip": "pinball-bench.mp4",
+      "clipLabel": "wall",
+      "exportName": "<date>-tab9-m9-wall-30",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench.mp4&loops=4&window=2000&seed=1&run=30"
+    },
+    {
+      "run": 31,
+      "clip": "pinball-bench.mp4",
+      "clipLabel": "wall",
+      "exportName": "<date>-tab9-m9-wall-31",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench.mp4&loops=4&window=2000&seed=1&run=31"
+    },
+    {
+      "run": 32,
+      "clip": "pinball-bench.mp4",
+      "clipLabel": "wall",
+      "exportName": "<date>-tab9-m9-wall-32",
+      "runCheckForm": "counted",
+      "exportKind": "tracking",
+      "url": "http://localhost:8093/examples/bench-nft.html?mode=tracking&target=wnft&detection=sync&clip=pinball-bench.mp4&loops=4&window=2000&seed=1&run=32"
+    }
+  ]
+}

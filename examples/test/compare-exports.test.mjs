@@ -31,7 +31,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { compareExports, METRICS_VERSION } from "../js/bench-metrics.mjs";
+import { compareExports, DEFINITIONS, METRICS_VERSION } from "../js/bench-metrics.mjs";
 
 const CLI = fileURLToPath(new URL("../../scripts/compare-bench.mjs", import.meta.url));
 
@@ -155,6 +155,42 @@ describe("compareExports", () => {
     });
 });
 
+// #243: the filter is a tracker option; it changes the pose, never the footage. Neither
+// compareExports nor compare-bench.mjs reads tracker.options today: this guards against a
+// future refusal of a pair that differs there.
+describe("two exports of the same footage that differ only in the pose filter", () => {
+    const times = [0.1, 0.35, 0.6, 0.85];
+    const withFilter = (mode, pdx) =>
+        run(
+            times.map((t, i) => ({ ...at(t), poseCorners: at(t, i % 2 ? pdx : 0).corners })),
+            { tracker: { detectionOnly: false, options: { poseFilter: { mode } } } },
+        );
+    const off = withFilter("off", 1);
+    const oneEuro = withFilter("one-euro", 0.25);
+
+    it("compare as a pair, in compareExports", () => {
+        const r = compareExports(off, oneEuro);
+        expect(r.commonMediaTimes).toBe(4);
+        expect(r.pose.commonFrames).toBe(4);
+        expect(r.pose.first.poseJitterPx).toBeGreaterThan(r.pose.second.poseJitterPx);
+    });
+
+    it("compare as a pair, in scripts/compare-bench.mjs", () => {
+        const dir = mkdtempSync(join(tmpdir(), "compare-bench-filter-"));
+        const paths = [
+            ["off.json", off],
+            ["one-euro.json", oneEuro],
+        ].map(([name, e]) => {
+            const p = join(dir, name);
+            writeFileSync(p, JSON.stringify(e));
+            return p;
+        });
+        const r = spawnSync(process.execPath, [CLI, ...paths], { encoding: "utf8" });
+        expect(r.status, r.stderr).toBe(0);
+        expect(r.stdout).toMatch(/4 common media times/);
+    });
+});
+
 describe("scripts/compare-bench.mjs", () => {
     const dir = mkdtempSync(join(tmpdir(), "compare-bench-"));
     const write = (name, e) => {
@@ -177,6 +213,119 @@ describe("scripts/compare-bench.mjs", () => {
         const r = spawnSync(process.execPath, [CLI, first, second], { encoding: "utf8" });
         expect(r.status, r.stderr).toBe(0);
         expect(r.stdout).toMatch(/\| jitterPx, 4 common media times \| 0\.000 \| 0\.632 \|/);
+    });
+
+    describe("the pose part", () => {
+        // A version 2 frame: corners still, and poseCorners `pdx` px to the right of them.
+        const posed = (t, pdx) => ({
+            ...at(t),
+            poseCorners: at(t, pdx).corners,
+        });
+        const unposed = (t) => ({ ...at(t), poseCorners: null });
+        const rowsOf = (stdout) => stdout.split("\n").filter((l) => l.startsWith("| "));
+        const cli = (a, b) => {
+            const r = spawnSync(process.execPath, [CLI, a, b], { encoding: "utf8" });
+            expect(r.status, r.stderr).toBe(0);
+            return r.stdout;
+        };
+
+        it("prints each run's whole window and the pose part on common media times, with their definitions", () => {
+            // poseCorners still on the common times, plus one frame at 0.5 s, 4 px off, that the
+            // second run lacks: in the first's whole window (spread √(4 · 12.8 ÷ 20) = 1.6), not in
+            // its common times, so a row reading the wrong one of the two shows.
+            const firstFrames = times.map((t) => posed(t, 0));
+            firstFrames.splice(2, 0, posed(0.5, 4));
+            const first = write("p2a.json", run(firstFrames));
+            // poseCorners x = 0, 2, 0, 2: a jitter of √1.6 about the window's line, a spread of
+            // 1, and a corner distance from the first's of 0, 2, 0, 2 px. Its corners are still.
+            const second = write(
+                "p2b.json",
+                run(
+                    times.map((t, i) => posed(t, 2 * (i % 2))),
+                    { mode: "stateless" },
+                ),
+            );
+            const out = cli(first, second);
+            const rows = rowsOf(out);
+            expect(rows).toContain("| jitterPx, 4 common media times | 0.000 | 0.000 |");
+            expect(rows).toContain("| posePosedFrames, whole window | 5 | 4 |");
+            expect(rows).toContain("| poseJitterPx, whole window | 2.064 | 1.265 |");
+            expect(rows).toContain("| poseSpreadPx, whole window | 1.600 | 1.000 |");
+            expect(rows).toContain("| poseJitterWindows, 4 common media times | 1 | 1 |");
+            expect(rows).toContain("| poseJitterPx, 4 common media times | 0.000 | 1.265 |");
+            expect(rows).toContain("| poseSpreadPx, 4 common media times | 0.000 | 1.000 |");
+            expect(rows).toContain(
+                "| poseCornerDistancePx, the pair's median over 4 common frames: descriptive, never a criterion | 2.000 |  |",
+            );
+            // The pose rows follow the corners' rows, in the same table.
+            const last = rows.findIndex((l) => l.startsWith("| spreadPx, 4 common"));
+            expect(rows.findIndex((l) => l.startsWith("| posePosedFrames"))).toBe(last + 1);
+            expect(rows.at(-1)).toMatch(/^\| poseCornerDistancePx/);
+            expect(out).not.toMatch(/pose part, common media times/);
+            for (const key of [
+                "posePosedFrames",
+                "poseJitterPx",
+                "poseSpreadPx",
+                "poseJitterWindows",
+                "poseCornerDistancePx",
+            ]) {
+                expect(out).toContain(`\n${key}: ${DEFINITIONS[key]}`);
+            }
+        });
+
+        it("says, in one row, that a pair with a version 1 export has no pose part", () => {
+            const first = write(
+                "p1a.json",
+                run(
+                    times.map((t) => at(t)),
+                    { metricsVersion: 1 },
+                ),
+            );
+            const second = write(
+                "p1b.json",
+                run(
+                    times.map((t) => posed(t, 0)),
+                    { mode: "stateless" },
+                ),
+            );
+            const out = cli(first, second);
+            const rows = rowsOf(out);
+            expect(rows).toContain("| posePosedFrames, whole window | — | 4 |");
+            expect(rows).toContain("| poseJitterPx, whole window | — | 0.000 |");
+            expect(rows).toContain("| poseSpreadPx, whole window | — | 0.000 |");
+            expect(rows.at(-1)).toBe(
+                "| pose part, common media times | none: the first export is metricsVersion 1, which records no poseCorners |  |",
+            );
+            expect(out).not.toMatch(/poseCornerDistancePx|poseJitterWindows/);
+            expect(out).toContain(`\nposeJitterPx: ${DEFINITIONS.poseJitterPx}`);
+            // Two version 1 exports: the row names both.
+            expect(rowsOf(cli(first, first)).at(-1)).toBe(
+                "| pose part, common media times | none: both exports are metricsVersion 1, which records no poseCorners |  |",
+            );
+        });
+
+        it("says, in one row, that two version 2 exports with no common posed media time have no pose part", () => {
+            // Both posed every frame, so the corners' comparison stands; poseCorners never meet.
+            const first = write(
+                "p0a.json",
+                run(times.map((t, i) => (i < 2 ? posed(t, 0) : unposed(t)))),
+            );
+            const second = write(
+                "p0b.json",
+                run(
+                    times.map((t, i) => (i < 2 ? unposed(t) : posed(t, 0))),
+                    { mode: "stateless" },
+                ),
+            );
+            const out = cli(first, second);
+            const rows = rowsOf(out);
+            expect(rows).toContain("| jitterPx, 4 common media times | 0.000 | 0.000 |");
+            expect(rows).toContain("| posePosedFrames, whole window | 2 | 2 |");
+            expect(rows.at(-1)).toBe(
+                "| pose part, common media times | none: no media time has poseCorners in both runs |  |",
+            );
+            expect(out).not.toMatch(/poseCornerDistancePx|poseJitterWindows/);
+        });
     });
 
     it("exits 1 with a one-line reason, not a stack trace, on exports it cannot align", () => {
