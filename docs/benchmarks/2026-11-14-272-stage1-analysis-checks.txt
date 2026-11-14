@@ -48,7 +48,7 @@ status:
 done
 
 ## Analysis outputs, two passes (analysis-state.txt), the first pass committed
-start 2026-11-14T13:16:58Z head 05b2975 diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 status: []
+start 2026-11-14T13:26:07Z head 1fe8f12 diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 status: []
 same metric
 same refusals
 same ladder
@@ -56,4 +56,4 @@ same levers
 same mirror
 same truth
 same m9
-end 2026-11-14T13:17:57Z head 05b2975 diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 status: []
+end 2026-11-14T13:27:07Z head 1fe8f12 diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 status: []
