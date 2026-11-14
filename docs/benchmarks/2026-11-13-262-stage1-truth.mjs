@@ -33,7 +33,7 @@
  * printed by `2026-11-13-262-stage1-analysis.mjs truth <out>`.
  *
  *     npm run build
- *     node --experimental-transform-types docs/benchmarks/2026-11-13-262-stage1-truth.mjs --out <dir>
+ *     node --experimental-transform-types docs/benchmarks/2026-11-13-262-stage1-truth.mjs --out <dir> [--precheck-only]
  *
  * The score of a detection `H` against the truth `T` is `inView(H, T)` (tracker_sequences.ts): the
  * RMS and the worst distance, frame px, between where `H` and `T` put the target's 64 patch
@@ -121,7 +121,6 @@ const translate = (T, dx) => {
     console.error("scorer: 0 on the truth, 3 / 10 / 30 on the truth moved 3 / 10 / 30 px");
 }
 
-const arms = await buildArms();
 const K = intrinsics(seq.CAMERA.width, seq.CAMERA.height);
 const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
 const deg = Math.PI / 180;
@@ -139,6 +138,29 @@ for (const scale of [0.45, 0.6])
     for (const a of [0, 90])
         for (const shift of [[110, 0], [-110, 0], [0, 150], [150, 120]]) poses.push({ grid: "partial", scale, angle: a * deg, shift, perspective: [0.0008, 0] });
 
+// 1b. Every pose puts some of the 64 measuring points in view (else `inView` reads 0 whatever H is),
+// added after the counted run on the review's finding; it reads only the truths. With
+// --precheck-only the script stops here.
+{
+    const { trackTarget } = await load("packages/nft-tracker/src/tracking/track_frame.ts");
+    const { pinballPatches, PINBALL_STEP } = await load("packages/nft-tracker/ground-truth/fixtures/tracking_target.ts");
+    const { project } = await load("packages/nft-tracker/ground-truth/fixtures/warped_frames.ts");
+    const centres = trackTarget(pinballPatches(), PINBALL_STEP).centres;
+    const inViewCount = (T) => {
+        let n = 0;
+        for (let i = 0; i < centres.length; i += 2) {
+            const [x, y] = project(T, centres[i], centres[i + 1]);
+            if (x >= 0 && x <= seq.CAMERA.width - 1 && y >= 0 && y <= seq.CAMERA.height - 1) n++;
+        }
+        return n;
+    };
+    const counts = poses.map((pose, i) => inViewCount(seq.frameAt(pose, i).H));
+    if (Math.min(...counts) === 0) fail(`a pose puts none of the 64 measuring points in view: pose ${counts.indexOf(0)}`);
+    console.error(`precheck: every pose puts ${Math.min(...counts)} to ${Math.max(...counts)} of the 64 measuring points in view`);
+    if (process.argv.includes("--precheck-only")) process.exit(0);
+}
+
+const arms = await buildArms();
 const result = { poses: [], negatives: [], sequences: [] };
 for (const [armName, arm] of Object.entries(arms)) {
   for (const ratio of RATIOS) {

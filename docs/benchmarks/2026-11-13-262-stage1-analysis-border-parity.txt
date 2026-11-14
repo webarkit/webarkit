@@ -1,0 +1,12 @@
+1. parity: 681 of 681 rows of the fixture's 20 cases (scale_factor 1 and 5) equal OpenCV 4.10.0's, byte for byte
+2. fast-path margin E = 0.875 · size: level 0 size 31.000 E 27.125 px; level 1 size 39.058 E 34.175 px; level 2 size 49.209 E 43.058 px; level 3 size 62.000 E 54.250 px; level 4 size 78.115 E 68.351 px; level 5 size 98.419 E 86.117 px; level 6 size 124.000 E 108.500 px; level 7 size 156.230 E 136.701 px
+   BORDER = 20 px at a level is 20 · ∛2^level in level-0 px; E is 27.125 · ∛2^level; so every keypoint within 7.125 · ∛2^level px of BORDER's line takes the clamped path
+3. level 0 (size 31.000, E 27.125): control, columns 15–44 redrawn: 360 of 360 changed; fast path at x = 28 and 211, 360 rolls each: 0 and 0 descriptors changed when the far side was redrawn; clamped path at 20 · ∛2^0 px from either edge: 0 and 0; fast path at the top and bottom rows' distance: 0 of 2 batches threw
+3. level 1 (size 39.058, E 34.175): control, columns 15–44 redrawn: 360 of 360 changed; fast path at x = 35 and 204, 360 rolls each: 0 and 0 descriptors changed when the far side was redrawn; clamped path at 20 · ∛2^1 px from either edge: 0 and 0; fast path at the top and bottom rows' distance: 0 of 2 batches threw
+3. level 2 (size 49.209, E 43.058): control, columns 15–44 redrawn: 360 of 360 changed; fast path at x = 44 and 195, 360 rolls each: 0 and 0 descriptors changed when the far side was redrawn; clamped path at 20 · ∛2^2 px from either edge: 0 and 0; fast path at the top and bottom rows' distance: 0 of 2 batches threw
+target basis: ORB re-described on pinball.jpg at maxSide 640, 2062 of 2062 rows equal pinball.wnft's
+4. pinball-bench-table.mp4 203x360: 1659 of 79198 scene keypoints (2.09%) take the clamped path; 35.09% have a negative angle; 0 an angle of exactly -1, which TEBLID reads as upright
+4. pinball-bench.mp4 480x270: 530 of 73235 scene keypoints (0.72%) take the clamped path; 38.95% have a negative angle; 0 an angle of exactly -1, which TEBLID reads as upright
+4. pinball-static.mp4 203x360: 8127 of 108900 scene keypoints (7.46%) take the clamped path; 36.06% have a negative angle; 0 an angle of exactly -1, which TEBLID reads as upright
+4. pinball-tilt-cross.mp4 203x360: 2541 of 125100 scene keypoints (2.03%) take the clamped path; 24.92% have a negative angle; 0 an angle of exactly -1, which TEBLID reads as upright
+4. pinball.wnft 512x640: 220 of 2062 keypoints take the clamped path

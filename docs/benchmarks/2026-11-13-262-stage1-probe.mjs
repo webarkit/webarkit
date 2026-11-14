@@ -33,9 +33,13 @@
  *
  *     npm run build
  *     node docs/benchmarks/2026-11-13-262-stage1-probe.mjs arms --out <dir> [--schedule every|device-15|device-25] [--clips table,wall] [--seeds 1-8] [--ratios 0.8] [--arms orb,teblid]
- *     node docs/benchmarks/2026-11-13-262-stage1-probe.mjs stateless --out <dir> [--clips …] [--seeds …] [--ratios …] [--arms …]
+ *     node docs/benchmarks/2026-11-13-262-stage1-probe.mjs stateless --out <dir> [--mirror] [--clips …] [--seeds …] [--ratios …] [--arms …]
  *     node docs/benchmarks/2026-11-13-262-stage1-probe.mjs gms --out <dir> [--clips …] [--seeds …] [--arms …]
  *     node docs/benchmarks/2026-11-13-262-stage1-probe.mjs check-orb --out <dir> --rreplay <R-replay run dir>
+ *     node docs/benchmarks/2026-11-13-262-stage1-probe.mjs frame-hashes --out <dir> [--clips …]
+ *
+ * ffmpeg and ffprobe must be on PATH. `check-orb` writes <out>/check-orb.json on a pass, which the
+ * analysis requires before it reads any figure.
  *
  * Clips: `static`, `wall` (pinball-bench.mp4), `table` (pinball-bench-table.mp4), `cross`
  * (pinball-tilt-cross.mp4), decoded as `scripts/replay-clips.mjs` decodes them (ffmpeg, bilinear,
@@ -417,6 +421,13 @@ function checkOrb(out, rreplay) {
             const { timings, trackerTimings, stages, ...rest } = f;
             return JSON.stringify(rest);
         };
+        // The comparison exercised both ways on this clip's first frame: equal to a copy of
+        // itself, unequal with one field changed.
+        {
+            const altered = { ...got.frames[0], numInliers: got.frames[0].numInliers + 1 };
+            if (strip(got.frames[0]) !== strip({ ...got.frames[0] }) || strip(altered) === strip(got.frames[0]))
+                fail(`check-orb ${clip}: the frame comparison does not respond`);
+        }
         ref.frames.forEach((f, i) => {
             if (strip(f) !== strip(got.frames[i])) fail(`check-orb ${clip}: frame ${i} differs`);
         });
@@ -427,6 +438,7 @@ function checkOrb(out, rreplay) {
         if (!existsSync(st)) fail(`check-orb: ${st} missing; run stateless with --clips ${clip} --arms orb --seeds 1 --ratios 0.8`);
         const rows = JSON.parse(readFileSync(st, "utf8")).rows;
         const det = JSON.parse(readFileSync(join(rreplay, "def", `replay-${slug}-detection-only-every-frame.json`), "utf8")).frames;
+        if (det.length < rows.length) fail(`check-orb ${clip}: the detection-only export holds ${det.length} frames, the stateless run ${rows.length}`);
         rows.forEach((r, i) => {
             const f = det[i];
             const same =
@@ -438,6 +450,7 @@ function checkOrb(out, rreplay) {
         console.log(`check-orb ${clip}: ${rows.length} stateless frames equal to this machine's R-replay, ${slug} detection-only every-frame export, first loop`);
     }
     console.log(`check-orb: ${compared} frames, all equal to this machine's R-replay (not 98323f06…, the reference of the machine that produced it)`);
+    writeFileSync(join(out, "check-orb.json"), JSON.stringify({ passed: true, frames: compared, rreplay }));
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {

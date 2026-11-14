@@ -32,6 +32,8 @@
  *     npm run build
  *     node docs/benchmarks/2026-11-13-262-stage1-border-parity.mjs --fixtures <dir>
  *
+ * ffmpeg and ffprobe must be on PATH (part 4 decodes the clips).
+ *
  * <dir> holds jsfeatNext's OpenCV fixtures at its tag 1.2.0 (commit 9353b833d810c06dbfcd05152df8599e75eebab1),
  * not committed here: `tests/fixtures/opencv/teblid-p256.json` (SHA-256 2b9f5e84…) and
  * `scene-640x480.pgm` (SHA-256 892a3df1…, checked), fetched with
@@ -197,16 +199,18 @@ for (const l of [0, 1, 2]) {
         let n = 0;
         let clamped = 0;
         let negative = 0;
+        let upright = 0;
         for (const f of c.frames) {
             for (const k of cv.detect(f, { levels: nft.DEFAULT_SCENE_LEVELS, maxKeypoints: nft.DEFAULT_MAX_SCENE_KEYPOINTS })) {
                 n++;
                 const e = E(teblidSize(k.level));
                 if (k.x < e || Z(k.x + e) >= f.width || k.y < e || Z(k.y + e) >= f.height) clamped++;
                 if (k.angle < 0) negative++;
+                if (k.angle === -1) upright++;
             }
         }
         console.log(
-            `4. ${c.file} ${c.width}x${c.height}: ${clamped} of ${n} scene keypoints (${((100 * clamped) / n).toFixed(2)}%) take the clamped path; ${((100 * negative) / n).toFixed(2)}% have a negative angle`,
+            `4. ${c.file} ${c.width}x${c.height}: ${clamped} of ${n} scene keypoints (${((100 * clamped) / n).toFixed(2)}%) take the clamped path; ${((100 * negative) / n).toFixed(2)}% have a negative angle; ${upright} an angle of exactly -1, which TEBLID reads as upright`,
         );
     }
     const t = arms.orb.target;

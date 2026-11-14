@@ -74,6 +74,8 @@ export function describeTeblid(image, keypoints) {
     const out = new jsfeatNext.matrix_t(BYTES, Math.max(1, n), U8C1);
     if (n > 0) {
         const kps = keypoints.map((k) => {
+            // jsfeatNext reads `angle === -1` as upright; `orb.ic_angle` can return exactly -1 radian,
+            // a measure-zero case the border-parity script counts (its part 4).
             const kp = new jsfeatNext.keypoint_t(k.x, k.y, k.score, k.level, k.angle);
             kp.size = teblidSize(k.level);
             return kp;

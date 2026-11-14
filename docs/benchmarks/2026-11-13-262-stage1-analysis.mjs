@@ -28,7 +28,8 @@
 /**
  * #262, M10's Stage 1: the figures, read from the runner's output (`2026-11-13-262-stage1-probe.mjs`,
  * `2026-11-13-262-stage1-truth.mjs`) and from M9's committed device exports. Prints Markdown.
- * Every check is fatal (exit 1) before any figure of its part is printed.
+ * Every check is fatal (exit 1); the seed sets, frame counts and media times of a part are checked
+ * before its first figure is printed, and a failure after that (a malformed row) stops the part.
  *
  *     node docs/benchmarks/2026-11-13-262-stage1-analysis.mjs arms <run dir>
  *     node docs/benchmarks/2026-11-13-262-stage1-analysis.mjs stateless <run dir>
@@ -38,6 +39,9 @@
  *     node docs/benchmarks/2026-11-13-262-stage1-analysis.mjs truth <run dir>
  *     node docs/benchmarks/2026-11-13-262-stage1-analysis.mjs m9
  *     node docs/benchmarks/2026-11-13-262-stage1-analysis.mjs --self-test
+ *
+ * ffprobe must be on PATH (the clips' loop periods). The arms, stateless and agreement modes refuse a
+ * run directory without the runner's `check-orb.json` recording a pass.
  *
  * Definitions, each the page's where the page has one:
  * - **Per tracking run** (two loops, every frame or a device schedule): `summarizeRun`
@@ -72,6 +76,7 @@ const { loopPeriod } = await import(pathToFileURL(join(ROOT, "scripts/replay-run
 
 const CLIP_FILES = { static: "pinball-static.mp4", wall: "pinball-bench.mp4", table: "pinball-bench-table.mp4", cross: "pinball-tilt-cross.mp4" };
 const T95_7 = 2.3646;
+/** pinball.wnft's level-0 size (`meta.widthPx`, `meta.heightPx`; both arms read it), for the agreement's corners. */
 const TARGET = { width: 512, height: 640 };
 const LASTING = 50;
 
@@ -194,7 +199,19 @@ function runFigures(doc, period) {
     };
 }
 
+/** The figures of a run directory are read only after `check-orb` passed on it (its marker). */
+function requireCheckOrb(dir) {
+    let m;
+    try {
+        m = JSON.parse(readFileSync(join(dir, "check-orb.json"), "utf8"));
+    } catch {
+        fail(`${dir} has no check-orb.json: run the runner's check-orb mode first; no figure is read before it passes`);
+    }
+    if (m.passed !== true || !(m.frames > 0)) fail("check-orb.json does not record a pass");
+}
+
 function armsReport(dir) {
+    requireCheckOrb(dir);
     const docs = load(dir, /^arm-.*\.json$/);
     if (docs.length === 0) fail(`no arm-*.json in ${dir}`);
     const groups = new Map();
@@ -226,35 +243,30 @@ function armsReport(dir) {
     const order = (a, b) => (a.clip + a.sched).localeCompare(b.clip + b.sched) || a.ratio - b.ratio || a.arm.localeCompare(b.arm);
     rows.sort(order);
     console.log("## Tracking mode, per arm, over seeds 1–8\n");
+    console.log("Each run summarised over its whole two loops (no counted-loop window), as the replay's own exports are; M9's device runs, in the m9 mode, over their counted loops.\n");
     console.log(`Clip loop periods (s): ${Object.entries(periods).map(([c, p]) => `${c} ${f(p, 6)}`).join(", ")}\n`);
     for (const [key, label, d] of KEYS) {
         console.log(`### ${label}\n`);
-        console.log("| clip | schedule | ratio | arm | mean (s; 95% interval of the mean; range) | TEBLID seeds outside ORB's range |");
-        console.log("| --- | --- | --- | --- | --- | --- |");
+        console.log("| clip | schedule | ratio | arm | mean (s; 95% interval of the mean; range) | TEBLID's seeds against ORB at the same ratio | TEBLID's seeds against ORB@0.8, the shipped ratio |");
+        console.log("| --- | --- | --- | --- | --- | --- | --- |");
         for (const r of rows) {
             const vals = r.figs.map((x) => x[key]);
             if (vals.some((v) => v === null)) {
-                console.log(`| ${r.clip} | ${r.sched} | ${r.ratio} | ${r.arm} | a run with none: ${vals.map((v) => f(v, d)).join(", ")} | |`);
+                console.log(`| ${r.clip} | ${r.sched} | ${r.ratio} | ${r.arm} | a run with none: ${vals.map((v) => f(v, d)).join(", ")} | | |`);
                 continue;
             }
             const sp = spread(vals, d);
-            let outside = "";
-            if (r.arm === "teblid") {
-                const orb = rows.find((o) => o.clip === r.clip && o.sched === r.sched && o.ratio === 0.8 && o.arm === "orb");
-                if (orb) {
-                    const ov = orb.figs.map((x) => x[key]).filter((v) => v !== null);
-                    const lo = Math.min(...ov);
-                    const hi = Math.max(...ov);
-                    outside = `${vals.filter((v) => v > hi).length} above, ${vals.filter((v) => v < lo).length} below ORB@0.8 [${f(lo, d)}, ${f(hi, d)}]`;
-                }
-            } else if (r.ratio !== 0.8) {
-                const orb = rows.find((o) => o.clip === r.clip && o.sched === r.sched && o.ratio === 0.8 && o.arm === "orb");
-                if (orb) {
-                    const ov = orb.figs.map((x) => x[key]).filter((v) => v !== null);
-                    outside = `(ORB@${r.ratio} against ORB@0.8 [${f(Math.min(...ov), d)}, ${f(Math.max(...ov), d)}])`;
-                }
-            }
-            console.log(`| ${r.clip} | ${r.sched} | ${r.ratio} | ${r.arm} | ${sp.text} | ${outside} |`);
+            const against = (ratio) => {
+                const orb = rows.find((o) => o.clip === r.clip && o.sched === r.sched && o.ratio === ratio && o.arm === "orb");
+                if (!orb) return "no ORB arm";
+                const ov = orb.figs.map((x) => x[key]).filter((v) => v !== null);
+                const lo = Math.min(...ov);
+                const hi = Math.max(...ov);
+                return `${vals.filter((v) => v > hi).length} above, ${vals.filter((v) => v < lo).length} below [${f(lo, d)}, ${f(hi, d)}]`;
+            };
+            const same = r.arm === "teblid" ? against(r.ratio) : "";
+            const shipped = r.arm === "teblid" ? against(0.8) : "";
+            console.log(`| ${r.clip} | ${r.sched} | ${r.ratio} | ${r.arm} | ${sp.text} | ${same} | ${shipped} |`);
         }
         console.log("");
     }
@@ -277,8 +289,26 @@ function armsReport(dir) {
 function statelessReport(dir, prefix = "stateless") {
     const docs = load(dir, new RegExp(`^${prefix}-.*\\.json$`));
     if (docs.length === 0) fail(`no ${prefix}-*.json in ${dir}`);
+    if (prefix === "stateless") requireCheckOrb(dir);
     const by = new Map(docs.map((d) => [`${d.clip}|${d.arm}|${d.ratio}|${d.seed}`, d]));
     const keys = [...new Set(docs.map((d) => `${d.clip}|${d.ratio}`))].sort();
+    // Every check before any figure: seed sets, and the paired frames' counts and media times.
+    for (const k of keys) {
+        const [clip, ratio] = k.split("|");
+        for (const arm of ["orb", "teblid"]) {
+            const n = [1, 2, 3, 4, 5, 6, 7, 8].filter((sd) => by.has(`${clip}|${arm}|${ratio}|${sd}`)).length;
+            if (n !== 0 && n !== 8) fail(`${prefix} ${clip} ${arm} ${ratio}: ${n} seeds`);
+        }
+        for (let sd = 1; sd <= 8; sd++) {
+            const a = by.get(`${clip}|orb|${ratio}|${sd}`);
+            const b = by.get(`${clip}|teblid|${ratio}|${sd}`);
+            if (!a || !b) continue;
+            if (a.rows.length !== b.rows.length) fail(`${prefix} ${clip} ${ratio} ${sd}: frame counts differ`);
+            a.rows.forEach((x, i) => {
+                if (x.t !== b.rows[i].t) fail(`${prefix} ${clip} ${ratio} ${sd}: frame ${i} media times differ`);
+            });
+        }
+    }
     console.log(`## ${prefix === "mirror" ? "Mirrored frames (every acceptance is wrong)" : "Stateless mode"}, every frame of one loop, over seeds 1–8\n`);
     console.log("| clip | ratio | arm | accepted (share, mean over seeds; range) | at least 4 matches | matches, median / mean | inliers on accepted, median | reasons, summed over seeds |");
     console.log("| --- | --- | --- | --- | --- | --- | --- | --- |");
@@ -350,6 +380,7 @@ function gmsReport(dir) {
     // The cross-check: the ratio-tested set equals the stateless run's, frame for frame.
     for (const d of docs) {
         const st = JSON.parse(readFileSync(join(dir, `stateless-${d.clip}-${d.arm}-r0.8-s${d.seed}.json`), "utf8"));
+        if (st.rows.length !== d.rows.length) fail(`gms ${d.clip} ${d.arm} seed ${d.seed}: ${d.rows.length} frames, the stateless run ${st.rows.length}`);
         d.rows.forEach((r, i) => {
             const s = st.rows[i];
             if (r.t !== s.t || r.ratio.n !== s.numMatches || r.ratio.accepted !== s.ok) fail(`gms ${d.clip} ${d.arm} seed ${d.seed}: frame ${i} differs from the stateless run`);
@@ -360,10 +391,14 @@ function gmsReport(dir) {
     const SETS = ["ratio", "ratioGms", "ratioGmsRS", "nn", "nnGms", "nnGmsRS"];
     console.log("| clip | arm | set | matches, median / mean | frames with at least 4 | accepted | accepted where the ratio set is not | refused where the ratio set is accepted |");
     console.log("| --- | --- | --- | --- | --- | --- | --- | --- |");
+    for (const clip of [...new Set(docs.map((d) => d.clip))].sort())
+        for (const arm of ["orb", "teblid"]) {
+            const n = docs.filter((d) => d.clip === clip && d.arm === arm).length;
+            if (n !== 8) fail(`gms ${clip} ${arm}: ${n} seeds`);
+        }
     for (const clip of [...new Set(docs.map((d) => d.clip))].sort()) {
         for (const arm of ["orb", "teblid"]) {
             const runs = docs.filter((d) => d.clip === clip && d.arm === arm);
-            if (runs.length !== 8) fail(`gms ${clip} ${arm}: ${runs.length} seeds`);
             for (const set of SETS) {
                 const n = runs[0].rows.map((r) => r[set].n);
                 let four = 0, acc = 0, gain = 0, loss = 0;
@@ -382,17 +417,23 @@ function gmsReport(dir) {
     console.log("\n`ratio`: the ratio test at 0.8, as `detectTarget`. `nn`: nearest neighbour per level, best across levels. `Gms`: `gms.filter` at OpenCV's defaults; `GmsRS`: with rotation and scale. Each set through `estimateHomography` at 4 px and `detectTarget`'s two refusals (fewer than 5 inliers, not facing).\n");
 }
 
-/** The ORB arm's lasting-lock frames at seed 1, ratio 0.8, every frame (the control arm only), by media time in loop 0. */
+/**
+ * The ORB arm's lasting-lock frames at seed 1, ratio 0.8, every frame (the control arm only): the
+ * frames of loop 0 (the first half of the run, every frame being processed) inside a lock of 50 or
+ * more TRACK frames, the lock counted over the whole run, by media time.
+ */
 function lockReference(dir, clip) {
     const d = JSON.parse(readFileSync(join(dir, `arm-${clip}-orb-r0.8-s1-every.json`), "utf8"));
+    if (d.scheduleName !== "every" || d.frames.length % 2 !== 0) fail(`lockReference ${clip}: not a two-loop every-frame run`);
+    const loop0 = d.frames.length / 2;
     const ref = new Map();
     let run = [];
     const close = () => {
-        if (run.length >= LASTING) for (const fr of run) if (!ref.has(fr.mediaTimeSeconds)) ref.set(fr.mediaTimeSeconds, fr.H);
+        if (run.length >= LASTING) for (const { fr, i } of run) if (i < loop0) ref.set(fr.mediaTimeSeconds, fr.H);
         run = [];
     };
-    for (const fr of d.frames) {
-        if (fr.state === "TRACK") run.push(fr);
+    for (const [i, fr] of d.frames.entries()) {
+        if (fr.state === "TRACK") run.push({ fr, i });
         else close();
     }
     close();
@@ -400,6 +441,7 @@ function lockReference(dir, clip) {
 }
 
 function agreementReport(dir, prefix = "stateless") {
+    requireCheckOrb(dir);
     console.log("## Agreement of accepted detections with a lasting lock (a proxy, not ground truth)\n");
     console.log("Reference: the frames on which the ORB arm's every-frame tracking run (seed 1, ratio 0.8) holds a lock of 50 or more consecutive TRACK frames, its H there. Distance: the mean, frame px, over the target's four corners, between an accepted stateless detection's H and the reference H on the same frame, every seed.\n");
     console.log("| clip | ratio | arm | reference frames | accepted on them | ≤ 5 px | 5–20 px | > 20 px | median px |");
@@ -413,6 +455,7 @@ function agreementReport(dir, prefix = "stateless") {
             if (runs.length === 0) continue;
             const dist = [];
             for (const d of runs) for (const r of d.rows) if (r.ok && ref.has(r.t)) dist.push(cornerDistance(r.H, ref.get(r.t)));
+            if (ref.size > 0 && !runs.some((d) => d.rows.some((r) => ref.has(r.t)))) fail(`agreement ${clip} ${arm}: no stateless frame on a reference media time`);
             console.log(
                 `| ${clip} | ${ratio} | ${arm} | ${ref.size} | ${dist.length} | ${dist.filter((x) => x <= 5).length} | ${dist.filter((x) => x > 5 && x <= 20).length} | ${dist.filter((x) => x > 20).length} | ${f(median(dist), 2)} |`,
             );

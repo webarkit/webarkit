@@ -1,0 +1,9 @@
+check-orb static: 726 frames equal to this machine's R-replay, pinball-static every-frame tracking export
+check-orb static: 363 stateless frames equal to this machine's R-replay, pinball-static detection-only every-frame export, first loop
+check-orb wall: 596 frames equal to this machine's R-replay, pinball-bench every-frame tracking export
+check-orb wall: 298 stateless frames equal to this machine's R-replay, pinball-bench detection-only every-frame export, first loop
+check-orb table: 534 frames equal to this machine's R-replay, pinball-bench-table every-frame tracking export
+check-orb table: 267 stateless frames equal to this machine's R-replay, pinball-bench-table detection-only every-frame export, first loop
+check-orb: 2784 frames, all equal to this machine's R-replay (not 98323f06…, the reference of the machine that produced it)
+scorer: 0 on the truth, 3 / 10 / 30 on the truth moved 3 / 10 / 30 px
+precheck: every pose puts 18 to 64 of the 64 measuring points in view
