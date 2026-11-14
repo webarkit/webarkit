@@ -11,9 +11,12 @@ jsfeatNext's implementation of the `CvBackend` contract, and the org's
 **numeric oracle**: when another implementation disagrees with this one, this
 one is the reference until proven otherwise (ADR-0001, context).
 
-It depends on **both** `@webarkit/cv-backend-spec` (pinned exactly, `0.7.0`)
-and `@webarkit/jsfeat-next` (`^1.2.0`). Neither depends on it — keep that
-arrow one-directional.
+It depends on **both** `@webarkit/cv-backend-spec`, pinned exactly to the
+release version, and `@webarkit/jsfeat-next` (`^1.2.0`). The spec's pin is
+read in this package's `package.json`, not repeated here: every release raises
+it (ADR-0002), and `npm run check:contract` fails when it disagrees with the
+spec's own version. Neither depends on this package — keep that arrow
+one-directional.
 
 It builds **second**, after the spec. Its `typecheck` resolves against the
 spec's built `dist/`, so a stale or missing sibling build shows up here as type
