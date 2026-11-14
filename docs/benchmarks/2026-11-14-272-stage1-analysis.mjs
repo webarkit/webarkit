@@ -352,12 +352,18 @@ function ladderReport(dir) {
     console.log("");
 }
 
+/** d̄ and its 95% interval over the 8 seeds, as one cell. */
+const pairCell = (d) => {
+    const q = spread(d, 2);
+    return `${f(q.m, 2)} [${f(q.lo, 2)}, ${f(q.hi, 2)}]`;
+};
+
 function leversReport(dir) {
     requireCheckOrb(dir, ["table", "wall"]);
     console.log("## Question 5: the levers against the shipped arm, per seed\n");
     console.log("d = lever − shipped on the same seed; d̄ with its 95% interval (7 degrees of freedom); the shipped arm's s beside it; k: the lever's seeds outside the shipped arm's range, above / below (descriptive only).\n");
-    console.log("| clip | schedule | lever | shipped lock rate | d̄ lock rate [interval] | shipped s | k above / below | d̄ first steps confirmed [interval] | re-lock latency on the shipped arm's losses, median frames (lever / shipped) |");
-    console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+    console.log("| clip | schedule | lever | shipped lock rate | d̄ lock rate [interval] | shipped s | k above / below | d̄ first steps confirmed [interval] | d̄ held-lock steps lost [interval] | d̄ lasting locks [interval] | re-lock latency on the shipped arm's losses, median frames (lever / shipped) |");
+    console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     for (const clip of ["table", "wall"]) {
         const { D } = clipPeriod(clip);
         for (const sched of SCHEDULES) {
@@ -382,26 +388,54 @@ function leversReport(dir) {
                 }
                 const sp = spread(d, 4);
                 const spc = spread(dc, 2);
-                console.log(`| ${clip} | ${sched} | ${lever} | ${f(mean(bl), 4)} | ${f(sp.m, 4)} [${f(sp.lo, 4)}, ${f(sp.hi, 4)}] | ${f(sd(bl), 4)} | ${L.filter((x) => x.lockRate > hi).length} / ${L.filter((x) => x.lockRate < lo).length} | ${f(spc.m, 2)} [${f(spc.lo, 2)}, ${f(spc.hi, 2)}] | ${lat} |`);
+                console.log(`| ${clip} | ${sched} | ${lever} | ${f(mean(bl), 4)} | ${f(sp.m, 4)} [${f(sp.lo, 4)}, ${f(sp.hi, 4)}] | ${f(sd(bl), 4)} | ${L.filter((x) => x.lockRate > hi).length} / ${L.filter((x) => x.lockRate < lo).length} | ${f(spc.m, 2)} [${f(spc.lo, 2)}, ${f(spc.hi, 2)}] | ${pairCell(L.map((x, i) => x.heldLost - B[i].heldLost))} | ${pairCell(L.map((x, i) => x.lasting - B[i].lasting))} | ${lat} |`);
             }
         }
     }
-    console.log("\n### Paired detections: the same detection, the shipped first step against the lever's on the same frame (the ladder's rows), summed over seeds\n");
-    console.log("Discordant: the lever confirms where the shipped step does not / the shipped step confirms where the lever does not; p: the two-sided exact sign test on them. T: only rows where the run's re-detection on the refused frame failed are eligible; its \"lever confirms\" is a confirmation on the retry.\n");
-    console.log("| clip | schedule | lever | rows | eligible | shipped confirmed | lever confirmed | lever only | shipped only | p |");
-    console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+    console.log("\n### Paired detections: the same detection, the shipped first step against the lever's on the same frame (the ladder's rows), summed over seeds; on the every-frame schedule loop 1 only, because loop 2 repeats loop 1 frame for frame (checked fatally here)\n");
+    console.log("Discordant: the lever confirms where the shipped step does not / the shipped step confirms where the lever does not; p: the two-sided exact sign test on them, which treats rows as independent: seeds share the clip's frames, so it overstates; d̄ per seed: lever-only minus shipped-only per seed, with its 95% interval. V's gaps: clip frames from the earlier detection to the lock's detection, and from it to the step, median (range). T: only rows where the run's re-detection on the refused frame failed are eligible; its \"lever confirms\" is a confirmation on the retry.\n");
+    console.log("| clip | schedule | lever | rows | eligible | shipped confirmed | lever confirmed | lever only | shipped only | p | d̄ per seed [interval] | V's gaps |");
+    console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     for (const clip of ["table", "wall"])
         for (const sched of SCHEDULES) {
             const per = ladderRows(dir, clip, sched);
             if (per.some((x) => x === null)) continue;
+            const base = runsOf(dir, "run", clip, "none", sched);
+            const { pts } = clipPeriod(clip);
+            const at = new Map(pts.map((x, i) => [x, i]));
+            if (sched === "every") {
+                for (const [i, d] of base.entries()) {
+                    const n = d.frames.length / 2;
+                    for (let k = 0; k < n; k++) {
+                        if (d.frames[k].state !== d.frames[k + n].state || JSON.stringify(d.frames[k].H) !== JSON.stringify(d.frames[k + n].H)) fail(`${clip} seed ${i + 1}: loop 2 does not repeat loop 1 at frame ${k}`);
+                    }
+                }
+                for (let i = 0; i < per.length; i++) per[i] = per[i].filter((r) => r.k < base[i].frames.length / 2);
+            }
             const rows = per.flat();
             for (const lever of LEVERS) {
+                const sel = (R) => (lever === "T" ? R.filter((r) => r.tEligible) : lever === "V" ? R.filter((r) => r.chain) : R);
                 const E = lever === "T" ? rows.filter((r) => r.tEligible) : lever === "V" ? rows.filter((r) => r.chain) : rows;
                 const sh = (r) => r.own === "confirmed";
                 const lv = (r) => r.levers[lever] === "confirmed" || r.levers[lever] === "confirmed-on-retry";
                 const a = E.filter((r) => lv(r) && !sh(r)).length;
                 const b = E.filter((r) => sh(r) && !lv(r)).length;
-                console.log(`| ${clip} | ${sched} | ${lever} | ${rows.length} | ${E.length} | ${E.filter(sh).length} | ${E.filter(lv).length} | ${a} | ${b} | ${f(signTest(a, b), 4)} |`);
+                const dSeed = per.map((R) => sel(R).filter((r) => lv(r) && !sh(r)).length - sel(R).filter((r) => sh(r) && !lv(r)).length);
+                const sp = spread(dSeed, 2);
+                let gaps = "";
+                if (lever === "V") {
+                    const g1 = [];
+                    const g2 = [];
+                    const w = (x) => (x < 0 ? x + pts.length : x);
+                    per.forEach((R, si) => {
+                        for (const r of sel(R)) {
+                            g1.push(w(r.i - at.get(base[si].frames[r.k - 2].mediaTimeSeconds)));
+                            g2.push(w(r.j - r.i));
+                        }
+                    });
+                    gaps = g1.length ? `${median(g1)} (${Math.min(...g1)}–${Math.max(...g1)}); ${median(g2)} (${Math.min(...g2)}–${Math.max(...g2)})` : "none";
+                }
+                console.log(`| ${clip} | ${sched} | ${lever} | ${rows.length} | ${E.length} | ${E.filter(sh).length} | ${E.filter(lv).length} | ${a} | ${b} | ${f(signTest(a, b), 4)} | ${f(sp.m, 2)} [${f(sp.lo, 2)}, ${f(sp.hi, 2)}] | ${gaps} |`);
             }
         }
     console.log("");
