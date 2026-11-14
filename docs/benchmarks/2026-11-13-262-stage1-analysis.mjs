@@ -65,8 +65,9 @@
  *   `H` and the lock's `H` put the target's four corners.
  */
 
-import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -470,14 +471,43 @@ function lockReference(dir, clip) {
 
 function agreementReport(dir, prefix = "stateless") {
     requireCheckOrb(dir);
+    const docs = load(dir, new RegExp(`^${prefix}-.*\\.json$`));
+    if (docs.length === 0) fail(`no ${prefix}-*.json in ${dir}`);
+    const keys = [...new Set(docs.map((d) => `${d.clip}|${d.ratio}`))].sort();
+    const refs = new Map();
+    // Every check before any figure: seeds 1 to 8 for each arm with runs, each run's media times equal
+    // row for row to the ORB stateless run's at the same clip, ratio and seed, and every reference
+    // media time present in each run.
+    for (const key of keys) {
+        const [clip, ratio] = key.split("|");
+        if (!refs.has(clip)) refs.set(clip, lockReference(dir, clip));
+        const ref = refs.get(clip);
+        const get = (arm, seed) => docs.find((d) => d.clip === clip && d.arm === arm && String(d.ratio) === ratio && d.seed === seed);
+        for (const arm of ["orb", "teblid"]) {
+            const seeds = docs.filter((d) => d.clip === clip && d.arm === arm && String(d.ratio) === ratio).map((d) => d.seed);
+            if (seeds.length === 0) continue;
+            const want = [1, 2, 3, 4, 5, 6, 7, 8];
+            if (seeds.length !== 8 || !want.every((s) => seeds.includes(s))) fail(`agreement ${clip} ${ratio} ${arm}: seeds ${[...seeds].sort((a, b) => a - b).join(",")}, not 1 to 8`);
+            for (const seed of want) {
+                const d = get(arm, seed);
+                const o = get("orb", seed);
+                if (!o) fail(`agreement ${clip} ${ratio} ${arm} seed ${seed}: no ORB stateless run to pair with`);
+                if (d.rows.length !== o.rows.length) fail(`agreement ${clip} ${ratio} ${arm} seed ${seed}: ${d.rows.length} frames, the ORB run ${o.rows.length}`);
+                d.rows.forEach((r, i) => {
+                    if (r.t !== o.rows[i].t) fail(`agreement ${clip} ${ratio} ${arm} seed ${seed}: frame ${i} media time ${r.t}, the ORB run's ${o.rows[i].t}`);
+                });
+                const times = new Set(d.rows.map((r) => r.t));
+                for (const t of ref.keys()) if (!times.has(t)) fail(`agreement ${clip} ${ratio} ${arm} seed ${seed}: reference media time ${t} missing`);
+            }
+        }
+    }
     console.log("## Agreement of accepted detections with a lasting lock (a proxy, not ground truth)\n");
     console.log("Reference: the frames on which the ORB arm's every-frame tracking run (seed 1, ratio 0.8) holds a lock of 50 or more consecutive TRACK frames, its H there. Distance: the mean, frame px, over the target's four corners, between an accepted stateless detection's H and the reference H on the same frame, every seed.\n");
     console.log("| clip | ratio | arm | reference frames | accepted on them | ≤ 5 px | 5–20 px | > 20 px | median px |");
     console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
-    const docs = load(dir, new RegExp(`^${prefix}-.*\\.json$`));
-    for (const key of [...new Set(docs.map((d) => `${d.clip}|${d.ratio}`))].sort()) {
+    for (const key of keys) {
         const [clip, ratio] = key.split("|");
-        const ref = lockReference(dir, clip);
+        const ref = refs.get(clip);
         for (const arm of ["orb", "teblid"]) {
             const runs = docs.filter((d) => d.clip === clip && d.arm === arm && String(d.ratio) === ratio);
             if (runs.length === 0) continue;
@@ -581,6 +611,33 @@ function selfTest() {
     T("cornerDistance reads a 7 px shift as 7", Math.abs(cornerDistance(I, [1, 0, 7, 0, 1, 0, 0, 0, 1]) - 7) < 1e-12);
     const sp = spread([1, 2, 3, 4, 5, 6, 7, 8], 3);
     T("spread: mean 4.5, s 2.449", Math.abs(sp.m - 4.5) < 1e-12 && Math.abs(sp.s - 2.449489742783178) < 1e-12);
+    // The agreement mode on a constructed run directory, run as its own process (its checks exit):
+    // a complete one passes, one missing a seed and one whose media times are shifted by a frame fail.
+    const agreementExit = (alter) => {
+        const d = mkdtempSync(join(tmpdir(), "262-agreement-"));
+        try {
+            const t = (i) => i / 30;
+            writeFileSync(join(d, "check-orb.json"), JSON.stringify({ passed: true, frames: 1 }));
+            const frames = Array.from({ length: 120 }, (_, i) => ({ state: "TRACK", mediaTimeSeconds: t(i % 60), H: I }));
+            writeFileSync(join(d, "arm-cross-orb-r0.8-s1-every.json"), JSON.stringify({ scheduleName: "every", frames }));
+            for (const arm of ["orb", "teblid"])
+                for (let seed = 1; seed <= 8; seed++) {
+                    const doc = { clip: "cross", arm, ratio: 0.8, seed, rows: Array.from({ length: 60 }, (_, i) => ({ t: t(i), ok: true, H: I })) };
+                    if (alter(doc) !== false) writeFileSync(join(d, `stateless-cross-${arm}-r0.8-s${seed}.json`), JSON.stringify(doc));
+                }
+            return spawnSync(process.execPath, [fileURLToPath(import.meta.url), "agreement", d], { encoding: "utf8" }).status;
+        } finally {
+            rmSync(d, { recursive: true, force: true });
+        }
+    };
+    T("agreement passes a complete run directory", agreementExit(() => {}) === 0);
+    T("agreement refuses a directory missing one seed", agreementExit((doc) => !(doc.arm === "teblid" && doc.seed === 5) && undefined) !== 0);
+    T(
+        "agreement refuses a run whose media times are shifted by one frame",
+        agreementExit((doc) => {
+            if (doc.arm === "teblid" && doc.seed === 3) doc.rows = doc.rows.map((r, i) => ({ ...r, t: (i + 1) / 30 }));
+        }) !== 0,
+    );
     if (fails.length) {
         console.error(`self-test: ${fails.length} failed\n${fails.join("\n")}`);
         process.exit(1);
