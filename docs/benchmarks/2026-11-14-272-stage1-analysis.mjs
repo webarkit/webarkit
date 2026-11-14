@@ -64,8 +64,9 @@
  *   two-sided exact sign test on them.
  */
 
-import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { readdirSync, readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -311,12 +312,20 @@ Over every step of every run above: ${unconverged} unconverged patches, ${cap} a
 `);
 }
 
+/**
+ * The rows of a set of per-seed files, `name(seed)` for seeds 1 to 8. A partial set fails, naming
+ * what is missing; a set with no file fails when `required`, and is `null` (the row left out)
+ * otherwise.
+ */
+function seedRows(dir, what, name, required) {
+    const missing = SEEDS.filter((s) => !existsSync(join(dir, name(s))));
+    if (missing.length === SEEDS.length && !required) return null;
+    if (missing.length > 0) fail(`${what}: seed(s) ${missing.join(", ")} missing of 1 to 8`);
+    return SEEDS.map((s) => readJson(join(dir, name(s))).rows);
+}
+/** The ladder's rows: table and wall required on every schedule; static and cross all or nothing. */
 function ladderRows(dir, clip, sched) {
-    return SEEDS.map((s) => {
-        const p = join(dir, `ladder-${clip}-s${s}-${sched}.json`);
-        if (!existsSync(p)) return null;
-        return readJson(p).rows;
-    });
+    return seedRows(dir, `ladder ${clip} ${sched}`, (s) => `ladder-${clip}-s${s}-${sched}.json`, clip === "table" || clip === "wall");
 }
 function ladderReport(dir) {
     requireCheckOrb(dir, ["table", "wall"]);
@@ -327,7 +336,7 @@ function ladderReport(dir) {
     for (const clip of ["table", "wall", "static", "cross"])
         for (const sched of SCHEDULES) {
             const per = ladderRows(dir, clip, sched);
-            if (per.some((x) => x === null)) continue;
+            if (per === null) continue;
             // A step on the loop's first frames after a detection on its last: the lag wraps the clip.
             const n = clipPeriod(clip).pts.length;
             for (const R of per) for (const r of R) if (r.lag < 0) r.lag += n;
@@ -344,7 +353,7 @@ function ladderReport(dir) {
     for (const clip of ["table", "wall"])
         for (const sched of SCHEDULES) {
             const per = ladderRows(dir, clip, sched);
-            if (per.some((x) => x === null)) continue;
+            if (per === null) continue;
             const r0 = {};
             for (const r of per.flat()) if (r.rungs[0] !== "confirmed") r0[r.rungs[0]] = (r0[r.rungs[0]] ?? 0) + 1;
             console.log(`- ${clip}, ${sched}: ${Object.entries(r0).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(", ") || "none"}`);
@@ -399,7 +408,7 @@ function leversReport(dir) {
     for (const clip of ["table", "wall"])
         for (const sched of SCHEDULES) {
             const per = ladderRows(dir, clip, sched);
-            if (per.some((x) => x === null)) continue;
+            if (per === null) continue;
             const base = runsOf(dir, "run", clip, "none", sched);
             const { pts } = clipPeriod(clip);
             const at = new Map(pts.map((x, i) => [x, i]));
@@ -442,6 +451,7 @@ function leversReport(dir) {
 }
 
 function mirrorReport(dir) {
+    requireCheckOrb(dir, ["table", "wall"]);
     console.log("## Mirrored frames: every lock is wrong\n");
     console.log("### Tracking runs on the mirrored clips, every frame, seeds 1–8: TRACK frames (each a wrong pose held) and first steps confirmed\n");
     console.log("| clip | lever | TRACK frames, summed | per seed (range) | first steps confirmed / first steps |");
@@ -459,12 +469,7 @@ function mirrorReport(dir) {
     console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     for (const clip of ["table", "wall"])
         for (const ratio of [0.7, 0.75, 0.8, 0.85, 0.9]) {
-            const per = SEEDS.map((s) => {
-                const p = join(dir, `stress-${clip}-r${ratio}-s${s}.json`);
-                return existsSync(p) ? readJson(p).rows : null;
-            });
-            if (per.some((x) => x === null)) continue;
-            const rows = per.flat();
+            const rows = seedRows(dir, `stress ${clip} ${ratio}`, (s) => `stress-${clip}-r${ratio}-s${s}.json`, true).flat();
             const c = (l) => rows.filter((r) => r.levers[l] === "confirmed" || r.levers[l] === "confirmed-on-retry").length;
             console.log(`| ${clip} | ${ratio} | ${rows.length} | ${["none", ...LEVERS].map(c).join(" | ")} |`);
         }
@@ -600,6 +605,50 @@ function selfTest() {
     T("signTest is symmetric", signTest(3, 9) === signTest(9, 3));
     const sp = spread([1, 2, 3, 4, 5, 6, 7, 8], 3);
     T("spread: mean 4.5, s 2.449", Math.abs(sp.m - 4.5) < 1e-12 && Math.abs(sp.s - 2.449489742783178) < 1e-12);
+    // The ladder and the mirror modes on constructed run directories, each run as its own process
+    // (their checks exit): a complete directory passes; one missing a seed, or check-orb.json, fails.
+    const modeExit = (mode, build) => {
+        const d = mkdtempSync(join(tmpdir(), "272-analysis-"));
+        try {
+            const put = (name, doc) => writeFileSync(join(d, name), JSON.stringify(doc));
+            const frames = [{ state: "TRACK", mediaTimeSeconds: 0, H: [1, 0, 0, 0, 1, 0, 0, 0, 1] }];
+            const files = new Map();
+            files.set("check-orb.json", { passed: true, frames: 1 });
+            for (const clip of ["table", "wall"]) {
+                files.set(`arm-${clip}-orb-r0.8-s1-every.json`, { frames });
+                files.set(`run-${clip}-none-s1-every.json`, { frames });
+            }
+            build(files);
+            for (const [name, doc] of files) put(name, doc);
+            return spawnSync(process.execPath, [fileURLToPath(import.meta.url), mode, d], { encoding: "utf8" }).status;
+        } finally {
+            rmSync(d, { recursive: true, force: true });
+        }
+    };
+    const ladderFiles = (clips) => (files) => {
+        for (const clip of clips) for (const sched of SCHEDULES) for (const s of SEEDS) files.set(`ladder-${clip}-s${s}-${sched}.json`, { rows: [] });
+    };
+    const stressFiles = (files) => {
+        for (const clip of ["table", "wall"]) for (const ratio of [0.7, 0.75, 0.8, 0.85, 0.9]) for (const s of SEEDS) files.set(`stress-${clip}-r${ratio}-s${s}.json`, { rows: [] });
+    };
+    T("ladder passes a complete run directory", modeExit("ladder", ladderFiles(["table", "wall"])) === 0);
+    T("ladder refuses a directory missing one table seed", modeExit("ladder", (files) => {
+        ladderFiles(["table", "wall"])(files);
+        files.delete("ladder-table-s3-every.json");
+    }) !== 0);
+    T("ladder refuses a static clip with some seeds and not others", modeExit("ladder", (files) => {
+        ladderFiles(["table", "wall"])(files);
+        files.set("ladder-static-s1-every.json", { rows: [] });
+    }) !== 0);
+    T("mirror passes a complete run directory", modeExit("mirror", stressFiles) === 0);
+    T("mirror refuses a stress set missing one seed at one ratio", modeExit("mirror", (files) => {
+        stressFiles(files);
+        files.delete("stress-wall-r0.85-s5.json");
+    }) !== 0);
+    T("mirror refuses a directory without check-orb.json", modeExit("mirror", (files) => {
+        stressFiles(files);
+        files.delete("check-orb.json");
+    }) !== 0);
     if (fails.length) {
         console.error(`self-test: ${fails.length} failed\n${fails.join("\n")}`);
         process.exit(1);
