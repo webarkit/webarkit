@@ -144,7 +144,14 @@ export function divergenceRefusal(run, none) {
     }
     if (d < 0 && run.records.length !== none.records.length) d = n;
     if (d < 0) return null;
-    return run.steps.some((s) => s.frame === d && s.first) ? null : `first divergence from the none arm at frame ${d}, where this arm ran no first step`;
+    if (run.steps.some((s) => s.frame === d && s.first)) return null;
+    // On a device schedule a first step charged extra alignment (R3) moves the next processed frame
+    // itself: the arms then first differ on the frame after it, by its media time, with no held step
+    // between. Allowed only there: the frame before is a charged first step and the records agree on it.
+    const charged = run.steps.some((s) => s.frame === d - 1 && s.first && s.extraSteps > 0);
+    const movedOnly = d > 0 && d < run.records.length && d < none.records.length && run.records[d].mediaTimeSeconds !== none.records[d].mediaTimeSeconds;
+    if (charged && movedOnly) return null;
+    return `first divergence from the none arm at frame ${d}, where this arm ran no first step`;
 }
 
 function selfTest() {
@@ -159,6 +166,13 @@ function selfTest() {
     T("no divergence passes", divergenceRefusal(none, none) === null);
     T("timings alone are not a divergence", divergenceRefusal({ ...none, records: none.records.map((r) => ({ ...r, timings: { x: 2 } })) }, none) === null);
     T("a shorter run diverges where it ends", divergenceRefusal({ records: none.records.slice(0, 2), steps: [] }, none) !== null);
+    const ft = (state, H, t) => ({ ...fr(state, H), mediaTimeSeconds: t });
+    const sched = { records: [ft("DETECT", [1], 0), ft("TRACK", [2], 0.04), ft("TRACK", [3], 0.08)], steps: [] };
+    const moved = (extra) => ({ records: [ft("DETECT", [1], 0), ft("TRACK", [2], 0.04), ft("TRACK", [3], 0.12)], steps: [{ frame: 1, first: true, extraSteps: extra }] });
+    T("a frame moved by a charged first step on the frame before passes", divergenceRefusal(moved(1), sched) === null);
+    T("a frame moved after an uncharged first step is refused", divergenceRefusal(moved(0), sched) !== null);
+    const changed = { records: [ft("DETECT", [1], 0), ft("TRACK", [2], 0.04), ft("TRACK", [9], 0.08)], steps: [{ frame: 1, first: true, extraSteps: 1 }] };
+    T("a held step changed on the same frame after a charged first step is refused", divergenceRefusal(changed, sched) !== null);
     if (fails.length) {
         console.error(`self-test: ${fails.length} failed\n${fails.join("\n")}`);
         process.exit(1);
