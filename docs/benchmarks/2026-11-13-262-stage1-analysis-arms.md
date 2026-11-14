@@ -364,6 +364,9 @@ Clip loop periods (s): cross 13.995633, static 12.166666, table 8.900000, wall 1
 | wall | every | 0.9 | orb | 4.00 (s 0.00; [4.00, 4.00]; range 4.00–4.00) |  |  |
 | wall | every | 0.9 | teblid | 4.00 (s 0.00; [4.00, 4.00]; range 4.00–4.00) | 0 above, 0 below [4.00, 4.00] | 0 above, 0 below [4.00, 4.00] |
 
+- table: 32 of 32 device-15 runs give the same frames and states as their device-25 run
+- wall: 0 of 32 device-15 runs give the same frames and states as their device-25 run
+
 ### LOST frames, summed over the 8 seeds: never yet acquired, and lock lost, with reasons
 
 | clip | schedule | ratio | arm | never yet acquired | lock lost |

@@ -1,3 +1,4 @@
+# check-orb and the truth precheck, then the tree state of the pass that wrote every analysis output
 check-orb static: 726 frames equal to this machine's R-replay, pinball-static every-frame tracking export
 check-orb static: 363 stateless frames equal to this machine's R-replay, pinball-static detection-only every-frame export, first loop
 check-orb wall: 596 frames equal to this machine's R-replay, pinball-bench every-frame tracking export
@@ -7,3 +8,5 @@ check-orb table: 267 stateless frames equal to this machine's R-replay, pinball-
 check-orb: 2784 frames, all equal to this machine's R-replay (not 98323f06…, the reference of the machine that produced it)
 scorer: 0 on the truth, 3 / 10 / 30 on the truth moved 3 / 10 / 30 px
 precheck: every pose puts 18 to 64 of the 64 measuring points in view
+start 2026-11-14T00:12:53Z head 2b13ec2be785ef88a4e76e29a40f097ab669d187 diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 status[]
+end 2026-11-14T00:13:31Z head 2b13ec2be785ef88a4e76e29a40f097ab669d187 diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 status[]

@@ -21,6 +21,6 @@ Each run read by `summarizeRun` over its counted loops (`loops` and `clipDuratio
 | wall-31 | 0.5961 | 72 | 20 / 72 | 19 / 307 | 9 | 68 | 30: too-few-inliers 12, not-facing 9, too-few-matches 6, no-consensus 3 | 136: too-few-inliers 75, too-few-matches 30, not-facing 21, no-consensus 10 |
 | wall-32 | 0.5657 | 82 | 18 / 83 | 14 / 283 | 9 | 71 | 28: too-few-inliers 11, too-few-matches 9, not-facing 5, no-consensus 3 | 136: too-few-inliers 86, too-few-matches 23, not-facing 14, no-consensus 13 |
 
-- **table, over its 8 runs:** lock rate 0.8220 (s 0.0214; [0.8041, 0.8399]; range 0.7948–0.8506); re-acquisitions 23.38 (s 7.17; [17.38, 29.37]; range 12.00–31.00); first steps confirmed 82 of 195.
-- **wall, over its 8 runs:** lock rate 0.5626 (s 0.0222; [0.5441, 0.5812]; range 0.5238–0.5961); re-acquisitions 83.50 (s 7.78; [76.99, 90.01]; range 72.00–96.00); first steps confirmed 171 of 671.
+- **table, over its 8 runs:** lock rate 0.8220 (s 0.0214; [0.8041, 0.8399]; range 0.7948–0.8506); re-acquisitions 23.38 (s 7.17; [17.38, 29.37]; range 12.00–31.00); first steps confirmed 82 of 195 over the counted loops, 106 of 248 over every frame of the runs.
+- **wall, over its 8 runs:** lock rate 0.5626 (s 0.0222; [0.5441, 0.5812]; range 0.5238–0.5961); re-acquisitions 83.50 (s 7.78; [76.99, 90.01]; range 72.00–96.00); first steps confirmed 171 of 671 over the counted loops, 209 of 816 over every frame of the runs.
 

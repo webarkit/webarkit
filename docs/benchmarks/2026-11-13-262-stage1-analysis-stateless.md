@@ -27,6 +27,23 @@
 | wall | 0.9 | orb | 0.7315 (0.7148–0.7416) | 1.0000 | 205 / 164.87 | 101 | not-facing 634, too-few-inliers 6 |
 | wall | 0.9 | teblid | 0.7395 (0.7181–0.7517) | 1.0000 | 217 / 178.08 | 110 | not-facing 618, too-few-inliers 3 |
 
+### The accepted share per seed: TEBLID's seeds against ORB's range at the same ratio
+
+| clip | ratio | ORB range | TEBLID above | TEBLID below |
+| --- | --- | --- | --- | --- |
+| cross | 0.8 | 1.0000–1.0000 | 0 | 0 |
+| static | 0.8 | 1.0000–1.0000 | 0 | 0 |
+| table | 0.7 | 0.7341–0.7341 | 0 | 8 |
+| table | 0.75 | 0.7603–0.7790 | 0 | 1 |
+| table | 0.8 | 0.7753–0.8127 | 0 | 1 |
+| table | 0.85 | 0.7865–0.8202 | 1 | 0 |
+| table | 0.9 | 0.8090–0.8390 | 1 | 1 |
+| wall | 0.7 | 0.6913–0.6913 | 0 | 0 |
+| wall | 0.75 | 0.7047–0.7148 | 4 | 0 |
+| wall | 0.8 | 0.7047–0.7181 | 7 | 0 |
+| wall | 0.85 | 0.6980–0.7315 | 4 | 0 |
+| wall | 0.9 | 0.7148–0.7416 | 3 | 0 |
+
 ### Paired per frame, same seed and ratio: frames one arm accepts and the other refuses, summed over seeds
 
 | clip | ratio | both | TEBLID only | ORB only | neither | frames × seeds |
