@@ -310,12 +310,15 @@ function ladderReport(dir) {
     requireCheckOrb(dir, ["table", "wall"]);
     console.log("## Question 3: the lag ladder, the shipped step from each first step's own detection\n");
     console.log("+L: the step on the clip frame L after the detected one (+0 its own frame). Own lag: the frame the run stepped on. Counts summed over seeds 1–8; the per-seed share confirmed at +0 minus at the own lag is d.\n");
-    console.log("| clip | schedule | first steps | own lag, clip frames (median, range) | +0 | +1 | +2 | +3 | +4 | +5 | own lag | refused at +0 | confirmed at +0, refused at own lag | d = +0 − own lag, per seed |");
+    console.log("| clip | schedule | first steps | own lag, clip frames (median, range) | +0 | +1 | +2 | +3 | +4 | +5 | own lag | refused at +0 (seeds with one) | confirmed at +0, refused at own lag | d = +0 − own lag, per seed |");
     console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     for (const clip of ["table", "wall", "static", "cross"])
         for (const sched of SCHEDULES) {
             const per = ladderRows(dir, clip, sched);
             if (per.some((x) => x === null)) continue;
+            // A step on the loop's first frames after a detection on its last: the lag wraps the clip.
+            const n = clipPeriod(clip).pts.length;
+            for (const R of per) for (const r of R) if (r.lag < 0) r.lag += n;
             const rows = per.flat();
             const rung = (L) => {
                 const R = rows.filter((r) => r.rungs[L] !== null);
@@ -323,7 +326,7 @@ function ladderReport(dir) {
             };
             const lags = rows.map((r) => r.lag);
             const d = per.map((R) => (R.length ? R.filter((r) => r.rungs[0] === "confirmed").length / R.length - R.filter((r) => r.own === "confirmed").length / R.length : null));
-            console.log(`| ${clip} | ${sched} | ${rows.length} | ${median(lags)} (${lags.length ? Math.min(...lags) : "–"}–${lags.length ? Math.max(...lags) : "–"}) | ${[0, 1, 2, 3, 4, 5].map(rung).join(" | ")} | ${rows.filter((r) => r.own === "confirmed").length} | ${rows.filter((r) => r.rungs[0] !== "confirmed").length} | ${rows.filter((r) => r.rungs[0] === "confirmed" && r.own !== "confirmed").length} | ${spread(d, 3).text} |`);
+            console.log(`| ${clip} | ${sched} | ${rows.length} | ${median(lags)} (${lags.length ? Math.min(...lags) : "–"}–${lags.length ? Math.max(...lags) : "–"}) | ${[0, 1, 2, 3, 4, 5].map(rung).join(" | ")} | ${rows.filter((r) => r.own === "confirmed").length} | ${rows.filter((r) => r.rungs[0] !== "confirmed").length} (${per.filter((R) => R.some((r) => r.rungs[0] !== "confirmed")).length} of 8) | ${rows.filter((r) => r.rungs[0] === "confirmed" && r.own !== "confirmed").length} | ${spread(d, 3).text} |`);
         }
     console.log("\n### Refusals at +0, by reason (summed over seeds)\n");
     for (const clip of ["table", "wall"])
@@ -433,7 +436,7 @@ function truthReport(dir) {
         const det = s.frames.map((x, i) => ({ x, i })).filter(({ x }) => x.state === "DETECT");
         const right = det.filter(({ x }) => x.score <= RIGHT).length;
         const first = s.steps.filter((x) => x.first);
-        const fr = first.filter((x) => s.frames[x.frame - 1]?.state === "DETECT" ? s.frames[x.frame - 1].score <= RIGHT : x.startScore <= RIGHT);
+        const fr = first.filter((x) => detectionScoreOf(s, x) <= RIGHT);
         const fw = first.filter((x) => !fr.includes(x));
         console.log(`| ${s.name} | ${s.n} | ${s.lever} | \`${s.states}\` | ${right} / ${det.length - right} | ${fr.filter((x) => x.ok).length} / ${fr.length} | ${fw.filter((x) => x.ok).length} / ${fw.length} | ${first.filter((x) => x.ok && x.outScore > RIGHT).length} |`);
     }
@@ -451,7 +454,10 @@ function truthReport(dir) {
                 if (x.state === "TRACK") tr++;
             });
             for (const s of g.steps.filter((x) => x.first)) {
-                const right = s.startScore <= RIGHT;
+                // The detection scored on its own frame (the one before the step), as for the sequences;
+                // a retry's detection is older, and is scored where it was made too.
+                const det = g.frames[s.frame - 1];
+                const right = det?.state === "DETECT" ? det.score <= RIGHT : detectionScoreOf(g, s) <= RIGHT;
                 if (right) {
                     frn++;
                     if (s.ok) frc++;
@@ -482,6 +488,12 @@ function truthReport(dir) {
     console.log("| --- | --- | --- | --- | --- |");
     for (const s of r.sweep) console.log(`| ${s.lever} | ${s.steps} | ${s.right} | ${s.wrong.length}${s.wrong.length ? ` (${s.wrong.map((x) => f(x, 2)).join(", ")})` : ""} | ${s.refused} |`);
     console.log("");
+}
+
+/** A retry's detection: the last DETECT frame before the step, scored on its own frame. */
+function detectionScoreOf(run, step) {
+    for (let i = step.frame - 1; i >= 0; i--) if (run.frames[i].state === "DETECT") return run.frames[i].score;
+    return Infinity;
 }
 
 function m9Report() {
