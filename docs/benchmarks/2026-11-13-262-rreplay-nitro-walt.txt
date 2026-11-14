@@ -1,0 +1,29 @@
+# R-replay on nitro-walt (#262 Stage 1): the references script's four commands at --seed 1 --seed-policy frame --packages bundle, read with --v1-projection
+# at d9092e4 (this probe's base), from a clean tree; the 19 step-independent outputs, then the list hash:
+fcb9364919420ccc614e678b6c22ab35fe9a90fb6f94bfbf4db04366f4ea43f7  def/replay-pinball-bench-detection-only-device.json
+6b94786183e7cfe032753017165b50015e7f87ce69e7feb5959dd28db6048cfc  def/replay-pinball-bench-detection-only-every-frame.json
+6022f8e4b9528c04e168e80c13d868f9783806fd1c9fc8e0a5a8ac8b88f4c9cb  def/replay-pinball-bench-table-detection-only-device.json
+4bad1e75658e4c33def5cacbba32bb6136a90b61c7f98e40e31833bdcecc906d  def/replay-pinball-bench-table-detection-only-every-frame.json
+1ec292bc21f6ae49a6cc0d7ca1f1bdae38ca4a4016fbdab8ade3e7e6fc3da540  def/replay-pinball-bench-table-tracking-device-15-ms-step.json
+ae5777b9c726199806aae4e5851cce5f64249b58f54cc7b084d37358bd55e7ad  def/replay-pinball-bench-table-tracking-device-25-ms-step.json
+c4b92c580a56bd4f6418902c351b9bf1f7c3e1dd6c4adbf1f7d669758ce97034  def/replay-pinball-bench-table-tracking-every-frame.json
+c114d552a532e7e60a6edc3226f9e75486c493c38ea3d4a33dde58220d60be09  def/replay-pinball-bench-tracking-device-15-ms-step.json
+4878763c1abe37307d99a20104c88c66d6b3b0a3622be942979f9e59a0a7f4be  def/replay-pinball-bench-tracking-device-25-ms-step.json
+c4f4860bdd71fa0272b551dd78cc586cde9f833ea855446c9599b2371659f462  def/replay-pinball-bench-tracking-every-frame.json
+d0712b223cbce68f908e9afc3b41b4669af217635fb8ee9795291a7c30474bcc  def/replay-pinball-static-detection-only-device.json
+f411502c2c489b2e04fe6bdbf4080475d430694a73bf61e8f4b796065afff34f  def/replay-pinball-static-detection-only-every-frame.json
+370228dc667f1b4d0d255689db0ada2acf488428b62a4724cc604e63a563fe7d  def/replay-pinball-static-tracking-device-15-ms-step.json
+7d2e13669b528bc5f67ed095f02471a7399f40cb52f74ebd6bf867f43ef8f9f6  def/replay-pinball-static-tracking-device-25-ms-step.json
+335d4e991736a626919e12bd87692f4330cb664d37e605bd977ec3c1935627a7  def/replay-pinball-static-tracking-every-frame.json
+bad224f774c9bf339098507a60702d73047dd47bdad17190600b2b2d8939c00e  ext/replay-pinball-bench-table-tracking-every-frame-sync.json
+96e9b01a81b55032b7c9532c5f57c9af3f85f65d1b38702d4a8c5c39bb19e35d  ext/replay-pinball-bench-tracking-every-frame-sync.json
+2497b91caa5d5d835c2dacb91ef2930e1857a3e0864edca1c5c1d5f0ac80f47e  ext/replay-pinball-static-tracking-every-frame-sync.json
+a25e3be63acdbee0e2ae55b9bd4e9addfb9321ac603827526dea02017cb52f54  seq.stdout
+19 step-independent outputs, projected to version 1: 6cdfcb8597689521faafa2d255566a038b1f07595c2e15b37f6175fd59af2ebf
+# at 6bccf51 (#239's base), from a clean tree; the same 19 per-output hashes (diff empty), and the list hash:
+19 step-independent outputs, projected to version 1: 6cdfcb8597689521faafa2d255566a038b1f07595c2e15b37f6175fd59af2ebf
+# the decoded frames, per clip (the replay's 480x360 box; --sequence decodes the wall clip in the same box, its export's processingBox being 480x360); per frame in 2026-11-13-262-frame-hashes-nitro-walt.txt:
+pinball-static.mp4 203x360 363 frames: 541bfa81848cb4a415ff3de9ec7f7dff092c36478b7f76af5f7a07ea9b39ad94
+pinball-bench.mp4 480x270 298 frames: 14433ef09dd34552cf69bdd6abd6794ec76eda9862c5b0a372c642b9d93154b7
+pinball-bench-table.mp4 203x360 267 frames: b822c9ce4181a363c4e7bd0206236d06dbb9d1d934f49419aa2e06f8a4c5f276
+pinball-tilt-cross.mp4 203x360 417 frames: c7005f3179084eec9e0064d3fa7db8abebe77e8d293107a5432e7f6f44f5d300
