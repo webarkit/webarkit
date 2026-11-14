@@ -10,3 +10,9 @@ scorer: 0 on the truth, 3 / 10 / 30 on the truth moved 3 / 10 / 30 px
 precheck: every pose puts 18 to 64 of the 64 measuring points in view
 start 2026-11-14T00:12:53Z head 2b13ec2be785ef88a4e76e29a40f097ab669d187 diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 status[]
 end 2026-11-14T00:13:31Z head 2b13ec2be785ef88a4e76e29a40f097ab669d187 diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 status[]
+# the counted runs: each batch log's start and end lines
+counted.log: start 2026-11-13T22:17:14Z head 24d80a820466f86bd1f6f61b03ca99cebf2446d9 diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 status[]
+counted.log: end 2026-11-13T23:51:35Z head 24d80a820466f86bd1f6f61b03ca99cebf2446d9 diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 status[]
+counted2.log: start 2026-11-13T23:54:37Z head 9d06fd45affe88b2e96e231835872ae391b0771c diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 status[]
+counted2.log: end 2026-11-13T23:57:59Z head 9d06fd45affe88b2e96e231835872ae391b0771c diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 status[]
+# the second clean-head pass compared with the first: cmp found every output file identical (9 files)
