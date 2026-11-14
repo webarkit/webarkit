@@ -270,6 +270,20 @@ function armsReport(dir) {
         }
         console.log("");
     }
+    // Which runs of a clip give the same frames under its two device schedules, compared on every
+    // frame's media time and state.
+    for (const clip of [...new Set(rows.map((r) => r.clip))].sort()) {
+        const pairs = docs.filter((d) => d.clip === clip && d.scheduleName === "device-15");
+        let same = 0;
+        for (const a of pairs) {
+            const b = docs.find((d) => d.clip === clip && d.scheduleName === "device-25" && d.arm === a.arm && d.ratio === a.ratio && d.seed === a.seed);
+            if (!b) continue;
+            const key = (d) => d.frames.map((x) => `${x.mediaTimeSeconds}:${x.state}`).join(",");
+            if (key(a) === key(b)) same++;
+        }
+        if (pairs.length > 0) console.log(`- ${clip}: ${same} of ${pairs.length} device-15 runs give the same frames and states as their device-25 run`);
+    }
+    console.log("");
     console.log("### LOST frames, summed over the 8 seeds: never yet acquired, and lock lost, with reasons\n");
     console.log("| clip | schedule | ratio | arm | never yet acquired | lock lost |");
     console.log("| --- | --- | --- | --- | --- | --- |");
@@ -331,6 +345,20 @@ function statelessReport(dir, prefix = "stateless") {
     }
     console.log("");
     if (prefix !== "stateless") return;
+    console.log("### The accepted share per seed: TEBLID's seeds against ORB's range at the same ratio\n");
+    console.log("| clip | ratio | ORB range | TEBLID above | TEBLID below |");
+    console.log("| --- | --- | --- | --- | --- |");
+    for (const k of keys) {
+        const [clip, ratio] = k.split("|");
+        const share = (arm) => [1, 2, 3, 4, 5, 6, 7, 8].map((sd) => by.get(`${clip}|${arm}|${ratio}|${sd}`)).filter(Boolean).map((r) => r.rows.filter((x) => x.ok).length / r.rows.length);
+        const o = share("orb");
+        const t = share("teblid");
+        if (o.length !== 8 || t.length !== 8) continue;
+        const lo = Math.min(...o);
+        const hi = Math.max(...o);
+        console.log(`| ${clip} | ${ratio} | ${f(lo, 4)}–${f(hi, 4)} | ${t.filter((v) => v > hi).length} | ${t.filter((v) => v < lo).length} |`);
+    }
+    console.log("");
     console.log("### Paired per frame, same seed and ratio: frames one arm accepts and the other refuses, summed over seeds\n");
     console.log("| clip | ratio | both | TEBLID only | ORB only | neither | frames × seeds |");
     console.log("| --- | --- | --- | --- | --- | --- | --- |");
@@ -508,6 +536,7 @@ function m9Report() {
     console.log("| run | lock rate | re-acquisitions | first steps confirmed / n | held-lock steps lost / n | matches on non-TRACK frames, median | inliers on DETECT frames, median | LOST never yet acquired: reasons | LOST lock lost: reasons |");
     console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     const agg = { table: [], wall: [] };
+    const whole = { table: [], wall: [] };
     for (const n of names) {
         const e = JSON.parse(readFileSync(join(dir, n), "utf8"));
         const s = summarizeRun(e.frames, { clipDurationS: e.clipDurationS, loops: e.loops });
@@ -519,6 +548,7 @@ function m9Report() {
         const non = e.frames.filter((x) => x.state !== "TRACK");
         const fmt = (o) => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([a, b]) => `${a} ${b}`).join(", ") || "—";
         agg[clip].push(s);
+        whole[clip].push(summarizeRun(e.frames, { clipDurationS: e.clipDurationS }));
         console.log(
             `| ${n.replace("2026-11-12-tab9-m9-", "").replace(".json", "")} | ${f(s.trackShare, 4)} | ${s.reacquisitions} | ${s.firstSteps.confirmed} / ${s.firstSteps.n} | ${s.heldLockSteps.lost} / ${s.heldLockSteps.n} | ${median(non.map((x) => x.numMatches))} | ${median(e.frames.filter((x) => x.state === "DETECT").map((x) => x.numInliers))} | ${lost.nNever}: ${fmt(lost.never)} | ${lost.nLost}: ${fmt(lost.lost)} |`,
         );
@@ -527,7 +557,7 @@ function m9Report() {
     for (const clip of ["table", "wall"]) {
         const a = agg[clip];
         console.log(
-            `- **${clip}, over its 8 runs:** lock rate ${spread(a.map((x) => x.trackShare), 4).text}; re-acquisitions ${spread(a.map((x) => x.reacquisitions), 2).text}; first steps confirmed ${a.reduce((s, x) => s + x.firstSteps.confirmed, 0)} of ${a.reduce((s, x) => s + x.firstSteps.n, 0)}.`,
+            `- **${clip}, over its 8 runs:** lock rate ${spread(a.map((x) => x.trackShare), 4).text}; re-acquisitions ${spread(a.map((x) => x.reacquisitions), 2).text}; first steps confirmed ${a.reduce((s, x) => s + x.firstSteps.confirmed, 0)} of ${a.reduce((s, x) => s + x.firstSteps.n, 0)} over the counted loops, ${whole[clip].reduce((s, x) => s + x.firstSteps.confirmed, 0)} of ${whole[clip].reduce((s, x) => s + x.firstSteps.n, 0)} over every frame of the runs.`,
         );
     }
     console.log("");

@@ -57,6 +57,9 @@
  *    the columns the patch itself covers (15 to 44) redrawn. The same at 20 px from the edge,
  *    `BORDER`'s distance, where the clamped path runs; and at the top and bottom rows' fast-path
  *    distance, where an overrun would throw.
+ * 3b. **The patch's reach**, per level: from a keypoint at x = 120, the smallest distance k at which
+ *    redrawing every column k px or more to its left changes none of its 360 rolled descriptors;
+ *    the reach is k − 1, checked to change some at k − 1. Set against BORDER's 20 · ∛2^level.
  * 4. **Where the keypoints fall:** the share of the scene's keypoints (every frame of the four
  *    clips, the tracker's detect options) and of `pinball.wnft`'s keypoints that take the clamped
  *    path.
@@ -187,6 +190,30 @@ for (const l of [0, 1, 2]) {
     console.log(
         `3. level ${l} (size ${size.toFixed(3)}, E ${e.toFixed(3)}): control, columns 15–44 redrawn: ${control} of 360 changed; fast path at x = ${xl} and ${xr}, 360 rolls each: ${nl} and ${nr} descriptors changed when the far side was redrawn; ` +
             `clamped path at 20 · ∛2^${l} px from either edge: ${nlB} and ${nrB}; fast path at the top and bottom rows' distance: ${threw} of 2 batches threw`,
+    );
+}
+
+// 3b. The patch's reach: for a keypoint well inside (x = 120, the fast path), the smallest distance
+// k such that redrawing every column at distance k or more to its left changes none of its 360
+// rolled descriptors. A keypoint nearer an edge than its reach has boxes the image cuts.
+for (const l of [0, 1, 2]) {
+    const size = teblidSize(l);
+    const X = 120;
+    const rolls = Array.from({ length: 360 }, (_, a) => kp(X, H / 2, size, a));
+    let reach = null;
+    for (let k = 1; k <= 100; k++) {
+        const cols = Array.from({ length: X - k + 1 }, (_, i) => i); // columns 0 .. X - k
+        if (changed(rolls, redraw(cols)) === 0) {
+            reach = k;
+            break;
+        }
+    }
+    if (reach === null) fail(`reach, level ${l}: not found within 100 px`);
+    if (changed(rolls, redraw(Array.from({ length: X - reach + 2 }, (_, i) => i))) === 0)
+        fail(`reach, level ${l}: the column at distance ${reach - 1} changes nothing either; the search is wrong`);
+    const border = 20 * Math.cbrt(2) ** l;
+    console.log(
+        `3b. level ${l} (size ${size.toFixed(3)}): the patch reaches ${reach - 1} px from the keypoint (redrawing at ${reach} px or more changes 0 of 360, at ${reach - 1} px changes some); BORDER's distance there is ${border.toFixed(3)} px, so a keypoint at BORDER's line ${reach - 1 > border ? `has boxes cut by up to ${(reach - 1 - border).toFixed(3)} px` : "has none cut"}`,
     );
 }
 
