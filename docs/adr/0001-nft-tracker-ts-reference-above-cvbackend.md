@@ -241,7 +241,7 @@ The expected cost of Option A on a WASM backend is small but unmeasured: trackin
   found, recorded on 2026-11-14
   ([the probe's record](../benchmarks/2026-11-14-272-m11-stage1-probe.md),
   [#272](https://github.com/webarkit/webarkit/issues/272)). Two facts:
-  - No first-step lever of the five tried changes the count of lasting locks
+  - No first-step lever of the six tried (V, R1, R2, R3, S and T) changes the count of lasting locks
     on the table and wall clips. For every lever but the retry (T), whose
     retries are not counted as first steps, every lock a first step adds is
     lost again at a held step. So the lock rate on these clips is set by the
