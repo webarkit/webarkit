@@ -430,28 +430,31 @@ function truthReport(dir) {
     console.log("## Question 4: right or wrong on synthetic truth, by mechanism\n");
     console.log(`A detection is right within ${RIGHT} px RMS of the truth (\`inView\`), else wrong. A first step is read on the detection it started from; its output H is scored too (\"out > 2 px\": a confirmed step whose pose is wrong whatever its detection).\n`);
     console.log("### The ground truth's sequences (seed 20260925, one run each)\n");
-    console.log("| sequence | frames | lever | states | DETECT frames: right / wrong | first steps from a right detection: confirmed / n | from a wrong one: confirmed / n | confirmed with out > 2 px |");
-    console.log("| --- | --- | --- | --- | --- | --- | --- | --- |");
+    console.log("| sequence | frames | lever | states | DETECT frames: right / wrong | first steps from a right detection: confirmed / n | from a wrong one: confirmed / n | confirmed with out > 2 px | TRACK frames (over 2 px) |");
+    console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     for (const s of r.sequences) {
         const det = s.frames.map((x, i) => ({ x, i })).filter(({ x }) => x.state === "DETECT");
         const right = det.filter(({ x }) => x.score <= RIGHT).length;
         const first = s.steps.filter((x) => x.first);
         const fr = first.filter((x) => detectionScoreOf(s, x) <= RIGHT);
         const fw = first.filter((x) => !fr.includes(x));
-        console.log(`| ${s.name} | ${s.n} | ${s.lever} | \`${s.states}\` | ${right} / ${det.length - right} | ${fr.filter((x) => x.ok).length} / ${fr.length} | ${fw.filter((x) => x.ok).length} / ${fw.length} | ${first.filter((x) => x.ok && x.outScore > RIGHT).length} |`);
+        console.log(`| ${s.name} | ${s.n} | ${s.lever} | \`${s.states}\` | ${right} / ${det.length - right} | ${fr.filter((x) => x.ok).length} / ${fr.length} | ${fw.filter((x) => x.ok).length} / ${fw.length} | ${first.filter((x) => x.ok && x.outScore > RIGHT).length} | ${s.frames.filter((x) => x.state === "TRACK").length} (${s.frames.filter((x) => x.state === "TRACK" && x.score > RIGHT).length}) |`);
     }
     console.log("\n### #262's grids as short paths (4 frames; speed px a frame), each grid × speed one mechanism, seeds summed\n");
-    console.log("| grid | speed | lever | paths | DETECT frames: right / wrong | first steps from right: confirmed / n | from wrong: confirmed / n | confirmed with out > 2 px | TRACK frames |");
+    console.log("| grid | speed | lever | paths | DETECT frames: right / wrong | first steps from right: confirmed / n | from wrong: confirmed / n | confirmed with out > 2 px | TRACK frames (over 2 px) |");
     console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     const keys = [...new Set(r.grids.map((g) => `${g.grid}|${g.speed}|${g.lever}`))];
     for (const k of keys) {
         const [grid, speed, lever] = k.split("|");
         const G = r.grids.filter((g) => g.grid === grid && String(g.speed) === speed && g.lever === lever);
-        let dr = 0, dw = 0, frc = 0, frn = 0, fwc = 0, fwn = 0, out = 0, tr = 0;
+        let dr = 0, dw = 0, frc = 0, frn = 0, fwc = 0, fwn = 0, out = 0, tr = 0, trw = 0;
         for (const g of G) {
             g.frames.forEach((x) => {
                 if (x.state === "DETECT") x.score <= RIGHT ? dr++ : dw++;
-                if (x.state === "TRACK") tr++;
+                if (x.state === "TRACK") {
+                    tr++;
+                    if (x.score > RIGHT) trw++;
+                }
             });
             for (const s of g.steps.filter((x) => x.first)) {
                 // The detection scored on its own frame (the one before the step), as for the sequences;
@@ -468,7 +471,7 @@ function truthReport(dir) {
                 if (s.ok && s.outScore > RIGHT) out++;
             }
         }
-        console.log(`| ${grid} | ${speed} | ${lever} | ${G.length} | ${dr} / ${dw} | ${frc} / ${frn} | ${fwc} / ${fwn} | ${out} | ${tr} |`);
+        console.log(`| ${grid} | ${speed} | ${lever} | ${G.length} | ${dr} / ${dw} | ${frc} / ${frn} | ${fwc} / ${fwn} | ${out} | ${tr} (${trw}) |`);
     }
     console.log("\n### The stress set: the hard grid's detections at every ratio, each lever's first step on the next frame (held or 4 px a frame), seeds summed\n");
     console.log(`Right/wrong by the detection's score on its own frame. "Void" where fewer than ${VOID_N} wrong detections exist: no reading of "confirms no wrong one".\n`);
