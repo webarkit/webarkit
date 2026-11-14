@@ -186,7 +186,10 @@ function runsOf(dir, prefix, clip, lever, sched) {
         const p = join(dir, `${prefix}-${clip}-${lever}-s${s}-${sched}.json`);
         return existsSync(p) ? readJson(p) : null;
     });
-    if (docs.some((d) => d === null)) return null;
+    if (docs.some((d) => d === null)) {
+        if (docs.every((d) => d === null) && (clip === "static" || clip === "cross" || prefix === "mirror")) return null;
+        fail(`${prefix} ${clip} ${lever} ${sched}: ${docs.filter((d) => d === null).length} of 8 seeds missing`);
+    }
     return docs;
 }
 function runFigures(doc, D) {
@@ -282,7 +285,8 @@ function refusalsReport(dir) {
         for (const sched of SCHEDULES) {
             const rows = SEEDS.flatMap((s) => {
                 const p = join(dir, `patches-${clip}-s${s}-${sched}.json`);
-                return existsSync(p) ? readJson(p).rows : [];
+                if (!existsSync(p)) fail(`${p} missing`);
+                return readJson(p).rows;
             });
             if (rows.length === 0) continue;
             for (const [label, sel] of [["first, refused", (r) => r.first && !r.ok], ["first, confirmed", (r) => r.first && r.ok], ["held", (r) => !r.first]]) {
@@ -296,7 +300,15 @@ function refusalsReport(dir) {
                 console.log(`| ${clip} | ${sched} | ${label} | ${R.length} | ${f(median(R.map((r) => r.stats.culled)), 1)} | ${share((r) => r.stats.observed)} | ${share((r) => r.cap)} | ${share((r) => r.edge)} | ${share((r) => r.stats.rejected)} | ${share((r) => r.stats.lost)} | ${share((r) => r.stats.failed)} |`);
             }
         }
-    console.log("");
+    let edge = 0, cap = 0, unconverged = 0;
+    for (const n of readdirSync(dir).filter((x) => /^patches-(table|wall)-s[1-8]-/.test(x))) for (const r of readJson(join(dir, n)).rows) {
+        edge += r.edge;
+        cap += r.cap;
+        unconverged += r.stats.unconverged;
+    }
+    console.log(`
+Over every step of every run above: ${unconverged} unconverged patches, ${cap} at the cap and ${edge} at an edge.
+`);
 }
 
 function ladderRows(dir, clip, sched) {
@@ -363,9 +375,10 @@ function leversReport(dir) {
                 const lo = Math.min(...bl);
                 let lat = "–";
                 if (sched === "every") {
-                    const on = docs.map((x, i) => latencyOnEvents(x.frames, base[i].frames, D).median);
+                    const onAll = docs.map((x, i) => latencyOnEvents(x.frames, base[i].frames, D));
+                    const on = onAll.map((x) => x.median);
                     const own = docs.map((x, i) => latencyOnEvents(base[i].frames, base[i].frames, D).median);
-                    lat = `${f(mean(on.filter((x) => x !== null)), 2)} / ${f(mean(own.filter((x) => x !== null)), 2)}`;
+                    lat = `${f(mean(on.filter((x) => x !== null)), 2)} / ${f(mean(own.filter((x) => x !== null)), 2)} (seeds with a loss: ${on.filter((x) => x !== null).length}; losses re-locked by the lever: ${onAll.reduce((a, x) => a + x.reached, 0)} of ${onAll.reduce((a, x) => a + x.n, 0)})`;
                 }
                 const sp = spread(d, 4);
                 const spc = spread(dc, 2);
@@ -430,15 +443,15 @@ function truthReport(dir) {
     console.log("## Question 4: right or wrong on synthetic truth, by mechanism\n");
     console.log(`A detection is right within ${RIGHT} px RMS of the truth (\`inView\`), else wrong. A first step is read on the detection it started from; its output H is scored too (\"out > 2 px\": a confirmed step whose pose is wrong whatever its detection).\n`);
     console.log("### The ground truth's sequences (seed 20260925, one run each)\n");
-    console.log("| sequence | frames | lever | states | DETECT frames: right / wrong | first steps from a right detection: confirmed / n | from a wrong one: confirmed / n | confirmed with out > 2 px | TRACK frames (over 2 px) |");
-    console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+    console.log("| sequence | frames | lever | states | DETECT frames: right / wrong | first steps from a right detection: confirmed / n | from a wrong one: confirmed / n | confirmed with out > 2 px | TRACK frames (over 2 px) | worst TRACK frame, px |");
+    console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     for (const s of r.sequences) {
         const det = s.frames.map((x, i) => ({ x, i })).filter(({ x }) => x.state === "DETECT");
         const right = det.filter(({ x }) => x.score <= RIGHT).length;
         const first = s.steps.filter((x) => x.first);
         const fr = first.filter((x) => detectionScoreOf(s, x) <= RIGHT);
         const fw = first.filter((x) => !fr.includes(x));
-        console.log(`| ${s.name} | ${s.n} | ${s.lever} | \`${s.states}\` | ${right} / ${det.length - right} | ${fr.filter((x) => x.ok).length} / ${fr.length} | ${fw.filter((x) => x.ok).length} / ${fw.length} | ${first.filter((x) => x.ok && x.outScore > RIGHT).length} | ${s.frames.filter((x) => x.state === "TRACK").length} (${s.frames.filter((x) => x.state === "TRACK" && x.score > RIGHT).length}) |`);
+        console.log(`| ${s.name} | ${s.n} | ${s.lever} | \`${s.states}\` | ${right} / ${det.length - right} | ${fr.filter((x) => x.ok).length} / ${fr.length} | ${fw.filter((x) => x.ok).length} / ${fw.length} | ${first.filter((x) => x.ok && x.outScore > RIGHT).length} | ${s.frames.filter((x) => x.state === "TRACK").length} (${s.frames.filter((x) => x.state === "TRACK" && x.score > RIGHT).length}) | ${f(Math.max(0, ...s.frames.filter((x) => x.state === "TRACK").map((x) => x.score)), 3)} |`);
     }
     console.log("\n### #262's grids as short paths (4 frames; speed px a frame), each grid × speed one mechanism, seeds summed\n");
     console.log("| grid | speed | lever | paths | DETECT frames: right / wrong | first steps from right: confirmed / n | from wrong: confirmed / n | confirmed with out > 2 px | TRACK frames (over 2 px) |");
