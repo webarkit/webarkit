@@ -1,0 +1,59 @@
+# #272's counted runs: tree states, the ORB gate, and the analysis passes
+
+## R-replay at 1d4c5bf (rreplay-1d4c5bf/tree.log, references.txt's last line)
+start 2026-11-14T10:43:28Z head 1d4c5bf diff e3b0c44298fc1c14 status:
+?? docs/benchmarks/2026-11-14-272-stage1-levers.mjs
+?? docs/benchmarks/2026-11-14-272-stage1-probe.mjs
+?? docs/benchmarks/2026-11-14-272-stage1-truth.mjs
+exit 0
+end 2026-11-14T10:49:43Z head 1d4c5bf diff e3b0c44298fc1c14 status:
+?? docs/benchmarks/2026-11-14-272-m11-stage1-probe.md
+?? docs/benchmarks/2026-11-14-272-stage1-analysis.mjs
+?? docs/benchmarks/2026-11-14-272-stage1-levers.mjs
+?? docs/benchmarks/2026-11-14-272-stage1-probe.mjs
+?? docs/benchmarks/2026-11-14-272-stage1-truth.mjs
+19 step-independent outputs, projected to version 1: 6cdfcb8597689521faafa2d255566a038b1f07595c2e15b37f6175fd59af2ebf
+
+## Aborted clip batch at bd9bc6d (aborted-bd9bc6d/counted.log and the error's last line)
+start 2026-11-14T10:59:10Z head bd9bc6d diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+status:
+---
+check-orb: 2784 frames, all equal to this machine's R-replay (not 98323f06…, the reference of the machine that produced it)
+272-stage1-probe: wall R3 seed 1 device-15: first divergence from the none arm at frame 29, where this arm ran no first step
+
+## Clip runs (counted.log)
+start 2026-11-14T11:15:47Z head cbee352 diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+status:
+---
+check-orb static: 726 frames equal to this machine's R-replay, pinball-static every-frame tracking export
+check-orb static: 363 stateless frames equal to this machine's R-replay, pinball-static detection-only every-frame export, first loop
+check-orb wall: 596 frames equal to this machine's R-replay, pinball-bench every-frame tracking export
+check-orb wall: 298 stateless frames equal to this machine's R-replay, pinball-bench detection-only every-frame export, first loop
+check-orb table: 534 frames equal to this machine's R-replay, pinball-bench-table every-frame tracking export
+check-orb table: 267 stateless frames equal to this machine's R-replay, pinball-bench-table detection-only every-frame export, first loop
+check-orb: 2784 frames, all equal to this machine's R-replay (not 98323f06…, the reference of the machine that produced it)
+end 2026-11-14T12:51:54Z head cbee352 diff 6f3cf657ab0e37c7055e17500372b57fcff992bbae00eac27b01039ed7d4a254
+status:
+ M docs/benchmarks/2026-11-14-272-stage1-analysis.mjs
+---
+done
+
+## Synthetic truth (counted-truth.log)
+start 2026-11-14T10:59:12Z head bd9bc6d diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+status:
+---
+end 2026-11-14T12:33:02Z head cbee352 diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+status:
+---
+done
+
+## Analysis outputs, two passes (analysis-state.txt), the first pass committed
+start 2026-11-14T12:54:57Z head c22d209 diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 status: [?? docs/benchmarks/2026-11-14-272-stage1-analysis-checks.txt ?? docs/benchmarks/2026-11-14-272-stage1-analysis-ladder.md ?? docs/benchmarks/2026-11-14-272-stage1-analysis-levers.md ?? docs/benchmarks/2026-11-14-272-stage1-analysis-m9.md ?? docs/benchmarks/2026-11-14-272-stage1-analysis-metric.md ?? docs/benchmarks/2026-11-14-272-stage1-analysis-mirror.md ?? docs/benchmarks/2026-11-14-272-stage1-analysis-refusals.md ?? docs/benchmarks/2026-11-14-272-stage1-analysis-truth.md ]
+same metric
+same refusals
+same ladder
+same levers
+same mirror
+same truth
+same m9
+end 2026-11-14T12:55:54Z head c22d209 diff e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 status: [?? docs/benchmarks/2026-11-14-272-stage1-analysis-checks.txt ?? docs/benchmarks/2026-11-14-272-stage1-analysis-ladder.md ?? docs/benchmarks/2026-11-14-272-stage1-analysis-levers.md ?? docs/benchmarks/2026-11-14-272-stage1-analysis-m9.md ?? docs/benchmarks/2026-11-14-272-stage1-analysis-metric.md ?? docs/benchmarks/2026-11-14-272-stage1-analysis-mirror.md ?? docs/benchmarks/2026-11-14-272-stage1-analysis-refusals.md ?? docs/benchmarks/2026-11-14-272-stage1-analysis-truth.md ]
