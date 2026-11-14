@@ -36,3 +36,5 @@ Unconverged is split by re-aligning with the cap doubled: the same observation m
 | wall | device-25 | first, confirmed | 112 | 0.0 | 0.38 / 0.44 | 0.48 / 0.48 | 0.00 / 0.00 | 0.04 / 0.06 | 0.02 / 0.02 | 0.00 / 0.00 |
 | wall | device-25 | held | 961 | 0.0 | 0.56 / 0.53 | 0.38 / 0.41 | 0.00 / 0.00 | 0.04 / 0.04 | 0.02 / 0.02 | 0.00 / 0.00 |
 
+Over every step of every run above: 204081 unconverged patches, 204055 at the cap and 26 at an edge.
+

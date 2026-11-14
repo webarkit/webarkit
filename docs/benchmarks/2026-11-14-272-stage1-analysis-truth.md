@@ -4,85 +4,85 @@ A detection is right within 2 px RMS of the truth (`inView`), else wrong. A firs
 
 ### The ground truth's sequences (seed 20260925, one run each)
 
-| sequence | frames | lever | states | DETECT frames: right / wrong | first steps from a right detection: confirmed / n | from a wrong one: confirmed / n | confirmed with out > 2 px | TRACK frames (over 2 px) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| wander | 40 | none | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 39 (0) |
-| wander | 40 | V | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 39 (0) |
-| wander | 40 | R1 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 39 (0) |
-| wander | 40 | R2 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 39 (0) |
-| wander | 40 | R3 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 39 (0) |
-| wander | 40 | S | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 39 (0) |
-| wander | 40 | T | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 39 (0) |
-| leaveAndReturn | 106 | none | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTT` | 22 / 2 | 2 / 22 | 0 / 2 | 0 | 51 (0) |
-| leaveAndReturn | 106 | V | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 2 / 2 | 2 / 2 | 0 / 2 | 0 | 71 (0) |
-| leaveAndReturn | 106 | R1 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTT` | 19 / 2 | 2 / 19 | 0 / 2 | 0 | 54 (0) |
-| leaveAndReturn | 106 | R2 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTT` | 16 / 2 | 2 / 16 | 0 / 2 | 0 | 57 (0) |
-| leaveAndReturn | 106 | R3 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTTT` | 15 / 2 | 2 / 15 | 0 / 2 | 0 | 58 (0) |
-| leaveAndReturn | 106 | S | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTT` | 22 / 2 | 2 / 22 | 0 / 2 | 0 | 51 (0) |
-| leaveAndReturn | 106 | T | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTT` | 22 / 2 | 2 / 22 | 0 / 2 | 0 | 51 (0) |
-| settlePath | 80 | none | `LLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 21 / 2 | 1 / 21 | 0 / 2 | 0 | 43 (0) |
-| settlePath | 80 | V | `LLLLLLLLLLLLLLDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 2 | 1 / 1 | 0 / 2 | 0 | 63 (0) |
-| settlePath | 80 | R1 | `LLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 17 / 2 | 1 / 17 | 0 / 2 | 0 | 47 (0) |
-| settlePath | 80 | R2 | `LLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 15 / 2 | 1 / 15 | 0 / 2 | 0 | 49 (0) |
-| settlePath | 80 | R3 | `LLLLLLLLLLLLLLDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 13 / 2 | 1 / 13 | 0 / 2 | 0 | 51 (0) |
-| settlePath | 80 | S | `LLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 21 / 2 | 1 / 21 | 0 / 2 | 0 | 43 (0) |
-| settlePath | 80 | T | `LLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 21 / 2 | 1 / 21 | 0 / 2 | 0 | 43 (0) |
-| restPath | 60 | none | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 59 (0) |
-| restPath | 60 | V | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 59 (0) |
-| restPath | 60 | R1 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 59 (0) |
-| restPath | 60 | R2 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 59 (0) |
-| restPath | 60 | R3 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 59 (0) |
-| restPath | 60 | S | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 59 (0) |
-| restPath | 60 | T | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 59 (0) |
-| velocityStep(2) | 20 | none | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(2) | 20 | V | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(2) | 20 | R1 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(2) | 20 | R2 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(2) | 20 | R3 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(2) | 20 | S | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(2) | 20 | T | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(3) | 20 | none | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(3) | 20 | V | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(3) | 20 | R1 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(3) | 20 | R2 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(3) | 20 | R3 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(3) | 20 | S | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(3) | 20 | T | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(4) | 20 | none | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(4) | 20 | V | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(4) | 20 | R1 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(4) | 20 | R2 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(4) | 20 | R3 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(4) | 20 | S | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(4) | 20 | T | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) |
-| velocityStep(5) | 20 | none | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(5) | 20 | V | `DTTTTDDTTTTTTTTTTTTT` | 3 / 0 | 2 / 3 | 0 / 0 | 0 | 17 (0) |
-| velocityStep(5) | 20 | R1 | `DTTTTDDTTTTTTTTTTTTT` | 3 / 0 | 2 / 3 | 0 / 0 | 0 | 17 (0) |
-| velocityStep(5) | 20 | R2 | `DTTTTDTTTTTTTTTTTTTT` | 2 / 0 | 2 / 2 | 0 / 0 | 0 | 18 (0) |
-| velocityStep(5) | 20 | R3 | `DTTTTDTTTTTTTTTTTTTT` | 2 / 0 | 2 / 2 | 0 / 0 | 0 | 18 (0) |
-| velocityStep(5) | 20 | S | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(5) | 20 | T | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(6) | 20 | none | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(6) | 20 | V | `DTTTTDDTTTTTTTTTTTTT` | 3 / 0 | 2 / 3 | 0 / 0 | 0 | 17 (0) |
-| velocityStep(6) | 20 | R1 | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(6) | 20 | R2 | `DTTTTDTTTTTTTTTTTTTT` | 2 / 0 | 2 / 2 | 0 / 0 | 0 | 18 (0) |
-| velocityStep(6) | 20 | R3 | `DTTTTDTTTTTTTTTTTTTT` | 2 / 0 | 2 / 2 | 0 / 0 | 0 | 18 (0) |
-| velocityStep(6) | 20 | S | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(6) | 20 | T | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(8) | 20 | none | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(8) | 20 | V | `DTTTTDDTTTTTTTTTTTTT` | 3 / 0 | 2 / 3 | 0 / 0 | 0 | 17 (0) |
-| velocityStep(8) | 20 | R1 | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(8) | 20 | R2 | `DTTTTDTTTTTTTTTTTTTT` | 2 / 0 | 2 / 2 | 0 / 0 | 0 | 18 (0) |
-| velocityStep(8) | 20 | R3 | `DTTTTDTTTTTTTTTTTTTT` | 2 / 0 | 2 / 2 | 0 / 0 | 0 | 18 (0) |
-| velocityStep(8) | 20 | S | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(8) | 20 | T | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(10) | 20 | none | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(10) | 20 | V | `DTTTTDDTTTTTTTTTTTTT` | 3 / 0 | 2 / 3 | 0 / 0 | 0 | 17 (0) |
-| velocityStep(10) | 20 | R1 | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(10) | 20 | R2 | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(10) | 20 | R3 | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(10) | 20 | S | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
-| velocityStep(10) | 20 | T | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) |
+| sequence | frames | lever | states | DETECT frames: right / wrong | first steps from a right detection: confirmed / n | from a wrong one: confirmed / n | confirmed with out > 2 px | TRACK frames (over 2 px) | worst TRACK frame, px |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| wander | 40 | none | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 39 (0) | 0.112 |
+| wander | 40 | V | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 39 (0) | 0.112 |
+| wander | 40 | R1 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 39 (0) | 0.112 |
+| wander | 40 | R2 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 39 (0) | 0.112 |
+| wander | 40 | R3 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 39 (0) | 0.112 |
+| wander | 40 | S | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 39 (0) | 0.112 |
+| wander | 40 | T | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 39 (0) | 0.112 |
+| leaveAndReturn | 106 | none | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTT` | 22 / 2 | 2 / 22 | 0 / 2 | 0 | 51 (0) | 0.358 |
+| leaveAndReturn | 106 | V | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 2 / 2 | 2 / 2 | 0 / 2 | 0 | 71 (0) | 0.358 |
+| leaveAndReturn | 106 | R1 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTT` | 19 / 2 | 2 / 19 | 0 / 2 | 0 | 54 (0) | 0.358 |
+| leaveAndReturn | 106 | R2 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTT` | 16 / 2 | 2 / 16 | 0 / 2 | 0 | 57 (0) | 0.358 |
+| leaveAndReturn | 106 | R3 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTTT` | 15 / 2 | 2 / 15 | 0 / 2 | 0 | 58 (0) | 0.358 |
+| leaveAndReturn | 106 | S | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTT` | 22 / 2 | 2 / 22 | 0 / 2 | 0 | 51 (0) | 0.358 |
+| leaveAndReturn | 106 | T | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTT` | 22 / 2 | 2 / 22 | 0 / 2 | 0 | 51 (0) | 0.358 |
+| settlePath | 80 | none | `LLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 21 / 2 | 1 / 21 | 0 / 2 | 0 | 43 (0) | 0.100 |
+| settlePath | 80 | V | `LLLLLLLLLLLLLLDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 2 | 1 / 1 | 0 / 2 | 0 | 63 (0) | 0.192 |
+| settlePath | 80 | R1 | `LLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 17 / 2 | 1 / 17 | 0 / 2 | 0 | 47 (0) | 0.118 |
+| settlePath | 80 | R2 | `LLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 15 / 2 | 1 / 15 | 0 / 2 | 0 | 49 (0) | 0.184 |
+| settlePath | 80 | R3 | `LLLLLLLLLLLLLLDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 13 / 2 | 1 / 13 | 0 / 2 | 0 | 51 (0) | 0.149 |
+| settlePath | 80 | S | `LLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 21 / 2 | 1 / 21 | 0 / 2 | 0 | 43 (0) | 0.100 |
+| settlePath | 80 | T | `LLLLLLLLLLLLLLDDDDDDDDDDDDDDDDDDDDDDDTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 21 / 2 | 1 / 21 | 0 / 2 | 0 | 43 (0) | 0.100 |
+| restPath | 60 | none | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 59 (0) | 0.100 |
+| restPath | 60 | V | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 59 (0) | 0.100 |
+| restPath | 60 | R1 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 59 (0) | 0.100 |
+| restPath | 60 | R2 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 59 (0) | 0.100 |
+| restPath | 60 | R3 | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 59 (0) | 0.100 |
+| restPath | 60 | S | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 59 (0) | 0.100 |
+| restPath | 60 | T | `DTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 59 (0) | 0.100 |
+| velocityStep(2) | 20 | none | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.090 |
+| velocityStep(2) | 20 | V | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.090 |
+| velocityStep(2) | 20 | R1 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.090 |
+| velocityStep(2) | 20 | R2 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.090 |
+| velocityStep(2) | 20 | R3 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.090 |
+| velocityStep(2) | 20 | S | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.090 |
+| velocityStep(2) | 20 | T | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.090 |
+| velocityStep(3) | 20 | none | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.090 |
+| velocityStep(3) | 20 | V | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.090 |
+| velocityStep(3) | 20 | R1 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.090 |
+| velocityStep(3) | 20 | R2 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.090 |
+| velocityStep(3) | 20 | R3 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.090 |
+| velocityStep(3) | 20 | S | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.090 |
+| velocityStep(3) | 20 | T | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.090 |
+| velocityStep(4) | 20 | none | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.104 |
+| velocityStep(4) | 20 | V | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.104 |
+| velocityStep(4) | 20 | R1 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.104 |
+| velocityStep(4) | 20 | R2 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.104 |
+| velocityStep(4) | 20 | R3 | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.104 |
+| velocityStep(4) | 20 | S | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.104 |
+| velocityStep(4) | 20 | T | `DTTTTTTTTTTTTTTTTTTT` | 1 / 0 | 1 / 1 | 0 / 0 | 0 | 19 (0) | 0.104 |
+| velocityStep(5) | 20 | none | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(5) | 20 | V | `DTTTTDDTTTTTTTTTTTTT` | 3 / 0 | 2 / 3 | 0 / 0 | 0 | 17 (0) | 0.097 |
+| velocityStep(5) | 20 | R1 | `DTTTTDDTTTTTTTTTTTTT` | 3 / 0 | 2 / 3 | 0 / 0 | 0 | 17 (0) | 0.101 |
+| velocityStep(5) | 20 | R2 | `DTTTTDTTTTTTTTTTTTTT` | 2 / 0 | 2 / 2 | 0 / 0 | 0 | 18 (0) | 0.097 |
+| velocityStep(5) | 20 | R3 | `DTTTTDTTTTTTTTTTTTTT` | 2 / 0 | 2 / 2 | 0 / 0 | 0 | 18 (0) | 0.097 |
+| velocityStep(5) | 20 | S | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(5) | 20 | T | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(6) | 20 | none | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(6) | 20 | V | `DTTTTDDTTTTTTTTTTTTT` | 3 / 0 | 2 / 3 | 0 / 0 | 0 | 17 (0) | 0.107 |
+| velocityStep(6) | 20 | R1 | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(6) | 20 | R2 | `DTTTTDTTTTTTTTTTTTTT` | 2 / 0 | 2 / 2 | 0 / 0 | 0 | 18 (0) | 0.108 |
+| velocityStep(6) | 20 | R3 | `DTTTTDTTTTTTTTTTTTTT` | 2 / 0 | 2 / 2 | 0 / 0 | 0 | 18 (0) | 0.107 |
+| velocityStep(6) | 20 | S | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(6) | 20 | T | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(8) | 20 | none | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(8) | 20 | V | `DTTTTDDTTTTTTTTTTTTT` | 3 / 0 | 2 / 3 | 0 / 0 | 0 | 17 (0) | 0.160 |
+| velocityStep(8) | 20 | R1 | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(8) | 20 | R2 | `DTTTTDTTTTTTTTTTTTTT` | 2 / 0 | 2 / 2 | 0 / 0 | 0 | 18 (0) | 0.160 |
+| velocityStep(8) | 20 | R3 | `DTTTTDTTTTTTTTTTTTTT` | 2 / 0 | 2 / 2 | 0 / 0 | 0 | 18 (0) | 0.160 |
+| velocityStep(8) | 20 | S | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(8) | 20 | T | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(10) | 20 | none | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(10) | 20 | V | `DTTTTDDTTTTTTTTTTTTT` | 3 / 0 | 2 / 3 | 0 / 0 | 0 | 17 (0) | 0.249 |
+| velocityStep(10) | 20 | R1 | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(10) | 20 | R2 | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(10) | 20 | R3 | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(10) | 20 | S | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
+| velocityStep(10) | 20 | T | `DTTTTDDDDDDDDDDDDDDD` | 16 / 0 | 1 / 15 | 0 / 0 | 0 | 4 (0) | 0.087 |
 
 ### #262's grids as short paths (4 frames; speed px a frame), each grid × speed one mechanism, seeds summed
 
