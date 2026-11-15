@@ -108,6 +108,8 @@ chance to object.
 
 Before submitting a commit or a Pull Request, it is essential to verify that the code works correctly and adheres to the project's quality standards.
 
+**Run every `node` and `npm` command from the repository's root.** Under nvm for Windows, the version shim reads [`.nvmrc`](.nvmrc) only in the current directory: on the maintainer's notebook, `node` is the pinned v24.21.0 at the root and v24.18.0 from `docs/`, `docs/benchmarks/` or `scripts/`, with nothing to say so ([#271](https://github.com/webarkit/webarkit/issues/271)). A script started from a subdirectory then runs on another toolchain, which a measurement or a reference hash records as if it were the pinned one. The references script, `docs/benchmarks/2026-11-06-228-133-stage3-references.mjs`, refuses to run on a Node other than `.nvmrc`'s and prints both versions; other scripts do not check.
+
 This is an npm-workspaces monorepo — run these from the repo root; they cover both `@webarkit/cv-backend-spec` and `@webarkit/cv-backend-jsfeatnext`:
 
 - **Install dependencies** (first time, or after pulling changes to `package-lock.json`):
