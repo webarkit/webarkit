@@ -65,8 +65,10 @@ technically do — deliberately:
   `filterMatches` to every detection as soon as the method exists, so exposing
   it would change every detection. #262's Stage 1 probe
   (webarkit/webarkit#270) measured GMS and dropped it: it removes accepted
-  detections and adds none where detection fails. Callers skip the step with
-  `if (cv.filterMatches) …`, which is the documented pattern.
+  detections, and where the ratio test refuses a frame it accepts none with
+  ORB, this backend's descriptor, and one frame of 2,136 with TEBLID. Callers
+  skip the step with `if (cv.filterMatches) …`, which is the documented
+  pattern.
 
 ## Behaviour worth knowing
 
