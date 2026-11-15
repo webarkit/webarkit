@@ -43,8 +43,9 @@ change that raises the lock rate, or lowers the re-lock latency, on the seeded r
 wall, without confirming wrong detections on synthetic frames, #270's scripts are re-run; if
 TEBLID's lock rate then leaves ORB's range at the same ratio, on the device schedules, #264–#268
 are reopened, and otherwise TEBLID is dropped for this tracker in a second dated entry. #264–#269
-are closed as not planned. **GMS is dropped:** it removes accepted detections and adds none where
-detection fails. The probe also found that the R-replay reference is per machine.
+are closed as not planned. **GMS is dropped:** it removes accepted detections, and where the ratio
+test refuses a frame it accepts none with ORB, this backend's descriptor, and one frame of 2,136
+with TEBLID. The probe also found that the R-replay reference is per machine.
 
 The "M11 — the first step after a detection" milestone
 ([milestone 13](https://github.com/webarkit/webarkit/milestone/13)) closed on
