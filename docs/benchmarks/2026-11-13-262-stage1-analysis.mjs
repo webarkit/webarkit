@@ -215,6 +215,29 @@ function armsReport(dir) {
     requireCheckOrb(dir);
     const docs = load(dir, /^arm-.*\.json$/);
     if (docs.length === 0) fail(`no arm-*.json in ${dir}`);
+    // Every check before any figure. On the `every` schedule a run processes every frame of its two
+    // loops, so every run of a clip, whatever its arm, ratio and seed, has the first such run's frames:
+    // the same count and the same media times, row by row. On a device schedule (`device-15`,
+    // `device-25`) there is no frame guard: `scripts/replay-run.mjs` (`replayRun`, its `busy` time)
+    // picks each next frame from the busy time of the last one, which follows the tracker's state, so
+    // the frames follow the tracker's states, and each run's figures are read on its own frames,
+    // which is what this mode compares.
+    const firstEvery = new Map();
+    const runName = (d) => `${d.clip} ratio ${d.ratio} ${d.arm} seed ${d.seed}`;
+    for (const d of docs) {
+        if (d.scheduleName !== "every") continue;
+        const a = firstEvery.get(d.clip);
+        if (!a) {
+            firstEvery.set(d.clip, d);
+            continue;
+        }
+        const n = Math.min(a.frames.length, d.frames.length);
+        for (let i = 0; i < n; i++)
+            if (d.frames[i].mediaTimeSeconds !== a.frames[i].mediaTimeSeconds)
+                fail(`arms every: ${runName(d)}, frame ${i} at media time ${d.frames[i].mediaTimeSeconds}; ${runName(a)}, ${a.frames[i].mediaTimeSeconds}`);
+        if (d.frames.length !== a.frames.length)
+            fail(`arms every: ${runName(d)} has ${d.frames.length} frames, ${runName(a)} ${a.frames.length}; frame ${n} is in one only`);
+    }
     const groups = new Map();
     for (const d of docs) {
         const k = `${d.clip}|${d.scheduleName}|${d.ratio}|${d.arm}`;
@@ -334,8 +357,9 @@ function statelessReport(dir, prefix = "stateless") {
             if (runs.length === 0) continue;
             if (runs.length !== 8) fail(`${prefix} ${clip} ${arm} ${ratio}: ${runs.length} seeds`);
             const acc = runs.map((r) => r.rows.filter((x) => x.ok).length / r.rows.length);
-            const four = runs[0].rows.filter((x) => x.numMatches >= 4).length / runs[0].rows.length;
-            const m = runs[0].rows.map((x) => x.numMatches);
+            const all = runs.flatMap((r) => r.rows);
+            const four = all.filter((x) => x.numMatches >= 4).length / all.length;
+            const m = all.map((x) => x.numMatches);
             const inl = runs.flatMap((r) => r.rows.filter((x) => x.ok).map((x) => x.numInliers));
             const reasons = {};
             for (const r of runs) for (const x of r.rows) if (!x.ok) reasons[x.reason] = (reasons[x.reason] ?? 0) + 1;
@@ -406,6 +430,13 @@ function statelessReport(dir, prefix = "stateless") {
 function gmsReport(dir) {
     const docs = load(dir, /^gms-.*\.json$/);
     if (docs.length === 0) fail(`no gms-*.json in ${dir}`);
+    // Every check before the cross-check and any figure: per clip and arm, the documents' seeds are
+    // exactly 1 to 8, each once.
+    for (const clip of [...new Set(docs.map((d) => d.clip))].sort())
+        for (const arm of ["orb", "teblid"]) {
+            const seeds = docs.filter((d) => d.clip === clip && d.arm === arm).map((d) => d.seed).sort((a, b) => a - b);
+            if (seeds.join(",") !== "1,2,3,4,5,6,7,8") fail(`gms ${clip} ${arm}: seeds ${seeds.join(",") || "none"}, not 1 to 8 each once`);
+        }
     // The cross-check: the ratio-tested set equals the stateless run's, frame for frame.
     for (const d of docs) {
         const st = JSON.parse(readFileSync(join(dir, `stateless-${d.clip}-${d.arm}-r0.8-s${d.seed}.json`), "utf8"));
@@ -429,7 +460,7 @@ function gmsReport(dir) {
         for (const arm of ["orb", "teblid"]) {
             const runs = docs.filter((d) => d.clip === clip && d.arm === arm);
             for (const set of SETS) {
-                const n = runs[0].rows.map((r) => r[set].n);
+                const n = runs.flatMap((d) => d.rows.map((r) => r[set].n));
                 let four = 0, acc = 0, gain = 0, loss = 0;
                 for (const d of runs)
                     for (const r of d.rows) {
@@ -522,8 +553,59 @@ function agreementReport(dir, prefix = "stateless") {
     console.log("");
 }
 
+/**
+ * What `2026-11-13-262-stage1-truth.mjs` writes into truth.json, mirrored from its constants (it
+ * runs on import, so they cannot be imported): its pose list in order, easy (3 scales × 5 rolls × 3
+ * perspectives, 45), hard (3 × 3 × 3, 27) and partial (2 scales × 2 rolls × 4 shifts, 16), each pose
+ * keyed by its index `pose` in that list; `SEEDS` 1 to 8; `RATIOS`; and 20 no-target frames, keyed
+ * by `frame`, each at every seed: 160 detections a ratio and arm.
+ */
+const TRUTH = {
+    grids: { easy: 3 * 5 * 3, hard: 3 * 3 * 3, partial: 2 * 2 * 4 },
+    seeds: [1, 2, 3, 4, 5, 6, 7, 8],
+    ratios: [0.7, 0.75, 0.8, 0.85, 0.9],
+    negativeFrames: 20,
+};
+
+/** Each cell of truth.json holds exactly its expected keys, each once: a message naming the first cell that does not, or null. */
+export function truthRefusal(r) {
+    const cellCheck = (what, rows, want, key) => {
+        const seen = new Map();
+        for (const x of rows) seen.set(key(x), (seen.get(key(x)) ?? 0) + 1);
+        const missing = want.filter((k) => !seen.has(k));
+        const repeated = [...seen].filter(([k, n]) => n > 1 || !want.includes(k)).map(([k, n]) => (want.includes(k) ? `${k} ×${n}` : `${k} unexpected`));
+        if (missing.length || repeated.length)
+            return `truth ${what}: ${rows.length} rows, ${want.length} expected; missing ${missing.join(" ") || "none"}; repeated or unexpected ${repeated.join(" ") || "none"}`;
+        return null;
+    };
+    let first = 0;
+    const range = {};
+    for (const [grid, n] of Object.entries(TRUTH.grids)) {
+        range[grid] = Array.from({ length: n }, (_, i) => first + i);
+        first += n;
+    }
+    for (const arm of ["orb", "teblid"])
+        for (const ratio of TRUTH.ratios) {
+            for (const grid of Object.keys(TRUTH.grids)) {
+                const want = range[grid].flatMap((p) => TRUTH.seeds.map((s) => `pose ${p} seed ${s}`));
+                const rows = r.poses.filter((p) => p.grid === grid && p.ratio === ratio && p.arm === arm);
+                const why = cellCheck(`${grid} ${ratio} ${arm}`, rows, want, (p) => `pose ${p.pose} seed ${p.seed}`);
+                if (why) return why;
+            }
+            const want = Array.from({ length: TRUTH.negativeFrames }, (_, i) => TRUTH.seeds.map((s) => `frame ${i} seed ${s}`)).flat();
+            const rows = r.negatives.filter((p) => p.ratio === ratio && p.arm === arm);
+            const why = cellCheck(`no target ${ratio} ${arm}`, rows, want, (p) => `frame ${p.frame} seed ${p.seed}`);
+            if (why) return why;
+        }
+    return null;
+}
+
 function truthReport(dir) {
     const r = JSON.parse(readFileSync(join(dir, "truth.json"), "utf8"));
+    // Every check before any figure: each grid, ratio and arm cell holds its grid's poses × seeds 1 to
+    // 8, each (pose, seed) once, and each ratio and arm no-target cell its 20 frames × 8 seeds, each once.
+    const why = truthRefusal(r);
+    if (why) fail(why);
     console.log("## Question 1: detections scored against the true H, synthetic frames\n");
     console.log("Score: `inView(H, T)`, the RMS distance, frame px, over the target's 64 patch centres the truth puts inside the 270 × 360 frame.\n");
     console.log("| grid | ratio | arm | detections | accepted | RMS ≤ 2 px | 2–5 | 5–10 | 10–20 | > 20 | worst RMS |");
@@ -638,6 +720,101 @@ function selfTest() {
             if (doc.arm === "teblid" && doc.seed === 3) doc.rows = doc.rows.map((r, i) => ({ ...r, t: (i + 1) / 30 }));
         }) !== 0,
     );
+    // The other modes on constructed run directories, each run as its own process: its exit status
+    // and what it printed.
+    const modeRun = (mode, build) => {
+        const d = mkdtempSync(join(tmpdir(), `262-${mode}-`));
+        try {
+            writeFileSync(join(d, "check-orb.json"), JSON.stringify({ passed: true, frames: 1 }));
+            build(d);
+            const p = spawnSync(process.execPath, [fileURLToPath(import.meta.url), mode, d], { encoding: "utf8" });
+            return { status: p.status, out: p.stdout, err: p.stderr };
+        } finally {
+            rmSync(d, { recursive: true, force: true });
+        }
+    };
+    const put = (d, name, doc) => writeFileSync(join(d, name), JSON.stringify(doc));
+    // arms: the `every` runs of a clip share their frames whatever the arm, ratio and seed; a device
+    // schedule's runs may not.
+    // Two loops of n / 2 frames, each spread over the table clip's loop period (ffprobe reads 8.9 s),
+    // so that summarizeRun reads the wrap as the clip restarting.
+    const armFrames = (n) => {
+        const dt = 8.9 / (n / 2);
+        return Array.from({ length: n }, (_, i) => ({ state: i < 3 ? "LOST" : "TRACK", reason: i < 3 ? "few-matches" : null, mediaTimeSeconds: (i % (n / 2)) * dt, timestampMs: (i % (n / 2)) * dt * 1000 }));
+    };
+    const refused = (r, why) => r.status === 1 && r.err.includes(`262-analysis: ${why}`);
+    const armsDir = (alter) => (d) => {
+        for (const arm of ["orb", "teblid"])
+            for (let seed = 1; seed <= 8; seed++) {
+                const doc = { clip: "table", arm, ratio: 0.8, seed, scheduleName: "every", frames: armFrames(120) };
+                alter(doc);
+                put(d, `arm-table-${arm}-r0.8-s${seed}-${doc.scheduleName}.json`, doc);
+            }
+    };
+    T("arms passes complete every-frame runs", modeRun("arms", armsDir(() => {})).status === 0);
+    T("arms refuses an every-frame run of another frame count", refused(modeRun("arms", armsDir((doc) => {
+        if (doc.arm === "teblid" && doc.seed === 4) doc.frames = [...armFrames(120).slice(0, 60), ...armFrames(120).slice(60, 118)];
+    })), "arms every: table ratio 0.8 teblid seed 4 has 118 frames, table ratio 0.8 orb seed 1 120; frame 118"));
+    T("arms refuses an every-frame run with one other media time", refused(modeRun("arms", armsDir((doc) => {
+        if (doc.arm === "teblid" && doc.seed === 6) doc.frames[70].mediaTimeSeconds += 1 / 30;
+    })), "arms every: table ratio 0.8 teblid seed 6, frame 70"));
+    T("arms passes device-schedule runs whose frames differ between the arms", modeRun("arms", armsDir((doc) => {
+        doc.scheduleName = "device-15";
+        if (doc.arm === "teblid") doc.frames = armFrames(90);
+    })).status === 0);
+    // truth: every cell complete, each key once.
+    const truthDoc = () => {
+        const poses = [];
+        const negatives = [];
+        let pose = 0;
+        for (const [grid, n] of Object.entries(TRUTH.grids)) {
+            for (let i = 0; i < n; i++, pose++)
+                for (const arm of ["orb", "teblid"])
+                    for (const ratio of TRUTH.ratios) for (const seed of TRUTH.seeds) poses.push({ arm, ratio, grid, pose, seed, ok: false, reason: "few-matches" });
+        }
+        for (const arm of ["orb", "teblid"])
+            for (const ratio of TRUTH.ratios)
+                for (let frame = 0; frame < TRUTH.negativeFrames; frame++) for (const seed of TRUTH.seeds) negatives.push({ arm, ratio, frame, seed, ok: false, reason: "few-matches" });
+        return { poses, negatives, sequences: [] };
+    };
+    const truthRun = (alter) => modeRun("truth", (d) => {
+        const r = truthDoc();
+        alter(r);
+        put(d, "truth.json", r);
+    });
+    T("truth passes complete cells", truthRun(() => {}).status === 0);
+    T("truth refuses a grid cell missing one (pose, seed)", refused(truthRun((r) => {
+        r.poses.splice(r.poses.findIndex((p) => p.grid === "hard" && p.arm === "teblid" && p.ratio === 0.85 && p.seed === 5), 1);
+    }), "truth hard 0.85 teblid: 215 rows, 216 expected; missing pose 45 seed 5; repeated or unexpected none"));
+    T("truth refuses a grid cell with one (pose, seed) twice", refused(truthRun((r) => {
+        r.poses.push({ ...r.poses.find((p) => p.grid === "partial" && p.arm === "orb" && p.ratio === 0.7) });
+    }), "truth partial 0.7 orb: 129 rows, 128 expected; missing none; repeated or unexpected pose 72 seed 1 ×2"));
+    T("truth refuses a no-target cell of 159", refused(truthRun((r) => {
+        r.negatives.splice(r.negatives.findIndex((p) => p.arm === "orb" && p.ratio === 0.9), 1);
+    }), "truth no target 0.9 orb: 159 rows, 160 expected; missing frame 0 seed 1; repeated or unexpected none"));
+    // gms and stateless: seeds 1 to 8 each once, and every seed's rows read.
+    const statelessRows = (seed, alter) => Array.from({ length: 6 }, (_, i) => alter({ t: i / 30, ok: i % 2 === 0, reason: i % 2 ? "few-inliers" : null, numMatches: 10 + i, numInliers: 6, H: I, stages: { detect: 1, describe: 1, match: 1, estimateHomography: 1 } }, seed, i));
+    const gmsRow = (s, seed, i, alter) => {
+        const set = (n) => ({ n, ok: true, inliers: 6, accepted: s.ok, H: null });
+        return alter({ t: s.t, ratio: { ...set(s.numMatches), accepted: s.ok }, ratioGms: set(8), ratioGmsRS: set(8), nn: set(20 + i), nnGms: set(9), nnGmsRS: set(9) }, seed, i);
+    };
+    const gmsDir = ({ seedOf = (s) => s, statelessAlter = (x) => x, gmsAlter = (x) => x } = {}) => (d) => {
+        for (const arm of ["orb", "teblid"])
+            for (let s = 1; s <= 8; s++) {
+                const rows = statelessRows(s, statelessAlter);
+                put(d, `stateless-table-${arm}-r0.8-s${s}.json`, { clip: "table", arm, ratio: 0.8, seed: s, rows });
+                put(d, `gms-table-${arm}-s${s}.json`, { clip: "table", arm, seed: seedOf(s, arm), rows: rows.map((x, i) => gmsRow(x, s, i, gmsAlter)) });
+            }
+    };
+    T("gms passes seeds 1 to 8", modeRun("gms", gmsDir()).status === 0);
+    T("gms refuses seed 3 twice and no seed 8", refused(modeRun("gms", gmsDir({ seedOf: (s, arm) => (arm === "teblid" && s === 8 ? 3 : s) })), "gms table teblid: seeds 1,2,3,3,4,5,6,7, not 1 to 8 each once"));
+    const changed = (seed, i) => seed === 2 && i === 1;
+    const st0 = modeRun("stateless", gmsDir());
+    const st1 = modeRun("stateless", gmsDir({ statelessAlter: (x, seed, i) => (changed(seed, i) ? { ...x, numMatches: 3 } : x) }));
+    T("stateless reads every seed's match counts: seed 2's one changed frame changes the printed figures", st0.status === 0 && st1.status === 0 && st0.out !== st1.out);
+    const g0 = modeRun("gms", gmsDir());
+    const g1 = modeRun("gms", gmsDir({ gmsAlter: (x, seed, i) => (changed(seed, i) ? { ...x, nn: { ...x.nn, n: 90 } } : x) }));
+    T("gms reads every seed's match counts: seed 2's one changed frame changes the printed figures", g0.status === 0 && g1.status === 0 && g0.out !== g1.out);
     if (fails.length) {
         console.error(`self-test: ${fails.length} failed\n${fails.join("\n")}`);
         process.exit(1);
