@@ -59,9 +59,16 @@ technically do — deliberately:
   `DetectOptions` carries no detector selector yet, so those are not reachable
   through this API. Advertising a capability the caller cannot invoke is exactly
   the dishonesty the negotiation rules exist to prevent.
-- **`matchFilters: []`** and `filterMatches` omitted entirely, until a GMS
-  implementation exists. Callers skip the step with
-  `if (cv.filterMatches) …`, which is the documented pattern.
+- **`matchFilters: []`** and `filterMatches` omitted entirely, by choice.
+  jsfeatNext provides GMS (`gms.filter`, since 1.1.0; see
+  [Requirements](#requirements)), but `detectTarget` applies a backend's
+  `filterMatches` to every detection as soon as the method exists, so exposing
+  it would change every detection. #262's Stage 1 probe
+  (webarkit/webarkit#270) measured GMS and dropped it: it removes accepted
+  detections, and where the ratio test refuses a frame it accepts none with
+  ORB, this backend's descriptor, and one frame of 2,136 with TEBLID. Callers
+  skip the step with `if (cv.filterMatches) …`, which is the documented
+  pattern.
 
 ## Behaviour worth knowing
 

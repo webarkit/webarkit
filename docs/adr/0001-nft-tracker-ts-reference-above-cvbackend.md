@@ -218,6 +218,42 @@ The expected cost of Option A on a WASM backend is small but unmeasured: trackin
   Their adoption is decided with
   [#109](https://github.com/webarkit/webarkit/issues/109), in a later ADR.
   This entry changes no decision of this ADR.
+- What M10's Stage 1 — TEBLID-256 against ORB on seeded desktop replays of
+  the table and wall clips — found, recorded on 2026-11-14
+  ([the probe's record](../benchmarks/2026-11-13-262-stage1-probe.md),
+  [#262](https://github.com/webarkit/webarkit/issues/262)). Two facts:
+  - "Easier" says new descriptors (TEBLID) "are picked up through capability
+    negotiation, with no tracker changes". On the code at `d9092e4` this does
+    not hold: `detectTarget` describes the scene with no `kind`, and
+    `chooseDescriptorSet` takes the first usable set, so a second descriptor
+    family needs the tracker to pass its choice through
+    ([#265](https://github.com/webarkit/webarkit/issues/265)). #262's probe
+    worked around it with a wrapper backend, not a tracker change.
+  - #262's Stage 1 measured TEBLID-256 against ORB: no lock-rate change at
+    the same ratio, a small gain at a looser ratio bought with more wrong
+    acceptances, and added locks dropping at their first tracking step.
+    TEBLID is deferred until the first step after a detection holds better,
+    by the maintainer's ruling of 2026-11-14.
+
+  This entry changes no decision of this ADR.
+- What M11's Stage 1 — the first tracking step after a detection, on seeded
+  desktop replays of the table and wall clips and on synthetic frames —
+  found, recorded on 2026-11-14
+  ([the probe's record](../benchmarks/2026-11-14-272-m11-stage1-probe.md),
+  [#272](https://github.com/webarkit/webarkit/issues/272)). Two facts:
+  - No first-step lever of the six tried (V, R1, R2, R3, S and T) changes the count of lasting locks
+    on the table and wall clips. For every lever but the retry (T), whose
+    retries are not counted as first steps, every lock a first step adds is
+    lost again at a held step. So the lock rate on these clips is set by the
+    held steps after the first.
+  - A velocity seeded from an earlier detection (V) removes the zero-velocity
+    fault on synthetic frames: on #262's easy grid at 8 px a frame, the
+    shipped first step confirms 0 of 1,079 right detections, and V confirms
+    360 of 719. V is deferred until a corpus with fast motion and ground truth
+    ([#109](https://github.com/webarkit/webarkit/issues/109)), by the
+    maintainer's ruling of 2026-11-14.
+
+  This entry changes no decision of this ADR.
 
 ## Action items
 

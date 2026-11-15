@@ -14,6 +14,92 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-15
+
+A documentation-only patch: the records of two milestones that closed on their Stage 1 without a
+release of their own, and two documentation fixes. It is
+[#276](https://github.com/webarkit/webarkit/issues/276), an item of the "M12 — fast footage, and
+the velocity at a lock's start" milestone
+([milestone 14](https://github.com/webarkit/webarkit/milestone/14)), which stays open: this release
+closes no milestone. No package changed behaviour since 0.9.0. The one change under `packages/` is
+[#274](https://github.com/webarkit/webarkit/pull/274)'s, documentation in
+`@webarkit/cv-backend-jsfeatnext` and one source comment, which reaches the package's built files
+and changes no code. So every package and crate moves to 0.9.1 by
+[ADR-0002](docs/adr/0002-lockstep-versioning.md)'s lockstep alone, as 0.5.1 ("Documentation only")
+and 0.6.1 ("no package changed") did, both patches.
+
+The "M10 — what TEBLID changes at acquisition" milestone
+([milestone 12](https://github.com/webarkit/webarkit/milestone/12)) closed on
+[#262](https://github.com/webarkit/webarkit/issues/262)'s Stage 1
+([#270](https://github.com/webarkit/webarkit/pull/270)): TEBLID-256 against ORB on seeded desktop
+replays of the table and wall clips, with its stop conditions committed before any run
+([the probe's record](docs/benchmarks/2026-11-13-262-stage1-probe.md)). By the maintainer's ruling
+of 2026-11-14, **TEBLID is deferred, not discarded.** At the same ratio it does not move the lock
+rate. Its gain at a looser ratio (0.85) is bought with more wrong acceptances on mirrored frames,
+and on the device schedules it is small on table and absent on wall. The locks it adds drop at
+their first tracking step. Its condition to reopen, read on M11's metric since 2026-11-14
+([#262's comment](https://github.com/webarkit/webarkit/issues/262#issuecomment-6875751763)): after a
+change that raises the lock rate, or lowers the re-lock latency, on the seeded replays of table and
+wall, without confirming wrong detections on synthetic frames, #270's scripts are re-run; if
+TEBLID's lock rate then leaves ORB's range at the same ratio, on the device schedules, #264–#268
+are reopened, and otherwise TEBLID is dropped for this tracker in a second dated entry. #264–#269
+are closed as not planned. **GMS is dropped:** it removes accepted detections, and where the ratio
+test refuses a frame it accepts none with ORB, this backend's descriptor, and one frame of 2,136
+with TEBLID. The probe also found that the R-replay reference is per machine.
+
+The "M11 — the first step after a detection" milestone
+([milestone 13](https://github.com/webarkit/webarkit/milestone/13)) closed on
+[#272](https://github.com/webarkit/webarkit/issues/272)'s Stage 1
+([#273](https://github.com/webarkit/webarkit/pull/273)), which tried six first-step levers (V, R1,
+R2, R3, S and T) as script prototypes, on seeded desktop replays of the table and wall clips and on
+synthetic frames, with its stop conditions committed before any counted run
+([the probe's record](docs/benchmarks/2026-11-14-272-m11-stage1-probe.md)). By the maintainer's
+ruling of 2026-11-14 the step stops on its condition 2, as written. **No first-step lever changed
+the count of lasting locks** on these clips: for every lever but the retry (T), every lock a first
+step adds is lost again at a held step. **The velocity lever (V) is deferred, not discarded:** on
+synthetic frames it removes the zero-velocity fault. Its conditions to reopen
+([#272's comment](https://github.com/webarkit/webarkit/issues/272#issuecomment-6879221814)): a
+corpus with fast motion and ground truth ([#109](https://github.com/webarkit/webarkit/issues/109)),
+or a held-step change that makes added locks last; then #273's scripts are re-run for V, with
+"wrong" defined on the confirmed step's output.
+
+Both outcomes are recorded as measurements under "To revisit" in
+[ADR-0001](docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md), in two new entries dated
+2026-11-14, M10's and M11's, neither of which changes a decision of the ADR. The release also
+carries [#275](https://github.com/webarkit/webarkit/pull/275)
+([#271](https://github.com/webarkit/webarkit/issues/271)): the R-replay and R-truth references
+are per machine, and the references script refuses a Node other than `.nvmrc`'s; and #274
+([#263](https://github.com/webarkit/webarkit/issues/263)): three stale statements in
+`@webarkit/cv-backend-jsfeatnext`'s documentation, about the spec pin and GMS, corrected.
+`.wnft` format: still **0.3**, in both codecs, so this tag freezes no new corpus.
+
+### What this release did not deliver
+
+- **No default changed, and no package changed behaviour.** The backend stays ORB-only, with no
+  `filterMatches`, and the tracker's first tracking step is unchanged.
+- **TEBLID and V are deferred, not discarded,** each with its condition to reopen above. Neither is
+  wired: TEBLID's issues, #264–#269, are closed as not planned, and V is a script prototype,
+  committed with #273 under `docs/benchmarks/`.
+- **GMS is dropped,** by #270's probe. `@webarkit/cv-backend-jsfeatnext` still omits
+  `filterMatches`, and #274 documents why.
+- **The desktop's frame hashes:** #271 stays open for them. #275 ran on `nitro-walt`, and the
+  desktop's decoded frames' hashes, to be written beside #270's
+  `2026-11-13-262-frame-hashes-nitro-walt.txt`, need the desktop
+  ([#271's comment](https://github.com/webarkit/webarkit/issues/271#issuecomment-6892044767)).
+- **M12 stays open**: this release is its item #276. Its segmented corner reference
+  ([#277](https://github.com/webarkit/webarkit/issues/277)), its Stage 1 tooling
+  ([#278](https://github.com/webarkit/webarkit/issues/278)), the fast footage
+  ([#279](https://github.com/webarkit/webarkit/issues/279)) and its Stage 1
+  ([#280](https://github.com/webarkit/webarkit/issues/280)) are open.
+- **The bench page's `?poseFilter=one-euro` in the detection-only mode
+  ([#261](https://github.com/webarkit/webarkit/issues/261)) is not fixed in this release.** The
+  `[0.9.0]` entry's sentence "The bench page takes `?poseFilter=one-euro`, which runs `NftTracker`
+  with its pose filter on at the package's defaults in the tracking and detection-only modes" does
+  not describe the shipped behaviour: a detection-only tracker returns every result as
+  `"DETECT"`, on which the filter resets and passes the pose through, so a detection-only run with
+  `?poseFilter=one-euro` is unfiltered while its export records the filter as on. No committed
+  export carries the wrong label: the one recorded with the filter on is a tracking run.
+
 ## [0.9.0] - 2026-11-13
 
 The "M9 — the pose campaign on the device" milestone
@@ -1042,7 +1128,8 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 - The original single-page jsartoolkitNFT demo the repository started as. It is kept at the tag
   `archive/original-nft-demo`.
 
-[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.9.0...dev
+[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.9.1...dev
+[0.9.1]: https://github.com/webarkit/webarkit/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/webarkit/webarkit/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/webarkit/webarkit/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/webarkit/webarkit/compare/v0.6.1...v0.7.0

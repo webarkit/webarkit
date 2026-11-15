@@ -6120,3 +6120,55 @@ run, not before round 1.
 
 **The release note.** v0.5.1, a documentation-only release, states that
 M4's device steadiness claim was not obtained, and why.
+
+## 2026-11-14 — The references are per machine (#271)
+
+R-replay and R-truth, the two references
+[`2026-11-06-228-133-stage3-references.mjs`](./2026-11-06-228-133-stage3-references.mjs)
+recomputes (defined in
+[`2026-11-06-228-133-stage3-registration.md`](./2026-11-06-228-133-stage3-registration.md),
+"The references"), are hashes of what a machine produced, not constants of
+the code. #262's Stage 1 (#270) found R-replay different on two machines at
+the same commits, from clean trees with the same bundle, and the same on one
+machine across two commits: the cause is the environment, not the code.
+
+**The maintainer's ruling of 2026-11-14:** a reference belongs to a machine.
+An identity check compares base and tip **on one machine**, and names that
+machine's reference. A hash from another machine is not a failure of the
+check; it is a different reference.
+
+| Machine | Environment | R-replay (`--v1-projection`) | R-truth |
+| --- | --- | --- | --- |
+| the desktop | Windows 11 Pro, Intel Core i7-9700, ffmpeg 9.0.2 gyan.dev essentials build | `98323f06…` (the registration's, at `d09cdad`) | `d1d427f3…`, 6,026,097 bytes (the registration's) |
+| `nitro-walt` | Windows 11 Home, Intel Core i7-11800H, ffmpeg 9.0.2 gyan.dev full build | `6cdfcb85…` (#270, at `d9092e4` and `6bccf51`; and at `6059587`, before and after #271's change) | `d1d427f3…`, 6,026,097 bytes (#271, at `6059587`) |
+
+**R-truth does not depend on the machine,** on these two: its frames are
+rendered by the ground truth's own code, not decoded by ffmpeg, and it
+hashes the same. R-replay's frames are decoded, and it does not.
+
+**What the script now does about it** (#271):
+
+- It prints the 19 per-output hashes, each with its output's name, above
+  the aggregate. It always has (`ef4506c`); #270's
+  [`2026-11-13-262-rreplay-nitro-walt.txt`](./2026-11-13-262-rreplay-nitro-walt.txt)
+  is that output on `nitro-walt`. Comparing those lines between two
+  machines localises a mismatch to an output; #270's
+  [`2026-11-13-262-frame-hashes-nitro-walt.txt`](./2026-11-13-262-frame-hashes-nitro-walt.txt)
+  then localises it to a decoded frame.
+- It names the machine on stderr before any hash: the host name, the OS
+  edition, the CPU, ffmpeg's version and build lines, and Node. Stdout is
+  unchanged, so the checks that read its last line or count its lines
+  (`2026-11-07-228-133-stage3-metric-check.mjs`, `2026-11-08-239-probe.mjs`)
+  read the same text.
+- It refuses to run under a Node version other than the one `.nvmrc` pins,
+  printing both, before it reads anything; the pin is the script's own
+  repository's, and `--root`, accepted with `--ground-truth` only, must pin
+  the same. On `nitro-walt` the nvm shim
+  resolves `.nvmrc` only in the current directory: from the repository's
+  root `node` is v24.21.0, from `docs/`, `docs/benchmarks/` or `scripts/` it
+  is v24.18.0, silently. Run every `node` command from the root
+  (`CONTRIBUTING.md`, "Testing").
+
+**Not yet known:** whether the desktop's difference is in decoding, and on
+which clip and frame. That needs the desktop's frame hashes, written beside
+#270's and compared with them; #271 stays open for it.

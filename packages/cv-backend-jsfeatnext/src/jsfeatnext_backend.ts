@@ -165,8 +165,12 @@ const CAPABILITIES: BackendCapabilities = {
     detectors: ["fast"],
     descriptors: ["orb"],
     defaultDescriptor: "orb",
-    // No geometric match filter yet. GMS is tracked separately; until it
-    // exists, `filterMatches` is omitted entirely and this stays empty.
+    // No geometric match filter, by choice. jsfeatNext provides GMS
+    // (`gms.filter`), but `detectTarget` applies a backend's `filterMatches`
+    // to every detection as soon as the method exists, and #262's Stage 1
+    // probe (#270) dropped GMS: it removes accepted detections, and where the
+    // ratio test refuses a frame it accepts none with ORB (one frame of 2,136
+    // with TEBLID). So `filterMatches` is omitted and this stays empty.
     matchFilters: [],
     // `RansacOptions.rng` reaches `ransac_params_t`, whose `rng` is the only
     // source `find_homography` samples from (#24).
