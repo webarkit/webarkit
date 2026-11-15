@@ -14,6 +14,8 @@ release pull request's body and the GitHub Release's notes.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-15
+
 A documentation-only patch: the records of two milestones that closed on their Stage 1 without a
 release of their own, and two documentation fixes. It is
 [#276](https://github.com/webarkit/webarkit/issues/276), an item of the "M12 — fast footage, and
@@ -1125,7 +1127,8 @@ this entry is reconstructed from what the tag contains. No `.wnft` format existe
 - The original single-page jsartoolkitNFT demo the repository started as. It is kept at the tag
   `archive/original-nft-demo`.
 
-[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.9.0...dev
+[Unreleased]: https://github.com/webarkit/webarkit/compare/v0.9.1...dev
+[0.9.1]: https://github.com/webarkit/webarkit/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/webarkit/webarkit/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/webarkit/webarkit/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/webarkit/webarkit/compare/v0.6.1...v0.7.0
