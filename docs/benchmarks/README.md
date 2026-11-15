@@ -6161,7 +6161,9 @@ hashes the same. R-replay's frames are decoded, and it does not.
   (`2026-11-07-228-133-stage3-metric-check.mjs`, `2026-11-08-239-probe.mjs`)
   read the same text.
 - It refuses to run under a Node version other than the one `.nvmrc` pins,
-  printing both, before it reads anything. On `nitro-walt` the nvm shim
+  printing both, before it reads anything; the pin is the script's own
+  repository's, and `--root`, accepted with `--ground-truth` only, must pin
+  the same. On `nitro-walt` the nvm shim
   resolves `.nvmrc` only in the current directory: from the repository's
   root `node` is v24.21.0, from `docs/`, `docs/benchmarks/` or `scripts/` it
   is v24.18.0, silently. Run every `node` command from the root

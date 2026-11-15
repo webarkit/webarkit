@@ -32,7 +32,8 @@
  *
  * So the script, in every mode:
  * - refuses a Node version other than the one `.nvmrc` pins, printing both, before it reads
- *   anything. Run it from the repository's root: on nitro-walt the nvm shim resolves `.nvmrc` only
+ *   anything; the pin is this script's own repository's, and `--root`, accepted with
+ *   --ground-truth only, must pin the same. Run it from the repository's root: on nitro-walt the nvm shim resolves `.nvmrc` only
  *   in the current directory, and from a subdirectory runs another version silently;
  * - names the machine on stderr in --replay and --ground-truth (host, OS, CPU, ffmpeg's version and
  *   build lines, Node), so a reference is never quoted without it. Stdout is unchanged: the checks
@@ -44,9 +45,9 @@
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { registerHooks } from "node:module";
-import { cpus, hostname, release, version as osVersion } from "node:os";
+import { cpus, hostname, release, tmpdir, version as osVersion } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -375,6 +376,49 @@ function selfTest() {
         return why !== null && why.includes("v24.18.0") && why.includes("v24.21.0");
     });
     check("node: a version that only shares a prefix is refused", () => nodeMismatch("v24.21.0", "v24.21.01") !== null);
+    // #271: the pin is the script's own repository's; --root's must equal it. Temporary trees, each
+    // with its own .nvmrc (or none).
+    {
+        const base = mkdtempSync(join(tmpdir(), "references-pin-"));
+        const tree = (name, pin) => {
+            const dir = join(base, name);
+            mkdirSync(dir);
+            if (pin !== null) writeFileSync(join(dir, ".nvmrc"), `${pin}\n`);
+            return dir;
+        };
+        try {
+            const own21 = tree("own21", "v24.21.0");
+            const own18 = tree("own18", "v24.18.0");
+            const other21 = tree("other21", "v24.21.0");
+            const other18 = tree("other18", "v24.18.0");
+            const bare = tree("bare", null);
+            check("pin: the script's differs from the running Node, --root's equals it: refused", () => {
+                const why = pinRefusal(own18, other21, "v24.21.0");
+                return why !== null && why.includes("v24.18.0") && why.includes("v24.21.0");
+            });
+            check("pin: the script's equals the running Node, --root's differs: refused, naming both files", () => {
+                const why = pinRefusal(own21, other18, "v24.21.0");
+                return (
+                    why !== null &&
+                    why.includes(join(other18, ".nvmrc")) &&
+                    why.includes(join(own21, ".nvmrc")) &&
+                    why.includes("v24.18.0") &&
+                    why.includes("v24.21.0")
+                );
+            });
+            check("pin: --root with no .nvmrc: refused", () => {
+                const why = pinRefusal(own21, bare, "v24.21.0");
+                return why !== null && why.includes(join(bare, ".nvmrc"));
+            });
+            check("pin: both equal the running Node: passes", () => pinRefusal(own21, other21, "v24.21.0") === null);
+            check("pin: no --root: only the script's pin is read", () =>
+                pinRefusal(own21, null, "v24.21.0") === null && pinRefusal(own18, null, "v24.21.0") !== null,
+            );
+            check("pin: the script's own tree with no .nvmrc: refused", () => pinRefusal(bare, null, "v24.21.0") !== null);
+        } finally {
+            rmSync(base, { recursive: true, force: true });
+        }
+    }
     check("machine: six lines, the host and Node named", () => {
         const lines = machine();
         return lines.length === 6 && lines[0] === `machine: ${hostname()}` && lines[5] === `node: ${process.version}`;
@@ -403,6 +447,41 @@ function nodeMismatch(pinned, running) {
         `Node v${norm(running)} runs this script, and .nvmrc pins v${norm(pinned)}. A reference is computed ` +
         `on the pinned Node only. Run it from the repository's root, where the nvm shim reads .nvmrc (#271).`
     );
+}
+
+/**
+ * #271: why this run may not compute a reference, or `null`. The pin is always `scriptRoot`'s
+ * `.nvmrc` (this script's own repository), checked against `running` by {@link nodeMismatch}.
+ * With `otherRoot` (--root, for --ground-truth only), that tree's `.nvmrc` must pin the same
+ * version: ground truth computed from a tree is computed on the Node that tree pins. A missing
+ * `.nvmrc` on either side is a refusal.
+ */
+function pinRefusal(scriptRoot, otherRoot, running) {
+    const pinOf = (v) => String(v).trim().replace(/^v/, "");
+    const read = (root) => {
+        const path = join(root, ".nvmrc");
+        try {
+            return { path, pin: readFileSync(path, "utf8"), error: null };
+        } catch (e) {
+            return { path, pin: null, error: e.message };
+        }
+    };
+    const own = read(scriptRoot);
+    if (own.pin === null) return `cannot read ${own.path}: ${own.error}`;
+    const why = nodeMismatch(own.pin, running);
+    if (why) return why;
+    if (otherRoot === null || otherRoot === undefined) return null;
+    const other = read(otherRoot);
+    if (other.pin === null) {
+        return `--root pins no Node: cannot read ${other.path} (${other.error}); this script's ${own.path} pins v${pinOf(own.pin)}.`;
+    }
+    if (pinOf(other.pin) !== pinOf(own.pin)) {
+        return (
+            `--root's ${other.path} pins v${pinOf(other.pin)}, and this script's ${own.path} pins v${pinOf(own.pin)}: ` +
+            `ground truth computed from a tree is computed on the Node that tree pins (#271).`
+        );
+    }
+    return null;
 }
 
 /** #271: the machine a reference is computed on, as lines for stderr. */
@@ -531,16 +610,14 @@ async function groundTruth(root, out) {
 }
 
 const [mode, ...args] = process.argv.slice(2);
+const USAGE = "usage: --self-test | --replay <run dir> [--v1-projection] | --ground-truth <out.json> [--root <dir>]";
+const SCRIPT_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const rootAt = args.indexOf("--root");
-const ROOT = rootAt >= 0 ? args[rootAt + 1] : fileURLToPath(new URL("../../", import.meta.url));
+// --root names the tree --ground-truth loads; no other mode reads a tree, so it is refused there.
+if (rootAt >= 0 && (mode !== "--ground-truth" || !args[rootAt + 1])) fail(USAGE);
+const ROOT = rootAt >= 0 ? args[rootAt + 1] : SCRIPT_ROOT;
 {
-    let pinned;
-    try {
-        pinned = readFileSync(join(ROOT, ".nvmrc"), "utf8");
-    } catch (e) {
-        fail(`cannot read ${join(ROOT, ".nvmrc")}: ${e.message}`);
-    }
-    const why = nodeMismatch(pinned, process.version);
+    const why = pinRefusal(SCRIPT_ROOT, rootAt >= 0 ? ROOT : null, process.version);
     if (why) fail(why);
 }
 if (mode === "--replay" || mode === "--ground-truth") for (const line of machine()) console.error(line);
@@ -553,4 +630,4 @@ else if (mode === "--replay" && args[0]) {
     }
 }
 else if (mode === "--ground-truth" && args[0]) await groundTruth(ROOT, args[0]);
-else fail("usage: --self-test | --replay <run dir> [--v1-projection] | --ground-truth <out.json> [--root <dir>]");
+else fail(USAGE);
