@@ -21,6 +21,12 @@ wall: reference 2026-11-21-277-reference-wall.json, 291 of 298 frames accepted
     clip frame 255 (10.234114 s): 16 record(s), seeds 1,2,3,4,5,6,7,8, max 5.27 px
     clip frame 268 (10.755853 s): 16 record(s), seeds 1,2,3,4,5,6,7,8, max 3.84 px
     clip frame 294 (11.799331 s): 16 record(s), seeds 1,2,3,4,5,6,7,8, max 5.34 px
+    the largest, seed 1 record 191, and the records around it:
+      record 189, loop 1, clip frame 189, 7.585 s, TRACK, 30 inliers, quality 0.618, mean corner distance 3.34 px
+      record 190, loop 1, clip frame 190, 7.625 s, TRACK, 19 inliers, quality 0.389, mean corner distance 3.81 px (beyond the allowance)
+      record 191, loop 1, clip frame 191, 7.666 s, TRACK, 8 inliers, quality 0.161, mean corner distance 34.43 px (beyond the allowance)
+      record 192, loop 1, clip frame 192, 7.706 s, TRACK, 8 inliers, quality 0.199, mean corner distance 1.99 px
+      record 193, loop 1, clip frame 193, 7.746 s, DETECT, 73 inliers, quality 0.768, mean corner distance 2.91 px
   device-15: 2584 TRACK records over seeds 1-8, 2584 with an accepted reference, 0 on a rejected reference frame, 0 without corners; mean corner distance p10 1.40, p50 2.28, p90 3.19, p99 5.34, max 34.43 px; per corner p50 TL 1.42, TR 1.86, BR 1.84, BL 3.42 px; beyond 3.75 px: 130
     clip frame 91 (3.652174 s): 2 record(s), seeds 6, max 5.01 px
     clip frame 190 (7.625418 s): 16 record(s), seeds 1,2,3,4,5,6,7,8, max 3.81 px
@@ -31,6 +37,12 @@ wall: reference 2026-11-21-277-reference-wall.json, 291 of 298 frames accepted
     clip frame 255 (10.234114 s): 16 record(s), seeds 1,2,3,4,5,6,7,8, max 5.27 px
     clip frame 268 (10.755853 s): 16 record(s), seeds 1,2,3,4,5,6,7,8, max 3.84 px
     clip frame 294 (11.799331 s): 16 record(s), seeds 1,2,3,4,5,6,7,8, max 5.34 px
+    the largest, seed 2 record 117, and the records around it:
+      record 115, loop 1, clip frame 189, 7.585 s, TRACK, 30 inliers, quality 0.618, mean corner distance 3.34 px
+      record 116, loop 1, clip frame 190, 7.625 s, TRACK, 19 inliers, quality 0.389, mean corner distance 3.81 px (beyond the allowance)
+      record 117, loop 1, clip frame 191, 7.666 s, TRACK, 8 inliers, quality 0.161, mean corner distance 34.43 px (beyond the allowance)
+      record 118, loop 1, clip frame 192, 7.706 s, TRACK, 8 inliers, quality 0.199, mean corner distance 1.99 px
+      record 119, loop 1, clip frame 193, 7.746 s, DETECT, 73 inliers, quality 0.768, mean corner distance 2.91 px
   device-25: 965 TRACK records over seeds 1-8, 955 with an accepted reference, 10 on a rejected reference frame, 0 without corners; mean corner distance p10 1.48, p50 2.33, p90 3.24, p99 5.28, max 31.48 px; per corner p50 TL 1.42, TR 1.87, BR 1.96, BL 3.47 px; beyond 3.75 px: 43
     clip frame 93 (3.732441 s): 1 record(s), seeds 5, max 4.13 px
     clip frame 190 (7.625418 s): 10 record(s), seeds 2,3,4,6,7,8, max 4.08 px
@@ -38,33 +50,57 @@ wall: reference 2026-11-21-277-reference-wall.json, 291 of 298 frames accepted
     clip frame 254 (10.19398 s): 10 record(s), seeds 2,3,4,6,7,8, max 4.51 px
     clip frame 271 (10.876254 s): 6 record(s), seeds 1,5,6,8, max 31.48 px
     clip frame 294 (11.799331 s): 10 record(s), seeds 2,3,4,6,7,8, max 5.28 px
+    the largest, seed 8 record 213, and the records around it:
+      record 211, loop 2, clip frame 267, 10.716 s, TRACK, 33 inliers, quality 0.683, mean corner distance 3.17 px
+      record 212, loop 2, clip frame 269, 10.796 s, TRACK, 38 inliers, quality 0.787, mean corner distance 2.29 px
+      record 213, loop 2, clip frame 271, 10.876 s, TRACK, 8 inliers, quality 0.162, mean corner distance 31.48 px (beyond the allowance)
+      record 214, loop 2, clip frame 273, 10.957 s, DETECT, 87 inliers, quality 0.853, mean corner distance 3.90 px (beyond the allowance)
+      record 215, loop 2, clip frame 277, 11.117 s, DETECT, 84 inliers, quality 0.913, mean corner distance 2.74 px
 
 table: reference 2026-11-21-277-reference-table.json, 267 of 267 frames accepted
   every: 3382 TRACK records over seeds 1-8, 3382 with an accepted reference, 0 on a rejected reference frame, 0 without corners; mean corner distance p10 1.46, p50 1.73, p90 2.42, p99 2.50, max 13.80 px; per corner p50 TL 0.49, TR 2.10, BR 2.55, BL 2.05 px; beyond 3.75 px: 2
     clip frame 56 (1.866667 s): 2 record(s), seeds 1, max 13.80 px
+    the largest, seed 1 record 56, and the records around it:
+      record 54, loop 1, clip frame 54, 1.800 s, LOST, 6 inliers, quality 0.000, mean corner distance - px
+      record 55, loop 1, clip frame 55, 1.833 s, DETECT, 5 inliers, quality 0.385, mean corner distance 18.48 px (beyond the allowance)
+      record 56, loop 1, clip frame 56, 1.867 s, TRACK, 8 inliers, quality 0.159, mean corner distance 13.80 px (beyond the allowance)
+      record 57, loop 1, clip frame 57, 1.900 s, DETECT, 7 inliers, quality 0.636, mean corner distance 3.82 px (beyond the allowance)
+      record 58, loop 1, clip frame 58, 1.933 s, LOST, 6 inliers, quality 0.000, mean corner distance - px
   device-15: 1514 TRACK records over seeds 1-8, 1514 with an accepted reference, 0 on a rejected reference frame, 0 without corners; mean corner distance p10 1.45, p50 1.85, p90 2.44, p99 2.53, max 3.97 px; per corner p50 TL 0.53, TR 2.11, BR 2.65, BL 2.19 px; beyond 3.75 px: 2
     clip frame 69 (2.3 s): 2 record(s), seeds 5, max 3.97 px
+    the largest, seed 5 record 16, and the records around it:
+      record 14, loop 1, clip frame 59, 1.967 s, DETECT, 11 inliers, quality 0.611, mean corner distance 6.44 px (beyond the allowance)
+      record 15, loop 1, clip frame 64, 2.133 s, DETECT, 13 inliers, quality 0.684, mean corner distance 3.34 px
+      record 16, loop 1, clip frame 69, 2.300 s, TRACK, 8 inliers, quality 0.142, mean corner distance 3.97 px (beyond the allowance)
+      record 17, loop 1, clip frame 71, 2.367 s, DETECT, 17 inliers, quality 0.708, mean corner distance 8.06 px (beyond the allowance)
+      record 18, loop 1, clip frame 76, 2.533 s, DETECT, 15 inliers, quality 0.652, mean corner distance 3.59 px
   device-25: 1514 TRACK records over seeds 1-8, 1514 with an accepted reference, 0 on a rejected reference frame, 0 without corners; mean corner distance p10 1.45, p50 1.85, p90 2.44, p99 2.53, max 3.97 px; per corner p50 TL 0.53, TR 2.11, BR 2.65, BL 2.19 px; beyond 3.75 px: 2
     clip frame 69 (2.3 s): 2 record(s), seeds 5, max 3.97 px
+    the largest, seed 5 record 16, and the records around it:
+      record 14, loop 1, clip frame 59, 1.967 s, DETECT, 11 inliers, quality 0.611, mean corner distance 6.44 px (beyond the allowance)
+      record 15, loop 1, clip frame 64, 2.133 s, DETECT, 13 inliers, quality 0.684, mean corner distance 3.34 px
+      record 16, loop 1, clip frame 69, 2.300 s, TRACK, 8 inliers, quality 0.142, mean corner distance 3.97 px (beyond the allowance)
+      record 17, loop 1, clip frame 71, 2.367 s, DETECT, 17 inliers, quality 0.708, mean corner distance 8.06 px (beyond the allowance)
+      record 18, loop 1, clip frame 76, 2.533 s, DETECT, 15 inliers, quality 0.652, mean corner distance 3.59 px
 
   cross-check, table 1.9 s (clip frame 57, reference accepted), seed 1, every record within 0.1 s of it:
-    every: record 54, 1.800 s, LOST, 6 inliers, mean corner distance - px
-    every: record 55, 1.833 s, DETECT, 5 inliers, mean corner distance 18.48 px (beyond the allowance)
-    every: record 56, 1.867 s, TRACK, 8 inliers, mean corner distance 13.80 px (beyond the allowance)
-    every: record 57, 1.900 s, DETECT, 7 inliers, mean corner distance 3.82 px (beyond the allowance)
-    every: record 58, 1.933 s, LOST, 6 inliers, mean corner distance - px
-    every: record 59, 1.967 s, DETECT, 10 inliers, mean corner distance 3.30 px
-    every: record 60, 2.000 s, DETECT, 9 inliers, mean corner distance 2.83 px
-    every: record 321, 1.800 s, LOST, 6 inliers, mean corner distance - px
-    every: record 322, 1.833 s, DETECT, 5 inliers, mean corner distance 18.48 px (beyond the allowance)
-    every: record 323, 1.867 s, TRACK, 8 inliers, mean corner distance 13.80 px (beyond the allowance)
-    every: record 324, 1.900 s, DETECT, 7 inliers, mean corner distance 3.82 px (beyond the allowance)
-    every: record 325, 1.933 s, LOST, 6 inliers, mean corner distance - px
-    every: record 326, 1.967 s, DETECT, 10 inliers, mean corner distance 3.30 px
-    every: record 327, 2.000 s, DETECT, 9 inliers, mean corner distance 2.83 px
-    device-15: record 14, 1.900 s, DETECT, 7 inliers, mean corner distance 3.82 px (beyond the allowance)
-    device-15: record 130, 1.800 s, LOST, 6 inliers, mean corner distance - px
-    device-15: record 131, 1.933 s, LOST, 6 inliers, mean corner distance - px
-    device-25: record 14, 1.900 s, DETECT, 7 inliers, mean corner distance 3.82 px (beyond the allowance)
-    device-25: record 130, 1.800 s, LOST, 6 inliers, mean corner distance - px
-    device-25: record 131, 1.933 s, LOST, 6 inliers, mean corner distance - px
+    every: record 54, loop 1, clip frame 54, 1.800 s, LOST, 6 inliers, quality 0.000, mean corner distance - px
+    every: record 55, loop 1, clip frame 55, 1.833 s, DETECT, 5 inliers, quality 0.385, mean corner distance 18.48 px (beyond the allowance)
+    every: record 56, loop 1, clip frame 56, 1.867 s, TRACK, 8 inliers, quality 0.159, mean corner distance 13.80 px (beyond the allowance)
+    every: record 57, loop 1, clip frame 57, 1.900 s, DETECT, 7 inliers, quality 0.636, mean corner distance 3.82 px (beyond the allowance)
+    every: record 58, loop 1, clip frame 58, 1.933 s, LOST, 6 inliers, quality 0.000, mean corner distance - px
+    every: record 59, loop 1, clip frame 59, 1.967 s, DETECT, 10 inliers, quality 0.556, mean corner distance 3.30 px
+    every: record 60, loop 1, clip frame 60, 2.000 s, DETECT, 9 inliers, quality 0.500, mean corner distance 2.83 px
+    every: record 321, loop 2, clip frame 54, 1.800 s, LOST, 6 inliers, quality 0.000, mean corner distance - px
+    every: record 322, loop 2, clip frame 55, 1.833 s, DETECT, 5 inliers, quality 0.385, mean corner distance 18.48 px (beyond the allowance)
+    every: record 323, loop 2, clip frame 56, 1.867 s, TRACK, 8 inliers, quality 0.159, mean corner distance 13.80 px (beyond the allowance)
+    every: record 324, loop 2, clip frame 57, 1.900 s, DETECT, 7 inliers, quality 0.636, mean corner distance 3.82 px (beyond the allowance)
+    every: record 325, loop 2, clip frame 58, 1.933 s, LOST, 6 inliers, quality 0.000, mean corner distance - px
+    every: record 326, loop 2, clip frame 59, 1.967 s, DETECT, 10 inliers, quality 0.556, mean corner distance 3.30 px
+    every: record 327, loop 2, clip frame 60, 2.000 s, DETECT, 9 inliers, quality 0.500, mean corner distance 2.83 px
+    device-15: record 14, loop 1, clip frame 57, 1.900 s, DETECT, 7 inliers, quality 0.636, mean corner distance 3.82 px (beyond the allowance)
+    device-15: record 130, loop 2, clip frame 54, 1.800 s, LOST, 6 inliers, quality 0.000, mean corner distance - px
+    device-15: record 131, loop 2, clip frame 58, 1.933 s, LOST, 6 inliers, quality 0.000, mean corner distance - px
+    device-25: record 14, loop 1, clip frame 57, 1.900 s, DETECT, 7 inliers, quality 0.636, mean corner distance 3.82 px (beyond the allowance)
+    device-25: record 130, loop 2, clip frame 54, 1.800 s, LOST, 6 inliers, quality 0.000, mean corner distance - px
+    device-25: record 131, loop 2, clip frame 58, 1.933 s, LOST, 6 inliers, quality 0.000, mean corner distance - px

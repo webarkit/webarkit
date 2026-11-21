@@ -16,8 +16,13 @@ The files:
   produces both and the comparison, and records both hashes (`REFERENCE_SHA256`);
 - [`2026-11-21-277-segment-frames.py`](./2026-11-21-277-segment-frames.py), the driver it runs
   `segment.py` through;
+- [`2026-11-21-277-segmented-reference-segment-figures.txt`](./2026-11-21-277-segmented-reference-segment-figures.txt),
+  what `segment` printed: every figure in "How the frames are segmented", "The wall clip" and "The
+  table clip" below;
 - [`2026-11-21-277-segmented-reference-figures.txt`](./2026-11-21-277-segmented-reference-figures.txt),
-  what `compare` printed, every figure in "Beside the tracker" below.
+  what `compare` printed: every figure in "Beside the tracker" below.
+
+The by-eye verdicts are the one thing here no script produces (see "By eye").
 
 Each reference file holds one row per processing frame: the frame index, its media time (ffprobe's
 `pts_time`, the replay's `mediaTimeSeconds`), `accepted` or the rejection reason, `segment.py`'s
@@ -80,12 +85,13 @@ size. The frame mapping is the identity. What differs is only the size it is seg
 frames are accepted (21 refinement-disagrees, 8 touching the border). Against the 1280×720
 segmentation scaled to 480×270, on the 265 frames both accept: mean corner distance p50 0.708, p90
 3.079, p99 5.064, max 5.347 processing px; the largest single corner p50 2.069, p90 9.335, max
-16.486 px; 112 frames above 1 px, nearly all from frame 172 on, as the poster grows. Drawn over the
-1280×720 frames for `segment_bank`'s 24-frame sample, the 480×270 quad's left side is mis-fitted on
-frames 174, 211, 233 and 241 (it leaves the paper at the top left and cuts into the print at the
-bottom left), and slightly off on 183, 230 and 280, while the 1280×720 quad sits on the paper edge on
-every accepted tile. Four clearly wrong quads among 21 accepted tiles fail `segmentation.md`'s own
-gate (at most 2 of 24).
+16.486 px; 112 frames above 1 px, of which 9 come before frame 172 and 103 from it on, as the poster
+grows (the segment figures list them). Drawn by hand over the 1280×720 frames for `segment_bank`'s
+24-frame sample, the 480×270 quad's left side is mis-fitted on frames 174, 211, 233 and 241 (it
+leaves the paper at the top left and cuts into the print at the bottom left), and slightly off on
+183, 230 and 280, while the 1280×720 quad sits on the paper edge on every accepted tile. Four clearly
+wrong quads among 21 accepted tiles fail `segmentation.md`'s own gate, at most 2 wrong among the
+accepted tiles.
 
 **The maintainer's ruling (2026-11-21):** the wall's reference is the 1280×720 segmentation, its
 corners scaled to the processing frame (`x' = (x + 0.5) · 480/1280 − 0.5`, the same for y with
@@ -112,13 +118,17 @@ brief said.
 `default_rng(0).choice(n, 24, replace=False)`, sorted; the driver draws it itself
 (`--overlay-sample 24,0`). For the wall it is the same 24 frames `segmentation.md` looked at.
 
+`segment` writes each clip's sample overlays at its basis size into `<runs>/overlay-<clip>/` (the
+table's at 203×360 ×3, the wall's at 1280×720). The views below were cropped and enlarged from them,
+or drawn by hand from the run's per-frame output; the verdicts are by eye and no script checks them.
+
 - **Table** (203×360, rendered ×3 and cropped to the poster): frames 0, 4, 10, 18, 44, 66, 73, 76,
   125, 128, 141, 146, 155, 156, 164, 178, 188, 205, 207, 216, 232, 245, 250, 259. All 24 accepted;
   every quad lies on the paper's edges, the TL marker on the poster's top-left corner. **Wrong quads:
   0.** On the last frames the poster comes within a few pixels of the frame's top edge without
   touching it.
-- **Wall** (the reference's corners drawn over the 480×270 processing frames, ×3, and again at
-  1280×720 beside the 480×270 run's): frames 0, 4, 11, 21, 49, 75, 81, 85, 141, 144, 158, 164, 174,
+- **Wall** (by hand: the reference's corners drawn over the 480×270 processing frames, ×3, and
+  again at 1280×720 beside the 480×270 run's): frames 0, 4, 11, 21, 49, 75, 81, 85, 141, 144, 158, 164, 174,
   175, 183, 185, 199, 211, 230, 233, 241, 261, 274, 280. 23 accepted, every quad on the paper's edges
   with the TL marker on the top-left corner; frame 199 rejected, the poster touching the top edge, as
   `segmentation.md` found. **Wrong quads: 0.**
@@ -166,10 +176,12 @@ figures file lists each.
 
 - **Wall, two records far off the poster:** clip frame 191 (7.666 s), on every seed of `every` and
   `device-15`, 34.43 px; clip frame 271 (10.876 s), on seeds 1, 5, 6 and 8 of `device-25`, 31.48 px.
-  On seed 1, read record by record, each is a single `TRACK` record confirmed on 8 inliers (quality
-  0.16), after steps at 3.81 px (frame 190) and 2.29 px (frame 269); the next record is a step back at
-  1.99 px (frame 192) or a detection at 3.87 px (frame 273).
-- **Wall, the rest:** 3.81 to 7.41 px. On `every`, 18 clip frames from 190 to 294 besides 191, each
+  The figures file prints the records around each schedule's largest distance (seed 1 record 191 on
+  `every`, seed 2 record 117 on `device-15`, seed 8 record 213 on `device-25`): each is a single
+  `TRACK` record confirmed on 8 inliers (quality 0.161 or 0.162), after steps at 3.81 px (frame 190)
+  or 2.29 px (frame 269); the next record is a step at 1.99 px (frame 192) or a detection at 3.90 px
+  (frame 273).
+- **Wall, the rest:** per-frame maxima 3.81 to 7.41 px. On `every`, 18 clip frames from 190 to 294 besides 191, each
   on all 8 seeds and both loops (288 records); on `device-15`, 7 of those frames, and frame 91 on seed
   6; on `device-25`, 4 of them, and frame 93 on seed 5. They sit where the poster is largest in the frame,
   and the bottom-left corner carries the most distance on every schedule (p50 3.4 px against 1.4 to
@@ -177,30 +189,32 @@ figures file lists each.
   corner. A reference that does not judge a few pixels cannot say whether these are the tracker's or
   the reference's: they are listed, not read as off the poster.
 - **Table:** clip frame 56 (1.867 s) on seed 1 of `every`, both loops, 13.80 px; clip frame 69
-  (2.300 s) on seed 5 of `device-15` and `device-25`, both loops, 3.97 px.
+  (2.300 s) on seed 5 of `device-15` and `device-25`, both loops, 3.97 px: a `TRACK` record on 8
+  inliers between detections at 3.34 and 8.06 px (the records around it are in the figures file).
 
 **Cross-check, M12's verification's one off-target lock (table, 1.900 s, seed 1).** The brief gives
 it; it is not in this repository, its issues or the run directories, so it is taken as given. Seed
 1's records within 0.1 s of 1.900 s, on every schedule (`compare`'s `CROSS_CHECK`):
 
-| schedule | media time | state | inliers | mean corner distance (px) |
-|---|---|---|---|---|
-| every (both loops) | 1.800 s | LOST | 6 | – |
-| | 1.833 s | DETECT | 5 | **18.48** |
-| | 1.867 s | TRACK | 8 | **13.80** |
-| | 1.900 s | DETECT | 7 | 3.82 |
-| | 1.933 s | LOST | 6 | – |
-| | 1.967 s | DETECT | 10 | 3.30 |
-| | 2.000 s | DETECT | 9 | 2.83 |
-| device-15, device-25 | 1.800 s | LOST | 6 | – |
-| | 1.900 s | DETECT | 7 | 3.82 |
-| | 1.933 s | LOST | 6 | – |
+| schedule | loop | media time | state | inliers | mean corner distance (px) |
+|---|---|---|---|---|---|
+| every | 1 and 2, the same records | 1.800 s | LOST | 6 | – |
+| | | 1.833 s | DETECT | 5 | **18.48** |
+| | | 1.867 s | TRACK | 8 | **13.80** |
+| | | 1.900 s | DETECT | 7 | 3.82 |
+| | | 1.933 s | LOST | 6 | – |
+| | | 1.967 s | DETECT | 10 | 3.30 |
+| | | 2.000 s | DETECT | 9 | 2.83 |
+| device-15, device-25 (the same records) | 1 | 1.900 s | DETECT | 7 | 3.82 |
+| | 2 | 1.800 s | LOST | 6 | – |
+| | 2 | 1.933 s | LOST | 6 | – |
 
 **The reference flags it.** On the every-frame schedule a detection at 1.833 s on 5 inliers is 18.48
 px off the poster, and the first step from it, at 1.867 s, is confirmed 13.80 px off. That step is
 the table clip's largest `TRACK` distance on any schedule. The record at 1.900 s itself is a fresh
 detection, 3.82 px from the reference: just past the allowance, by 0.07 px, which this reference
-cannot tell from on the poster. On the device schedules that lock is never processed. In the first
+cannot tell from on the poster. On the device schedules no frame between 1.800 and 1.933 s is
+processed in either loop but 1.900 s in loop 1, so that lock never forms. In the first
 `compare` run the cross-check listed only the 1.900 s records. Its window was widened to 0.1 s after
 that run showed 1.900 s to be a detection, so that the lock before it is listed; the change is
 `CROSS_CHECK.window`, said in its comment.
@@ -232,7 +246,7 @@ From the repository root, after `npm ci` and `npm run build`, with ffmpeg and ff
 
 ```sh
 node docs/benchmarks/2026-11-21-277-segmented-reference.mjs --self-test
-node docs/benchmarks/2026-11-21-277-segmented-reference.mjs segment --nftbench <artoolkit-nft-bench clone> --python <python with cv2 and numpy> --runs <dir>
+node docs/benchmarks/2026-11-21-277-segmented-reference.mjs segment --nftbench <artoolkit-nft-bench clone> --python <python with cv2 and numpy> --runs <dir> --figures <file>
 for s in every device-15 device-25; do
     node docs/benchmarks/2026-11-14-272-stage1-probe.mjs runs --out <replays>/$s --schedule $s --clips table,wall --seeds 1-8 --levers none
 done
@@ -240,7 +254,13 @@ node docs/benchmarks/2026-11-21-277-segmented-reference.mjs compare --replays <r
 ```
 
 `segment` writes the reference files into `<dir>` (or `--write`), says whether each is
-byte-identical to the committed one, and exits 1 if not. Run twice on this machine, into two run
-directories, it wrote both files byte-identical to the committed ones. `compare` refuses a reference
-file whose SHA-256 is not the recorded one. The self-test refuses a missing frame, a repeated frame,
-a frame count other than the clip's and a reference file whose hash does not match.
+byte-identical to the committed one, and exits 1 if not. Run three times on this machine, into three
+run directories, it wrote both files byte-identical each time. It refuses a driver that imported a
+`segment.py` other than the export's, by hash or by path. `compare` refuses a reference file whose
+SHA-256 is not the recorded one, a clip whose SHA-256 is not the one the reference was made from, a
+reference whose rows are not the clip's frames, and a replay file that is not the `none` arm of the
+clip, seed and schedule it is read as. The self-test needs no ffmpeg. It checks the refusals on
+constructed input: a missing frame, a repeated frame, a frame count other than the clip's, a row
+whose corners are not four finite points. It also reads both committed reference files through
+`compare`'s loader, requiring their recorded hashes, and refuses a copy of each with one byte
+changed.

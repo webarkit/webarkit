@@ -31,7 +31,7 @@
  * (is a lock on the poster?), it does not judge a few pixels.
  *
  *     node docs/benchmarks/2026-11-21-277-segmented-reference.mjs --self-test
- *     node docs/benchmarks/2026-11-21-277-segmented-reference.mjs segment --nftbench <artoolkit-nft-bench clone> --python <python> --runs <dir> [--write <dir>]
+ *     node docs/benchmarks/2026-11-21-277-segmented-reference.mjs segment --nftbench <artoolkit-nft-bench clone> --python <python> --runs <dir> [--write <dir>] [--figures <file>]
  *     node docs/benchmarks/2026-11-21-277-segmented-reference.mjs compare --replays <dir> [--figures <file>]
  *
  * Run from the repository root, after `npm run build`; ffmpeg and ffprobe on PATH.
@@ -64,8 +64,9 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { fitSize } from "../../examples/js/pinball-shared.mjs";
 import { PAGE_PROCESSING_BOX } from "../../examples/js/bench-export-checks.mjs";
@@ -165,8 +166,17 @@ export function referenceRefusal(ref, pts) {
         if (r.i !== i) return `row ${i} is frame ${r.i}`;
         if (r.t !== pts[i]) return `frame ${i} at ${r.t} s, the clip's at ${pts[i]} s`;
         if ((r.status === "accepted") !== Array.isArray(r.corners)) return `frame ${i}: status ${r.status} with corners ${JSON.stringify(r.corners)}`;
+        if (r.corners && !(r.corners.length === 4 && r.corners.every((c) => c.length === 2 && c.every(Number.isFinite)))) return `frame ${i}: corners ${JSON.stringify(r.corners)} are not four finite points`;
     }
     return null;
+}
+
+/** A committed reference file, refused unless its bytes hash as recorded. `dir` defaults to this folder. */
+export function loadReferenceFrom(dir, clip) {
+    const name = referenceFile(clip);
+    const bytes = readFileSync(join(dir, name));
+    const why = hashRefusal(bytes, REFERENCE_SHA256[clip], name);
+    return why ? { why } : { ref: JSON.parse(bytes.toString()) };
 }
 
 /** Source pixel to processing pixel, pixel centres at integers on both sides. */
@@ -214,6 +224,24 @@ function selfTest() {
     T("a reference missing a frame is refused", referenceRefusal({ rows: ref.rows.slice(0, 1) }, [0, 0.04]) !== null);
     T("a reference at other media times is refused", referenceRefusal(ref, [0, 0.05]) !== null);
     T("an accepted row without corners is refused", referenceRefusal({ rows: [{ i: 0, t: 0, status: "accepted", corners: null }] }, [0]) !== null);
+    T("an accepted row with three corners is refused", referenceRefusal({ rows: [{ i: 0, t: 0, status: "accepted", corners: q.slice(0, 3) }] }, [0]) !== null);
+    T("an accepted row with a non-finite corner is refused", referenceRefusal({ rows: [{ i: 0, t: 0, status: "accepted", corners: [[0, null], ...q.slice(1)] }] }, [0]) !== null);
+    // The committed reference files, through the loader compare uses: as committed they pass, and a
+    // copy with one byte changed is refused.
+    const tmp = mkdtempSync(join(tmpdir(), "277-self-test-"));
+    try {
+        for (const clip of Object.keys(CLIPS)) {
+            const loaded = loadReferenceFrom(HERE, clip);
+            T(`the committed ${referenceFile(clip)} hashes as recorded`, !loaded.why);
+            if (!loaded.why) T(`the committed ${referenceFile(clip)} has one row per frame`, loaded.ref.rows.length === loaded.ref.frames);
+            const bad = readFileSync(join(HERE, referenceFile(clip)));
+            bad[bad.length - 2] ^= 1;
+            writeFileSync(join(tmp, referenceFile(clip)), bad);
+            T(`a ${referenceFile(clip)} with one byte changed is refused`, !!loadReferenceFrom(tmp, clip).why);
+        }
+    } finally {
+        rmSync(tmp, { recursive: true, force: true });
+    }
     T("the corner distance is the corners' mean", meanCornerDistance(q, q.map(([x, y]) => [x + 3, y + 4])) === 5);
     T("scaling keeps pixel centres", toProcessing(-0.5, 1280, 480) === -0.5 && toProcessing(1279.5, 1280, 480) === 479.5);
     T("the allowance is 3.75 px", ALLOWANCE_PX === 3.75);
@@ -249,9 +277,8 @@ function runDriver({ python, pythonPath, path, w, h, scale, overlayDir, frameCou
         ff.stdout.pipe(py.stdin);
         let out = "";
         py.stdout.on("data", (d) => (out += d));
-        let ffCode = null;
-        ff.on("close", (c) => (ffCode = c));
-        py.on("close", (code) => {
+        const closed = (p) => new Promise((r) => p.on("close", r));
+        Promise.all([closed(ff), closed(py)]).then(([ffCode, code]) => {
             if (code !== 0 || ffCode !== 0) fail(`${path} ${w}x${h}: driver exited ${code}, ffmpeg ${ffCode}`);
             const lines = out.trim().split(/\r?\n/).map((l) => JSON.parse(l));
             resolve(lines);
@@ -259,10 +286,13 @@ function runDriver({ python, pythonPath, path, w, h, scale, overlayDir, frameCou
     });
 }
 
-function parseDriver(lines, ptsCount, what) {
+function parseDriver(lines, ptsCount, what, pythonPath) {
     const head = lines[0];
     const tail = lines[lines.length - 1];
     if (!head || head.segment_py_sha256 !== SEGMENT_PY_SHA256) fail(`${what}: the driver ran a segment.py with SHA-256 ${head?.segment_py_sha256}`);
+    // The file imported must be the export's, not a copy elsewhere with the same bytes (an editable install).
+    const norm = (p) => resolve(p).toLowerCase();
+    if (!norm(head.segment_py).startsWith(norm(pythonPath))) fail(`${what}: the driver imported ${head.segment_py}, not the export under ${pythonPath}`);
     const rows = lines.slice(1, -1);
     const why = rowsRefusal(rows, tail?.frames, ptsCount);
     if (why) fail(`${what}: ${why}`);
@@ -321,7 +351,12 @@ async function segmentMode() {
     mkdirSync(runs, { recursive: true });
     mkdirSync(write, { recursive: true });
     const { dir: pythonPath, git } = exportPackage(clone, runs);
-    const f = (v) => v.toFixed(3);
+    const f = (v) => (v === null || v === undefined ? "-" : v.toFixed(3));
+    const out = [];
+    const say = (s) => {
+        out.push(s);
+        console.log(s);
+    };
     let allSame = true;
     for (const [clip, file] of Object.entries(CLIPS)) {
         const rel = `examples/videos/${file}`;
@@ -333,7 +368,7 @@ async function segmentMode() {
             // The wall clip is artoolkit-nft-bench's clip: segmentation.md's run was on these bytes.
             const theirs = git("cat-file", "blob", `${NFTBENCH_COMMIT}:${NFTBENCH_WALL}`);
             if (sha256(theirs) !== sha256(src)) fail(`${NFTBENCH_WALL} at ${NFTBENCH_COMMIT} is not ${rel}`);
-            console.log(`wall: ${rel} is ${NFTBENCH_WALL} at ${NFTBENCH_COMMIT.slice(0, 7)} byte for byte (SHA-256 ${sha256(src)})`);
+            say(`wall: ${rel} is ${NFTBENCH_WALL} at ${NFTBENCH_COMMIT.slice(0, 7)} byte for byte (SHA-256 ${sha256(src)})`);
         }
         // Both sizes, each in processing pixels; the basis is the reference, the other the check.
         const sizes = {
@@ -345,7 +380,7 @@ async function segmentMode() {
             const overlayDir = name === BASIS[clip] ? join(runs, `overlay-${clip}`) : null;
             if (overlayDir) mkdirSync(overlayDir, { recursive: true });
             const lines = await runDriver({ python, pythonPath, path, w: s.w, h: s.h, scale: s.scale, overlayDir, frameCount: pts.length, overlayScale: name === "source" ? 1 : 3 });
-            const { head, rows } = parseDriver(lines, pts.length, `${clip} ${s.w}x${s.h}`);
+            const { head, rows } = parseDriver(lines, pts.length, `${clip} ${s.w}x${s.h}`, pythonPath);
             writeFileSync(join(runs, `segment-${clip}-${s.w}x${s.h}.jsonl`), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
             const inProcessing = rows.map((r) => ({
                 ...r,
@@ -353,17 +388,18 @@ async function segmentMode() {
             }));
             seg[name] = { head, rows: inProcessing, size: [s.w, s.h] };
             const acc = rows.filter((r) => r.accepted).length;
-            console.log(`${clip} at ${s.w}x${s.h}${name === BASIS[clip] ? " (the reference's basis)" : " (check)"}: ${acc} of ${rows.length} accepted, rejected ${JSON.stringify(rejectedCounts(rows))}`);
-            if (overlayDir) console.log(`  overlay sample: ${head.overlay_frames.join(", ")}`);
+            say(`${clip} at ${s.w}x${s.h}${name === BASIS[clip] ? " (the reference's basis)" : " (check)"}: ${acc} of ${rows.length} accepted, rejected ${JSON.stringify(rejectedCounts(rows))}`);
+            if (overlayDir) say(`  overlay sample: ${head.overlay_frames.join(", ")}`);
         }
         const basis = seg[BASIS[clip]];
         const other = BASIS[clip] === "source" ? "processing" : "source";
         const { d, onlyA, onlyB } = agreement(basis.rows, seg[other].rows);
         const s = d.map((x) => x.mean).sort((x, y) => x - y);
         const m = d.map((x) => x.max).sort((x, y) => x - y);
-        console.log(`  ${BASIS[clip]} against ${other}, in processing px: both accepted ${d.length}, only at ${BASIS[clip]} ${onlyA}, only at ${other} ${onlyB}`);
-        console.log(`    mean corner distance p50 ${f(quantile(s, 0.5))}, p90 ${f(quantile(s, 0.9))}, p99 ${f(quantile(s, 0.99))}, max ${f(s[s.length - 1])}; largest single corner p50 ${f(quantile(m, 0.5))}, p90 ${f(quantile(m, 0.9))}, max ${f(m[m.length - 1])}`);
-        console.log(`    frames whose mean exceeds 1 px: ${d.filter((x) => x.mean > 1).length}`);
+        say(`  ${BASIS[clip]} against ${other}, in processing px: both accepted ${d.length}, only at ${BASIS[clip]} ${onlyA}, only at ${other} ${onlyB}`);
+        say(`    mean corner distance p50 ${f(quantile(s, 0.5))}, p90 ${f(quantile(s, 0.9))}, p99 ${f(quantile(s, 0.99))}, max ${f(quantile(s, 1))}; largest single corner p50 ${f(quantile(m, 0.5))}, p90 ${f(quantile(m, 0.9))}, max ${f(quantile(m, 1))}`);
+        const above = d.filter((x) => x.mean > 1);
+        say(`    frames whose mean exceeds 1 px: ${above.length}${above.length ? `: ${above.map((x) => x.i).join(", ")}` : ""}`);
         const refRows = basis.rows.map((r) => ({
             i: r.i,
             t: pts[r.i],
@@ -410,19 +446,30 @@ async function segmentMode() {
         const got = sha256(Buffer.from(text));
         const same = got === REFERENCE_SHA256[clip];
         allSame &&= same;
-        console.log(`  ${name}: ${header.accepted} of ${pts.length} accepted, SHA-256 ${got} (${same ? "identical to the committed reference" : "differs from the recorded hash"})`);
+        say(`  ${name}: ${header.accepted} of ${pts.length} accepted, SHA-256 ${got} (${same ? "identical to the committed reference" : "differs from the recorded hash"})`);
     }
+    const figures = arg("--figures", null);
+    if (figures) writeFileSync(figures, out.join("\n") + "\n");
     if (!allSame) process.exitCode = 1;
 }
 
 // --- compare ---------------------------------------------------------------------------------
 
 function loadReference(clip) {
-    const name = referenceFile(clip);
-    const bytes = readFileSync(join(HERE, name));
-    const why = hashRefusal(bytes, REFERENCE_SHA256[clip], name);
+    const { why, ref } = loadReferenceFrom(HERE, clip);
     if (why) fail(why);
-    return JSON.parse(bytes.toString());
+    const src = sha256(readFileSync(join(ROOT, ref.file)));
+    if (src !== ref.sourceSha256) fail(`${ref.file}: SHA-256 ${src}, the reference was made from ${ref.sourceSha256}`);
+    return ref;
+}
+
+/** Each record's loop, 1-based: a loop starts where the media time steps back. */
+function loopsOf(frames) {
+    let loop = 1;
+    return frames.map((fr, k) => {
+        if (k > 0 && fr.mediaTimeSeconds < frames[k - 1].mediaTimeSeconds) loop++;
+        return loop;
+    });
 }
 
 function compareMode() {
@@ -441,6 +488,14 @@ function compareMode() {
         const why = referenceRefusal(ref, probeClip(join(ROOT, ref.file)).pts);
         if (why) fail(`${referenceFile(clip)}: ${why}`);
         const at = new Map(pts.map((t, i) => [t, i]));
+        const recordLine = (fr, k, loop) => {
+            const i = at.get(fr.mediaTimeSeconds);
+            if (i === undefined) fail(`record ${k} at ${fr.mediaTimeSeconds} s: no clip frame there`);
+            const rr = ref.rows[i];
+            const d = fr.corners && rr.corners ? meanCornerDistance(fr.corners, rr.corners) : null;
+            const q = typeof fr.quality === "number" ? fr.quality.toFixed(3) : "-";
+            return `record ${k}, loop ${loop}, clip frame ${i}, ${fr.mediaTimeSeconds.toFixed(3)} s, ${fr.state}, ${fr.numInliers} inliers, quality ${q}, mean corner distance ${f(d)} px${d !== null && d > ALLOWANCE_PX ? " (beyond the allowance)" : ""}`;
+        };
         say(`\n${clip}: reference ${referenceFile(clip)}, ${ref.accepted} of ${ref.frames} frames accepted`);
         for (const schedule of SCHEDULES) {
             const ds = [];
@@ -449,6 +504,7 @@ function compareMode() {
             let noRef = 0;
             let noCorners = 0;
             const beyond = [];
+            let worst = null;
             for (const seed of SEEDS) {
                 const file = join(replays, schedule, `run-${clip}-none-s${seed}-${schedule}.json`);
                 if (!existsSync(file)) fail(`${file} missing: run 2026-11-14-272-stage1-probe.mjs runs --levers none first`);
@@ -473,6 +529,7 @@ function compareMode() {
                     ds.push(d);
                     for (let c = 0; c < 4; c++) perCorner[c].push(Math.hypot(fr.corners[c][0] - r.corners[c][0], fr.corners[c][1] - r.corners[c][1]));
                     if (d > ALLOWANCE_PX) beyond.push({ seed, k, i, t: fr.mediaTimeSeconds, d });
+                    if (!worst || d > worst.d) worst = { seed, k, d, run };
                 });
             }
             ds.sort((a, b) => a - b);
@@ -492,6 +549,12 @@ function compareMode() {
                 frames.set(b.i, e);
             }
             for (const e of [...frames.values()].sort((a, b) => a.i - b.i)) say(`    clip frame ${e.i} (${e.t} s): ${e.n} record(s), seeds ${[...e.seeds].join(",")}, max ${f(e.max)} px`);
+            if (worst) {
+                // The largest distance's run, two records either side of it: what the lock did around it.
+                const loops = loopsOf(worst.run.frames);
+                say(`    the largest, seed ${worst.seed} record ${worst.k}, and the records around it:`);
+                for (let k = Math.max(0, worst.k - 2); k <= Math.min(worst.run.frames.length - 1, worst.k + 2); k++) say(`      ${recordLine(worst.run.frames[k], k, loops[k])}`);
+            }
         }
         if (clip === CROSS_CHECK.clip) {
             const i = pts.findIndex((t) => Math.abs(t - CROSS_CHECK.t) < 1e-9);
@@ -500,15 +563,10 @@ function compareMode() {
             say(`\n  cross-check, ${clip} ${CROSS_CHECK.t} s (clip frame ${i}, reference ${r.status}), seed ${CROSS_CHECK.seed}, every record within ${CROSS_CHECK.window} s of it:`);
             for (const schedule of SCHEDULES) {
                 const run = JSON.parse(readFileSync(join(replays, schedule, `run-${clip}-none-s${CROSS_CHECK.seed}-${schedule}.json`), "utf8"));
+                const loops = loopsOf(run.frames);
                 const hits = run.frames.map((fr, k) => ({ fr, k })).filter(({ fr }) => Math.abs(fr.mediaTimeSeconds - CROSS_CHECK.t) <= CROSS_CHECK.window + 1e-9);
                 if (!hits.length) say(`    ${schedule}: none processed`);
-                for (const { fr, k } of hits) {
-                    const rr = ref.rows[at.get(fr.mediaTimeSeconds)];
-                    const d = fr.corners && rr.corners ? meanCornerDistance(fr.corners, rr.corners) : null;
-                    say(
-                        `    ${schedule}: record ${k}, ${fr.mediaTimeSeconds.toFixed(3)} s, ${fr.state}, ${fr.numInliers} inliers, mean corner distance ${f(d)} px${d !== null && d > ALLOWANCE_PX ? " (beyond the allowance)" : ""}`,
-                    );
-                }
+                for (const { fr, k } of hits) say(`    ${schedule}: ${recordLine(fr, k, loops[k])}`);
             }
         }
     }
