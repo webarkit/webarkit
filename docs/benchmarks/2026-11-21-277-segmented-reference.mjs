@@ -56,8 +56,8 @@
  *   one recorded here, beside the `none` arm's run files of `2026-11-14-272-stage1-probe.mjs runs
  *   --levers none --seeds 1-8` for each schedule, read from `<replays>/<schedule>/`. Per `TRACK`
  *   record with an accepted reference frame: the mean distance between the record's `corners` and
- *   the reference's, corner by corner; the frames beyond `ALLOWANCE_PX`; the records at the table
- *   clip's 1.900 s on seed 1.
+ *   the reference's, corner by corner; the frames beyond `ALLOWANCE_PX`; the records of seed 1
+ *   within 0.1 s of the table clip's 1.900 s (`CROSS_CHECK`). `--figures` writes what it prints.
  *
  * Every refusal exits 1.
  */
@@ -113,8 +113,13 @@ const SAMPLE = { size: 24, seed: 0 };
  * Blur is "worse", by an amount nobody has stated, so the allowance does not cover it.
  */
 export const ALLOWANCE_PX = (2 + 8) * (480 / 1280);
-/** M12's verification's one off-target lock, as the brief for #277 gives it. */
-const CROSS_CHECK = { clip: "table", seed: 1, t: 1.9 };
+/**
+ * M12's verification's one off-target lock, as the brief for #277 gives it: table, 1.900 s, seed 1.
+ * Every record of seed 1 within `window` seconds of it is listed, whatever its state. The window
+ * was 0 in the first run of `compare` (7d1d469); it was widened to 0.1 s after that run showed the
+ * 1.900 s record to be a fresh detection, so that the lock before it is listed too.
+ */
+const CROSS_CHECK = { clip: "table", seed: 1, t: 1.9, window: 0.1 };
 
 function fail(why) {
     console.error(`277-segmented-reference: ${why}`);
@@ -439,6 +444,7 @@ function compareMode() {
         say(`\n${clip}: reference ${referenceFile(clip)}, ${ref.accepted} of ${ref.frames} frames accepted`);
         for (const schedule of SCHEDULES) {
             const ds = [];
+            const perCorner = [[], [], [], []];
             let track = 0;
             let noRef = 0;
             let noCorners = 0;
@@ -465,13 +471,16 @@ function compareMode() {
                     }
                     const d = meanCornerDistance(fr.corners, r.corners);
                     ds.push(d);
+                    for (let c = 0; c < 4; c++) perCorner[c].push(Math.hypot(fr.corners[c][0] - r.corners[c][0], fr.corners[c][1] - r.corners[c][1]));
                     if (d > ALLOWANCE_PX) beyond.push({ seed, k, i, t: fr.mediaTimeSeconds, d });
                 });
             }
             ds.sort((a, b) => a - b);
+            for (const p of perCorner) p.sort((a, b) => a - b);
             say(
                 `  ${schedule}: ${track} TRACK records over seeds 1-8, ${ds.length} with an accepted reference, ${noRef} on a rejected reference frame, ${noCorners} without corners; ` +
                     `mean corner distance p10 ${f(quantile(ds, 0.1))}, p50 ${f(quantile(ds, 0.5))}, p90 ${f(quantile(ds, 0.9))}, p99 ${f(quantile(ds, 0.99))}, max ${f(ds.length ? ds[ds.length - 1] : null)} px; ` +
+                    `per corner p50 TL ${f(quantile(perCorner[0], 0.5))}, TR ${f(quantile(perCorner[1], 0.5))}, BR ${f(quantile(perCorner[2], 0.5))}, BL ${f(quantile(perCorner[3], 0.5))} px; ` +
                     `beyond ${ALLOWANCE_PX} px: ${beyond.length}`,
             );
             const frames = new Map();
@@ -488,14 +497,17 @@ function compareMode() {
             const i = pts.findIndex((t) => Math.abs(t - CROSS_CHECK.t) < 1e-9);
             if (i < 0) fail(`no ${clip} frame at ${CROSS_CHECK.t} s`);
             const r = ref.rows[i];
-            say(`\n  cross-check, ${clip} ${CROSS_CHECK.t} s (clip frame ${i}, reference ${r.status}), seed ${CROSS_CHECK.seed}, every record at that media time:`);
+            say(`\n  cross-check, ${clip} ${CROSS_CHECK.t} s (clip frame ${i}, reference ${r.status}), seed ${CROSS_CHECK.seed}, every record within ${CROSS_CHECK.window} s of it:`);
             for (const schedule of SCHEDULES) {
                 const run = JSON.parse(readFileSync(join(replays, schedule, `run-${clip}-none-s${CROSS_CHECK.seed}-${schedule}.json`), "utf8"));
-                const hits = run.frames.map((fr, k) => ({ fr, k })).filter(({ fr }) => fr.mediaTimeSeconds === pts[i]);
-                if (!hits.length) say(`    ${schedule}: not processed`);
+                const hits = run.frames.map((fr, k) => ({ fr, k })).filter(({ fr }) => Math.abs(fr.mediaTimeSeconds - CROSS_CHECK.t) <= CROSS_CHECK.window + 1e-9);
+                if (!hits.length) say(`    ${schedule}: none processed`);
                 for (const { fr, k } of hits) {
-                    const d = fr.corners && r.corners ? meanCornerDistance(fr.corners, r.corners) : null;
-                    say(`    ${schedule}: record ${k}, ${fr.state}${fr.numInliers !== undefined ? `, ${fr.numInliers} inliers` : ""}, mean corner distance ${f(d)} px${d !== null && d > ALLOWANCE_PX ? " (beyond the allowance)" : ""}`);
+                    const rr = ref.rows[at.get(fr.mediaTimeSeconds)];
+                    const d = fr.corners && rr.corners ? meanCornerDistance(fr.corners, rr.corners) : null;
+                    say(
+                        `    ${schedule}: record ${k}, ${fr.mediaTimeSeconds.toFixed(3)} s, ${fr.state}, ${fr.numInliers} inliers, mean corner distance ${f(d)} px${d !== null && d > ALLOWANCE_PX ? " (beyond the allowance)" : ""}`,
+                    );
                 }
             }
         }
