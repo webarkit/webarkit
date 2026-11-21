@@ -99,6 +99,9 @@ export const REFERENCE_SHA256 = {
  */
 export const BASIS = { wall: "source", table: "processing" };
 const SCHEDULES = ["every", "device-15", "device-25"];
+/** The shipped arm's ratio and the runner's loop count (`2026-11-14-272-stage1-probe.mjs`: `RATIO`, `LOOPS`). */
+const RUN_RATIO = 0.8;
+const RUN_LOOPS = 2;
 const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
 const SAMPLE = { size: 24, seed: 0 };
 
@@ -179,6 +182,20 @@ export function loadReferenceFrom(dir, clip) {
     return why ? { why } : { ref: JSON.parse(bytes.toString()) };
 }
 
+/**
+ * A run file of `2026-11-14-272-stage1-probe.mjs runs` against what compare reads it as: the `none`
+ * arm of this clip, seed and schedule, at the reference's processing size. `null` when it is.
+ */
+export function runRefusal(run, { clip, seed, schedule, size }) {
+    if (run.kind !== "272-stage1-run") return `kind ${JSON.stringify(run.kind)}, not "272-stage1-run"`;
+    if (run.mirror !== false) return `mirror ${JSON.stringify(run.mirror)}, not false: a mirrored run's locks are all wrong`;
+    if (run.ratio !== RUN_RATIO) return `ratio ${JSON.stringify(run.ratio)}, not the shipped arm's ${RUN_RATIO}`;
+    if (run.loops !== RUN_LOOPS) return `loops ${JSON.stringify(run.loops)}, not the runner's ${RUN_LOOPS}`;
+    if (run.lever !== "none" || run.seed !== seed || run.scheduleName !== schedule || run.clip !== clip) return `not the none arm of ${clip} seed ${seed} ${schedule}`;
+    if (run.size?.[0] !== size[0] || run.size?.[1] !== size[1]) return `frames ${run.size}, the reference's ${size}`;
+    return null;
+}
+
 /** Source pixel to processing pixel, pixel centres at integers on both sides. */
 export const toProcessing = (v, source, processing) => (v + 0.5) * (processing / source) - 0.5;
 
@@ -242,6 +259,26 @@ function selfTest() {
     } finally {
         rmSync(tmp, { recursive: true, force: true });
     }
+    // The export: every file's bytes must be the blob ls-tree named; a mismatch is refused by name.
+    const a = Buffer.from("print('a')\n");
+    const b = Buffer.from("print('b')\n");
+    T("git's blob id of the empty file", gitBlobId(Buffer.alloc(0)) === "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391");
+    T("exported files matching their blobs pass", exportRefusal([{ path: "python/nftbench/a.py", blob: gitBlobId(a), bytes: a }]) === null);
+    const wrongBlob = exportRefusal([
+        { path: "python/nftbench/a.py", blob: gitBlobId(a), bytes: a },
+        { path: "python/nftbench/b.py", blob: gitBlobId(a), bytes: b },
+    ]);
+    T("an exported file whose bytes are not its blob is refused, by name", typeof wrongBlob === "string" && wrongBlob.includes("python/nftbench/b.py"));
+    // The runs: compare reads only the shipped arm's run files, as the runner writes them.
+    const runDoc = { kind: "272-stage1-run", clip: "table", lever: "none", seed: 1, scheduleName: "every", size: [203, 360], ratio: 0.8, loops: 2, mirror: false };
+    const want = { clip: "table", seed: 1, schedule: "every", size: [203, 360] };
+    T("the shipped arm's run file passes", runRefusal(runDoc, want) === null);
+    T("a run of another lever is refused", runRefusal({ ...runDoc, lever: "V" }, want) !== null);
+    T("a run at another size is refused", runRefusal({ ...runDoc, size: [480, 270] }, want) !== null);
+    T("a mirrored run is refused", runRefusal({ ...runDoc, mirror: true }, want) !== null);
+    T("a run file of another kind is refused", runRefusal({ ...runDoc, kind: "272-stage1-ladder" }, want) !== null);
+    T("a run at ratio 0.85 is refused", runRefusal({ ...runDoc, ratio: 0.85 }, want) !== null);
+    T("a run of one loop is refused", runRefusal({ ...runDoc, loops: 1 }, want) !== null);
     T("the corner distance is the corners' mean", meanCornerDistance(q, q.map(([x, y]) => [x + 3, y + 4])) === 5);
     T("scaling keeps pixel centres", toProcessing(-0.5, 1280, 480) === -0.5 && toProcessing(1279.5, 1280, 480) === 479.5);
     T("the allowance is 3.75 px", ALLOWANCE_PX === 3.75);
@@ -299,16 +336,50 @@ function parseDriver(lines, ptsCount, what, pythonPath) {
     return { head, rows };
 }
 
-/** `segment.py`'s package at the commit, from git's object store: the clone's tree is not read. */
+/** git's id for a blob of these bytes: SHA-1 of "blob <length>\0" and the bytes. */
+export const gitBlobId = (bytes) => createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
+
+/**
+ * The exported files against the tree: `files` is `[{ path, blob, bytes }]`, `blob` the id `ls-tree`
+ * gave, `bytes` what was written. `null` when every file's bytes are its blob.
+ */
+export function exportRefusal(files) {
+    for (const { path, blob, bytes } of files) {
+        const got = gitBlobId(bytes);
+        if (got !== blob) return `${path}: the bytes written are blob ${got}, the tree at ${NFTBENCH_COMMIT.slice(0, 7)} names ${blob}`;
+    }
+    return null;
+}
+
+/**
+ * `segment.py`'s package at the commit, from git's object store: the clone's tree is not read.
+ * Every read of the clone runs with `--no-replace-objects`, so a `refs/replace/` entry cannot hand
+ * back other bytes for the commit, and every file written is checked against the blob id its tree
+ * names before Python starts.
+ */
 function exportPackage(clone, runs) {
     const dir = join(runs, `nftbench-${NFTBENCH_COMMIT.slice(0, 7)}`, "python");
-    const git = (...a) => execFileSync("git", ["-C", clone, ...a], { maxBuffer: 1 << 30 });
-    const files = git("ls-tree", "-r", "--name-only", NFTBENCH_COMMIT, "python/nftbench/").toString().trim().split("\n").filter((f) => f.endsWith(".py") && !f.includes("/tests/"));
-    for (const f of files) {
-        const to = join(dir, f.slice("python/".length));
+    const git = (...a) => execFileSync("git", ["--no-replace-objects", "-C", clone, ...a], { maxBuffer: 1 << 30 });
+    // ls-tree -r: "<mode> blob <id>\t<path>" per file.
+    const entries = git("ls-tree", "-r", NFTBENCH_COMMIT, "python/nftbench/")
+        .toString()
+        .trim()
+        .split("\n")
+        .map((l) => {
+            const m = /^\d+ blob ([0-9a-f]{40})\t(.+)$/.exec(l);
+            if (!m) fail(`ls-tree ${NFTBENCH_COMMIT}: unexpected line ${JSON.stringify(l)}`);
+            return { blob: m[1], path: m[2] };
+        })
+        .filter((e) => e.path.endsWith(".py") && !e.path.includes("/tests/"));
+    const written = [];
+    for (const e of entries) {
+        const to = join(dir, e.path.slice("python/".length));
         mkdirSync(dirname(to), { recursive: true });
-        writeFileSync(to, git("cat-file", "blob", `${NFTBENCH_COMMIT}:${f}`));
+        writeFileSync(to, git("cat-file", "blob", e.blob));
+        written.push({ ...e, bytes: readFileSync(to) });
     }
+    const why = exportRefusal(written);
+    if (why) fail(`export: ${why}`);
     const seg = readFileSync(join(dir, "nftbench", "segment.py"));
     if (sha256(seg) !== SEGMENT_PY_SHA256) fail(`segment.py at ${NFTBENCH_COMMIT}: SHA-256 ${sha256(seg)}, expected ${SEGMENT_PY_SHA256}`);
     return { dir, git };
@@ -509,8 +580,8 @@ function compareMode() {
                 const file = join(replays, schedule, `run-${clip}-none-s${seed}-${schedule}.json`);
                 if (!existsSync(file)) fail(`${file} missing: run 2026-11-14-272-stage1-probe.mjs runs --levers none first`);
                 const run = JSON.parse(readFileSync(file, "utf8"));
-                if (run.lever !== "none" || run.seed !== seed || run.scheduleName !== schedule || run.clip !== clip) fail(`${file}: not the none arm of ${clip} seed ${seed} ${schedule}`);
-                if (run.size[0] !== ref.processingSize[0] || run.size[1] !== ref.processingSize[1]) fail(`${file}: frames ${run.size}, the reference's ${ref.processingSize}`);
+                const runWhy = runRefusal(run, { clip, seed, schedule, size: ref.processingSize });
+                if (runWhy) fail(`${file}: ${runWhy}`);
                 run.frames.forEach((fr, k) => {
                     if (fr.state !== "TRACK") return;
                     track++;

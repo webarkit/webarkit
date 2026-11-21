@@ -31,7 +31,8 @@ does and pipes the frames in; not meant to be run by hand.
     python 2026-11-21-277-segment-frames.py <width> <height> [--overlay-dir D] [--overlay-frames 0,4,11]
         [--overlay-sample <size>,<seed> --frame-count <n>] [--overlay-scale 3]
 
-PYTHONPATH must hold artoolkit-nft-bench's python/ folder. Per frame it calls segment_quad and
+PYTHONPATH must hold artoolkit-nft-bench's python/ folder. The .mjs verifies that export (every
+file against its blob id, read without replacement objects) before Python starts. Per frame it calls segment_quad and
 order_corners as segment_bank does (python/nftbench/segment.py: min_conf 0.5, corners ordered
 against the last accepted quad), and prints one JSON line: index, accepted, the rejection reason,
 the confidence, the corners TL, TR, BR, BL. segment.py itself is not changed: a rejection's reason
