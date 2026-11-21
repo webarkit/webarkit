@@ -172,7 +172,9 @@ stated, and the allowance does not cover it. A record beyond it is read as a loc
 No `TRACK` record lacked corners. On the table the two device schedules give the same figures; the
 figures file lists each.
 
-**The frames beyond the allowance,** per clip frame (the figures file has the full list):
+**The frames beyond the allowance.** Beyond 3.75 px, read by the rule fixed in `7d1d469` as locks
+off the poster: **wall 304 records on `every`, 130 on `device-15`, 43 on `device-25`; table 2, 2 and
+2.** Per clip frame (the figures file has the full list):
 
 - **Wall, two records far off the poster:** clip frame 191 (7.666 s), on every seed of `every` and
   `device-15`, 34.43 px; clip frame 271 (10.876 s), on seeds 1, 5, 6 and 8 of `device-25`, 31.48 px.
@@ -183,14 +185,21 @@ figures file lists each.
   (frame 273).
 - **Wall, the rest:** per-frame maxima 3.81 to 7.41 px. On `every`, 18 clip frames from 190 to 294 besides 191, each
   on all 8 seeds and both loops (288 records); on `device-15`, 7 of those frames, and frame 91 on seed
-  6; on `device-25`, 4 of them, and frame 93 on seed 5. They sit where the poster is largest in the frame,
-  and the bottom-left corner carries the most distance on every schedule (p50 3.4 px against 1.4 to
-  1.9 px for the others), where `artoolkit-nft-bench` already reports its 8 px offset and a bent
-  corner. A reference that does not judge a few pixels cannot say whether these are the tracker's or
-  the reference's: they are listed, not read as off the poster.
+  6; on `device-25`, 4 of them, and frame 93 on seed 5.
 - **Table:** clip frame 56 (1.867 s) on seed 1 of `every`, both loops, 13.80 px; clip frame 69
   (2.300 s) on seed 5 of `device-15` and `device-25`, both loops, 3.97 px: a `TRACK` record on 8
   inliers between detections at 3.34 and 8.06 px (the records around it are in the figures file).
+
+**Read after the results, not by the rule:** of the wall's records beyond the allowance, all but the
+two far ones are within 3.81 to 7.41 px. They sit on the late frames, where the poster is largest,
+and the bottom-left corner carries most of the distance (p50 3.4 px against 1.4 to 1.9 px for the
+others), where `artoolkit-nft-bench` states its 8 px offset. The allowance applies that offset to the
+mean of the four corners, so it covers it only in part, and a reference that does not judge a few
+pixels cannot say whether those records are the tracker's error or its own. The same holds for the
+table's 1.900 s record below, beyond the allowance by 0.07 px. **So the rule over-reads, and 3.75 px
+is not to be reused as a criterion:** a later use (#280 among them) fixes its own margin, before
+reading, from the reference's measured error (`artoolkit-nft-bench`'s #11), or states why it cannot.
+This changes no count above.
 
 **Cross-check, M12's verification's one off-target lock (table, 1.900 s, seed 1).** The brief gives
 it; it is not in this repository, its issues or the run directories, so it is taken as given. Seed
@@ -212,8 +221,8 @@ it; it is not in this repository, its issues or the run directories, so it is ta
 **The reference flags it.** On the every-frame schedule a detection at 1.833 s on 5 inliers is 18.48
 px off the poster, and the first step from it, at 1.867 s, is confirmed 13.80 px off. That step is
 the table clip's largest `TRACK` distance on any schedule. The record at 1.900 s itself is a fresh
-detection, 3.82 px from the reference: just past the allowance, by 0.07 px, which this reference
-cannot tell from on the poster. On the device schedules no frame between 1.800 and 1.933 s is
+detection, 3.82 px from the reference: beyond the allowance by 0.07 px, so off the poster by the
+rule. On the device schedules no frame between 1.800 and 1.933 s is
 processed in either loop but 1.900 s in loop 1, so that lock never forms. In the first
 `compare` run the cross-check listed only the 1.900 s records. Its window was widened to 0.1 s after
 that run showed 1.900 s to be a detection, so that the lock before it is listed; the change is
@@ -229,6 +238,8 @@ that run showed 1.900 s to be a detection, so that the lock before it is listed;
   poses, never measured. `artoolkit-nft-bench`'s manual annotations (its #11) are what would measure
   it. Until then a distance of a few pixels says nothing about which of the two is wrong, and the
   allowance above is a statement turned into a number, not a bound.
+- **The allowance's rule was fixed before the results, and its count is reported as it reads;** the
+  reading after the results is labelled as such ("Read after the results, not by the rule").
 - **The paper, not the print.** The corners are the paper's, which is not the target image's edge:
   `artoolkit-nft-bench` finds the offset uneven, up to about 8 px at one corner at 1280×720, with
   causes it has not separated (the field of view, the poster's flatness, the segmentation).
