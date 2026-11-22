@@ -400,6 +400,14 @@ export function carry({ times, n, from, extraSteps, stepMs, acquireMs, need, pre
     return { outcome: "lasted", kept: need, steps };
 }
 
+/**
+ * Whether the step at timeline index `idx[k]` crosses a loop wrap from the frame before it: the
+ * clip jumps back to its start between the lock's last frame and this one. Flagged on every row,
+ * never dropped: on M9's exports every such held step is lost (40 on table, 22 on wall), and the
+ * milestone's held-step counts leave them out, so a reading decides whether they count.
+ */
+export const acrossWrap = (idx, k, n) => Math.floor(idx[k] / n) !== Math.floor(idx[k - 1] / n);
+
 /** Paired events: a lock state seen again (the second loop, identical seeds) is marked with the event it repeats. */
 export function eventRegistry() {
     const seen = new Map();
@@ -632,7 +640,7 @@ async function pairedCore(mode) {
     const opts = S.stepOptions({ ratio: RATIO });
     const rows = [];
     const deepRows = [];
-    const counts = { lockStates: 0, byAge: { 0: 0, 1: 0 }, rows: 0, pairedEvents: 0, repeatRows: 0, discordantEvents: 0, reference: { with: 0, without: 0 }, deep: { carries: 0, censored: 0, censoredBy: {}, reference: { with: 0, without: 0 } } };
+    const counts = { lockStates: 0, byAge: { 0: 0, 1: 0 }, rows: 0, acrossWrapRows: 0, pairedEvents: 0, repeatRows: 0, discordantEvents: 0, reference: { with: 0, without: 0 }, deep: { carries: 0, censored: 0, censoredBy: {}, reference: { with: 0, without: 0 } } };
     const registries = new Map();
     for (const R of runs) {
         const { clip, schedule, seed, run, file } = R;
@@ -666,7 +674,9 @@ async function pairedCore(mode) {
                 const id = `${clip.name}/${schedule}/s${seed}/k${k}/${lever}`;
                 const ev = register(stateKey([lever, i, s.Hprev, s.Hstart]), id);
                 const discordant = shipped.ok === L.r.ok ? null : L.r.ok ? "lever-kept" : "shipped-kept";
-                rows.push({ id, clip: clip.name, schedule, seed, record: k, timelineIndex: idx[k], clipFrame: i, mediaTimeSeconds: run.frames[k].mediaTimeSeconds, age, lever, eligible: L.eligible, a: state.a, b: state.b, rMedia, event: ev.event, repeats: ev.repeats, discordant, shipped: shippedOut, lever_: leverOut });
+                const wrap = acrossWrap(idx, k, clip.pts.length);
+                if (wrap) counts.acrossWrapRows++;
+                rows.push({ id, clip: clip.name, schedule, seed, record: k, timelineIndex: idx[k], clipFrame: i, mediaTimeSeconds: run.frames[k].mediaTimeSeconds, acrossWrap: wrap, age, lever, eligible: L.eligible, a: state.a, b: state.b, rMedia, event: ev.event, repeats: ev.repeats, discordant, shipped: shippedOut, lever_: leverOut });
                 counts.rows++;
                 tallyRef(counts.reference, shippedOut.reference);
                 tallyRef(counts.reference, leverOut.reference);
@@ -730,7 +740,7 @@ async function m9Mode() {
         return { n, e, clip };
     });
     const rows = [];
-    const counts = { exports: 16, steps: 0, states: 0, mapped: 0, byClass: { kept: { states: 0, reproduced: 0 }, lost: { states: 0, reproduced: 0 } }, age1: 0, age1Reproduced: 0, leverRows: 0, reference: { with: 0, without: 0 } };
+    const counts = { exports: 16, steps: 0, states: 0, mapped: 0, acrossWrap: 0, byClass: { kept: { states: 0, reproduced: 0 }, lost: { states: 0, reproduced: 0 } }, age1: 0, age1Reproduced: 0, leverRows: 0, reference: { with: 0, without: 0 } };
     for (const { n, e, clip } of exports) {
         const F = e.frames;
         const ix = framesAt(clip.pts, F.map((f) => f.mediaTimeSeconds));
@@ -773,7 +783,9 @@ async function m9Mode() {
             const a = age === 1 ? idx[k - 1] - idx[k - 2] : null;
             const b = age === 1 ? idx[k] - idx[k - 1] : null;
             const state = { age, previous, current, Hchain: null, a, b, width: clip.width, height: clip.height };
-            const base = { export: n, clip: clip.name, record: k, timelineIndex: idx[k], clipFrame: i, mediaTimeSeconds: rec.mediaTimeSeconds, age, a, b, rMedia: age === 1 ? (unwrapped[k] - unwrapped[k - 1]) / (unwrapped[k - 1] - unwrapped[k - 2]) : null, device: { ...device, reference: refCell(clip, i, device.corners, device.kept, margin) }, desktop: desk };
+            const wrap = acrossWrap(idx, k, clip.pts.length);
+            if (wrap) counts.acrossWrap++;
+            const base = { export: n, clip: clip.name, record: k, timelineIndex: idx[k], clipFrame: i, mediaTimeSeconds: rec.mediaTimeSeconds, acrossWrap: wrap, age, a, b, rMedia: age === 1 ? (unwrapped[k] - unwrapped[k - 1]) / (unwrapped[k - 1] - unwrapped[k - 2]) : null, device: { ...device, reference: refCell(clip, i, device.corners, device.kept, margin) }, desktop: desk };
             const leverRow = (lever) => {
                 const L = leverStep(lever, state, (p, c) => stepAt(i, p, c), null);
                 const ev = register(stateKey([lever, i, F[k - 2].H, F[k - 1].H]), `${n}/k${k}/${lever}`);
@@ -904,7 +916,7 @@ async function wrongMode() {
             for (const lever of AGE_LEVERS[age]) {
                 const L = leverStep(lever, state, stepAt, vStep);
                 count(`mirror-${clip.name}`, lever, age, L.r.ok, !!L.r.ok);
-                rows.push({ set: "mirror", clip: clip.name, seed, record: k, clipFrame: i, age, lever, eligible: L.eligible, shipped: { kept: shipped.ok, wrong: shipped.ok }, lever_: { kept: !!L.r.ok, loss: L.r.ok ? null : L.r.loss, wrong: !!L.r.ok, fellBack: L.fellBack } });
+                rows.push({ set: "mirror", clip: clip.name, seed, record: k, clipFrame: i, acrossWrap: acrossWrap(idx, k, clip.pts.length), age, lever, eligible: L.eligible, shipped: { kept: shipped.ok, wrong: shipped.ok }, lever_: { kept: !!L.r.ok, loss: L.r.ok ? null : L.r.loss, wrong: !!L.r.ok, fellBack: L.fellBack } });
             }
         }
     }
@@ -1001,6 +1013,9 @@ function selfTest() {
     T("a carry reaching the run's end is censored there", atEnd.outcome === "censored" && atEnd.reason === "run end" && atEnd.kept === 2);
     const dev = carry({ ...base, from: 0, need: 3, stepAt: keepAll, stepMs: 25, extraSteps: 1 });
     T("a device carry follows replay-run's timing, the paired step's charge included", dev.steps[0].k === nextFrameIndex(times, 0, 20.4 + 50) && dev.steps[1].k === nextFrameIndex(times, dev.steps[0].k, 20.4 + 25));
+
+    T("a step onto the next loop's first frame crosses a wrap", acrossWrap([28, 29, 30], 2, 30) === true);
+    T("a step within a loop does not cross a wrap", acrossWrap([27, 28, 29], 2, 30) === false);
 
     // A repeated state is marked with the event it repeats, not counted twice.
     const reg = eventRegistry();
