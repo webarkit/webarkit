@@ -35,7 +35,7 @@
  *     node docs/benchmarks/2026-11-22-278-stage1-tools.mjs --self-test
  *     node docs/benchmarks/2026-11-22-278-stage1-tools.mjs paired --runs <dir> --out <dir> --gross-margin <px> [--clips table,wall] [--schedules every,device-15,device-25] [--seeds 1-8] [--trial]
  *     node docs/benchmarks/2026-11-22-278-stage1-tools.mjs deep   --runs <dir> --out <dir> --gross-margin <px> [--clips …] [--schedules …] [--seeds 1-8] [--trial]
- *     node docs/benchmarks/2026-11-22-278-stage1-tools.mjs m9     --out <dir> --repro-threshold <px> --gross-margin <px> [--trial]
+ *     node docs/benchmarks/2026-11-22-278-stage1-tools.mjs m9     --out <dir> --repro-threshold <px> --gross-margin <px> [--exports <dir>] [--trial]
  *     node --experimental-transform-types docs/benchmarks/2026-11-22-278-stage1-tools.mjs wrong --runs <dir> --out <dir> [--clips table,wall] [--seeds 1-8] [--trial]
  *
  * ffmpeg and ffprobe on PATH. `<runs>` holds `2026-11-14-272-stage1-probe.mjs runs --levers none`'s
@@ -69,6 +69,8 @@
  * - **Ffb** (age 1 only): the shipped step; on a refusal only, F0's step on the same frame. The
  *   second alignment is `extraSteps: 1`, charged one more `stepMs` on a device schedule (as
  *   #273's R3), nothing on `every`.
+ * - Where Fs's power cannot be taken, its row is no verdict (`noVerdict`): never discordant, never
+ *   carried, counted apart. An instrument's failure is not the lever's refusal.
  * - Every other step is the shipped step: `deep` carries a lock with the shipped step only.
  * - **N** is #273's `LASTING` (`2026-11-14-272-stage1-analysis.mjs`), read from its source text by
  *   {@link readConstant}, not restated. Its unit there is consecutive processed `TRACK` frames of a
@@ -92,8 +94,12 @@
  *   mode has no per-state disagreement measure (it reads gaps and verdicts only), so the measure
  *   is defined here: the verdict class (kept, lost) must agree, and where both kept, the mean
  *   corner distance between the desktop's output corners and the record's `corners` must be at
- *   most `--repro-threshold`, a required parameter with no default. Only reproduced states get
- *   lever rows.
+ *   most `--repro-threshold`, a required parameter with no default (the corner condition is new in
+ *   #278; M12's verification read the verdict class only, which the summary prints beside it at
+ *   age 1, `age1VerdictOnly`). Only reproduced states get lever rows.
+ * - `--references <dir>` and `--exports <dir>` read #277's files and M9's exports from another
+ *   folder; `2026-11-22-278-stage1-negatives.mjs` uses them to exercise the guards at mode level.
+ * - A run that is not `--trial` refuses an uncommitted tree.
  *
  * Every guard runs before any row is written, and every fatal check (a step that does not
  * reproduce its run's, a state the records do not rebuild) exits 1 before the mode writes
@@ -254,10 +260,11 @@ const I3 = () => new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 const add3 = (A, B, s = 1) => A.map((v, i) => v + s * B[i]);
 const scale3 = (A, s) => A.map((v) => v * s);
 const norm3 = (A) => Math.sqrt(A.reduce((s, v) => s + v * v, 0));
-/** Matrix square root, Denman–Beavers. */
+/** Matrix square root, Denman–Beavers; `null` when it does not converge within its cap (no principal root, e.g. a half turn). */
 function sqrtm(A) {
     let Y = Float64Array.from(A);
     let Z = I3();
+    let converged = false;
     for (let it = 0; it < 100; it++) {
         const Yi = inv3(Y);
         const Zi = inv3(Z);
@@ -267,9 +274,14 @@ function sqrtm(A) {
         const delta = norm3(add3(Yn, Y, -1));
         Y = Yn;
         Z = Zn;
-        if (delta < 1e-15 * norm3(Y)) break;
+        if (delta < 1e-15 * norm3(Y)) {
+            converged = true;
+            break;
+        }
     }
-    return Y.every(Number.isFinite) ? Y : null;
+    if (!converged || !Y.every(Number.isFinite)) return null;
+    // A root it returns must square back to A.
+    return norm3(add3(mul3(Y, Y), A, -1)) <= 1e-9 * norm3(A) ? Y : null;
 }
 /** Matrix logarithm by inverse scaling and squaring: square roots until near I, then the series. */
 function logm(A) {
@@ -316,6 +328,8 @@ export function powH(M, r, width, height) {
     N = scale3(N, 1 / Math.cbrt(d));
     const L = logm(N);
     if (!L) return null;
+    // The logarithm must exponentiate back to the motion.
+    if (!(norm3(add3(expm(L), N, -1)) <= 1e-9 * norm3(N))) return null;
     const P = mul3(mul3(Ti, expm(scale3(L, r))), T);
     return P.every(Number.isFinite) ? P : null;
 }
@@ -351,7 +365,8 @@ export function leverStep(lever, state, step, vStep) {
             // b/a = 1: M¹ · current is the shipped prediction, so the shipped step itself.
             if (state.a === state.b) return { r: step(previous, current), extraSteps: 0, eligible: true, fellBack: false };
             const P = scaledPrediction(previous, current, state.a, state.b, state.width, state.height);
-            if (!P) return { r: { ok: false, loss: "fs-no-scaled-prediction", stats: { inliers: 0, rmsError: null } }, extraSteps: 0, eligible: true, fellBack: false };
+            // The instrument's failure, not the lever's verdict: no verdict, never discordant, counted apart.
+            if (!P) return { r: { ok: false, loss: "fs-no-scaled-prediction", stats: { inliers: null, rmsError: null } }, extraSteps: 0, eligible: false, fellBack: false, noVerdict: true };
             return { r: step(null, P), extraSteps: 0, eligible: true, fellBack: false };
         }
         case "Ffb": {
@@ -378,8 +393,8 @@ export const stepsToLast = (lasting, age) => Math.max(0, lasting - (age + 1));
  * The arm that kept, carried on from its own state with the shipped step: from timeline index
  * `from` (its paired step, which charged `extraSteps`), on the schedule's next frames, for `need`
  * steps at most. `stepAt(i, previous, current)` steps clip frame `i`. Outcome `lasted`, `lost`
- * (`at`, `loss`) or `censored` (`reason`: `loop end`, the next frame in the next loop; `run end`,
- * past the run's last frame).
+ * (`at`, `loss`) or `censored` (`reason`: `loop end`, the next frame in the next loop or, in the
+ * run's last loop, past its last frame).
  */
 export function carry({ times, n, from, extraSteps, stepMs, acquireMs, need, previous, current, stepAt }) {
     const loop0 = Math.floor(from / n);
@@ -388,7 +403,7 @@ export function carry({ times, n, from, extraSteps, stepMs, acquireMs, need, pre
     let cur = current;
     let idx = nextProcessed(times, from, stepMs, acquireMs, extraSteps);
     for (let j = 1; j <= need; j++) {
-        if (idx >= times.length) return { outcome: "censored", reason: "run end", kept: j - 1, steps };
+        if (idx >= times.length) return { outcome: "censored", reason: "loop end", kept: j - 1, steps };
         if (Math.floor(idx / n) !== loop0) return { outcome: "censored", reason: "loop end", kept: j - 1, steps };
         const r = stepAt(idx % n, prev, cur);
         steps.push({ k: idx, i: idx % n, r });
@@ -417,7 +432,22 @@ export function eventRegistry() {
         return { event: id, repeats: false };
     };
 }
-const stateKey = (parts) => createHash("sha1").update(JSON.stringify(parts)).digest("hex");
+const stateKey = (parts) => createHash("sha1").update(JSON.stringify(parts, (k, v) => (v instanceof Float64Array ? Array.from(v) : v))).digest("hex");
+
+/**
+ * A repeat must be its event again: the same results for both arms. `sigs` maps each event to its
+ * results' signature; a repeat whose signature differs means the state key misses something the
+ * step depends on. A refusal string or null.
+ */
+export function repeatRefusal(sigs, ev, sig) {
+    if (!ev.repeats) {
+        sigs.set(ev.event, sig);
+        return null;
+    }
+    return sigs.get(ev.event) === sig ? null : `a row marked as repeating ${ev.event} has other results than it: the state key misses something the step depends on`;
+}
+const resultSig = (shipped, L) => JSON.stringify([shipped.ok, shipped.ok ? null : shipped.loss, shipped.ok ? Array.from(shipped.H) : null, L.r.ok, L.r.ok ? null : L.r.loss, L.r.ok ? Array.from(L.r.H) : null, L.extraSteps, !!L.noVerdict]);
+const discordantOf = (shippedOk, L) => (L.noVerdict || shippedOk === L.r.ok ? null : L.r.ok ? "lever-kept" : "shipped-kept");
 
 /**
  * One M9 state against the desktop: `{ verdictMatch, distance, reproduced, why }`. Reproduced when
@@ -468,7 +498,10 @@ const git = (...a) => execFileSync("git", a, { cwd: ROOT }).toString().trim();
 const sameH = (a, b) => a && b && a.length === b.length && Array.from(a).every((v, i) => v === b[i]);
 const f64 = (a) => (a ? Float64Array.from(a) : null);
 
-function header(mode, { clips, params, trial }) {
+function header(mode, { clips, params, trial, inputs = null }) {
+    const clean = git("status", "--porcelain") === "";
+    // A run for the record is made from a committed tree; a trial may not be.
+    if (!trial && !clean) fail("the tree is not clean: commit first, or label the run --trial");
     return {
         kind: "278-stage1-tools",
         mode,
@@ -477,8 +510,10 @@ function header(mode, { clips, params, trial }) {
         script: { path: SCRIPT_REL, commit: git("log", "-1", "--format=%H", "--", SCRIPT_REL) || null },
         runner: { path: RUNNER_REL, commit: git("log", "-1", "--format=%H", "--", RUNNER_REL) },
         levers: { path: LEVERS_REL, commit: git("log", "-1", "--format=%H", "--", LEVERS_REL) },
+        analysis: { path: ANALYSIS_REL, commit: git("log", "-1", "--format=%H", "--", ANALYSIS_REL) },
         head: git("rev-parse", "HEAD"),
-        clean: git("status", "--porcelain") === "",
+        clean,
+        inputs,
         clips: Object.fromEntries(clips.map((c) => [c.name, { file: `examples/videos/${c.file}`, sha256: c.sha256 }])),
         parameters: {
             ...params,
@@ -518,7 +553,8 @@ function loadClips(S, names) {
         let ref = null;
         if (name in REFERENCE_CLIPS) {
             const fileName = `2026-11-21-277-reference-${name}.json`;
-            const dir = join(ROOT, "docs/benchmarks");
+            // --references: another folder holding #277's files (the guard's mode-level negatives use it).
+            const dir = arg("--references", join(ROOT, "docs/benchmarks"));
             const exists = existsSync(join(dir, fileName));
             const loaded = exists ? loadReferenceFrom(dir, name) : null;
             const why = referenceGuard({ exists, name: fileName, loaded, clipSha256: sha256, pts: clip.pts });
@@ -543,10 +579,12 @@ function refCell(clip, i, corners, kept, margin) {
     const distance = meanCornerDistance(corners, row.corners);
     return { distance, reason: null, beyondMargin: distance > margin };
 }
-function tallyRef(t, cell) {
-    if (cell.distance === null) t.without++;
-    else t.with++;
+/** Rows on a frame the reference accepts, and rows without one (no reference for the clip, or the frame rejected): whatever the arms did. */
+function tallyRef(t, clip, i) {
+    if (clip.ref && clip.ref.rows[i].status === "accepted") t.with++;
+    else t.without++;
 }
+const fileSha = (p) => createHash("sha256").update(readFileSync(p)).digest("hex");
 
 /** Each record's index on the loops' timeline: its clip frame plus the loops before it (a loop starts where the media time steps back). */
 function timeline(frames, pts) {
@@ -640,8 +678,9 @@ async function pairedCore(mode) {
     const opts = S.stepOptions({ ratio: RATIO });
     const rows = [];
     const deepRows = [];
-    const counts = { lockStates: 0, byAge: { 0: 0, 1: 0 }, rows: 0, acrossWrapRows: 0, pairedEvents: 0, repeatRows: 0, discordantEvents: 0, reference: { with: 0, without: 0 }, deep: { carries: 0, censored: 0, censoredBy: {}, reference: { with: 0, without: 0 } } };
+    const counts = { lockStates: 0, byAge: { 0: 0, 1: 0 }, rows: 0, acrossWrapRows: 0, pairedEvents: 0, repeatRows: 0, fsNoScaledPrediction: 0, discordantEvents: 0, reference: { with: 0, without: 0 }, deep: { carries: 0, censored: 0, censoredBy: {}, reference: { with: 0, without: 0 } } };
     const registries = new Map();
+    const sigs = new Map();
     for (const R of runs) {
         const { clip, schedule, seed, run, file } = R;
         const idx = timeline(run.frames, clip.pts);
@@ -672,14 +711,18 @@ async function pairedCore(mode) {
                 const L = leverStep(lever, state, (p, c) => stepAt(i, p, c), vStep);
                 const leverOut = armOut(L.r, clip, i, S.targetPoints, margin, { extraSteps: L.extraSteps, chargedMs: stepMs === null ? 0 : L.extraSteps * stepMs, fellBack: L.fellBack });
                 const id = `${clip.name}/${schedule}/s${seed}/k${k}/${lever}`;
-                const ev = register(stateKey([lever, i, s.Hprev, s.Hstart]), id);
-                const discordant = shipped.ok === L.r.ok ? null : L.r.ok ? "lever-kept" : "shipped-kept";
+                // The key holds everything the lever's step depends on: the state, V's chain, Fs's intervals.
+                const ev = register(stateKey([lever, i, s.Hprev, s.Hstart, state.Hchain, state.a, state.b]), id);
+                const rw = repeatRefusal(sigs, { ...ev, event: `${regKey}|${ev.event}` }, resultSig(shipped, L));
+                if (rw) fail(`${file}: record ${k}, ${lever}: ${rw}`);
+                const discordant = discordantOf(shipped.ok, L);
+                if (L.noVerdict) counts.fsNoScaledPrediction++;
                 const wrap = acrossWrap(idx, k, clip.pts.length);
                 if (wrap) counts.acrossWrapRows++;
-                rows.push({ id, clip: clip.name, schedule, seed, record: k, timelineIndex: idx[k], clipFrame: i, mediaTimeSeconds: run.frames[k].mediaTimeSeconds, acrossWrap: wrap, age, lever, eligible: L.eligible, a: state.a, b: state.b, rMedia, event: ev.event, repeats: ev.repeats, discordant, shipped: shippedOut, lever_: leverOut });
+                const paired = { id, clip: clip.name, schedule, seed, record: k, timelineIndex: idx[k], clipFrame: i, mediaTimeSeconds: run.frames[k].mediaTimeSeconds, acrossWrap: wrap, age, lever, eligible: L.eligible, noVerdict: !!L.noVerdict, a: state.a, b: state.b, rMedia, event: ev.event, repeats: ev.repeats, discordant, shipped: shippedOut, lever_: leverOut };
+                rows.push(paired);
                 counts.rows++;
-                tallyRef(counts.reference, shippedOut.reference);
-                tallyRef(counts.reference, leverOut.reference);
+                tallyRef(counts.reference, clip, i);
                 if (ev.repeats) {
                     counts.repeatRows++;
                     continue;
@@ -709,15 +752,16 @@ async function pairedCore(mode) {
                 }
                 const steps = c.steps.map((x) => {
                     const o = armOut(x.r, clip, x.i, S.targetPoints, margin);
-                    tallyRef(counts.deep.reference, o.reference);
+                    tallyRef(counts.deep.reference, clip, x.i);
                     return { timelineIndex: x.k, clipFrame: x.i, mediaTimeSeconds: clip.pts[x.i], ...o };
                 });
-                deepRows.push({ event: id, clip: clip.name, schedule, seed, record: k, age, lever, direction: discordant, carriedArm: discordant === "lever-kept" ? lever : "shipped", need, outcome: c.outcome, lostAt: c.at ?? null, loss: c.loss ?? null, censoredBy: c.reason ?? null, keptSteps: c.kept, lockLength: age + 1 + c.kept, steps });
+                // The paired step itself rides along, so a deep row stands without the paired file.
+                deepRows.push({ event: id, paired, clip: clip.name, schedule, seed, record: k, age, lever, direction: discordant, carriedArm: discordant === "lever-kept" ? lever : "shipped", need, outcome: c.outcome, lostAt: c.at ?? null, loss: c.loss ?? null, censoredBy: c.reason ?? null, keptSteps: c.kept, lockLength: age + 1 + c.kept, steps });
             }
         }
     }
     const params = { grossMargin: margin, seeds, schedules, levers: AGE_LEVERS };
-    const head = header(mode, { clips, params, trial });
+    const head = header(mode, { clips, params, trial, inputs: { runs: runsDir, files: Object.fromEntries(runs.map((R) => [R.file.split(/[\\/]/).pop(), fileSha(R.file)])) } });
     const seconds = (Date.now() - t0) / 1000;
     if (mode === "paired") writeOut(out, mode, head, rows, { ...counts, deep: undefined, seconds });
     else writeOut(out, mode, head, deepRows, { lockStates: counts.lockStates, pairedEvents: counts.pairedEvents, discordantEvents: counts.discordantEvents, ...counts.deep, seconds });
@@ -732,7 +776,8 @@ async function m9Mode() {
     const threshold = requireParam("--repro-threshold");
     const margin = requireParam("--gross-margin");
     const trial = process.argv.includes("--trial");
-    const dir = join(ROOT, "docs/benchmarks");
+    // --exports: another folder holding the 16 exports (the guards' mode-level negatives use it).
+    const dir = arg("--exports", join(ROOT, "docs/benchmarks"));
     const names = readdirSync(dir).filter((n) => /^2026-11-12-tab9-m9-(table|wall)-\d+\.json$/.test(n)).sort();
     const byClip = { table: names.filter((n) => n.includes("-table-")), wall: names.filter((n) => n.includes("-wall-")) };
     if (names.length !== 16 || byClip.table.length !== 8 || byClip.wall.length !== 8) fail(`m9: ${names.length} exports (table ${byClip.table.length}, wall ${byClip.wall.length}), expected 16, 8 each`);
@@ -751,7 +796,9 @@ async function m9Mode() {
         return { n, e, clip };
     });
     const rows = [];
-    const counts = { exports: 16, steps: 0, states: 0, mapped: 0, acrossWrap: 0, byClass: { kept: { states: 0, reproduced: 0 }, lost: { states: 0, reproduced: 0 } }, age1: 0, age1Reproduced: 0, leverRows: 0, reference: { with: 0, without: 0 } };
+    // mapped equals states by construction (an unplaced state is refused before any row); it is printed because the brief asks for it.
+    const counts = { exports: exports.length, steps: 0, states: 0, mapped: 0, acrossWrap: 0, byClass: { kept: { states: 0, reproduced: 0 }, lost: { states: 0, reproduced: 0 } }, age1: 0, age1Reproduced: 0, age1VerdictOnly: {}, age1VerdictDiffers: [], leverRows: 0, fsNoScaledPrediction: 0, reference: { with: 0, without: 0 } };
+    const sigs = new Map();
     for (const { n, e, clip } of exports) {
         const F = e.frames;
         const ix = framesAt(clip.pts, F.map((f) => f.mediaTimeSeconds));
@@ -790,6 +837,13 @@ async function m9Mode() {
             if (age === 1) {
                 counts.age1++;
                 if (cls.reproduced) counts.age1Reproduced++;
+                // The verification's measure (M12's verification report, lines 185-187): the verdict class only.
+                const v = (counts.age1VerdictOnly[clip.name] ??= { all: { states: 0, agree: 0 }, kept: { states: 0, agree: 0 }, lost: { states: 0, agree: 0 } });
+                for (const g of [v.all, v[klass]]) {
+                    g.states++;
+                    if (cls.verdictMatch) g.agree++;
+                }
+                if (!cls.verdictMatch) counts.age1VerdictDiffers.push({ export: n, record: k, clipFrame: i, mediaTimeSeconds: rec.mediaTimeSeconds, device: klass, desktop: desk.kept ? "kept" : desk.loss });
             }
             const a = age === 1 ? idx[k - 1] - idx[k - 2] : null;
             const b = age === 1 ? idx[k] - idx[k - 1] : null;
@@ -799,21 +853,22 @@ async function m9Mode() {
             const base = { export: n, clip: clip.name, record: k, timelineIndex: idx[k], clipFrame: i, mediaTimeSeconds: rec.mediaTimeSeconds, acrossWrap: wrap, age, a, b, rMedia: age === 1 ? (unwrapped[k] - unwrapped[k - 1]) / (unwrapped[k - 1] - unwrapped[k - 2]) : null, device: { ...device, reference: refCell(clip, i, device.corners, device.kept, margin) }, desktop: desk };
             const leverRow = (lever) => {
                 const L = leverStep(lever, state, (p, c) => stepAt(i, p, c), null);
-                const ev = register(stateKey([lever, i, F[k - 2].H, F[k - 1].H]), `${n}/k${k}/${lever}`);
+                const ev = register(stateKey([lever, i, F[k - 2].H, F[k - 1].H, a, b]), `${n}/k${k}/${lever}`);
+                const rw = repeatRefusal(sigs, ev, resultSig(desktop, L));
+                if (rw) fail(`${n}: record ${k}, ${lever}: ${rw}`);
+                if (L.noVerdict) counts.fsNoScaledPrediction++;
                 // No schedule here: the device's frames are the device's; Ffb's second alignment is recorded, not charged.
                 const o = armOut(L.r, clip, i, S.targetPoints, margin, { extraSteps: L.extraSteps, fellBack: L.fellBack });
-                tallyRef(counts.reference, o.reference);
-                return { kind: "lever", export: n, clip: clip.name, record: k, clipFrame: i, age, lever, event: ev.event, repeats: ev.repeats, discordant: desk.kept === L.r.ok ? null : L.r.ok ? "lever-kept" : "shipped-kept", lever_: o };
+                return { kind: "lever", export: n, clip: clip.name, record: k, clipFrame: i, acrossWrap: wrap, age, lever, noVerdict: !!L.noVerdict, event: ev.event, repeats: ev.repeats, discordant: discordantOf(desktop.ok, L), lever_: o };
             };
             const { row, levers } = m9StateRows(base, cls, leverRow);
-            tallyRef(counts.reference, row.device.reference);
-            tallyRef(counts.reference, row.desktop.reference);
+            tallyRef(counts.reference, clip, i);
             rows.push({ kind: "state", ...row });
             for (const L of levers) rows.push(L);
             counts.leverRows += levers.length;
         });
     }
-    const head = header("m9", { clips, params: { reproThreshold: threshold, grossMargin: margin, reproMeasure: "verdict class equal, and where both kept the mean corner distance of the desktop's output to the record's corners at most reproThreshold px", levers: { 1: AGE_LEVERS[1] } }, trial });
+    const head = header("m9", { clips, params: { reproThreshold: threshold, grossMargin: margin, reproMeasure: "verdict class equal, and where both kept the mean corner distance of the desktop's output to the record's corners at most reproThreshold px", levers: { 1: AGE_LEVERS[1] } }, trial, inputs: { exports: dir, files: Object.fromEntries(names.map((x) => [x, fileSha(join(dir, x))])) } });
     writeOut(out, "m9", head, rows, { ...counts, seconds: (Date.now() - t0) / 1000 });
 }
 
@@ -1021,7 +1076,22 @@ function selfTest() {
     const atLoop = carry({ ...base, from: 27, need: 5, stepAt: keepAll });
     T("a carry reaching the loop's end is censored there", atLoop.outcome === "censored" && atLoop.reason === "loop end" && atLoop.kept === 2);
     const atEnd = carry({ ...base, from: 57, need: 5, stepAt: keepAll });
-    T("a carry reaching the run's end is censored there", atEnd.outcome === "censored" && atEnd.reason === "run end" && atEnd.kept === 2);
+    T("a carry reaching the last loop's end is censored there", atEnd.outcome === "censored" && atEnd.reason === "loop end" && atEnd.kept === 2);
+    // Fs where the motion has no principal logarithm (a half turn): no verdict, not a refusal.
+    const half = new Float64Array([-1, 0, 480, 0, -1, 270, 0, 0, 1]);
+    T("powH refuses a half turn (no principal root)", powH(half, 0.5, 480, 270) === null);
+    const nv = leverStep("Fs", { age: 1, previous: I3(), current: half, Hchain: null, a: 4, b: 1, width: 480, height: 270 }, fake, null);
+    T("Fs with no scaled prediction is no verdict and not eligible", nv.noVerdict === true && nv.eligible === false);
+    T("no verdict is never discordant", discordantOf(true, nv) === null && discordantOf(false, nv) === null);
+    // A repeat whose results differ from its event's is refused; one whose results are equal passes.
+    const sg = new Map();
+    T("an event's first row passes", repeatRefusal(sg, { event: "e", repeats: false }, "x") === null);
+    T("a repeat with its event's results passes", repeatRefusal(sg, { event: "e", repeats: true }, "x") === null);
+    T("a repeat with other results is refused", repeatRefusal(sg, { event: "e", repeats: true }, "y") !== null);
+    // The reference guard's other branches, and a parameter that is not a number.
+    T("a reference whose bytes are not as #277 recorded is refused", referenceGuard({ exists: true, name: "r", loaded: { why: "r: SHA-256 x, recorded y" }, clipSha256: "abc", pts: [0, 0.04] }) !== null);
+    T("a reference with a row off the clip's media times is refused", referenceGuard({ exists: true, name: "r", loaded: { ref }, clipSha256: "abc", pts: [0, 0.05] }) !== null);
+    T("a parameter that is not a number is refused", paramRefusal("abc", "--gross-margin") !== null);
     const dev = carry({ ...base, from: 0, need: 3, stepAt: keepAll, stepMs: 25, extraSteps: 1 });
     T("a device carry follows replay-run's timing, the paired step's charge included", dev.steps[0].k === nextFrameIndex(times, 0, 20.4 + 50) && dev.steps[1].k === nextFrameIndex(times, dev.steps[0].k, 20.4 + 25));
 
