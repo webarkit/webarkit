@@ -176,6 +176,7 @@ const LOOPS = readConstant(RUNNER_REL, "LOOPS");
 const RATIO = readConstant(RUNNER_REL, "RATIO");
 const STEP_MS = readConstant(RUNNER_REL, "SCHEDULES");
 const ACQUIRE_MS = readConstant(RUNNER_REL, "DEVICE_ACQUIRE_MS");
+const DETECT_MS = readConstant(RUNNER_REL, "DEVICE_DETECT_MS");
 
 // --- guards: pure, each a refusal string or null; exercised by --self-test ------------------
 
@@ -221,6 +222,54 @@ export function runFramesRefusal(frames, pts, scheduleName, loops) {
     if (scheduleName !== "every") return null;
     if (frames.length !== loops * pts.length) return `${frames.length} records on every, the clip's ${pts.length} frames over ${loops} loops are ${loops * pts.length}`;
     for (let k = 0; k < frames.length; k++) if (frames[k].mediaTimeSeconds !== pts[k % pts.length]) return `record ${k} at ${frames[k].mediaTimeSeconds} s on every, the clip's frame ${k % pts.length} is at ${pts[k % pts.length]} s`;
+    return null;
+}
+
+/** A run's `stepMs` against its schedule's (`STEP_MS`: `null` on `every`). */
+export function runScheduleRefusal(run, schedule) {
+    const want = STEP_MS[schedule];
+    return run.stepMs === want ? null : `stepMs ${JSON.stringify(run.stepMs)}, the ${schedule} schedule's is ${JSON.stringify(want)}`;
+}
+
+/**
+ * A device-schedule run's frames against `scripts/replay-run.mjs`'s rule (lines 115–117), replayed
+ * from the run's own records: from the record at timeline index `k`, the next processed frame is
+ * `nextFrameIndex(times, k, acquire + (tracking ? stepMs : 0) + (state === "TRACK" ? 0 : detect))`.
+ * Every record must be where the rule puts it, and the rule must end where the run does. Nothing is
+ * inferred: a record without its `tracking` and `state` is refused. `null` on `every`.
+ */
+export function progressionRefusal(frames, pts, { stepMs, acquireMs, detectMs, loops }) {
+    if (stepMs === null) return null;
+    const times = loopTimes(pts, loops);
+    let k = 0;
+    for (let r = 0; r < frames.length; r++) {
+        const f = frames[r];
+        if (k >= times.length) return `record ${r}: the rule ends the run before it`;
+        if (f.mediaTimeSeconds !== pts[k % pts.length]) return `record ${r} at ${f.mediaTimeSeconds} s, where the rule puts clip frame ${k % pts.length} (${pts[k % pts.length]} s)`;
+        if (!("tracking" in f) || typeof f.state !== "string") return `record ${r} does not carry its tracking and state, which the rule reads`;
+        k = nextFrameIndex(times, k, acquireMs + (f.tracking ? stepMs : 0) + (f.state === "TRACK" ? 0 : detectMs));
+    }
+    if (k < times.length) return `the rule puts a record at clip frame ${k % pts.length} after the run's last`;
+    return null;
+}
+
+/**
+ * M9's exports, `[{ name, clip, run, sha256 }]` (`run` the export's `run.order`): within a clip no
+ * two with the same run or the same bytes, and each one's run the number in its file name.
+ */
+export function exportsRefusal(list) {
+    for (const clip of new Set(list.map((x) => x.clip))) {
+        const L = list.filter((x) => x.clip === clip);
+        for (let i = 0; i < L.length; i++)
+            for (let j = i + 1; j < L.length; j++) {
+                if (L[i].run === L[j].run) return `${L[i].name} and ${L[j].name}: the same run ${JSON.stringify(L[i].run)}`;
+                if (L[i].sha256 === L[j].sha256) return `${L[i].name} and ${L[j].name}: the same bytes (SHA-256 ${L[i].sha256})`;
+            }
+    }
+    for (const x of list) {
+        const m = /-(\d+)\.json$/.exec(x.name);
+        if (!m || x.run !== Number(m[1])) return `${x.name}: run ${JSON.stringify(x.run)}, its file name says ${m ? m[1] : "none"}`;
+    }
     return null;
 }
 
@@ -619,6 +668,10 @@ function loadRuns(dir, clips, schedules, seeds, prefix = "run") {
                 if (rw) fail(`${file}: ${rw}`);
                 const fw = runFramesRefusal(run.frames, clip.pts, schedule, LOOPS);
                 if (fw) fail(`${file}: ${fw}`);
+                const sw = runScheduleRefusal(run, schedule);
+                if (sw) fail(`${file}: ${sw}`);
+                const pw = progressionRefusal(run.frames, clip.pts, { stepMs: STEP_MS[schedule], acquireMs: ACQUIRE_MS[clip.name], detectMs: DETECT_MS, loops: LOOPS });
+                if (pw) fail(`${file}: ${pw}`);
                 runs.push({ clip, schedule, seed, file, run });
             }
         }
@@ -781,6 +834,13 @@ async function m9Mode() {
     const names = readdirSync(dir).filter((n) => /^2026-11-12-tab9-m9-(table|wall)-\d+\.json$/.test(n)).sort();
     const byClip = { table: names.filter((n) => n.includes("-table-")), wall: names.filter((n) => n.includes("-wall-")) };
     if (names.length !== 16 || byClip.table.length !== 8 || byClip.wall.length !== 8) fail(`m9: ${names.length} exports (table ${byClip.table.length}, wall ${byClip.wall.length}), expected 16, 8 each`);
+    // Eight distinct runs a clip, not eight names: each export's run.order its name's number, no run or bytes twice.
+    const manifest = names.map((x) => {
+        const bytes = readFileSync(join(dir, x));
+        return { name: x, clip: x.includes("-table-") ? "table" : "wall", run: JSON.parse(bytes.toString()).run?.order, sha256: createHash("sha256").update(bytes).digest("hex") };
+    });
+    const ew = exportsRefusal(manifest);
+    if (ew) fail(`m9: ${ew}`);
     const S = await stepping();
     const clips = loadClips(S, ["table", "wall"]);
     const opts = S.stepOptions({ ratio: RATIO });
@@ -868,7 +928,7 @@ async function m9Mode() {
             counts.leverRows += levers.length;
         });
     }
-    const head = header("m9", { clips, params: { reproThreshold: threshold, grossMargin: margin, reproMeasure: "verdict class equal, and where both kept the mean corner distance of the desktop's output to the record's corners at most reproThreshold px", levers: { 1: AGE_LEVERS[1] } }, trial, inputs: { exports: dir, files: Object.fromEntries(names.map((x) => [x, fileSha(join(dir, x))])) } });
+    const head = header("m9", { clips, params: { reproThreshold: threshold, grossMargin: margin, reproMeasure: "verdict class equal, and where both kept the mean corner distance of the desktop's output to the record's corners at most reproThreshold px", levers: { 1: AGE_LEVERS[1] } }, trial, inputs: { exports: dir, files: Object.fromEntries(manifest.map((x) => [x.name, { run: x.run, sha256: x.sha256 }])) } });
     writeOut(out, "m9", head, rows, { ...counts, seconds: (Date.now() - t0) / 1000 });
 }
 
@@ -986,7 +1046,7 @@ async function wrongMode() {
             }
         }
     }
-    const head = header("wrong", { clips, params: { wrongPx: WRONG_PX, wrongSource: `${ANALYSIS_REL}, truthReport's RIGHT: a confirmed step whose output H is more than RIGHT px RMS off the truth (inView); ${TRUTH_REL}'s header`, seeds, sequences: SEQUENCES(seq).map(([nm, , n]) => `${nm} (${n})`) }, trial });
+    const head = header("wrong", { clips, params: { wrongPx: WRONG_PX, wrongSource: `${ANALYSIS_REL}, truthReport's RIGHT: a confirmed step whose output H is more than RIGHT px RMS off the truth (inView); ${TRUTH_REL}'s header`, seeds, sequences: SEQUENCES(seq).map(([nm, , n]) => `${nm} (${n})`) }, trial, inputs: { runs: runsDir, files: Object.fromEntries(runs.map((R) => [R.file.split(/[\\/]/).pop(), fileSha(R.file)])), sequences: { source: TRUTH_REL, commit: git("log", "-1", "--format=%H", "--", TRUTH_REL), module: "packages/nft-tracker/ground-truth/tracker_sequences.ts", moduleCommit: git("log", "-1", "--format=%H", "--", "packages/nft-tracker/ground-truth/tracker_sequences.ts") } } });
     writeOut(out, "wrong", head, [...rows, { kind: "per-lever-and-age", cells: Object.values(tally) }], { ...counts, seconds: (Date.now() - t0) / 1000 });
 }
 
@@ -1016,6 +1076,34 @@ function selfTest() {
     T("an every run that skips a clip frame is refused", runFramesRefusal(fr([0, 0.08, 0.08, 0, 0.04, 0.08]), pts, "every", 2) !== null);
     T("a device run on fewer of the clip's frames passes", runFramesRefusal(fr([0, 0.08, 0.04]), pts, "device-25", 2) === null);
     T("M9 states on the clip's frames pass", m9PlaceRefusal(fr([0, 0.04, 0.08]), pts, "e") === null);
+    // A run's schedule: its stepMs, and on a device schedule its frames where replay-run.mjs's rule puts them.
+    T("a run with its schedule's stepMs passes", runScheduleRefusal({ stepMs: 15 }, "device-15") === null && runScheduleRefusal({ stepMs: null }, "every") === null);
+    T("a run with another stepMs is refused", runScheduleRefusal({ stepMs: 25 }, "device-15") !== null);
+    const pts60 = Array.from({ length: 60 }, (_, i) => Math.round((i / 30) * 1e6) / 1e6);
+    const ruleRun = (states) => {
+        const tm = loopTimes(pts60, 2);
+        const out = [];
+        let k = 0;
+        for (let r = 0; k < tm.length; r++) {
+            const [state, tracking] = states[r % states.length];
+            out.push({ mediaTimeSeconds: pts60[k % 60], state, tracking });
+            k = nextFrameIndex(tm, k, 20.4 + (tracking ? 25 : 0) + (state === "TRACK" ? 0 : 83.2));
+        }
+        return out;
+    };
+    const devSched = { stepMs: 25, acquireMs: 20.4, detectMs: 83.2, loops: 2 };
+    const good = ruleRun([["DETECT", null], ["TRACK", {}], ["TRACK", {}], ["LOST", {}]]);
+    T("a device run where the rule puts its frames passes", progressionRefusal(good, pts60, devSched) === null);
+    const moved = good.map((f, r) => (r === 5 ? { ...f, mediaTimeSeconds: pts60[(pts60.indexOf(f.mediaTimeSeconds) + 1) % 60] } : f));
+    T("a device run with one record moved to another frame is refused", progressionRefusal(moved, pts60, devSched) !== null);
+    T("a device run whose records lack tracking is refused", progressionRefusal(good.map(({ tracking, ...f }) => f), pts60, devSched) !== null);
+    T("a device run with a record dropped is refused", progressionRefusal(good.slice(0, -1), pts60, devSched) !== null);
+    // M9's exports: eight distinct runs, each its name's number.
+    const ex = (name, run, sha256) => ({ name, clip: "wall", run, sha256 });
+    T("distinct exports pass", exportsRefusal([ex("m-wall-25.json", 25, "a"), ex("m-wall-26.json", 26, "b")]) === null);
+    T("two exports with the same run are refused", exportsRefusal([ex("m-wall-25.json", 25, "a"), ex("m-wall-26.json", 25, "b")]) !== null);
+    T("two exports with the same bytes are refused", exportsRefusal([ex("m-wall-25.json", 25, "a"), ex("m-wall-26.json", 26, "a")]) !== null);
+    T("an export whose run differs from its name is refused", exportsRefusal([ex("m-wall-25.json", 25, "a"), ex("m-wall-26.json", 27, "b")]) !== null);
     T("an M9 state the mapping cannot place is refused", m9PlaceRefusal(fr([0, 0.06]), pts, "e") !== null);
     T("readConstant reads one literal", readConstantFrom("const A = 50;\n", "A", "f").value === 50);
     T("readConstant refuses a missing declaration", readConstantFrom("const B = 50;\n", "A", "f").why !== undefined);

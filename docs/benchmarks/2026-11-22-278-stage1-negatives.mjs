@@ -33,16 +33,26 @@
  * passes only if the mode exits 0 and writes it. Nothing is written inside the repository.
  *
  *     npm run build
- *     node docs/benchmarks/2026-11-22-278-stage1-negatives.mjs --runs <runs> --work <dir outside the repository>
+ *     node docs/benchmarks/2026-11-22-278-stage1-negatives.mjs --runs <runs> --work <parent> [--only <name part,…>]
+ *     node docs/benchmarks/2026-11-22-278-stage1-negatives.mjs --self-test
+ *
+ * `<parent>` is an **existing** directory outside the repository: canonicalised (`realpathSync`),
+ * it is refused if it is the repository, inside it, or contains it. The script creates its own
+ * fresh directory in it (`278-negatives-XXXXXX`, `mkdtempSync`) and **never removes a path it did
+ * not create**: it removes that directory only after every case has passed, then checks that
+ * every entry the parent held before the run is still there; on a failure it leaves the directory
+ * and prints its path. `--only` runs the cases whose name contains one of the parts given.
  *
  * `<runs>` holds `2026-11-14-272-stage1-probe.mjs runs --levers none`'s files for the table clip on
- * `every` (`run-table-none-s<1-8>-every.json`) and its `--mirror` ones for table and wall. Every
- * run of the tools here is labelled `--trial`; its outputs are discarded with `<work>`.
+ * `every` and `device-15` (`run-table-none-s<1-8>-<schedule>.json`) and its `--mirror` ones for
+ * table and wall. Every run of the tools here is labelled `--trial`; its outputs are discarded with
+ * the script's own directory.
  */
 
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve, relative, isAbsolute } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
@@ -58,13 +68,71 @@ const arg = (name) => {
     const i = process.argv.indexOf(name);
     return i < 0 ? null : process.argv[i + 1];
 };
+
+/** A path, canonical: symbolic links and junctions resolved, and case-folded on Windows. */
+const canon = (p) => {
+    const r = realpathSync.native(p);
+    return process.platform === "win32" ? r.toLowerCase() : r;
+};
+const within = (a, b) => a === b || a.startsWith(b.endsWith(sep) ? b : b + sep);
+/** `--work`'s parent: an existing directory, neither the repository nor inside it nor containing it, compared canonically. A refusal string or null. */
+export function workRefusal(parent, root) {
+    let p;
+    try {
+        if (!statSync(parent).isDirectory()) return `--work ${parent} is not a directory`;
+        p = canon(parent);
+    } catch {
+        return `--work ${parent} does not exist: it names an existing parent directory`;
+    }
+    const r = canon(root);
+    if (p === r) return `--work ${parent} is the repository`;
+    if (within(p, r)) return `--work ${parent} is inside the repository (${r})`;
+    if (within(r, p)) return `--work ${parent} contains the repository (${r})`;
+    return null;
+}
+
+if (process.argv.includes("--self-test")) {
+    const fails = [];
+    const T = (name, ok) => ok || fails.push(name);
+    const scratch = mkdtempSync(join(tmpdir(), "278-negatives-selftest-"));
+    const link = join(scratch, "into-repo");
+    try {
+        T("the repository's parent is refused", workRefusal(dirname(realpathSync.native(ROOT)), ROOT) !== null);
+        T("the repository is refused", workRefusal(ROOT, ROOT) !== null);
+        symlinkSync(join(ROOT, "docs"), link, "junction");
+        T("a path through a directory link into the repository is refused", workRefusal(link, ROOT) !== null);
+        T("a path that does not exist is refused", workRefusal(join(scratch, "nothing-here"), ROOT) !== null);
+        T("a directory outside the repository passes", workRefusal(scratch, ROOT) === null);
+    } finally {
+        // The link itself only, never what it points at.
+        try {
+            unlinkSync(link);
+        } catch {
+            try {
+                rmdirSync(link);
+            } catch {}
+        }
+        if (!existsSync(join(ROOT, "docs", "benchmarks"))) fail("the self-test's link removal touched the repository");
+        rmSync(scratch, { recursive: true, force: true });
+    }
+    if (fails.length) {
+        console.error(`self-test: ${fails.length} failed\n${fails.join("\n")}`);
+        process.exit(1);
+    }
+    console.log("self-test: passed");
+    process.exit(0);
+}
+
 const runs = arg("--runs");
-const work = arg("--work") && resolve(arg("--work"));
-if (!runs || !work) fail("--runs <dir> and --work <dir> are required");
-const rel = relative(resolve(ROOT), work);
-if (!rel.startsWith("..") && !isAbsolute(rel)) fail(`--work ${work} is inside the repository`);
-rmSync(work, { recursive: true, force: true });
-mkdirSync(work, { recursive: true });
+const parentArg = arg("--work");
+if (!runs || !parentArg) fail("--runs <dir> and --work <parent> are required");
+const wr = workRefusal(parentArg, ROOT);
+if (wr) fail(wr);
+const parent = realpathSync.native(parentArg);
+const parentBefore = readdirSync(parent);
+const work = mkdtempSync(join(parent, "278-negatives-"));
+const only = arg("--only") ? arg("--only").split(",") : null;
+console.log(`work directory: ${work}`);
 
 const readJ = (p) => JSON.parse(readFileSync(p, "utf8"));
 const writeJ = (p, d) => writeFileSync(p, JSON.stringify(d));
@@ -72,7 +140,8 @@ let n = 0;
 const results = [];
 
 /** One case: a fresh folder, `prepare(dir)` builds the inputs, `args(dir)` the mode's arguments. */
-function exercise({ name, mode, prepare, args, expect, node = [] }) {
+function exercise({ name, mode, prepare, args, expect, node = [], check = null }) {
+    if (only && !only.some((s) => name.includes(s))) return;
     const dir = join(work, `case-${++n}`);
     mkdirSync(dir, { recursive: true });
     prepare(dir);
@@ -80,8 +149,10 @@ function exercise({ name, mode, prepare, args, expect, node = [] }) {
     const t0 = Date.now();
     const r = spawnSync(process.execPath, [...node, TOOLS, mode, ...args(dir), "--out", out, "--trial"], { cwd: ROOT, encoding: "utf8", maxBuffer: 1 << 28 });
     const wrote = existsSync(join(out, `${mode}.jsonl`));
-    const msg = (r.stderr || "").split("\n").filter((l) => l.startsWith("278-stage1-tools:")).join(" | ");
-    const ok = expect === "pass" ? r.status === 0 && wrote : r.status === 1 && !wrote && msg.includes(expect);
+    let msg = (r.stderr || "").split("\n").filter((l) => l.startsWith("278-stage1-tools:")).join(" | ");
+    const checked = expect === "pass" && wrote && check ? check(out) : null;
+    if (checked) msg = `check: ${checked}`;
+    const ok = expect === "pass" ? r.status === 0 && wrote && !checked : r.status === 1 && !wrote && msg.includes(expect);
     results.push({ name, ok, status: r.status, wrote, msg, seconds: (Date.now() - t0) / 1000 });
     console.log(`${ok ? "ok  " : "FAIL"} ${name}: exit ${r.status}, ${wrote ? "wrote" : "no"} ${mode}.jsonl${msg ? ` — ${msg}` : ""}`);
     rmSync(dir, { recursive: true, force: true });
@@ -136,6 +207,43 @@ exercise({
     expect: "SHA-256",
 });
 
+// --- paired: a device schedule's run against replay-run.mjs's rule -----------------------------
+const deviceRuns = (dir) => {
+    const d = join(dir, "runs");
+    mkdirSync(d, { recursive: true });
+    for (const s of SEEDS) {
+        const f = `run-table-none-s${s}-device-15.json`;
+        if (!existsSync(join(runs, f))) fail(`${f} missing from ${runs}`);
+        copyFileSync(join(runs, f), join(d, f));
+    }
+    return d;
+};
+const editDeviceRun = (dir, seed, edit) => {
+    const p = join(dir, "runs", `run-table-none-s${seed}-device-15.json`);
+    const d = readJ(p);
+    edit(d);
+    writeJ(p, d);
+};
+const devArgs = (dir) => ["--runs", join(dir, "runs"), "--clips", "table", "--schedules", "device-15", "--gross-margin", "5"];
+// The table clip's frame times, from an every run's first loop.
+const tablePts = () => readJ(join(runs, "run-table-none-s1-every.json")).frames.slice(0, 267).map((f) => f.mediaTimeSeconds);
+exercise({ name: "paired, device-15 control", mode: "paired", prepare: deviceRuns, args: devArgs, expect: "pass" });
+exercise({ name: "paired, a device run with another stepMs", mode: "paired", prepare: (d) => { deviceRuns(d); editDeviceRun(d, 2, (r) => { r.stepMs = 25; }); }, args: devArgs, expect: "stepMs 25, the device-15 schedule's is 15" });
+exercise({
+    name: "paired, a device run with one record moved to another frame",
+    mode: "paired",
+    prepare: (d) => {
+        deviceRuns(d);
+        const pts = tablePts();
+        editDeviceRun(d, 3, (r) => {
+            const i = pts.indexOf(r.frames[5].mediaTimeSeconds);
+            r.frames[5].mediaTimeSeconds = pts[(i + 1) % pts.length];
+        });
+    },
+    args: devArgs,
+    expect: "where the rule puts clip frame",
+});
+
 // --- deep: the carry of the shipped arm against the run --------------------------------------
 // Every held step of age 2 or more gets another output H in the runs (the records untouched):
 // paired passes (it reads ages 0 and 1, and states from the records), and deep must refuse on the
@@ -172,6 +280,9 @@ const editExport = (dir, name, edit) => {
 const m9Args = (extra = ["--repro-threshold", "1", "--gross-margin", "5"]) => (dir) => ["--exports", join(dir, "exports"), ...extra];
 const wall = exportNames.find((x) => x.includes("-wall-"));
 exercise({ name: "m9, control", mode: "m9", prepare: exportsCopy, args: m9Args(), expect: "pass" });
+const otherWall = exportNames.filter((x) => x.includes("-wall-"))[1];
+exercise({ name: "m9, two exports with the same run", mode: "m9", prepare: (d) => { exportsCopy(d); editExport(d, otherWall, (e) => { e.run.order = Number(/-(\d+)\.json$/.exec(wall)[1]); }); }, args: m9Args(), expect: "the same run" });
+exercise({ name: "m9, an export whose run differs from its name", mode: "m9", prepare: (d) => { exportsCopy(d); editExport(d, otherWall, (e) => { e.run.order = 99; }); }, args: m9Args(), expect: "its file name says" });
 exercise({ name: "m9, 15 exports", mode: "m9", prepare: (d) => { exportsCopy(d); rmSync(join(d, "exports", wall)); }, args: m9Args(), expect: "expected 16" });
 exercise({ name: "m9, --repro-threshold missing", mode: "m9", prepare: exportsCopy, args: m9Args(["--gross-margin", "5"]), expect: "--repro-threshold is required" });
 exercise({ name: "m9, another processing size", mode: "m9", prepare: (d) => { exportsCopy(d); editExport(d, wall, (e) => { e.processingResolution.width = 640; }); }, args: m9Args(), expect: "processed at" });
@@ -205,7 +316,16 @@ const mirrorRuns = (dir) => {
     return d;
 };
 const TS = ["--experimental-transform-types"];
-exercise({ name: "wrong, control", mode: "wrong", node: TS, prepare: mirrorRuns, args: (d) => ["--runs", join(d, "runs")], expect: "pass" });
+// The control also reads wrong's header: its inputs must list the mirrored runs and the sequences' source.
+const wrongHeaderCheck = (out) => {
+    const head = JSON.parse(readFileSync(join(out, "wrong.jsonl"), "utf8").split("\n")[0]);
+    const files = Object.keys(head.inputs?.files ?? {});
+    if (files.length !== 16 || !files.every((f) => /^mirror-(table|wall)-none-s[1-8]-every\.json$/.test(f))) return `the header lists ${files.length} mirrored runs, not 16`;
+    if (!Object.values(head.inputs.files).every((h) => /^[0-9a-f]{64}$/.test(h))) return "a mirrored run without its SHA-256";
+    if (head.inputs.sequences?.source !== "docs/benchmarks/2026-11-14-272-stage1-truth.mjs" || !/^[0-9a-f]{40}$/.test(head.inputs.sequences?.commit ?? "")) return "the header does not name the sequences' source and its commit";
+    return null;
+};
+exercise({ name: "wrong, control", mode: "wrong", node: TS, prepare: mirrorRuns, args: (d) => ["--runs", join(d, "runs")], expect: "pass", check: wrongHeaderCheck });
 exercise({ name: "wrong, a mirrored run missing", mode: "wrong", node: TS, prepare: (d) => { mirrorRuns(d); rmSync(join(d, "runs", "mirror-wall-none-s3-every.json")); }, args: (d) => ["--runs", join(d, "runs")], expect: "missing: seed 3" });
 exercise({
     name: "wrong, a mirrored step's refusal reason changed",
@@ -222,7 +342,15 @@ exercise({
     expect: "does not reproduce the mirrored run's",
 });
 
-rmSync(work, { recursive: true, force: true });
 const bad = results.filter((r) => !r.ok);
 console.log(`\n${results.length - bad.length} of ${results.length} cases as expected`);
-if (bad.length) process.exit(1);
+if (bad.length) {
+    console.log(`left the work directory for inspection: ${work}`);
+    process.exit(1);
+}
+// Only the directory this run created, and only now; then the parent's earlier entries are all still there.
+rmSync(work, { recursive: true, force: true });
+const after = new Set(readdirSync(parent));
+const gone = parentBefore.filter((x) => !after.has(x));
+if (gone.length) fail(`entries of ${parent} missing after the run: ${gone.join(", ")}`);
+console.log(`removed ${work}; the ${parentBefore.length} entries ${parent} held before are all still there`);
