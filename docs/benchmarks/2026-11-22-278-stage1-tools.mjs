@@ -175,12 +175,21 @@ const ACQUIRE_MS = readConstant(RUNNER_REL, "DEVICE_ACQUIRE_MS");
 
 /** The seeds: exactly 1 to 8, each once. */
 export function seedsRefusal(seeds) {
-    return null; // not yet guarded
+    const dup = seeds.filter((s, i) => seeds.indexOf(s) !== i);
+    if (dup.length) return `seed(s) ${[...new Set(dup)].join(", ")} given more than once`;
+    const missing = SEEDS.filter((s) => !seeds.includes(s));
+    if (missing.length) return `seed(s) ${missing.join(", ")} missing of 1 to 8`;
+    const extra = seeds.filter((s) => !SEEDS.includes(s));
+    if (extra.length) return `seed(s) ${extra.join(", ")} outside 1 to 8`;
+    return null;
 }
 
 /** A required numeric parameter: present, finite, not negative. */
 export function paramRefusal(raw, name) {
-    return null; // not yet guarded
+    if (raw === undefined || raw === null) return `${name} is required and has no default: the Stage 1's registration sets it`;
+    const v = Number(raw);
+    if (!Number.isFinite(v) || v < 0 || String(raw).trim() === "") return `${name} ${JSON.stringify(raw)} is not a non-negative number`;
+    return null;
 }
 
 /**
@@ -188,7 +197,11 @@ export function paramRefusal(raw, name) {
  * result), made from this clip's bytes, and one row per clip frame at the clip's media times.
  */
 export function referenceGuard({ exists, name, loaded, clipSha256, pts }) {
-    return null; // not yet guarded
+    if (!exists) return `${name} missing`;
+    if (loaded.why) return loaded.why;
+    if (loaded.ref.sourceSha256 !== clipSha256) return `${name} was made from a clip with SHA-256 ${loaded.ref.sourceSha256}, this clip's is ${clipSha256}`;
+    const why = referenceRefusal(loaded.ref, pts);
+    return why ? `${name}: ${why}` : null;
 }
 
 /**
@@ -197,12 +210,25 @@ export function referenceGuard({ exists, name, loaded, clipSha256, pts }) {
  * whose frames follow the tracker's state (`scripts/replay-run.mjs`, lines 115–117).
  */
 export function runFramesRefusal(frames, pts, scheduleName, loops) {
-    return null; // not yet guarded
+    const at = new Set(pts);
+    for (let k = 0; k < frames.length; k++) if (!at.has(frames[k].mediaTimeSeconds)) return `record ${k} at ${frames[k].mediaTimeSeconds} s: no clip frame at that media time`;
+    if (scheduleName !== "every") return null;
+    if (frames.length !== loops * pts.length) return `${frames.length} records on every, the clip's ${pts.length} frames over ${loops} loops are ${loops * pts.length}`;
+    for (let k = 0; k < frames.length; k++) if (frames[k].mediaTimeSeconds !== pts[k % pts.length]) return `record ${k} at ${frames[k].mediaTimeSeconds} s on every, the clip's frame ${k % pts.length} is at ${pts[k % pts.length]} s`;
+    return null;
 }
 
 /** M9's recorded states: every record placed on a clip frame by its media time (`framesAt`, to the microsecond). */
 export function m9PlaceRefusal(frames, pts, name) {
-    return null; // not yet guarded
+    try {
+        framesAt(
+            pts,
+            frames.map((f) => f.mediaTimeSeconds),
+        );
+        return null;
+    } catch (e) {
+        return `${name}: a recorded state the mapping cannot place on a clip frame (${e.message})`;
+    }
 }
 
 // --- the levers, the carry and the events: pure, steps injected ------------------------------
@@ -390,15 +416,18 @@ const stateKey = (parts) => createHash("sha1").update(JSON.stringify(parts)).dig
  * the verdict class agrees and, where both kept, the corners are within `threshold` px.
  */
 export function m9Classify(device, desktop, threshold) {
-    // not yet gated: every state counts as reproduced
-    return { verdictMatch: device.kept === desktop.kept, distance: null, reproduced: true, why: null };
+    const verdictMatch = device.kept === desktop.kept;
+    if (!verdictMatch) return { verdictMatch, distance: null, reproduced: false, why: `device ${device.kept ? "kept" : "lost"}, desktop ${desktop.kept ? "kept" : "lost"}` };
+    if (!device.kept) return { verdictMatch, distance: null, reproduced: true, why: null };
+    if (!device.corners || !desktop.corners) return { verdictMatch, distance: null, reproduced: false, why: "no corners on one side" };
+    const distance = meanCornerDistance(device.corners, desktop.corners);
+    return { verdictMatch, distance, reproduced: distance <= threshold, why: distance <= threshold ? null : "corners beyond the reproduction threshold" };
 }
 
 /** An M9 state's rows: the state's, and the levers' only when it reproduces. `leverRow(lever)` makes one lever row. */
 export function m9StateRows(state, classify, leverRow) {
-    // not yet gated: every age-1 state gets lever rows
     const row = { ...state, ...classify };
-    const levers = state.age === 1 ? AGE_LEVERS[1].map(leverRow) : [];
+    const levers = classify.reproduced && state.age === 1 ? AGE_LEVERS[1].map(leverRow) : [];
     return { row, levers };
 }
 
