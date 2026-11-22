@@ -692,6 +692,17 @@ async function pairedCore(mode) {
                 const need = stepsToLast(LASTING, age);
                 const c = carry({ times: clip.times, n: clip.pts.length, from: idx[k], extraSteps: keptArm.extraSteps, stepMs, acquireMs: ACQUIRE_MS[clip.name], need, previous: current, current: keptArm.r.H, stepAt });
                 counts.deep.carries++;
+                // A carry of the shipped arm is the run itself going on: each carried step must be the
+                // run's next record (its timeline index) and the run's own step there (verdict and H).
+                // This checks the carry's schedule and state against the replay, fatally.
+                if (discordant === "shipped-kept") {
+                    const byFrame = new Map(run.steps.map((x) => [x.frame, x]));
+                    c.steps.forEach((x, j) => {
+                        const kr = k + 1 + j;
+                        const sr = byFrame.get(kr);
+                        if (idx[kr] !== x.k || !sr || sr.first || sr.ok !== x.r.ok || (sr.ok && !sameH(sr.H, x.r.H))) fail(`${file}: the shipped arm's carry from record ${k} is not the run at its step ${j + 1} (record ${kr})`);
+                    });
+                }
                 if (c.outcome === "censored") {
                     counts.deep.censored++;
                     counts.deep.censoredBy[c.reason] = (counts.deep.censoredBy[c.reason] ?? 0) + 1;
