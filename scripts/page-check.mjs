@@ -50,6 +50,9 @@
  * - a synchronous run on a tilt clip that `?clip=` picks, stopped and
  *   exported (#243): the export names the clip, with its duration, and its
  *   `tracker.options.poseFilter` is `{ mode: "off" }`, no `?poseFilter=`;
+ * - a synchronous run on the fast clip that `?clip=` picks, stopped and
+ *   exported (#279): the export names the clip, with its duration; and the
+ *   pose demo's source list offers it;
  * - a synchronous run on the static clip with `?poseFilter=one-euro`, stopped
  *   and exported (#243): its `tracker.options.poseFilter` is the filter with
  *   every parameter written out, the built package's `DEFAULT_POSE_FILTER_*`,
@@ -1068,7 +1071,7 @@ async function syncAbsentTarget(browser, base) {
 const TILT_CLIP = "pinball-tilt-cross.mp4";
 const TILT_CLIP_S = 13.995633;
 /**
- * How far the page's `clipDurationS` may be from {@link TILT_CLIP_S}: the
+ * How far the page's `clipDurationS` may be from {@link TILT_CLIP_S}, or {@link FAST_CLIP_S}: the
  * browser's `video.duration` against ffprobe's, the 1 ms the loop functions
  * already allow between a clip's duration and its frames' times
  * (`CLIP_END_TOLERANCE_S`).
@@ -1122,6 +1125,69 @@ async function syncTiltClip(browser, base) {
             });
         } finally {
             await p.close();
+        }
+    });
+}
+
+/** The fast clip `?clip=` names in {@link syncFastClip}, and its duration as examples/README.md gives it (ffprobe), s. */
+const FAST_CLIP = "pinball-fast.mp4";
+const FAST_CLIP_S = 29.923678;
+
+/**
+ * The fast clip offered on both pages (#279): on the bench page `?clip=` picks
+ * it and the export records it with its duration, by the run {@link syncTiltClip}
+ * makes; the pose demo's source list offers it. Reads no tracking figure: only
+ * the clip, its duration and that frames were processed.
+ */
+async function syncFastClip(browser, base) {
+    const names = [
+        `sync run on ?clip=${FAST_CLIP}: the export's bundledClip is that clip, and its clipDurationS the README's ${FAST_CLIP_S} s`,
+        `the pose demo's source list offers ${FAST_CLIP}`,
+    ];
+    await scenario(names, async (check) => {
+        const p = await openPage(
+            browser,
+            base,
+            `mode=tracking&target=wnft&clip=${FAST_CLIP}&window=2000`,
+        );
+        try {
+            await p.waitReady();
+            await p.click("start");
+            await waitFrames(p, 5);
+            await p.click("stop");
+            await check(names[0], async () => {
+                const status = await p.read.status();
+                expect(status === "stopped", `status "${status}" after Stop`);
+                await p.click("download");
+                expect(
+                    (await p.read.exports()) === 1,
+                    `Download exported nothing: "${await p.read.error()}"`,
+                );
+                const e = await p.read.lastExport();
+                expect(
+                    e.source === "bundled" && e.bundledClip === FAST_CLIP,
+                    `source ${e.source}, bundledClip ${e.bundledClip}`,
+                );
+                expect(
+                    Math.abs(e.clipDurationS - FAST_CLIP_S) <= TILT_CLIP_TOLERANCE_S,
+                    `clipDurationS ${e.clipDurationS}, not ${FAST_CLIP_S} ± ${TILT_CLIP_TOLERANCE_S}`,
+                );
+                expect(e.frames.length >= 5, `${e.frames.length} frames`);
+            });
+        } finally {
+            await p.close();
+        }
+        const page = await browser.newPage();
+        try {
+            await page.goto(`${base}/${POSE_PAGE}`, { waitUntil: "domcontentloaded" });
+            await check(names[1], async () => {
+                const offered = await page.evaluate(() =>
+                    [...document.querySelectorAll("#source option")].map((o) => o.value),
+                );
+                expect(offered.includes(FAST_CLIP), `#source offers ${offered.join(", ")}`);
+            });
+        } finally {
+            await page.close();
         }
     });
 }
@@ -2089,6 +2155,7 @@ async function main() {
         await workerAbsentTarget(browser, base);
         await syncAbsentTarget(browser, base);
         await syncTiltClip(browser, base);
+        await syncFastClip(browser, base);
         await syncPoseFilter(browser, base);
         await syncParamRefusal(browser, base);
         await syncProvenanceFaults(browser, base);

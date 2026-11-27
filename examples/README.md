@@ -685,6 +685,12 @@ the same reason `startAtSeconds` does.
   raised slowly, held, lowered slowly, held. Original frames #32 (1.033022 s)
   to #899 (29.991044 s). SHA-256
   `90c5af74401577b29f7090f07b9205d7d5e6524baed7f48d44a6dc9ea4eb9dcf`.
+- **`pinball-fast.mp4`** — 29.92s (29.923678), 1280×720, 898 frames, ~2.4 MB
+  (2,414,954 bytes). The printed target taped to a plain white wall, the tablet
+  hand-held and moved fast, with pauses between the moves: the footage for
+  [#279](https://github.com/webarkit/webarkit/issues/279), fast moves and the
+  locks that start after them. SHA-256
+  `af8d3cfe9d6256bab13d3688284033b4591d49e54158427ea1882e9958aa3dbb`.
 
 The first two are re-encoded from a phone-captured original with `-an` (audio dropped;
 nothing here reads it) and `-crf 28` (visually lossless at this content and
@@ -782,6 +788,45 @@ ffmpeg -ss <start> -to <end> -i original.mp4 -an -map_metadata -1 -fps_mode pass
 Frame count: 417, 657 and 868 frames, in the original's window and in the output.
 
 Timestamps: 0 frames off the original time, comparing the output's `pts` plus the first kept frame's against the original's, in integer ticks at 1/90000 s.
+
+`pinball-fast.mp4` was recorded on 2026-11-26 on the same Tab_9_WiFi with Open
+Camera 1.56.2, 1280×720 at a fixed 30 fps. Its source is not the camera file but
+the session's committed copy in
+[artoolkit-nft-bench](https://github.com/webarkit/artoolkit-nft-bench):
+`data/videos/tab9-2026-11-26/fast.mp4` at the merge commit of its PR #27,
+`46bd6d6128f28884c5088bc56e70cb4b9f4d2cfb`, SHA-256
+`6120c7a35bb3bf37ab2677f9fb449e3cb4e7cb8abdc47edd6b8e84aaf8141915` (10,299,957
+bytes; the camera original, its audio, metadata and CRF 18 re-encode are described
+in that folder's `README.md`). The camera original is kept outside every
+repository. The page's dropdown offers it after the tilt clips, and `?clip=` takes
+it; `scripts/replay-clips.mjs` reads it only through `--clips fast`, whose device
+schedules borrow the wall clip's acquisition (`FAST_BORROWED_ACQUIRE_MS`), not
+measured. It is encoded with ffmpeg 9.0.2:
+
+```bash
+# pinball-fast.mp4 -- from artoolkit-nft-bench's data/videos/tab9-2026-11-26/fast.mp4 at 46bd6d6
+ffmpeg -copyts -i fast.mp4 -an -map_metadata -1 -fps_mode passthrough -enc_time_base demux -video_track_timescale 90000 -c:v libx264 -preset medium -crf 28 -movflags +faststart videos/pinball-fast.mp4
+```
+
+- **1280×720, not the processing size:** the page scales every source into its
+  processing box itself (480×270 for this clip), the wall clip is stored at
+  1280×720 too, and #277 found `segment.py`'s quads at 480×270 wrong on late wall
+  frames, so the segmented reference is made at full size
+  ([`docs/benchmarks/2026-11-27-279-reference-fast.json`](../docs/benchmarks/2026-11-27-279-reference-fast.json)).
+  No `-vf`: the source is already 1280×720, yuv420p, with no rotation tag.
+- **The timestamps are the source's, exactly:** `-copyts` and
+  `-video_track_timescale 90000` keep the first frame at 189 ticks of 90 kHz
+  (0.002100 s), as the source has it; the bare command resamples to 1/30 s on a
+  1/15360 time base, and `-fps_mode passthrough -enc_time_base demux` alone moves
+  the first frame to 0. The clip therefore starts at 0.002100 s, not 0.
+- **CRF 28, the highest of 28, 26, 24 and 22 that keeps the measurement**,
+  checked with `scripts/verify_encode.py poster fast.mp4 videos/pinball-fast.mp4
+--tol-frac 0.02 --psnr-median 38 --psnr-min 34 --ssim-median 0.95` from
+  artoolkit-nft-bench at `46bd6d6`, read-only: the same 898 frames and timestamps;
+  `segment.py` accepting the same frames within 2% of the clip (4 differ, of a
+  17.96 limit); per-frame luma PSNR median 44.67 dB, minimum 42.89 dB, SSIM median
+  0.9909. The criteria are the maintainer's, fixed on 2026-11-27 before any
+  encode was read. The encode is deterministic: a second run gave the same bytes.
 
 `pinball-bench.mp4` has an [ADR-0001](../docs/adr/0001-nft-tracker-ts-reference-above-cvbackend.md)
 action item 6 baseline measured against it, run **on** the reference device

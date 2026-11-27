@@ -37,6 +37,7 @@
  *     node scripts/replay-clips.mjs --external <latencyMs> [--seed <n>] [--out <dir>]
  *     node scripts/replay-clips.mjs --transfer <dir> [--seed <n>] [--out <dir>]
  *     node scripts/replay-clips.mjs --clips tilt [--seed <n>] [--out <dir>]
+ *     node scripts/replay-clips.mjs --clips fast [--seed <n>] [--out <dir>]
  *
  * Every form takes `--seed <n>` and, with it, `--seed-policy <run|frame>`
  * (default `frame`); see the tuning rounds below.
@@ -226,6 +227,11 @@
  * model an acquisition **borrowed from the static clip, not measured**, `TILT_BORROWED_ACQUIRE_MS`,
  * and every such export's `schedule` says so. Not with `--external`, `--sequence`, `--transfer`,
  * `--device-ratio` or `--tracking-only`.
+ *
+ * **The fast clip** (#279). `--clips fast` is the same form on `FAST_CLIPS`, which `CLIPS` does not
+ * hold either, for the same reason: the same three schedules and loops. Its device schedules model an
+ * acquisition **borrowed from the wall clip, not measured**, `FAST_BORROWED_ACQUIRE_MS`: the fast
+ * clip is 1280×720 landscape, as the wall clip is, and every such export's `schedule` says so.
  */
 
 import { execFileSync } from "node:child_process";
@@ -274,6 +280,8 @@ const BOX = PAGE_PROCESSING_BOX;
 const CLIPS = ["pinball-static.mp4", "pinball-bench.mp4", "pinball-bench-table.mp4"];
 /** `--clips tilt`'s clips, read by that form alone. */
 const TILT_CLIPS = ["pinball-tilt-cross.mp4", "pinball-tilt-mid.mp4", "pinball-tilt-sweep.mp4"];
+/** `--clips fast`'s clip, read by that form alone (#279). */
+const FAST_CLIPS = ["pinball-fast.mp4"];
 /**
  * acquire + gray p50 on Tab_9_WiFi (docs/benchmarks/README.md): the wall clip
  * 18.9 + 1.5 ms (2026-09-19); the static and table clips 35.9–36.0 + 0.9 and
@@ -304,6 +312,26 @@ const M3_ACQUIRE_MS = {
  * holds only what was measured on Tab_9_WiFi.
  */
 const TILT_BORROWED_ACQUIRE_MS = 36.9;
+/**
+ * `--clips fast`'s device schedules' acquisition: BORROWED from `DEVICE_ACQUIRE_MS`'s wall clip,
+ * whose size and orientation (1280×720, landscape) the fast clip shares, not measured.
+ */
+const FAST_BORROWED_ACQUIRE_MS = 20.4;
+/** The `--clips` forms: each one's clips, its borrowed acquisition and the clip it is borrowed from. */
+const CLIP_FORMS = {
+    tilt: {
+        title: "the tilt clips",
+        clips: TILT_CLIPS,
+        acquireMs: TILT_BORROWED_ACQUIRE_MS,
+        from: "the static clip's",
+    },
+    fast: {
+        title: "the fast clip",
+        clips: FAST_CLIPS,
+        acquireMs: FAST_BORROWED_ACQUIRE_MS,
+        from: "the wall clip's",
+    },
+};
 /** `--external`'s loops per run: loop 0 warms up, loops 1 to 4 are counted, loop 5 closes them (`trackTimeShare`). */
 const M3_LOOPS = 6;
 const M3_COUNTED = { firstLoop: 1, loopCount: 4 };
@@ -466,13 +494,14 @@ if (TRANSFER_DIR !== null) {
 }
 const CLIPS_FORM = arg("--clips");
 if (CLIPS_FORM !== null) {
-    if (CLIPS_FORM !== "tilt") usage(`--clips expects tilt, got "${CLIPS_FORM}"`);
-    // Each of these is a form of its own, or a setting of one that `--clips tilt` does not run.
+    if (!Object.hasOwn(CLIP_FORMS, CLIPS_FORM))
+        usage(`--clips expects tilt or fast, got "${CLIPS_FORM}"`);
+    // Each of these is a form of its own, or a setting of one that `--clips` does not run.
     for (const flag of ["--external", "--sequence", "--transfer", "--device-ratio"]) {
         if (arg(flag) !== null)
-            usage(`--clips tilt is a form of its own: ${flag} cannot be combined with it`);
+            usage(`--clips ${CLIPS_FORM} is a form of its own: ${flag} cannot be combined with it`);
     }
-    if (TRACKING_ONLY) usage("--clips tilt runs tracking runs only: drop --tracking-only");
+    if (TRACKING_ONLY) usage(`--clips ${CLIPS_FORM} runs tracking runs only: drop --tracking-only`);
 }
 if (TRACKING_ONLY) {
     // Accepted and ignored, it would say a run was restricted that never had anything to drop.
@@ -1092,13 +1121,14 @@ async function externalArms() {
 }
 
 /**
- * `--clips tilt`: the three schedules on each of `TILT_CLIPS`, over `M3_LOOPS` loops with the
- * summary read over the counted ones, as `--external`'s synchronous arms are.
+ * `--clips tilt` and `--clips fast`: the three schedules on each of the form's clips
+ * (`CLIP_FORMS`), over `M3_LOOPS` loops with the summary read over the counted ones, as
+ * `--external`'s synchronous arms are.
  */
-async function tiltArms() {
-    const borrowed = `acquisition BORROWED: ${TILT_BORROWED_ACQUIRE_MS} ms, the static clip's, not measured`;
+async function clipFormArms({ title, clips, acquireMs, from }) {
+    const borrowed = `acquisition BORROWED: ${acquireMs} ms, ${from}, not measured`;
     console.log(
-        `the tilt clips: ${M3_LOOPS} loops a run, ${countedLoopsText(M3_COUNTED)}; the device schedules' ${borrowed}; the synchronous mode's detection ${DEVICE_DETECT_MS} ms\n`,
+        `${title}: ${M3_LOOPS} loops a run, ${countedLoopsText(M3_COUNTED)}; the device schedules' ${borrowed}; the synchronous mode's detection ${DEVICE_DETECT_MS} ms\n`,
     );
     console.log(tableHead([...TABLE_COLUMNS, ...EXTERNAL_COLUMNS]));
     const arms = [
@@ -1106,7 +1136,7 @@ async function tiltArms() {
         { name: "device, 15 ms step", schedule: `device, 15 ms step, ${borrowed}`, stepMs: 15 },
         { name: "device, 25 ms step", schedule: `device, 25 ms step, ${borrowed}`, stepMs: 25 },
     ];
-    for (const clip of TILT_CLIPS) {
+    for (const clip of clips) {
         const { frames, pts, width, height } = await loadClip(clip);
         const K = intrinsics(width, height);
         const clipDurationS = loopPeriod(pts);
@@ -1121,7 +1151,7 @@ async function tiltArms() {
                 stepMs,
                 order: null,
                 loops: M3_LOOPS,
-                acquireMs: TILT_BORROWED_ACQUIRE_MS,
+                acquireMs,
                 unwrapped: true,
             });
             const e = armExport({
@@ -1136,7 +1166,7 @@ async function tiltArms() {
                 clipDurationS,
                 model: {
                     latencyMs: null,
-                    acquireMs: stepMs === null ? null : TILT_BORROWED_ACQUIRE_MS,
+                    acquireMs: stepMs === null ? null : acquireMs,
                     detectMs: DEVICE_DETECT_MS,
                 },
             });
@@ -1376,7 +1406,7 @@ if (EXTERNAL_MS !== null) {
     process.exit(0);
 }
 if (CLIPS_FORM !== null) {
-    await tiltArms();
+    await clipFormArms(CLIP_FORMS[CLIPS_FORM]);
     process.exit(0);
 }
 console.log(tableHead(TABLE_COLUMNS));
