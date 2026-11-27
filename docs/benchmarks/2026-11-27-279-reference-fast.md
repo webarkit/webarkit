@@ -16,7 +16,7 @@ to make this record.
 - [`2026-11-27-279-reference-fast.json`](2026-11-27-279-reference-fast.json): one row per frame of the
   clip (898), with its media time, its status (`accepted`, or the rejection reason) and, when
   accepted, its corners TL, TR, BR, BL in the bench's processing pixels (480×270). SHA-256
-  `f005a5913110c8de04767bb05c99695c54dccb44219e0d081b632fd95deee99f`, recorded in the script as
+  `c7f671812a27bd5094eedf7a7766b99f1697f10e127e5cf481326669b222a8d3`, recorded in the script as
   `REFERENCE_SHA256.fast`.
 - [`2026-11-27-279-reference-fast-figures.txt`](2026-11-27-279-reference-fast-figures.txt): what the
   run printed.
@@ -36,6 +36,13 @@ docs/benchmarks --figures docs/benchmarks/2026-11-27-279-reference-fast-figures.
   #277 found `segment.py`'s quads at 480×270 wrong on late wall frames. The script refuses the bench
   clip unless it hashes as `af8d3cfe9d6256bab13d3688284033b4591d49e54158427ea1882e9958aa3dbb` and has
   the same frame times as its source.
+- **Not the wall's file choice.** For the wall, #284 segmented the bench file itself, which is
+  artoolkit-nft-bench's clip byte for byte. Here the bench file is a CRF 28 encode of the
+  artoolkit-nft-bench file, and the reference is segmented on that source, as #279's brief asks,
+  not on the bench file's own pixels. The two files' acceptance differs on 4 frames
+  (`verify_encode.py` on the CRF 28 encode, in `examples/README.md`); the bench clip at 1280×720 is
+  not segmented here. The JSON's `file` and `sourceSha256` name the bench clip, its
+  `segmentedFrom` and `decode` the file segmented.
 - **The check.** The bench clip itself, decoded and scaled to 480×270 as the replay decodes it,
   segmented the same way: what each size accepts, and how far apart their corners are.
 - **The segmenter.** `segment.py` at `d629264` (SHA-256 `b17b43ae…70ff`), as for the wall and table;

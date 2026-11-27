@@ -7,7 +7,7 @@
   "processingSize": [480,270],
   "segmentedAt": [1280,720],
   "scale": [0.375,0.375],
-  "basis": "segmented at the source size, corners scaled to processing pixels, as the wall's (#277's method, #279): segmentedFrom, the file the bench clip was encoded from, with the same frame times",
+  "basis": "segmented at the source size, corners scaled to processing pixels, as the wall's (#277's method, #279); unlike the wall's, the file segmented is not `file` but segmentedFrom, the file the bench clip was encoded from, with the same frame times (#279's brief); sourceSha256 is `file`'s",
   "segmentedFrom": {"repository":"webarkit/artoolkit-nft-bench","commit":"46bd6d6128f28884c5088bc56e70cb4b9f4d2cfb","file":"data/videos/tab9-2026-11-26/fast.mp4","sha256":"6120c7a35bb3bf37ab2677f9fb449e3cb4e7cb8abdc47edd6b8e84aaf8141915"},
   "frames": 898,
   "accepted": 879,

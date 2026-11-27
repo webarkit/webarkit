@@ -70,7 +70,9 @@
  *   as the source (fatal otherwise). `segment.py` is read at `NFTBENCH_COMMIT`, as for the wall and
  *   table: its blob is the same at `FAST.commit`, and the driver checks its SHA-256. The overlays of
  *   the sample go into `<runs>/overlay-fast/`. `compare` does not read it: a comparison with the
- *   tracker on this clip is #280's.
+ *   tracker on this clip is #280's. Unlike the wall's, the file segmented is not the bench file: the
+ *   wall's bench file is artoolkit-nft-bench's byte for byte, the fast clip's is a CRF 28 encode of
+ *   artoolkit-nft-bench's, and #279's brief names that source as the file to segment.
  *
  * Every refusal exits 1.
  */
@@ -115,7 +117,7 @@ export const referenceFile = (clip) =>
 export const REFERENCE_SHA256 = {
     wall: "7a8ba4c3b5e9a925646b8707a97b08da2dfacf7518ab070d2438476ea5d8d4e1",
     table: "062ee5aa4639a8d6b263c3f765418ba327b67d1efcf6fd8bba31d0584923168b",
-    fast: "f005a5913110c8de04767bb05c99695c54dccb44219e0d081b632fd95deee99f",
+    fast: "c7f671812a27bd5094eedf7a7766b99f1697f10e127e5cf481326669b222a8d3",
 };
 /**
  * The size each clip's reference is segmented at. The brief said the processing size; on the wall
@@ -640,7 +642,7 @@ async function segmentFast() {
         processingSize: [w, h],
         segmentedAt: [bw, bh],
         scale: [w / bw, h / bh],
-        basis: "segmented at the source size, corners scaled to processing pixels, as the wall's (#277's method, #279): segmentedFrom, the file the bench clip was encoded from, with the same frame times",
+        basis: "segmented at the source size, corners scaled to processing pixels, as the wall's (#277's method, #279); unlike the wall's, the file segmented is not `file` but segmentedFrom, the file the bench clip was encoded from, with the same frame times (#279's brief); sourceSha256 is `file`'s",
         segmentedFrom: { repository: "webarkit/artoolkit-nft-bench", commit: FAST.commit, file: FAST.path, sha256: FAST.sha256 },
         frames: pts.length,
         accepted: refRows.filter((r) => r.status === "accepted").length,

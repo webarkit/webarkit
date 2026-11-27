@@ -1076,7 +1076,7 @@ const TILT_CLIP_S = 13.995633;
  * already allow between a clip's duration and its frames' times
  * (`CLIP_END_TOLERANCE_S`).
  */
-const TILT_CLIP_TOLERANCE_S = 0.001;
+const CLIP_DURATION_TOLERANCE_S = 0.001;
 
 /**
  * A tilt clip offered on the page (#243): `?clip=` picks it, and the export
@@ -1114,8 +1114,8 @@ async function syncTiltClip(browser, base) {
                     `source ${e.source}, bundledClip ${e.bundledClip}`,
                 );
                 expect(
-                    Math.abs(e.clipDurationS - TILT_CLIP_S) <= TILT_CLIP_TOLERANCE_S,
-                    `clipDurationS ${e.clipDurationS}, not ${TILT_CLIP_S} ± ${TILT_CLIP_TOLERANCE_S}`,
+                    Math.abs(e.clipDurationS - TILT_CLIP_S) <= CLIP_DURATION_TOLERANCE_S,
+                    `clipDurationS ${e.clipDurationS}, not ${TILT_CLIP_S} ± ${CLIP_DURATION_TOLERANCE_S}`,
                 );
                 expect(e.frames.length >= 5, `${e.frames.length} frames`);
             });
@@ -1169,8 +1169,8 @@ async function syncFastClip(browser, base) {
                     `source ${e.source}, bundledClip ${e.bundledClip}`,
                 );
                 expect(
-                    Math.abs(e.clipDurationS - FAST_CLIP_S) <= TILT_CLIP_TOLERANCE_S,
-                    `clipDurationS ${e.clipDurationS}, not ${FAST_CLIP_S} ± ${TILT_CLIP_TOLERANCE_S}`,
+                    Math.abs(e.clipDurationS - FAST_CLIP_S) <= CLIP_DURATION_TOLERANCE_S,
+                    `clipDurationS ${e.clipDurationS}, not ${FAST_CLIP_S} ± ${CLIP_DURATION_TOLERANCE_S}`,
                 );
                 expect(e.frames.length >= 5, `${e.frames.length} frames`);
             });

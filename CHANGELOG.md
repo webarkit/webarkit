@@ -19,7 +19,7 @@ release pull request's body and the GitHub Release's notes.
 - The bench page offers `pinball-fast.mp4`, the Tab 9's fast hand-held clip of 2026-11-26 at
   1280×720, after the tilt clips in its clip dropdown, and `?clip=` takes it; the pose demo's
   source list offers it too. `scripts/replay-clips.mjs` reads it through `--clips fast`, a
-  form of its own like `--clips tilt`, whose device schedules borrow the wall clip's
+  form of its own like `--clips tilt`; its device schedules borrow the wall clip's
   acquisition, not measured; the default runs and `--external` read the clips they did.
   `check:page` runs it through `?clip=` to an export
   ([#279](https://github.com/webarkit/webarkit/issues/279)).

@@ -814,9 +814,12 @@ ffmpeg -copyts -i fast.mp4 -an -map_metadata -1 -fps_mode passthrough -enc_time_
   frames, so the segmented reference is made at full size
   ([`docs/benchmarks/2026-11-27-279-reference-fast.json`](../docs/benchmarks/2026-11-27-279-reference-fast.json)).
   No `-vf`: the source is already 1280×720, yuv420p, with no rotation tag.
-- **The timestamps are the source's, exactly:** `-copyts` and
-  `-video_track_timescale 90000` keep the first frame at 189 ticks of 90 kHz
-  (0.002100 s), as the source has it; the bare command resamples to 1/30 s on a
+- **The timestamps are the source's, exactly:** `-copyts` with
+  `-enc_time_base demux` keeps every frame's, the first at 189 ticks of 90 kHz
+  (0.002100 s), as the source has it. `-video_track_timescale 90000` is the
+  flag artoolkit-nft-bench's `encode_session.sh` gives; on ffmpeg 9.0.2 it changes
+  nothing here (the command without it gives the same bytes), and it is kept so
+  that the command does not rest on a build's default. The the bare command resamples to 1/30 s on a
   1/15360 time base, and `-fps_mode passthrough -enc_time_base demux` alone moves
   the first frame to 0. The clip therefore starts at 0.002100 s, not 0.
 - **CRF 28, the highest of 28, 26, 24 and 22 that keeps the measurement**,
