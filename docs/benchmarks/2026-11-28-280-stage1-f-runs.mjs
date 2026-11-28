@@ -67,7 +67,8 @@
  *   #273's `divergenceRefusal` with "first step" read as "age-1 step"; exercised both ways by the
  *   self-test). A held step not following a kept step on the processed frame before, an age-1 step
  *   whose lock is not the last detection two processed frames before, and any read of the global
- *   `Math.random` each exit 1. A run that fails one writes no file.
+ *   `Math.random` each exit 1. An arm that fails one writes no file;
+ *   the files of the same seed's earlier arms, already written, stay (the run exits there).
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -143,7 +144,8 @@ export function divergenceRefusalF(run, none) {
  * processed frame's index on the loops' timeline, pushed before each `process` call (Fs's `a` and
  * `b`). Returns `{ log }`: `log.steps` one entry per tracking step, `{ frame, age, ok, loss, stats,
  * acted, extraSteps, fellBack, noVerdict, a, b, Hprev, Hstart, H }`; `log.counts` the age-1 steps,
- * the steps the lever changed the call of, Ffb's fallbacks and Fs's no-verdict states.
+ * the age-1 steps run through `leverStep` (`acted`: Fs at `a = b` and Ffb where the shipped step keeps
+ * included, where the call is the shipped one), Ffb's fallbacks and Fs's no-verdict states.
  */
 export function instrumentF(tracker, lever, opts, { trackFrame, kOf, width, height }) {
     if (!F_LEVERS.includes(lever)) throw new RangeError(`unknown lever ${lever}`);

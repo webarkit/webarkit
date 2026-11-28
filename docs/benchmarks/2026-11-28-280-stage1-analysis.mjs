@@ -41,8 +41,10 @@
  *
  * `<tools>` holds the tools' outputs as `<tools>/<mode>/<mode>.jsonl` (`paired`, `deep`, `m9`,
  * `wrong`); `<runs>` the runner's `run-*.json` and `mirror-*.json` and the F runs' `frun-*.json`.
- * Without `--trial`, every input's header must say it is not a trial and was made from a clean
- * tree, with the registered parameters.
+ * Without `--trial`, every tools output's header and every F run must say it is not a trial and was
+ * made from a clean tree; the tools' headers must carry the registered parameters and cover the fast,
+ * table and wall clips. The runner's run files carry no such field: `cells` ties them to the tools by
+ * the SHA-256 `paired` recorded.
  *
  * - **margin:** the gross margin exercised both ways on the three reference files, with no tracker:
  *   a quad equal to the reference's with its BL corner moved by `BL_BIAS_PX` must not cross; the
@@ -58,12 +60,14 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { summarizeRun } from "../../examples/js/bench-metrics.mjs";
 import { loopPeriod } from "../../scripts/replay-run.mjs";
 import { meanCornerDistance, loadReferenceFrom, referenceFile } from "./2026-11-21-277-segmented-reference.mjs";
+import { cornerDistances } from "./2026-11-22-278-stage1-tools.mjs";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const BENCH = join(ROOT, "docs/benchmarks");
@@ -233,14 +237,22 @@ function checkHead(head, mode, trial) {
     const P = head.parameters;
     if (mode !== "wrong" && P.grossMargin !== GROSS_MARGIN) fail(`${mode}: gross margin ${P.grossMargin}, registered ${GROSS_MARGIN}`);
     if (mode === "m9" && P.reproThreshold !== REPRO_THRESHOLD) fail(`m9: reproduction threshold ${P.reproThreshold}, registered ${REPRO_THRESHOLD}`);
+    // The registered cells, covered (the review's E1): a run set without a clip must not read as void.
+    if (mode !== "m9") {
+        const clips = Object.keys(head.clips ?? {});
+        for (const c of ["fast", "table", "wall"]) if (!clips.includes(c)) fail(`${mode}: the input does not cover the ${c} clip (clips ${clips.join(", ")})`);
+        if (JSON.stringify(P.seeds) !== JSON.stringify(SEEDS)) fail(`${mode}: seeds ${JSON.stringify(P.seeds)}, not 1 to 8`);
+        if (P.N !== 50) fail(`${mode}: N ${P.N}, not LASTING = 50`);
+        if (mode !== "wrong" && JSON.stringify(P.schedules) !== JSON.stringify(SCHEDULES)) fail(`${mode}: schedules ${JSON.stringify(P.schedules)}, not every, device-15 and device-25`);
+    }
 }
+const sha256File = (p) => createHash("sha256").update(readFileSync(p)).digest("hex");
 const readJson = (p) => JSON.parse(readFileSync(p, "utf8"));
 
 // --- margin -----------------------------------------------------------------------------------------
 
 const widthOf = (q) => Math.hypot(q[1][0] - q[0][0], q[1][1] - q[0][1]);
 function marginMode() {
-    console.log(`## The gross margin, exercised on the reference files (margin ${GROSS_MARGIN} processing px)\n`);
     const refs = {};
     for (const clip of ["wall", "table", "fast"]) {
         const { why, ref } = loadReferenceFrom(BENCH, clip);
@@ -249,54 +261,60 @@ function marginMode() {
     }
     const recorded = RECORDED_GROSS.map((g) => {
         const row = refs[g.clip].rows[g.frame];
+        if (row.i !== g.frame) fail(`recorded gross row ${g.clip} ${g.frame}: the reference's row there is frame ${row.i}`);
         if (row.status !== "accepted") fail(`recorded gross row ${g.clip} ${g.frame}: reference frame ${row.status}`);
         return { ...g, width: widthOf(row.corners), fraction: g.distance / widthOf(row.corners) };
     });
     const smallest = Math.min(...recorded.map((g) => g.fraction));
-    console.log("#284's recorded gross rows, their poster width and the fraction of it:\n");
-    for (const g of recorded) console.log(`- ${g.clip} clip frame ${g.frame}: ${f(g.distance, 2)} px on a poster ${f(g.width, 2)} px wide, ${f(g.fraction, 3)} of it`);
-    console.log("");
-    console.log(`| clip | file | accepted rows | BL moved ${BL_BIAS_PX} px: mean (crossing) | three-corner (crossing) | shift ${OFF_POSTER_FRACTION} of width: rows crossing | three-corner | shift ${f(smallest, 3)} of width (recorded): rows crossing; frames not |`);
-    console.log("| --- | --- | --- | --- | --- | --- | --- | --- |");
+    // Every figure computed and every constraint checked before anything is printed (the review's E2).
+    const lines = [];
     let violations = 0;
     for (const clip of ["wall", "table", "fast"]) {
         const acc = refs[clip].rows.filter((r) => r.status === "accepted");
-        let blCross = 0;
-        let bl3Cross = 0;
-        let offCross = 0;
-        let off3Cross = 0;
-        let recCross = 0;
+        const t = { bl: 0, bl3: 0, off: 0, off3: 0, rec: 0, blMax: 0, bl3Max: 0 };
         const recNot = [];
-        let blMean = null;
         for (const r of acc) {
             const q = r.corners;
             const bl = q.map((c, k) => (k === 3 ? [c[0] + BL_BIAS_PX, c[1]] : c));
             const dBl = meanCornerDistance(bl, q);
-            blMean = dBl;
-            if (dBl > GROSS_MARGIN) blCross++;
-            if (0 > GROSS_MARGIN) bl3Cross++; // BL is outside the three-corner reading: its distance there is 0.
+            if (Math.abs(dBl - BL_BIAS_PX / 4) > 1e-9) fail(`${clip} frame ${r.i}: the BL move reads ${dBl}, not ${BL_BIAS_PX / 4}`);
+            const dBl3 = threeCornerMean(cornerDistances(bl, q));
+            t.blMax = Math.max(t.blMax, dBl);
+            t.bl3Max = Math.max(t.bl3Max, dBl3);
+            if (dBl > GROSS_MARGIN) t.bl++;
+            if (dBl3 > GROSS_MARGIN) t.bl3++;
             const w = widthOf(q);
             const shift = (fr) => q.map(([x, y]) => [x + fr * w, y]);
-            const dOff = meanCornerDistance(shift(OFF_POSTER_FRACTION), q);
-            if (dOff > GROSS_MARGIN) offCross++;
-            if (dOff > GROSS_MARGIN) off3Cross++; // a rigid shift moves all corners alike: the three-corner mean equals the four-corner one.
-            if (meanCornerDistance(shift(smallest), q) > GROSS_MARGIN) recCross++;
+            const s = shift(OFF_POSTER_FRACTION);
+            if (meanCornerDistance(s, q) > GROSS_MARGIN) t.off++;
+            if (threeCornerMean(cornerDistances(s, q)) > GROSS_MARGIN) t.off3++;
+            if (meanCornerDistance(shift(smallest), q) > GROSS_MARGIN) t.rec++;
             else recNot.push(r.i);
         }
-        if (blCross > 0 || offCross !== acc.length || off3Cross !== acc.length) violations++;
+        if (t.bl > 0 || t.bl3 > 0 || t.off !== acc.length || t.off3 !== acc.length) violations++;
         const notText = recNot.length ? `${recNot.length} (frames ${recNot[0]}–${recNot[recNot.length - 1]})` : "none";
-        console.log(`| ${clip} | ${referenceFile(clip)} | ${acc.length} | ${f(blMean, 2)} (${blCross}) | 0.00 (${bl3Cross}) | ${offCross} of ${acc.length} | ${off3Cross} of ${acc.length} | ${recCross} of ${acc.length}; ${notText} |`);
+        lines.push(`| ${clip} | ${referenceFile(clip)} | ${acc.length} | ${f(t.blMax, 2)} on every row (${t.bl}) | ${f(t.bl3Max, 2)} at most (${t.bl3}) | ${t.off} of ${acc.length} | ${t.off3} of ${acc.length} | ${t.rec} of ${acc.length}; ${notText} |`);
     }
-    console.log("");
     if (violations) fail(`the margin does not meet its registered constraints on ${violations} clip(s)`);
-    console.log("Both registered constraints hold on every accepted row of every clip: the BL bias alone does not cross, a quarter-width shift does.\n");
+    console.log(`## The gross margin, exercised on the reference files (margin ${GROSS_MARGIN} processing px)\n`);
+    console.log("#284's recorded gross rows, their poster width and the fraction of it:\n");
+    for (const g of recorded) console.log(`- ${g.clip} clip frame ${g.frame}: ${f(g.distance, 2)} px on a poster ${f(g.width, 2)} px wide, ${f(g.fraction, 3)} of it`);
+    console.log("");
+    console.log(`| clip | file | accepted rows | BL moved ${BL_BIAS_PX} px: mean (rows crossing) | three-corner mean (rows crossing) | shift ${OFF_POSTER_FRACTION} of width: rows crossing | three-corner: rows crossing | shift ${f(smallest, 3)} of width (recorded): rows crossing; frames not |`);
+    console.log("| --- | --- | --- | --- | --- | --- | --- | --- |");
+    for (const l of lines) console.log(l);
+    console.log("");
+    console.log("Both registered constraints hold on every accepted row of every clip, on both readings: the BL bias alone does not cross, a quarter-width shift does.\n");
 }
 
 // --- cells ------------------------------------------------------------------------------------------
 
-function loadRunLoops(runsDir, clip, schedule, seed, prefix = "run") {
-    const p = join(runsDir, `${prefix}-${clip}-none-s${seed}-${schedule}.json`);
+/** A run file's loops, the file refused unless its SHA-256 is the one `paired` read (the review's E3). */
+function loadRunLoops(runsDir, clip, schedule, seed, hashes) {
+    const name = `run-${clip}-none-s${seed}-${schedule}.json`;
+    const p = join(runsDir, name);
     if (!existsSync(p)) fail(`${p} missing`);
+    if (hashes[name] !== sha256File(p)) fail(`${p}: not the file paired read (SHA-256)`);
     return loopsOf(readJson(p).frames);
 }
 
@@ -305,6 +323,8 @@ function cellsMode(toolsDir, runsDir, trial) {
     const D = readJsonl(join(toolsDir, "deep", "deep.jsonl"));
     checkHead(P.head, "paired", trial);
     checkHead(D.head, "deep", trial);
+    // paired and deep from the same runs and the same head (the review's E3).
+    if (JSON.stringify(P.head.inputs?.files) !== JSON.stringify(D.head.inputs?.files) || P.head.head !== D.head.head) fail("paired and deep were not made from the same runs at the same head");
     const deepById = new Map();
     for (const r of D.rows) {
         if (deepById.has(r.event)) fail(`deep: event ${r.event} twice`);
@@ -313,17 +333,17 @@ function cellsMode(toolsDir, runsDir, trial) {
     const loopCache = new Map();
     const loopsFor = (r) => {
         const key = `${r.clip}|${r.schedule}|${r.seed}`;
-        if (!loopCache.has(key)) loopCache.set(key, loadRunLoops(runsDir, r.clip, r.schedule, r.seed));
+        if (!loopCache.has(key)) loopCache.set(key, loadRunLoops(runsDir, r.clip, r.schedule, r.seed, P.head.inputs.files));
         return loopCache.get(key);
     };
-    const clips = [...new Set(P.rows.map((r) => r.clip))];
+    const clips = ["fast", "table", "wall"];
     const cells = [];
     const usedDeep = new Set();
     for (const clip of clips)
         for (const schedule of SCHEDULES)
             for (const lever of LEVERS) {
                 const rows = P.rows.filter((r) => r.clip === clip && r.schedule === schedule && r.lever === lever);
-                if (rows.length === 0) continue;
+                if (rows.length === 0) fail(`${clip} ${schedule} ${lever}: no row (a registered cell missing)`);
                 const events = rows.filter((r) => !r.repeats);
                 const c = { clip, schedule, lever, states: rows.length, events: events.length, eligible: 0, noVerdict: 0, wrapEligible: 0, wrapDiscordant: 0, discordant: 0, classes: [], classes3: [] };
                 for (const r of events) {
@@ -386,25 +406,31 @@ function cellsMode(toolsDir, runsDir, trial) {
         console.log(`| ${c.clip} | ${c.schedule}${c.clip === "fast" && c.schedule !== "every" ? " (modelled)" : ""} | ${c.lever} | ${main.leverKept} / ${main.shippedKept} | ${main.leverWins} / ${main.shippedWins} | ${f(main.p, 4)} | ${readingOf(main)} | ${main.ties.join(" / ")} | ${main.wrong.join(" / ")} | ${main.censored.join(" / ")} | ${sens.leverWins} / ${sens.shippedWins}, ${f(sens.p, 4)} (${readingOf(sens)}) | ${three.leverWins} / ${three.shippedWins}, ${f(three.p, 4)} (${readingOf(three)}), ${three.wrong.join(" / ")} | ${coll.leverFrames} / ${coll.shippedFrames}, ${f(coll.p, 4)} |`);
 
     console.log("\n## The stop conditions on the clips, read mechanically (the verdict is the probe file's)\n");
+    const md = (c) => (c.clip === "fast" && c.schedule !== "every" ? `${c.schedule} (modelled)` : c.schedule);
     const deciding = R.filter(({ c }) => DECIDING.includes(`${c.clip}|${c.schedule}`));
+    if (deciding.length !== DECIDING.length * LEVERS.length) fail(`${deciding.length} deciding cells, expected ${DECIDING.length * LEVERS.length}`);
     // 1. The corpus cannot express the effect.
     const allVoid = LEVERS.every((l) => deciding.filter(({ c }) => c.lever === l).every(({ main }) => main.voidBy !== null));
     console.log(`1. Corpus: ${allVoid ? "**every lever void on every fast cell: the step stops on the corpus**" : "not every lever is void on every fast cell"}.`);
-    for (const l of LEVERS) console.log(`   - ${l}: ${deciding.filter(({ c }) => c.lever === l).map(({ c, main }) => `${c.schedule} ${main.voidBy ? `void (${main.voidBy})` : "not void"}`).join("; ")}`);
-    // 2. The lever does not better keep locks.
+    for (const l of LEVERS) console.log(`   - ${l}: ${deciding.filter(({ c }) => c.lever === l).map(({ c, main }) => `${md(c)} ${main.voidBy ? `void (${main.voidBy})` : "not void"}`).join("; ")}`);
+    // 2. Every deciding cell, every reading labelled, each disagreement with the main one flagged (the review's M3).
     const movers = deciding.filter(({ main }) => main.moves);
-    console.log(`2. Metric: ${movers.length ? movers.map(({ c, main }) => `${c.lever} moves fast ${c.schedule} (${main.leverWins} / ${main.shippedWins}, p ${f(main.p, 4)})`).join("; ") : "**no lever moves any deciding cell: the step stops on the metric**"}.`);
-    for (const { c, main, three, sens, coll } of movers) {
-        const agree = [three.moves ? "three-corner moves" : "**three-corner does not move**", sens.moves ? "censored-as-wins moves" : "censored-as-wins does not move", coll.moves ? "clip-frame collapse moves" : "**clip-frame collapse does not move**"];
-        console.log(`   - ${c.lever} fast ${c.schedule}: ${agree.join("; ")} (main ${main.leverWins} / ${main.shippedWins})`);
+    console.log(`2. Metric: ${movers.length ? movers.map(({ c, main }) => `${c.lever} moves fast ${md(c)} (${main.leverWins} / ${main.shippedWins}, p ${f(main.p, 4)})`).join("; ") : "**no lever moves any deciding cell: the step stops on the metric**"}.`);
+    const label = (m) => (m.voidBy ? `void (${m.voidBy})` : m.moves ? "moves" : m.movesDown ? "moves down" : "does not move");
+    const collLabel = (k) => (k.leverFrames + k.shippedFrames < VOID_EVENTS ? "void (frames)" : k.moves ? "moves" : k.shippedFrames > k.leverFrames && k.p < ALPHA ? "moves down" : "does not move");
+    for (const { c, main, three, sens, coll } of deciding) {
+        const m = label(main);
+        const others = [["three-corner", label(three)], ["censored as wins", label(sens)], ["clip-frame collapse", collLabel(coll)]];
+        const text = others.map(([n, v]) => (v === m || (m.startsWith("void") && v.startsWith("void")) ? `${n} ${v}` : `**${n} ${v} (differs)**`)).join("; ");
+        console.log(`   - ${c.lever} fast ${md(c)}: main ${m} (${main.leverWins} / ${main.shippedWins}); ${text}`);
     }
     // 3. Wrong locks on the clips (the synthetic and mirrored halves are `wrong`'s).
-    console.log("3. Wrong locks on the clips (lever's carries / shipped arm's carries on the same cell's counted discordant events; void where the shipped arm has fewer than 10 carries):");
+    console.log("3. Wrong locks on the clips (lever's carries / shipped arm's carries on the same cell's counted discordant events; void where the shipped arm has fewer than 10 carries; the three-corner reading after the semicolon):");
     for (const l of LEVERS) {
-        const lines = R.filter(({ c }) => c.lever === l).map(({ c, main }) => {
+        const lines = R.filter(({ c }) => c.lever === l).map(({ c, main, three }) => {
             const more = main.wrong[0] > main.wrong[1];
             const voidW = main.shippedKept < VOID_WRONG;
-            return `${c.clip} ${c.schedule} ${main.wrong[0]} / ${main.wrong[1]}${more ? " **more**" : ""}${voidW ? " (void: " + main.shippedKept + " shipped carries)" : ""}`;
+            return `${c.clip} ${md(c)} ${main.wrong[0]} / ${main.wrong[1]}${more ? " **more**" : ""}${voidW ? " (void: " + main.shippedKept + " shipped carries)" : ""}; ${three.wrong[0]} / ${three.wrong[1]}${three.wrong[0] > three.wrong[1] ? " **more**" : ""}`;
         });
         console.log(`   - ${l}: ${lines.join("; ")}`);
     }
@@ -412,10 +438,15 @@ function cellsMode(toolsDir, runsDir, trial) {
     const down = R.filter(({ c, main }) => CONTROL_CLIPS.includes(c.clip) && main.movesDown);
     console.log(`4. Control (table, wall): ${down.length ? down.map(({ c, main }) => `**${c.lever} below the shipped step on ${c.clip} ${c.schedule}** (${main.leverWins} / ${main.shippedWins}, p ${f(main.p, 4)})`).join("; ") : "no lever's wins are below the shipped step's with p < 0.05 on any control cell"}.`);
     // 5. Modelled device cells.
+    let five = false;
     for (const l of LEVERS) {
         const m = movers.filter(({ c }) => c.lever === l).map(({ c }) => c.schedule);
-        if (m.length && m.every((s) => s !== "every")) console.log(`5. ${l} moves only the fast clip's device cells (modelled: acquisition borrowed from the wall): its registration starts with a measured acquisition of the fast clip on the Tab 9.`);
+        if (m.length && m.every((s) => s !== "every")) {
+            five = true;
+            console.log(`5. ${l} moves only the fast clip's device cells (modelled: acquisition borrowed from the wall): its registration starts with a measured acquisition of the fast clip on the Tab 9.`);
+        }
     }
+    if (!five) console.log("5. Modelled device cells: no lever moves only the fast clip's device cells.");
     console.log("");
 }
 
@@ -428,27 +459,39 @@ function wrongMode(toolsDir, trial) {
     if (!tally) fail("wrong: no per-lever-and-age row");
     const rows = W.rows.filter((r) => r.set === "sequence" || r.set === "mirror");
     const setOf = (r) => (r.set === "sequence" ? "sequences" : `mirror-${r.clip}`);
-    const sets = [...new Set(rows.map(setOf))];
-    console.log("## Condition 3 on the synthetic sequences and the mirrored frames\n");
-    console.log(`Per set and lever, on the lever's own states: eligible states (the lever can respond; Fs cannot respond here, a = b on every state), the shipped step's and the lever's confirmed and wrong outputs. Wrong on the sequences: a confirmed output more than RIGHT = 2 px RMS off the truth (\`inView\`); on mirrored frames every confirmation. The "no more wrong" half is void on a set where the lever has fewer than ${VOID_WRONG} eligible states.\n`);
-    console.log("| set | lever | states | eligible | shipped confirmed / wrong | lever confirmed / wrong | reading |");
-    console.log("| --- | --- | --- | --- | --- | --- | --- |");
+    const sets = ["sequences", "mirror-fast", "mirror-table", "mirror-wall"];
+    // Every registered set present (the review's E1); every figure computed and checked against the tally before printing (E2, N5).
+    for (const s of sets) if (!tally.cells.some((x) => x.set === s && x.lever === "shipped")) fail(`wrong: the tally has no shipped cell for ${s}`);
+    const out = [];
     for (const set of sets)
         for (const lever of LEVERS) {
+            const age = lever === "V" ? 0 : 1;
             const R = rows.filter((r) => setOf(r) === set && r.lever === lever);
-            if (R.length === 0) continue;
+            if (R.length === 0) {
+                // No state at the lever's age in this set: the shipped step's tally must agree.
+                if (tally.cells.some((x) => x.set === set && x.lever === lever)) fail(`wrong ${set} ${lever}: tallied but no rows`);
+                if (tally.cells.some((x) => x.set === set && x.lever === "shipped" && x.age === age)) fail(`wrong ${set} ${lever}: the shipped step has states at age ${age} but the lever has no rows`);
+                out.push(`| ${set} | ${lever} | 0 | 0 | – | – | void (no state at age ${age}) |`);
+                continue;
+            }
+            if (R.some((r) => r.age !== age)) fail(`wrong ${set} ${lever}: a row at another age`);
             const elig = R.filter((r) => (lever === "Fs" ? false : r.eligible === true));
             const sc = R.filter((r) => r.shipped.kept).length;
             const sw = R.filter((r) => r.shipped.wrong).length;
             const lc = R.filter((r) => r.lever_.kept).length;
             const lw = R.filter((r) => r.lever_.wrong).length;
-            // The rows' counts against the mode's own tally, fatally.
-            const age = R[0].age;
             const t = tally.cells.find((x) => x.set === set && x.lever === lever && x.age === age);
             if (!t || t.states !== R.length || t.confirmed !== lc || t.wrong !== lw) fail(`wrong ${set} ${lever}: rows disagree with the mode's tally`);
+            const ts = tally.cells.find((x) => x.set === set && x.lever === "shipped" && x.age === age);
+            if (!ts || ts.states !== R.length || ts.confirmed !== sc || ts.wrong !== sw) fail(`wrong ${set} ${lever}: the shipped step's counts disagree with the mode's tally`);
             const reading = lw > sw ? "**more wrong: not proposed**" : elig.length < VOID_WRONG ? `void (${elig.length} eligible)` : "no more wrong";
-            console.log(`| ${set} | ${lever} | ${R.length} | ${elig.length} | ${sc} / ${sw} | ${lc} / ${lw} | ${reading} |`);
+            out.push(`| ${set} | ${lever} | ${R.length} | ${elig.length} | ${sc} / ${sw} | ${lc} / ${lw} | ${reading} |`);
         }
+    console.log("## Condition 3 on the synthetic sequences and the mirrored frames\n");
+    console.log(`Per set and lever, on the lever's own states: eligible states (the lever can respond; Fs cannot respond here, a = b on every state), the shipped step's and the lever's confirmed and wrong outputs. Wrong on the sequences: a confirmed output more than RIGHT = 2 px RMS off the truth (\`inView\`); on mirrored frames every confirmation. The "no more wrong" half is void on a set where the lever has fewer than ${VOID_WRONG} eligible states, and on a set with no state at the lever's age.\n`);
+    console.log("| set | lever | states | eligible | shipped confirmed / wrong | lever confirmed / wrong | reading |");
+    console.log("| --- | --- | --- | --- | --- | --- | --- |");
+    for (const l of out) console.log(l);
     console.log("");
 }
 
@@ -464,10 +507,8 @@ function clipPts(file) {
 }
 const RATE_FILES = { fast: "pinball-fast.mp4", table: "pinball-bench-table.mp4", wall: "pinball-bench.mp4" };
 function ratesMode(runsDir, trial) {
-    console.log("## The descriptive lock rate, per seed (decides nothing)\n");
-    console.log("`summarizeRun(frames, { clipDurationS }).trackShare` over the run's two loops (#273's metric's definition, imported), seeds 1–8: the shipped arm's mean (s; 95% interval; range), and each lever's d = lever − shipped per seed, d̄ [95% interval]. V from #273's runner (`--levers none,V`), F0, Fs and Ffb from the F runs; the F runs' none arm is checked equal to the runner's, frame for frame.\n");
-    console.log("| clip | schedule | shipped lock rate | V d̄ [interval] | F0 d̄ | Fs d̄ | Ffb d̄ |");
-    console.log("| --- | --- | --- | --- | --- | --- | --- |");
+    // Every file read and checked, every figure computed, before anything is printed (the review's E2).
+    const out = [];
     for (const clip of ["fast", "table", "wall"]) {
         const D = loopPeriod(clipPts(RATE_FILES[clip]));
         for (const sched of SCHEDULES) {
@@ -492,9 +533,14 @@ function ratesMode(runsDir, trial) {
             };
             const V = dOf(SEEDS.map((s) => read("run", "V", s)));
             const F = ["F0", "Fs", "Ffb"].map((l) => dOf(SEEDS.map((s) => read("frun", l, s))));
-            console.log(`| ${clip} | ${sched}${clip === "fast" && sched !== "every" ? " (modelled)" : ""} | ${sp.text} | ${V} | ${F.join(" | ")} |`);
+            out.push(`| ${clip} | ${sched}${clip === "fast" && sched !== "every" ? " (modelled)" : ""} | ${sp.text} | ${V} | ${F.join(" | ")} |`);
         }
     }
+    console.log("## The descriptive lock rate, per seed (decides nothing)\n");
+    console.log("`summarizeRun(frames, { clipDurationS }).trackShare` over the run's two loops (#273's metric's definition, imported), seeds 1–8: the shipped arm's mean (s; 95% interval; range), and each lever's d = lever − shipped per seed, d̄ [95% interval]. V from #273's runner (`--levers none,V`), F0, Fs and Ffb from the F runs; the F runs' none arm is checked equal to the runner's, frame for frame.\n");
+    console.log("| clip | schedule | shipped lock rate | V d̄ [interval] | F0 d̄ | Fs d̄ | Ffb d̄ |");
+    console.log("| --- | --- | --- | --- | --- | --- | --- |");
+    for (const l of out) console.log(l);
     console.log("");
 }
 
@@ -506,7 +552,7 @@ function m9Mode(toolsDir, trial) {
     const states = M.rows.filter((r) => r.kind === "state");
     const levers = M.rows.filter((r) => r.kind === "lever");
     console.log(`## M9's recorded device states, as information (reproduction threshold ${REPRO_THRESHOLD} px; enters no stop condition)\n`);
-    console.log("| clip | age-1 states | reproduced (kept / lost) | not reproduced | across a wrap |");
+    console.log("| clip | age-1 states | reproduced (kept / lost) | not reproduced | across a wrap (#278's one-hop `acrossWrap`) |");
     console.log("| --- | --- | --- | --- | --- |");
     for (const clip of ["table", "wall"]) {
         const S = states.filter((r) => r.clip === clip && r.age === 1);
@@ -514,7 +560,7 @@ function m9Mode(toolsDir, trial) {
         console.log(`| ${clip} | ${S.length} | ${rep.length} (${rep.filter((r) => r.device.kept).length} / ${rep.filter((r) => !r.device.kept).length}) | ${S.length - rep.length} | ${S.filter((r) => r.acrossWrap).length} |`);
     }
     console.log("\nLever rows on the reproduced age-1 states (events, repeats left out; rows across a wrap counted apart):\n");
-    console.log("| clip | lever | events | across a wrap | lever kept, desktop's shipped step lost | shipped kept, lever lost | no verdict |");
+    console.log("| clip | lever | events | across a wrap (one-hop) | lever kept, desktop's shipped step lost | shipped kept, lever lost | no verdict |");
     console.log("| --- | --- | --- | --- | --- | --- | --- |");
     for (const clip of ["table", "wall"])
         for (const lever of ["F0", "Fs", "Ffb"]) {
