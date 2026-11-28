@@ -114,7 +114,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { nextFrameIndex, framesAt, targetCorners, reprojectCorners } from "../../examples/js/bench-metrics.mjs";
 import { loopTimes, loopPeriod } from "../../scripts/replay-run.mjs";
-import { CLIPS as REFERENCE_CLIPS, loadReferenceFrom, referenceRefusal, runRefusal, meanCornerDistance } from "./2026-11-21-277-segmented-reference.mjs";
+import { CLIPS as REFERENCE_CLIPS, FAST, REFERENCE_SHA256, referenceFile, loadReferenceFrom, referenceRefusal, runRefusal, meanCornerDistance } from "./2026-11-21-277-segmented-reference.mjs";
 
 // The ground truth's sequences are TypeScript, imported by `wrong` as #273's truth script imports
 // them (the same resolve hook: a `.js` specifier from a `.ts` file falls back to the `.ts`).
@@ -209,6 +209,32 @@ export function referenceGuard({ exists, name, loaded, clipSha256, pts }) {
     if (loaded.ref.sourceSha256 !== clipSha256) return `${name} was made from a clip with SHA-256 ${loaded.ref.sourceSha256}, this clip's is ${clipSha256}`;
     const why = referenceRefusal(loaded.ref, pts);
     return why ? `${name}: ${why}` : null;
+}
+
+/**
+ * #280: whether a clip has a segmented reference: #277's wall and table (`CLIPS`), and #279's fast
+ * clip (`FAST`), whose file `referenceFile` names and whose bytes `REFERENCE_SHA256.fast` records.
+ */
+export const hasReference = (name) => name in REFERENCE_CLIPS || name === FAST.clip;
+
+/**
+ * #280: the runner's `DEVICE_ACQUIRE_MS.fast` against `scripts/replay-clips.mjs`'s
+ * `FAST_BORROWED_ACQUIRE_MS` (borrowed from the wall clip, not measured): a refusal string or null.
+ */
+export const fastAcquireRefusal = (runner, borrowed) =>
+    runner === borrowed ? null : `the runner's DEVICE_ACQUIRE_MS.fast is ${runner}, scripts/replay-clips.mjs's FAST_BORROWED_ACQUIRE_MS ${borrowed}`;
+
+/**
+ * #280: each corner's distance between two quads, TL, TR, BR, BL (the order of #277's rows and of
+ * `reprojectCorners`), beside their mean. Checked against `meanCornerDistance` by
+ * {@link cornerDistancesRefusal}.
+ */
+export const cornerDistances = (a, b) => [0, 1, 2, 3].map((k) => Math.hypot(a[k][0] - b[k][0], a[k][1] - b[k][1]));
+/** The per-corner distances' mean against `meanCornerDistance` of the same quads: a refusal string or null. */
+export function cornerDistancesRefusal(d, a, b) {
+    const m = meanCornerDistance(a, b);
+    const mine = (d[0] + d[1] + d[2] + d[3]) / 4;
+    return Math.abs(mine - m) <= 1e-12 * Math.max(1, m) ? null : `per-corner distances average ${mine}, meanCornerDistance ${m}`;
 }
 
 /**
@@ -600,8 +626,9 @@ function loadClips(S, names) {
         const clip = S.loadClip(name);
         const sha256 = sha256File(`examples/videos/${clip.file}`);
         let ref = null;
-        if (name in REFERENCE_CLIPS) {
-            const fileName = `2026-11-21-277-reference-${name}.json`;
+        if (hasReference(name)) {
+            // #277's files for wall and table (the same names as before), #279's for fast.
+            const fileName = referenceFile(name);
             // --references: another folder holding #277's files (the guard's mode-level negatives use it).
             const dir = arg("--references", join(ROOT, "docs/benchmarks"));
             const exists = existsSync(join(dir, fileName));
@@ -626,7 +653,11 @@ function refCell(clip, i, corners, kept, margin) {
     if (!kept) return { distance: null, reason: "the arm refused the step", beyondMargin: null };
     if (!corners) return { distance: null, reason: "the output has no corners", beyondMargin: null };
     const distance = meanCornerDistance(corners, row.corners);
-    return { distance, reason: null, beyondMargin: distance > margin };
+    // #280, additive: each corner's distance (TL, TR, BR, BL) beside the mean, checked against it, fatally.
+    const perCorner = cornerDistances(corners, row.corners);
+    const why = cornerDistancesRefusal(perCorner, corners, row.corners);
+    if (why) fail(`reference at clip frame ${i}: ${why}`);
+    return { distance, reason: null, beyondMargin: distance > margin, cornerDistances: perCorner };
 }
 /** Rows on a frame the reference accepts, and rows without one (no reference for the clip, or the frame rejected): whatever the arms did. */
 function tallyRef(t, clip, i) {
@@ -1206,6 +1237,31 @@ function selfTest() {
     T("a state whose verdict class differs is reported not reproduced", flip.row.reproduced === false && flip.row.verdictMatch === false && flip.levers.length === 0);
     const near = m9StateRows(st1, m9Classify(keptDev, { kept: true, corners: q.map(([x, y]) => [x + 0.5, y]) }, 1), lr);
     T("a state within the threshold reproduces and gets F0, Fs and Ffb rows", near.row.reproduced === true && near.levers.length === 3);
+
+    // #280: the fast clip's reference, through the reference script's FAST, referenceFile and REFERENCE_SHA256.
+    T("wall, table and fast have a reference; static and cross do not", hasReference("wall") && hasReference("table") && hasReference("fast") && !hasReference("static") && !hasReference("cross"));
+    T("the reference files keep #277's names for wall and table", referenceFile("wall") === "2026-11-21-277-reference-wall.json" && referenceFile("table") === "2026-11-21-277-reference-table.json");
+    const fastLoaded = loadReferenceFrom(join(ROOT, "docs/benchmarks"), "fast");
+    T("the committed fast reference loads under its recorded SHA-256", !fastLoaded.why && REFERENCE_SHA256.fast === "c7f671812a27bd5094eedf7a7766b99f1697f10e127e5cf481326669b222a8d3");
+    if (!fastLoaded.why) {
+        const fastPts = fastLoaded.ref.rows.map((r) => r.t);
+        T("the fast reference was made from the fast bench clip's bytes", fastLoaded.ref.sourceSha256 === FAST.benchSha256);
+        T("the fast reference against the fast clip passes", referenceGuard({ exists: true, name: referenceFile("fast"), loaded: fastLoaded, clipSha256: FAST.benchSha256, pts: fastPts }) === null);
+        T("a fast reference whose source SHA-256 is not the fast clip's is refused", referenceGuard({ exists: true, name: referenceFile("fast"), loaded: fastLoaded, clipSha256: FAST.sha256, pts: fastPts }) !== null);
+        T("a fast reference against another frame count is refused", referenceGuard({ exists: true, name: referenceFile("fast"), loaded: fastLoaded, clipSha256: FAST.benchSha256, pts: fastPts.slice(1) }) !== null);
+    }
+    // #280: each corner's distance beside the mean; their mean equals meanCornerDistance.
+    const qa = [[10, 20], [110, 22], [108, 90], [12, 88]];
+    const qb = [[11, 21], [113, 22], [108, 95], [23, 88]];
+    const dk = cornerDistances(qa, qb);
+    T("per-corner distances are TL, TR, BR, BL", Math.abs(dk[0] - Math.SQRT2) < 1e-12 && dk[1] === 3 && dk[2] === 5 && dk[3] === 11);
+    T("per-corner distances whose mean is meanCornerDistance pass", cornerDistancesRefusal(dk, qa, qb) === null);
+    T("per-corner distances whose mean is not meanCornerDistance are refused", cornerDistancesRefusal([dk[0], dk[1], dk[2], dk[3] + 1], qa, qb) !== null);
+    // #280: the runner's fast acquisition is replay-clips.mjs's borrowed one, both read from source text.
+    const borrowed = readConstant("scripts/replay-clips.mjs", "FAST_BORROWED_ACQUIRE_MS");
+    T("the runner's DEVICE_ACQUIRE_MS.fast equals replay-clips.mjs's FAST_BORROWED_ACQUIRE_MS", fastAcquireRefusal(ACQUIRE_MS.fast, borrowed) === null);
+    T("an acquisition other than the borrowed one is refused", fastAcquireRefusal(36.9, borrowed) !== null && fastAcquireRefusal(undefined, borrowed) !== null);
+    T("readConstant still parses the runner's DEVICE_ACQUIRE_MS literal, the existing clips' values unchanged", ACQUIRE_MS.static === 36.9 && ACQUIRE_MS.wall === 20.4 && ACQUIRE_MS.table === 41.0 && ACQUIRE_MS.cross === 36.9);
 
     if (fails.length) {
         console.error(`self-test: ${fails.length} failed\n${fails.join("\n")}`);

@@ -88,8 +88,14 @@ const { preparePatch, alignPrepared } = await load("packages/nft-tracker/dist/tr
 
 const LOOPS = 2;
 const RATIO = 0.8;
-/** Copied from `2026-11-13-262-stage1-probe.mjs` (not exported there), which copied `scripts/replay-clips.mjs`. */
-const DEVICE_ACQUIRE_MS = { static: 36.9, wall: 20.4, table: 41.0, cross: 36.9 };
+/**
+ * Copied from `2026-11-13-262-stage1-probe.mjs` (not exported there), which copied `scripts/replay-clips.mjs`.
+ * `fast` (#280): BORROWED from the wall clip's 20.4 ms, not measured, as `scripts/replay-clips.mjs`'s
+ * `FAST_BORROWED_ACQUIRE_MS` says (the fast clip shares the wall clip's 1280×720 landscape size).
+ * `2026-11-22-278-stage1-tools.mjs --self-test` checks the two equal, reading both from source text.
+ * The literal stays on one line: the tools read it with `readConstant`.
+ */
+const DEVICE_ACQUIRE_MS = { static: 36.9, wall: 20.4, table: 41.0, cross: 36.9, fast: 20.4 };
 const DEVICE_DETECT_MS = 83.2;
 const SCHEDULES = { every: null, "device-15": 15, "device-25": 25 };
 const LADDER = [0, 1, 2, 3, 4, 5];
