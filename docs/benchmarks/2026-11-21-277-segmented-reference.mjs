@@ -33,6 +33,7 @@
  *     node docs/benchmarks/2026-11-21-277-segmented-reference.mjs --self-test
  *     node docs/benchmarks/2026-11-21-277-segmented-reference.mjs segment --nftbench <artoolkit-nft-bench clone> --python <python> --runs <dir> [--write <dir>] [--figures <file>]
  *     node docs/benchmarks/2026-11-21-277-segmented-reference.mjs compare --replays <dir> [--figures <file>]
+ *     node docs/benchmarks/2026-11-21-277-segmented-reference.mjs segment --clip fast --nftbench <artoolkit-nft-bench clone> --python <python> --runs <dir> [--write <dir>] [--figures <file>]
  *
  * Run from the repository root, after `npm run build`; ffmpeg and ffprobe on PATH.
  *
@@ -59,6 +60,20 @@
  *   the reference's, corner by corner; the frames beyond `ALLOWANCE_PX`; the records of seed 1
  *   within 0.1 s of the table clip's 1.900 s (`CROSS_CHECK`). `--figures` writes what it prints.
  *
+ * - **segment --clip fast** (#279): the same method on the fast clip, `examples/videos/pinball-fast.mp4`,
+ *   which `segment` without `--clip` does not read, so the wall and table files stay as they were.
+ *   The reference's basis is the source size, as the wall's: the clip it was encoded from,
+ *   artoolkit-nft-bench's `data/videos/tab9-2026-11-26/fast.mp4` at `FAST.commit`, read with `git
+ *   cat-file` and refused unless its SHA-256 is `FAST.sha256`, segmented at 1280x720 and scaled to
+ *   the bench's processing pixels. The check is the bench clip itself at the processing size, as the
+ *   replay decodes it; the bench clip must hash as `FAST.benchSha256` and have the same frame times
+ *   as the source (fatal otherwise). `segment.py` is read at `NFTBENCH_COMMIT`, as for the wall and
+ *   table: its blob is the same at `FAST.commit`, and the driver checks its SHA-256. The overlays of
+ *   the sample go into `<runs>/overlay-fast/`. `compare` does not read it: a comparison with the
+ *   tracker on this clip is #280's. Unlike the wall's, the file segmented is not the bench file: the
+ *   wall's bench file is artoolkit-nft-bench's byte for byte, the fast clip's is a CRF 28 encode of
+ *   artoolkit-nft-bench's, and #279's brief names that source as the file to segment.
+ *
  * Every refusal exits 1.
  */
 
@@ -84,11 +99,25 @@ export const CLIPS = {
     wall: "pinball-bench.mp4",
     table: "pinball-bench-table.mp4",
 };
+/**
+ * #279's fast clip, read by `segment --clip fast` alone: the bench's file, and the file it was
+ * encoded from, artoolkit-nft-bench's at the merge commit of its PR #27, with both SHA-256.
+ */
+export const FAST = {
+    clip: "fast",
+    file: "pinball-fast.mp4",
+    benchSha256: "af8d3cfe9d6256bab13d3688284033b4591d49e54158427ea1882e9958aa3dbb",
+    commit: "46bd6d6128f28884c5088bc56e70cb4b9f4d2cfb",
+    path: "data/videos/tab9-2026-11-26/fast.mp4",
+    sha256: "6120c7a35bb3bf37ab2677f9fb449e3cb4e7cb8abdc47edd6b8e84aaf8141915",
+};
 /** The committed reference files and their SHA-256: `compare` refuses any other bytes. */
-export const referenceFile = (clip) => `2026-11-21-277-reference-${clip}.json`;
+export const referenceFile = (clip) =>
+    clip === FAST.clip ? "2026-11-27-279-reference-fast.json" : `2026-11-21-277-reference-${clip}.json`;
 export const REFERENCE_SHA256 = {
     wall: "7a8ba4c3b5e9a925646b8707a97b08da2dfacf7518ab070d2438476ea5d8d4e1",
     table: "062ee5aa4639a8d6b263c3f765418ba327b67d1efcf6fd8bba31d0584923168b",
+    fast: "c7f671812a27bd5094eedf7a7766b99f1697f10e127e5cf481326669b222a8d3",
 };
 /**
  * The size each clip's reference is segmented at. The brief said the processing size; on the wall
@@ -247,7 +276,7 @@ function selfTest() {
     // copy with one byte changed is refused.
     const tmp = mkdtempSync(join(tmpdir(), "277-self-test-"));
     try {
-        for (const clip of Object.keys(CLIPS)) {
+        for (const clip of [...Object.keys(CLIPS), FAST.clip]) {
             const loaded = loadReferenceFrom(HERE, clip);
             T(`the committed ${referenceFile(clip)} hashes as recorded`, !loaded.why);
             if (!loaded.why) T(`the committed ${referenceFile(clip)} has one row per frame`, loaded.ref.rows.length === loaded.ref.frames);
@@ -414,6 +443,11 @@ function agreement(a, b) {
 }
 
 async function segmentMode() {
+    const only = arg("--clip", null);
+    if (only !== null) {
+        if (only !== FAST.clip) fail(`--clip takes ${FAST.clip}, got ${JSON.stringify(only)}`);
+        return segmentFast();
+    }
     const clone = arg("--nftbench", null);
     const python = arg("--python", null);
     const runs = arg("--runs", null);
@@ -522,6 +556,120 @@ async function segmentMode() {
     const figures = arg("--figures", null);
     if (figures) writeFileSync(figures, out.join("\n") + "\n");
     if (!allSame) process.exitCode = 1;
+}
+
+/**
+ * `segment --clip fast`: the fast clip's reference, segmented at its source's 1280x720 and scaled to
+ * the bench clip's processing size; the bench clip itself at the processing size is the check.
+ */
+async function segmentFast() {
+    const clone = arg("--nftbench", null);
+    const python = arg("--python", null);
+    const runs = arg("--runs", null);
+    if (!clone || !python || !runs) fail("segment needs --nftbench, --python and --runs");
+    const write = arg("--write", runs);
+    mkdirSync(runs, { recursive: true });
+    mkdirSync(write, { recursive: true });
+    const { dir: pythonPath, git } = exportPackage(clone, runs);
+    const f = (v) => (v === null || v === undefined ? "-" : v.toFixed(3));
+    const out = [];
+    const say = (s) => {
+        out.push(s);
+        console.log(s);
+    };
+    const rel = `examples/videos/${FAST.file}`;
+    const benchPath = join(ROOT, rel);
+    const bench = readFileSync(benchPath);
+    if (sha256(bench) !== FAST.benchSha256) fail(`${rel}: SHA-256 ${sha256(bench)}, recorded ${FAST.benchSha256}`);
+    // The source, from git's object store at the commit: the clone's tree is not read.
+    const theirs = git("cat-file", "blob", `${FAST.commit}:${FAST.path}`);
+    if (sha256(theirs) !== FAST.sha256) fail(`${FAST.path} at ${FAST.commit}: SHA-256 ${sha256(theirs)}, recorded ${FAST.sha256}`);
+    const sourceDir = join(runs, `nftbench-${FAST.commit.slice(0, 7)}`);
+    mkdirSync(sourceDir, { recursive: true });
+    const sourcePath = join(sourceDir, "fast.mp4");
+    writeFileSync(sourcePath, theirs);
+    if (sha256(readFileSync(sourcePath)) !== FAST.sha256) fail(`${sourcePath}: the bytes written are not ${FAST.path}`);
+    say(`fast: ${FAST.path} at ${FAST.commit.slice(0, 7)} (SHA-256 ${FAST.sha256}), encoded into ${rel} (SHA-256 ${FAST.benchSha256})`);
+    const source = probeClip(sourcePath);
+    const { width: bw, height: bh, pts } = probeClip(benchPath);
+    if (source.width !== bw || source.height !== bh) fail(`${rel} is ${bw}x${bh}, its source ${source.width}x${source.height}`);
+    if (source.pts.length !== pts.length || source.pts.some((t, i) => t !== pts[i])) fail(`${rel}'s frame times are not its source's`);
+    say(`  ${pts.length} frames, the same frame times in both`);
+    const { width: w, height: h } = fitSize(bw, bh, PAGE_PROCESSING_BOX.width, PAGE_PROCESSING_BOX.height);
+    const sizes = {
+        source: { path: sourcePath, rel: `${FAST.path} at ${FAST.commit.slice(0, 7)}`, w: bw, h: bh, scale: false },
+        processing: { path: benchPath, rel, w, h, scale: true },
+    };
+    const seg = {};
+    for (const [name, s] of Object.entries(sizes)) {
+        const overlayDir = name === "source" ? join(runs, "overlay-fast") : null;
+        if (overlayDir) mkdirSync(overlayDir, { recursive: true });
+        const lines = await runDriver({ python, pythonPath, path: s.path, w: s.w, h: s.h, scale: s.scale, overlayDir, frameCount: pts.length, overlayScale: 1 });
+        const { head, rows } = parseDriver(lines, pts.length, `fast ${s.w}x${s.h}`, pythonPath);
+        writeFileSync(join(runs, `segment-fast-${s.w}x${s.h}.jsonl`), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+        const inProcessing = rows.map((r) => ({
+            ...r,
+            corners: r.corners ? r.corners.map(([x, y]) => [toProcessing(x, s.w, w), toProcessing(y, s.h, h)]) : null,
+        }));
+        seg[name] = { head, rows: inProcessing };
+        const acc = rows.filter((r) => r.accepted).length;
+        say(`fast at ${s.w}x${s.h}, ${s.rel}${name === "source" ? " (the reference's basis)" : " (check)"}: ${acc} of ${rows.length} accepted, rejected ${JSON.stringify(rejectedCounts(rows))}`);
+        if (overlayDir) say(`  overlay sample: ${head.overlay_frames.join(", ")}`);
+    }
+    const basis = seg.source;
+    const { d, onlyA, onlyB } = agreement(basis.rows, seg.processing.rows);
+    const sm = d.map((x) => x.mean).sort((x, y) => x - y);
+    const mx = d.map((x) => x.max).sort((x, y) => x - y);
+    say(`  source against processing, in processing px: both accepted ${d.length}, only at source ${onlyA}, only at processing ${onlyB}`);
+    say(`    mean corner distance p50 ${f(quantile(sm, 0.5))}, p90 ${f(quantile(sm, 0.9))}, p99 ${f(quantile(sm, 0.99))}, max ${f(quantile(sm, 1))}; largest single corner p50 ${f(quantile(mx, 0.5))}, p90 ${f(quantile(mx, 0.9))}, max ${f(quantile(mx, 1))}`);
+    const above = d.filter((x) => x.mean > 1);
+    say(`    frames whose mean exceeds 1 px: ${above.length}${above.length ? `: ${above.map((x) => x.i).join(", ")}` : ""}`);
+    const refRows = basis.rows.map((r) => ({
+        i: r.i,
+        t: pts[r.i],
+        status: r.accepted ? "accepted" : r.reason,
+        conf: r.conf,
+        corners: r.corners ? r.corners.map(([x, y]) => [r3(x), r3(y)]) : null,
+    }));
+    const rejected = {};
+    for (const r of refRows) if (r.status !== "accepted") rejected[r.status] = (rejected[r.status] ?? 0) + 1;
+    const header = {
+        kind: "277-segmented-reference",
+        clip: FAST.clip,
+        file: rel,
+        sourceSha256: FAST.benchSha256,
+        sourceSize: [bw, bh],
+        processingSize: [w, h],
+        segmentedAt: [bw, bh],
+        scale: [w / bw, h / bh],
+        basis: "segmented at the source size, corners scaled to processing pixels, as the wall's (#277's method, #279); unlike the wall's, the file segmented is not `file` but segmentedFrom, the file the bench clip was encoded from, with the same frame times (#279's brief); sourceSha256 is `file`'s",
+        segmentedFrom: { repository: "webarkit/artoolkit-nft-bench", commit: FAST.commit, file: FAST.path, sha256: FAST.sha256 },
+        frames: pts.length,
+        accepted: refRows.filter((r) => r.status === "accepted").length,
+        rejected,
+        segmenter: {
+            repository: "webarkit/artoolkit-nft-bench",
+            commit: NFTBENCH_COMMIT,
+            file: "python/nftbench/segment.py",
+            sha256: SEGMENT_PY_SHA256,
+            call: "segment_quad, then order_corners against the last accepted quad, min_conf 0.5, as segment_bank",
+        },
+        environment: { python: basis.head.python, opencv: basis.head.opencv, numpy: basis.head.numpy },
+        command: "node docs/benchmarks/2026-11-21-277-segmented-reference.mjs segment --clip fast --nftbench <artoolkit-nft-bench clone> --python <python> --runs <dir> --write docs/benchmarks",
+        decode: `ffmpeg ${decodeArgs(`<runs>/nftbench-${FAST.commit.slice(0, 7)}/fast.mp4`, bw, bh, false).join(" ")}`,
+        corners: "TL, TR, BR, BL of the poster's paper, in processing pixels, pixel centres at integers; rounded to 0.001 px",
+        t: "ffprobe's pts_time of the bench clip (the same as its source's), as the replay's mediaTimeSeconds",
+        limits: "colour segmentation, checked by eye; it informs (is a lock on the poster?), it does not judge a few pixels; no calibration. See 2026-11-27-279-reference-fast.md.",
+    };
+    const text = referenceText(header, refRows);
+    const name = referenceFile(FAST.clip);
+    writeFileSync(join(write, name), text);
+    const got = sha256(Buffer.from(text));
+    const same = got === REFERENCE_SHA256[FAST.clip];
+    say(`  ${name}: ${header.accepted} of ${pts.length} accepted, SHA-256 ${got} (${same ? "identical to the committed reference" : "differs from the recorded hash"})`);
+    const figures = arg("--figures", null);
+    if (figures) writeFileSync(figures, out.join("\n") + "\n");
+    if (!same) process.exitCode = 1;
 }
 
 // --- compare ---------------------------------------------------------------------------------
