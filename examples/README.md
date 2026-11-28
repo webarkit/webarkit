@@ -808,18 +808,25 @@ measured. It is encoded with ffmpeg 9.0.2:
 ffmpeg -copyts -i fast.mp4 -an -map_metadata -1 -fps_mode passthrough -enc_time_base demux -video_track_timescale 90000 -c:v libx264 -preset medium -crf 28 -movflags +faststart videos/pinball-fast.mp4
 ```
 
-- **1280×720, not the processing size:** the page scales every source into its
-  processing box itself (480×270 for this clip), the wall clip is stored at
-  1280×720 too, and #277 found `segment.py`'s quads at 480×270 wrong on late wall
-  frames, so the segmented reference is made at full size
+- **1280×720, not the processing size:** the maintainer's decision, made for #279
+  against its text's "the processing size the bench uses". The page scales every
+  source into its processing box itself (480×270 for this clip); the wall clip is
+  stored at 1280×720 too; and #277 found `segment.py`'s quads at 480×270 wrong on
+  late wall frames, so the segmented reference is made at full size
   ([`docs/benchmarks/2026-11-27-279-reference-fast.json`](../docs/benchmarks/2026-11-27-279-reference-fast.json)).
+  And on this clip `segment.py` at 480×270 accepts 811 of 898 frames, against 879
+  on its source at 1280×720 (the record's check, reported there and not weighed):
+  68 frames apart, where the encode criterion allows 17.96, so a file stored at the
+  processing size would not keep what the criterion protects. The 480×270 figure
+  comes from the bench clip scaled at decode, not from a 480×270 encode, which was
+  not made.
   No `-vf`: the source is already 1280×720, yuv420p, with no rotation tag.
 - **The timestamps are the source's, exactly:** `-copyts` with
   `-enc_time_base demux` keeps every frame's, the first at 189 ticks of 90 kHz
   (0.002100 s), as the source has it. `-video_track_timescale 90000` is the
   flag artoolkit-nft-bench's `encode_session.sh` gives; on ffmpeg 9.0.2 it changes
   nothing here (the command without it gives the same bytes), and it is kept so
-  that the command does not rest on a build's default. The the bare command resamples to 1/30 s on a
+  that the command does not rest on a build's default. The bare command resamples to 1/30 s on a
   1/15360 time base, and `-fps_mode passthrough -enc_time_base demux` alone moves
   the first frame to 0. The clip therefore starts at 0.002100 s, not 0.
 - **CRF 28, the highest of 28, 26, 24 and 22 that keeps the measurement**,

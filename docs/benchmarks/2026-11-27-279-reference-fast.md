@@ -35,7 +35,9 @@ docs/benchmarks --figures docs/benchmarks/2026-11-27-279-reference-fast-figures.
   corners are scaled to the processing frame (×0.375, pixel centres kept), as the wall's are, since
   #277 found `segment.py`'s quads at 480×270 wrong on late wall frames. The script refuses the bench
   clip unless it hashes as `af8d3cfe9d6256bab13d3688284033b4591d49e54158427ea1882e9958aa3dbb` and has
-  the same frame times as its source.
+  the same frame times as its source. The bench clip is stored at 1280×720 by the maintainer's
+  decision for #279, departing from its text's processing size; `examples/README.md`'s entry gives
+  the reasons.
 - **Not the wall's file choice.** For the wall, #284 segmented the bench file itself, which is
   artoolkit-nft-bench's clip byte for byte. Here the bench file is a CRF 28 encode of the
   artoolkit-nft-bench file, and the reference is segmented on that source, as #279's brief asks,
