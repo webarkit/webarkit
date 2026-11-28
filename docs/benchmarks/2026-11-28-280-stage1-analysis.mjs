@@ -38,6 +38,7 @@
  *     node docs/benchmarks/2026-11-28-280-stage1-analysis.mjs wrong --tools <dir> [--trial]
  *     node docs/benchmarks/2026-11-28-280-stage1-analysis.mjs rates --runs <dir> [--trial]
  *     node docs/benchmarks/2026-11-28-280-stage1-analysis.mjs m9 --tools <dir> [--trial]
+ *     node docs/benchmarks/2026-11-28-280-stage1-analysis.mjs detail --tools <dir> --runs <dir> [--trial]
  *
  * `<tools>` holds the tools' outputs as `<tools>/<mode>/<mode>.jsonl` (`paired`, `deep`, `m9`,
  * `wrong`); `<runs>` the runner's `run-*.json` and `mirror-*.json` and the F runs' `frun-*.json`.
@@ -57,6 +58,10 @@
  * - **rates:** the descriptive lock rate per seed, its spread, and each lever's d̄ against the
  *   shipped arm. Decides nothing.
  * - **m9:** M9's recorded states, as information. Enters no condition.
+ * - **detail:** the figures the record cites beside the conditions (V's wrong locks and their margin,
+ *   the records around them, V's wins by clip frame, where the carries were lost, the wrap rows, the
+ *   fast clip's two device schedules, Fs against Ffb), added after the counted runs at the advisor's
+ *   third consultation, so that no figure of the record comes from a one-off command.
  */
 
 import { execFileSync } from "node:child_process";
@@ -544,6 +549,159 @@ function ratesMode(runsDir, trial) {
     console.log("");
 }
 
+// --- detail -----------------------------------------------------------------------------------------
+
+/** The median of numbers, the mean of the two middle values on an even count. */
+export function median(a) {
+    if (!a.length) return null;
+    const b = [...a].sort((x, y) => x - y);
+    const h = b.length >> 1;
+    return b.length % 2 ? b[h] : (b[h - 1] + b[h]) / 2;
+}
+const stripRec = (fr) => {
+    const { timings, trackerTimings, stages, ...rest } = fr;
+    return JSON.stringify(rest);
+};
+
+/**
+ * Figures the record cites beside the stop conditions, each printed here rather than by a one-off
+ * command (the advisor's third consultation): V's wrong locks with their margin and their fraction
+ * of the poster's width; V's and the shipped arm's records around fast `every`'s wrong lock and wins,
+ * every seed; the clip frames of V's wins; where the carries on the fast clip were lost; #278's
+ * one-hop wrap rows; whether the fast clip's two device schedules give the same runs; Fs against Ffb
+ * on fast `device-15`; and the TRACK frames V adds on fast `every`.
+ */
+function detailMode(toolsDir, runsDir, trial) {
+    const P = readJsonl(join(toolsDir, "paired", "paired.jsonl"));
+    const D = readJsonl(join(toolsDir, "deep", "deep.jsonl"));
+    checkHead(P.head, "paired", trial);
+    checkHead(D.head, "deep", trial);
+    if (JSON.stringify(P.head.inputs?.files) !== JSON.stringify(D.head.inputs?.files) || P.head.head !== D.head.head) fail("paired and deep were not made from the same runs at the same head");
+    const refs = {};
+    for (const clip of ["fast", "table", "wall"]) {
+        const { why, ref } = loadReferenceFrom(BENCH, clip);
+        if (why) fail(why);
+        refs[clip] = ref;
+    }
+    const readRun = (prefix, clip, lever, seed, sched) => {
+        const name = `${prefix}-${clip}-${lever}-s${seed}-${sched}.json`;
+        const p = join(runsDir, name);
+        if (!existsSync(p)) fail(`${p} missing`);
+        if (prefix === "run" && lever === "none" && P.head.inputs.files[name] !== sha256File(p)) fail(`${p}: not the file paired read (SHA-256)`);
+        return readJson(p);
+    };
+    const refDist = (clip, i, corners) => {
+        const row = refs[clip].rows[i];
+        if (row.i !== i) fail(`${clip} reference row ${i} is frame ${row.i}`);
+        return row.status === "accepted" && corners ? meanCornerDistance(corners, row.corners) : null;
+    };
+    const out = [];
+    const say = (s = "") => out.push(s);
+
+    // 1. V's wrong locks.
+    say("## V's wrong locks: their margin, and their fraction of the poster's width\n");
+    say(`Every V event classed wrong on the four-corner reading, any clip and schedule: the kept output beyond ${GROSS_MARGIN} px, how far beyond, its corners, and the distance and the excess as fractions of the poster's TL–TR width on that clip frame (#284's recorded gross rows: 0.169 to 0.234 of the width).\n`);
+    say("| event | clip frame (s) | arm | step | distance | beyond by | TL / TR / BR / BL | poster width | distance / width | excess / width | three-corner | outcome |");
+    say("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+    let wrongRows = 0;
+    for (const r of D.rows.filter((x) => x.lever === "V")) {
+        const p = r.paired;
+        const keptOut = r.direction === "lever-kept" ? p.lever_ : p.shipped;
+        const steps = [{ o: keptOut, i: p.clipFrame, j: 0 }, ...r.steps.map((s, j) => ({ o: s, i: s.clipFrame, j: j + 1 })).filter((x) => x.o.kept)];
+        for (const { o, i, j } of steps) {
+            if (!(o.reference && o.reference.distance !== null && o.reference.distance > GROSS_MARGIN)) continue;
+            wrongRows++;
+            const w = widthOf(refs[r.clip].rows[i].corners);
+            const cd = o.reference.cornerDistances;
+            say(`| ${r.event} | ${i} (${f(refs[r.clip].rows[i].t, 3)}) | ${r.direction === "lever-kept" ? "V" : "shipped"} | ${j} | ${f(o.reference.distance, 2)} | ${f(o.reference.distance - GROSS_MARGIN, 2)} | ${cd.map((x) => f(x, 1)).join(" / ")} | ${f(w, 1)} | ${f(o.reference.distance / w, 3)} | ${f((o.reference.distance - GROSS_MARGIN) / w, 3)} | ${f(threeCornerMean(cd), 2)} | ${r.outcome}${r.lostAt ? ` at ${r.lostAt}` : ""} |`);
+        }
+    }
+    say(`\n${wrongRows} kept outputs beyond the margin in V's events.\n`);
+
+    // 2. Around fast every's wrong lock and wins, every seed, loop 1.
+    say("## Fast `every`, clip frames 720–735, loop 1, every seed: the shipped arm's and V's records\n");
+    say("Each record: its state and, where it has corners on a frame the reference accepts, its mean corner distance (px). D detect, T track, L lost; a dash where the reference rejects the frame or the record has no corners.\n");
+    const W0 = 720;
+    const W1 = 735;
+    say(`| seed | arm | ${Array.from({ length: W1 - W0 + 1 }, (_, k) => W0 + k).join(" | ")} |`);
+    say(`| --- | --- | ${Array.from({ length: W1 - W0 + 1 }, () => "---").join(" | ")} |`);
+    const pts = refs.fast.rows.map((r) => r.t);
+    let trackAdded = [];
+    for (const seed of SEEDS) {
+        const none = readRun("run", "fast", "none", seed, "every");
+        const V = readRun("run", "fast", "V", seed, "every");
+        for (const [arm, doc] of [["shipped", none], ["V", V]]) {
+            const cells = [];
+            for (let i = W0; i <= W1; i++) {
+                const rec = doc.frames[i];
+                if (rec.mediaTimeSeconds !== pts[i]) fail(`fast every seed ${seed} ${arm}: record ${i} is not clip frame ${i}`);
+                const d = refDist("fast", i, rec.corners ?? null);
+                cells.push(`${rec.state[0]}${d === null ? "" : " " + f(d, 1)}`);
+            }
+            say(`| ${seed} | ${arm} | ${cells.join(" | ")} |`);
+        }
+        const tr = (doc, loop) => doc.frames.slice(loop * pts.length, (loop + 1) * pts.length).filter((x) => x.state === "TRACK").length;
+        trackAdded.push([0, 1].map((l) => tr(V, l) - tr(none, l)));
+    }
+    say("");
+    say(`TRACK records V adds on fast \`every\`, per seed, loop 1 / loop 2: ${trackAdded.map((x, s) => `s${s + 1} ${x.join(" / ")}`).join("; ")}. Out of ${pts.length} frames a loop.\n`);
+
+    // 3. V's wins on fast every, by clip frame.
+    const wins = D.rows.filter((r) => r.clip === "fast" && r.schedule === "every" && r.lever === "V" && r.direction === "lever-kept" && r.outcome === "lasted");
+    const byFrame = {};
+    for (const r of wins) (byFrame[r.paired.clipFrame] ??= []).push(r.seed);
+    say("## V's lasting carries on fast `every`, by clip frame\n");
+    for (const [i, s] of Object.entries(byFrame)) say(`- clip frame ${i} (${f(pts[+i], 3)} s): seeds ${s.sort((a, b) => a - b).join(", ")}`);
+    say(`- ${wins.length} carries, ${Object.keys(byFrame).length} clip frames.\n`);
+
+    // 4. Where the carries on the fast clip were lost.
+    say("## The fast clip's carries that were lost: at which carried step, and why\n");
+    say("`lostAt`: the carried step on which the lock was refused (1 the step after the paired one). Median: the mean of the two middle values on an even count.\n");
+    say("| schedule | lever | direction | lost | lostAt min / median / max | reasons |");
+    say("| --- | --- | --- | --- | --- | --- |");
+    for (const sched of SCHEDULES)
+        for (const lever of LEVERS)
+            for (const dir of ["lever-kept", "shipped-kept"]) {
+                const R = D.rows.filter((r) => r.clip === "fast" && r.schedule === sched && r.lever === lever && r.direction === dir && r.outcome === "lost");
+                if (!R.length) continue;
+                const at = R.map((r) => r.lostAt);
+                const reasons = {};
+                for (const r of R) reasons[r.loss] = (reasons[r.loss] ?? 0) + 1;
+                say(`| ${sched}${sched !== "every" ? " (modelled)" : ""} | ${lever} | ${dir} | ${R.length} | ${Math.min(...at)} / ${median(at)} / ${Math.max(...at)} | ${Object.entries(reasons).map(([k, v]) => `${k} ${v}`).join(", ")} |`);
+            }
+    say("");
+
+    // 5. #278's one-hop wrap rows.
+    const wrapRows = P.rows.filter((r) => r.acrossWrap);
+    say(`## #278's one-hop \`acrossWrap\` rows\n\n${wrapRows.length} of ${P.rows.length} paired rows: ${wrapRows.map((r) => `${r.id} (repeats ${r.repeats}, can respond ${canRespond(r)}, discordant ${r.discordant})`).join("; ") || "none"}.\n`);
+
+    // 6. The fast clip's two device schedules.
+    say("## The fast clip's `device-15` and `device-25` runs\n");
+    for (const [prefix, lever] of [["run", "none"], ["run", "V"], ["frun", "F0"], ["frun", "Fs"], ["frun", "Ffb"]]) {
+        const same = SEEDS.filter((s) => {
+            const a = readRun(prefix, "fast", lever, s, "device-15").frames;
+            const b = readRun(prefix, "fast", lever, s, "device-25").frames;
+            return a.length === b.length && a.every((x, k) => stripRec({ ...x, mediaTimeSeconds: x.mediaTimeSeconds }) === stripRec(b[k]));
+        }).length;
+        say(`- ${lever}: ${same} of 8 seeds give the same records on both schedules.`);
+    }
+    say("");
+
+    // 7. Fs against Ffb on fast device-15.
+    say("## Fs and Ffb on fast `device-15` (modelled), per seed\n");
+    const sameFsFfb = SEEDS.filter((s) => {
+        const a = readRun("frun", "fast", "Fs", s, "device-15").frames;
+        const b = readRun("frun", "fast", "Ffb", s, "device-15").frames;
+        return a.length === b.length && a.every((x, k) => stripRec(x) === stripRec(b[k]));
+    }).length;
+    say(`- ${sameFsFfb} of 8 seeds: Fs's run and Ffb's run give the same records.`);
+    const cnt = (lever) => SEEDS.map((s) => readRun("frun", "fast", lever, s, "device-15").counts);
+    say(`- Fs's counts per seed (age-1 steps, acted, no verdict): ${cnt("Fs").map((c, s) => `s${s + 1} ${c.age1}/${c.acted}/${c.fsNoScaledPrediction}`).join("; ")}`);
+    say(`- Ffb's counts per seed (age-1 steps, acted, fell back): ${cnt("Ffb").map((c, s) => `s${s + 1} ${c.age1}/${c.acted}/${c.fellBack}`).join("; ")}`);
+    say("");
+    for (const l of out) console.log(l);
+}
+
 // --- m9 ---------------------------------------------------------------------------------------------
 
 function m9Mode(toolsDir, trial) {
@@ -636,6 +794,8 @@ async function selfTest() {
     T("eight lever wins on one clip frame collapse to one frame", collapsedReading([1, 2, 3, 4, 5, 6, 7, 8].map(() => ev("lever", "win", 42))).leverFrames === 1);
     T("the collapse does not move on one frame", collapsedReading([1, 2, 3, 4, 5, 6, 7, 8].map(() => ev("lever", "win", 42))).moves === false);
     T("the collapse moves on six distinct frames", collapsedReading(six).moves === true);
+    T("median: the middle value on an odd count", median([5, 1, 9]) === 5);
+    T("median: the mean of the two middle values on an even count", median([1, 9, 5, 7]) === 6);
     if (fails.length) {
         console.error(`self-test: ${fails.length} failed\n${fails.join("\n")}`);
         process.exit(1);
@@ -658,6 +818,7 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
         else if (mode === "wrong") wrongMode(arg("--tools") ?? fail("wrong needs --tools"), trial);
         else if (mode === "rates") ratesMode(arg("--runs") ?? fail("rates needs --runs"), trial);
         else if (mode === "m9") m9Mode(arg("--tools") ?? fail("m9 needs --tools"), trial);
-        else fail("mode: margin | cells | wrong | rates | m9 | --self-test");
+        else if (mode === "detail") detailMode(arg("--tools") ?? fail("detail needs --tools"), arg("--runs") ?? fail("detail needs --runs"), trial);
+        else fail("mode: margin | cells | wrong | rates | m9 | detail | --self-test");
     }
 }
