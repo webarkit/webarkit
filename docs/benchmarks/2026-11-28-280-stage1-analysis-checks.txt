@@ -17,11 +17,12 @@ check-orb: 2784 frames, all equal to this machine's R-replay (not 98323f06…, t
 == start 2026-11-28T17:15:55Z head 1f1fb29 diff e3b0c44298fc1c14 status []
 == end 2026-11-28T17:20:04Z head 1f1fb29 diff e3b0c44298fc1c14 status []
 
-## figures.sh (the five analysis outputs, twice, compared)
-== start 2026-11-28T17:34:56Z head 6c1db34 diff e3b0c44298fc1c14 status []
+## figures.sh (the six analysis outputs, printed twice at a clean head after the analysis's last change, compared; the first 16 hex digits of each output's SHA-256)
+== start 2026-11-28T17:45:40Z head 0348a00 diff e3b0c44298fc1c14 status []
 margin identical a4d8e096a9098248
 cells identical 0f7a9afa27a834f4
 wrong identical cb194368631140aa
 rates identical b46d406ac4d840f3
 m9 identical c4fba32b0a31263a
-== end 2026-11-28T17:35:17Z head 6c1db34 diff e3b0c44298fc1c14 status []
+detail identical 1784f85b3ab5ddc6
+== end 2026-11-28T17:46:07Z head 0348a00 diff e3b0c44298fc1c14 status []
