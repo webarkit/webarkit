@@ -1,0 +1,28 @@
+# #280's counted runs: the drivers' state lines and checks (copied from the run directory)
+
+## counted.sh (the R-replay, check-orb, the runner's runs, the mirrored runs, the F runs)
+== start 2026-11-28T16:11:54Z head 1f1fb29 diff e3b0c44298fc1c14 status []
+19 step-independent outputs, projected to version 1: 98323f061ecef7022d536c22f024d374a119edcd8ce6af3927b37309f2c6b546
+check-orb static: 726 frames equal to this machine's R-replay, pinball-static every-frame tracking export
+check-orb static: 363 stateless frames equal to this machine's R-replay, pinball-static detection-only every-frame export, first loop
+check-orb wall: 596 frames equal to this machine's R-replay, pinball-bench every-frame tracking export
+check-orb wall: 298 stateless frames equal to this machine's R-replay, pinball-bench detection-only every-frame export, first loop
+check-orb table: 534 frames equal to this machine's R-replay, pinball-bench-table every-frame tracking export
+check-orb table: 267 stateless frames equal to this machine's R-replay, pinball-bench-table detection-only every-frame export, first loop
+check-orb: 2784 frames, all equal to this machine's R-replay (not 98323f06…, the reference of the machine that produced it)
+== after-check-orb 2026-11-28T16:17:10Z head 1f1fb29 diff e3b0c44298fc1c14 status []
+== end 2026-11-28T17:15:33Z head 1f1fb29 diff e3b0c44298fc1c14 status []
+
+## tools.sh (#278's paired, deep, m9 and wrong)
+== start 2026-11-28T17:15:55Z head 1f1fb29 diff e3b0c44298fc1c14 status []
+== end 2026-11-28T17:20:04Z head 1f1fb29 diff e3b0c44298fc1c14 status []
+
+## figures.sh (the six analysis outputs, printed twice at a clean head after the analysis's last change, compared; the first 16 hex digits of each output's SHA-256)
+== start 2026-11-28T17:45:40Z head 0348a00 diff e3b0c44298fc1c14 status []
+margin identical a4d8e096a9098248
+cells identical 0f7a9afa27a834f4
+wrong identical cb194368631140aa
+rates identical b46d406ac4d840f3
+m9 identical c4fba32b0a31263a
+detail identical 1784f85b3ab5ddc6
+== end 2026-11-28T17:46:07Z head 0348a00 diff e3b0c44298fc1c14 status []

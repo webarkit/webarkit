@@ -99,6 +99,10 @@ export const CLIP_FILES = {
     wall: "pinball-bench.mp4",
     table: "pinball-bench-table.mp4",
     cross: "pinball-tilt-cross.mp4",
+    // #280: #279's fast clip, decoded by loadClip like the others. No mode here runs it by default,
+    // and DEVICE_ACQUIRE_MS below has no entry for it: only `arms` reads that map, and #280 does not
+    // run `arms` on this clip.
+    fast: "pinball-fast.mp4",
 };
 const LOOPS = 2;
 /**

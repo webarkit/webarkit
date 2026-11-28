@@ -77,7 +77,8 @@ const { wrapsOf } = await imp("examples/js/bench-loops.mjs");
 const { detectionLockList } = await imp("examples/js/bench-locks.mjs");
 const { loopPeriod } = await imp("scripts/replay-run.mjs");
 
-const CLIP_FILES = { static: "pinball-static.mp4", wall: "pinball-bench.mp4", table: "pinball-bench-table.mp4", cross: "pinball-tilt-cross.mp4" };
+// `fast` (#280): only `clipPeriod` reads this map, by name; no mode's clip list names `fast`.
+const CLIP_FILES = { static: "pinball-static.mp4", wall: "pinball-bench.mp4", table: "pinball-bench-table.mp4", cross: "pinball-tilt-cross.mp4", fast: "pinball-fast.mp4" };
 const T95_7 = 2.3646;
 const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
 const LEVERS = ["V", "R1", "R2", "R3", "S", "T"];
